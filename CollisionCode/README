@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 This is the Molecular Dynamics software ESPResSo ("Extensible
 Simulation Package for the Research on Soft Matter Systems").
 
@@ -167,6 +166,3 @@ Copying and distribution of this file, with or without modification,
 are permitted in any medium without royalty provided the copyright
 notice and this notice are preserved.  This file is offered as-is,
 without any warranty.
-=======
-Espresso code for collision detection and sticking
->>>>>>> b64b47faa71f19eb32195bb33dd05e5e06544133
