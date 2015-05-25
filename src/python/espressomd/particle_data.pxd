@@ -60,6 +60,8 @@ cdef extern from "particle_data.hpp":
     ParticleLocal l
     IntList bl
 
+  cdef extern Particle *partCfg
+  int updatePartCfg(int bonds_flag )
 
   # Setter/getter/modifier functions functions 
 
