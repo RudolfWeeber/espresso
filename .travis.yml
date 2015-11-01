@@ -28,11 +28,11 @@ matrix:
     - compiler: clang
       env: with-mpi=false myconfig=maxset with_coverage=true
     - compiler: clang
-      env: with-mpi=false myconfig=molcut
+      env: with-mpi=false myconfig=molcut with_coverage=true
     - compiler: clang
-      env: with-mpi=false myconfig=rest1
+      env: with-mpi=false myconfig=rest1 with_coverage=true
     - compiler: clang
-      env: with-mpi=false myconfig=rest2
+      env: with-mpi=false myconfig=rest2 with_coverage=true
     - compiler: clang
       env: with-mpi=false make_check=false myconfig=nocheck-maxset 
     - compiler: clang
