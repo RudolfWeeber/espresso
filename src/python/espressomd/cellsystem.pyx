@@ -20,6 +20,7 @@ cimport cellsystem
 cimport integrate
 from globals cimport *
 import numpy as np
+cimport tuning
 
 cdef class CellSystem(object):
     def set_domain_decomposition(self, use_verlet_lists=True):
@@ -161,5 +162,16 @@ cdef class CellSystem(object):
 
         def __get__(self):
             return skin
+
+    
+    def tune_skin(self,min=None,max=None,tol=None,int_steps=None):
+        """Tunes the skin by running measuring the time for int_steps
+           integration steps and bisecting in the interval min..max upt ot an
+           interval of tol."""
+        
+        
+        tuning.tune_skin(min, max, tol, int_steps)
+        return self.skin
+
 
 
