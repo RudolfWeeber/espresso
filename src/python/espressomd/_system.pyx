@@ -37,11 +37,8 @@ from analyze import Analysis
 from galilei import GalileiTransform
 
 import sys
-<<<<<<< HEAD
 import random #for true random numbers from os.urandom()
-=======
 
->>>>>>> 8bb530c... Py: support for tune_skin
 
 setable_properties = ["box_l", "periodicity", "time",
                       "time_step", "timings"]

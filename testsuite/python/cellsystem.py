@@ -40,6 +40,17 @@ class CellSystem(ut.TestCase):
         self.assertEqual(
             [s['use_verlet_lists'], s['type']], [1, "domain_decomposition"])
 
+    def test_tune_skin(self):
+        self.S.part.add(pos=(0,0,0))
+        self.S.part.add(pos=(0,0,0))
+        self.S.part.add(pos=(0,0,0))
+        self.S.time_step=0.01
+        self.S.thermostat.turn_off()
+        res=self.S.cell_system.tune_skin(min=0.1,max=1.0,tol=0.1,int_steps=100)
+        self.assertTrue(isinstance(res,float),"The result of tune_skin has to be a float")
+
+
+
 
 if __name__ == "__main__":
     print("Features: ", espressomd.features())
