@@ -455,6 +455,21 @@ cdef class BondedInteraction(object):
         else:
             raise Exception(
                 "The constructor has to be called either with a bond id (as interger), or with a set of keyword arguments describing a new interaction")
+    
+    
+    def __getattribute__(self, name):
+        """Every time _set_params_in_es_core is called, the parameter dict is also updated."""
+        attr = object.__getattribute__(self, name)
+        if hasattr(attr, '__call__') and attr.__name__ == "_set_params_in_es_core":
+            def sync_params(*args, **kwargs):
+                result = attr(*args, **kwargs)
+                self._params.update(self._get_params_from_es_core())
+                return result
+            return sync_params
+        else:
+            return attr
+
+
 
     def is_valid(self):
         """Check, if the data stored in the instance still matches what is in Espresso"""
