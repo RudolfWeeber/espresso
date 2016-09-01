@@ -11,6 +11,7 @@ cdef class Actor:
                        MagnetostaticExtension=False,
                        HydrodynamicInteraction=False,
                        ElectrostaticExtensions=False,
+                       Scafacos=True)
     def __getattribute__(self, name):
         """Every time _set_params_in_es_core is called, the parameter dict is also updated."""
         attr = object.__getattribute__(self, name)
@@ -24,7 +25,6 @@ cdef class Actor:
             return attr
 
 
-                       Scafacos=True)
 
     # __getstate__ and __setstate__ define the pickle interaction
     def __getstate__(self):
