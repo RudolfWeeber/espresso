@@ -129,7 +129,10 @@ public:
   if (method=="auto_update") {
      return m_correlator->autoupdate;
   }
-  if (method=="finalize") m_correlator->finalize();
+  if (method=="finalize") {
+    if (m_correlator->finalize()) {
+      throw std::runtime_error("Correlator finalize failed");
+  }
   if (method=="get_correlation") {
     return m_correlator->get_correlation();
   }
