@@ -384,9 +384,15 @@ int Correlator::get_data() {
   j=1;
   // Lets find out how far we have to go back in the hierarchy to make space for the new value
   while (1) {
+    // Rhs of modulo: 2^i
+    // Lhs: t - (tau_lin +1) * (2^i -1) +1
+    // tau_lin +1: Because overflowing data element has to be kept temporarily
+    // the compression can only be done when 2 overflowing elements are available
+    // We don't understand the following if statement entirely 
     if ( ( (t - ((tau_lin + 1)*((1<<(i+1))-1) + 1) )% (1<<(i+1)) == 0) ) {
+      // If we are below the highest level and the level is full
       if ( i < (int(hierarchy_depth) - 1) && n_vals[i]> tau_lin) {
-
+        // Increase highest level to compress
         highest_level_to_compress+=1;
         i++;
       } else break;
@@ -402,18 +408,23 @@ int Correlator::get_data() {
     n_vals[i+1]+=1;
 //    printf("t %d compressing level %d no %d and %d to level %d no %d, nv %d\n",t, i, (newest[i]+1) % (tau_lin+1),
 //(newest[i]+2) % (tau_lin+1), i+1, newest[i+1], n_vals[i]);
+    // This compresses exactly two measurements
     (*compressA)(A[i][(newest[i]+1) % (tau_lin+1)],  
                        A[i][(newest[i]+2) % (tau_lin+1)], 
                        A[i+1][newest[i+1]],dim_A);
+    // If it isn't an autocorrelation do the same for B
     if (!autocorrelation)
       (*compressB)(B[i][(newest[i]+1) % (tau_lin+1)],  
                        B[i][(newest[i]+2) % (tau_lin+1)], 
                        B[i+1][newest[i+1]],dim_B);
   }
 
+  
+  // Increment newest element in level 0
   newest[0] = ( newest[0] + 1 ) % (tau_lin +1); 
   n_vals[0]++;
 
+  // Get new data from observables
   if ( A_obs->calculate() != 0 )
     return 1;
   // copy the result:
@@ -439,6 +450,8 @@ int Correlator::get_data() {
     }
   } 
 
+  
+  
   double* temp = (double*)Utils::malloc(dim_corr*sizeof(double));
   if (!temp)
     return 4;
