@@ -111,13 +111,14 @@ if (WITH_CUDA)
   endif(CUDA_FOUND)
 endif(WITH_CUDA)
 
-find_package(PythonInterp 2)
+find_package(PythonInterp)
 
 if (WITH_PYTHON)
   find_package(Cython 0.23 REQUIRED)
-  find_package(PythonLibs REQUIRED)
+  execute_process(COMMAND ${PYTHON_EXECUTABLE}
+                -c "import distutils.sysconfig as cg; print(cg.get_python_inc())"
+                OUTPUT_VARIABLE PYTHON_INCLUDE_DIRS OUTPUT_STRIP_TRAILING_WHITESPACE)
   find_package(NumPy REQUIRED)
-  list(APPEND LIBRARIES ${PYTHON_LIBRARY})
   execute_process(COMMAND ${PYTHON_EXECUTABLE} 
                 -c "import distutils.sysconfig as cg; print(cg.get_python_lib(1,0,prefix='${CMAKE_INSTALL_EXEC_PREFIX}'))"
                 OUTPUT_VARIABLE PYTHON_INSTDIR OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -228,6 +229,9 @@ set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/${LIBDIR}")
 
 if(APPLE)
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -undefined dynamic_lookup")
+endif()
+if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-as-needed")
 endif()
 
 #######################################################################

@@ -59,7 +59,7 @@ outp insource srcdir builddir \
     with_python_interface myconfig check_procs
 
 # check indentation of python files
-#pep8 --filename=*.pyx,*.pxd,*.py --select=E111 $srcdir/src/python/espressomd/
+pep8 --filename=*.pyx,*.pxd,*.py --select=E111 $srcdir/src/python/espressomd/
 ec=$?
 if [ $ec -eq 0 ]; then
     echo ""
@@ -86,14 +86,13 @@ fi
 # CONFIGURE
 start "CONFIGURE"
 
-if [ $with_fftw = "yes" ]; then
+if [ $with_fftw = "true" ]; then
     cmake_params="$cmake_params"
 else
     cmake_params="-DCMAKE_DISABLE_FIND_PACKAGE_FFTW3=ON $cmake_params"
 fi
 
-
-if [ $with_python_interface = "yes" ]; then
+if [ $with_python_interface = "true" ]; then
     cmake_params="-DWITH_PYTHON=ON $cmake_params"
 else
     cmake_params="-DWITH_PYTHON=OFF $cmake_params"
@@ -131,13 +130,6 @@ if $make_check; then
         cmd "cat $srcdir/testsuite/python/Testing/Temporary/LastTest.log"
         exit $ec
     fi
-
-#    cmd "make check_tcl $make_params"
-#    ec=$?
-#    if [ $ec != 0 ]; then	
-#        cmd "cat $srcdir/testsuite/tcl/Testing/Temporary/LastTest.log"
-#        exit $ec
-#    fi
 
     cmd "make check_unit_tests $make_params"
     ec=$?
