@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2014 The ESPResSo project
+  Copyright (C) 2014,2015,2016 The ESPResSo project
 
   This file is part of ESPResSo.
 
@@ -40,7 +40,7 @@ public:
   };
 
   virtual void computeEnergy(SystemInterface &s) {
-    std::cout << "HarmonidWell does not currently support energies" << std::endl;
+    std::cerr << "HarmonicWell does not currently support energies" << std::endl;
   };
 
   virtual ~HarmonicWell() {}

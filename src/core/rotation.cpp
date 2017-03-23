@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2010,2012,2013,2014 The ESPResSo project
+  Copyright (C) 2010,2012,2013,2014,2015,2016 The ESPResSo project
   Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010 
     Max-Planck-Institute for Polymer Research, Theory Group
   
@@ -55,11 +55,13 @@
 
 #ifdef ROTATION
 
+#ifndef ROTATIONAL_INERTIA
 /** moment of inertia. Currently we define the inertia tensor here to be constant.
     If it is not spherical the angular velocities have to be refined several times
     in the \ref convert_torques_propagate_omega. Also the kinetic energy in file
     \ref statistics.cpp is calculated assuming that I[0] =  I[1] =  I[2] = 1  */
 static double I[3] = { 1, 1, 1};
+#endif
 
 /** \name Privat Functions */
 /************************************************************/
@@ -171,9 +173,9 @@ void define_Qdd(Particle *p, double Qd[4], double Qdd[4], double S[3], double Wd
   /* calculate the second derivative of the quaternion */
   
 #ifdef ROTATIONAL_INERTIA
-  Wd[0] =  (p->f.torque[0] + p->m.omega[1]*p->m.omega[2]*(I[1]-I[2]))/I[0]/p->p.rinertia[0];
-  Wd[1] =  (p->f.torque[1] + p->m.omega[2]*p->m.omega[0]*(I[2]-I[0]))/I[1]/p->p.rinertia[1];
-  Wd[2] =  (p->f.torque[2] + p->m.omega[0]*p->m.omega[1]*(I[0]-I[1]))/I[2]/p->p.rinertia[2];
+  Wd[0] =  (p->f.torque[0] + p->m.omega[1]*p->m.omega[2]*(p->p.rinertia[1]-p->p.rinertia[2]))/p->p.rinertia[0];
+  Wd[1] =  (p->f.torque[1] + p->m.omega[2]*p->m.omega[0]*(p->p.rinertia[2]-p->p.rinertia[0]))/p->p.rinertia[1];
+  Wd[2] =  (p->f.torque[2] + p->m.omega[0]*p->m.omega[1]*(p->p.rinertia[0]-p->p.rinertia[1]))/p->p.rinertia[2];
 #else
   Wd[0] =  (p->f.torque[0] + p->m.omega[1]*p->m.omega[2]*(I[1]-I[2]))/I[0];
   Wd[1] =  (p->f.torque[1] + p->m.omega[2]*p->m.omega[0]*(I[2]-I[0]))/I[1];
@@ -245,6 +247,7 @@ void convert_torques_propagate_omega()
   Cell *cell;
   int np;
   double tx, ty, tz;
+  double omega_0[3] = {0.0, 0.0, 0.0};
 
   INTEG_TRACE(fprintf(stderr,"%d: convert_torques_propagate_omega:\n",this_node));
 
@@ -292,6 +295,21 @@ void convert_torques_propagate_omega()
         p[i].f.torque[2] = tz;
       }
 
+#ifdef ROTATION_PER_PARTICLE
+      if (!(p[i].p.rotation & 2))
+        p[i].f.torque[0]=0;
+      
+      if (!(p[i].p.rotation & 4))
+        p[i].f.torque[1]=0;
+      
+      if (!(p[i].p.rotation & 8))
+        p[i].f.torque[2]=0;
+      
+#endif
+
+        
+
+
 #if defined(ENGINE) && (defined(LB) || defined(LB_GPU))
       double omega_swim[3] = {0, 0, 0};
       double omega_swim_body[3] = {0, 0, 0};
@@ -337,14 +355,17 @@ void convert_torques_propagate_omega()
       ONEPART_TRACE(if(p[i].p.identity==check_id) fprintf(stderr,"%d: OPT: SCAL f = (%.3e,%.3e,%.3e) v_old = (%.3e,%.3e,%.3e)\n",this_node,p[i].f.f[0],p[i].f.f[1],p[i].f.f[2],p[i].m.v[0],p[i].m.v[1],p[i].m.v[2]));
 
 #ifdef ROTATIONAL_INERTIA
-      p[i].m.omega[0]+= time_step_half*p[i].f.torque[0]/p[i].p.rinertia[0]/I[0];
-      p[i].m.omega[1]+= time_step_half*p[i].f.torque[1]/p[i].p.rinertia[1]/I[1];
-      p[i].m.omega[2]+= time_step_half*p[i].f.torque[2]/p[i].p.rinertia[2]/I[2];
+      p[i].m.omega[0]+= time_step_half*p[i].f.torque[0]/p[i].p.rinertia[0];
+      p[i].m.omega[1]+= time_step_half*p[i].f.torque[1]/p[i].p.rinertia[1];
+      p[i].m.omega[2]+= time_step_half*p[i].f.torque[2]/p[i].p.rinertia[2];
 #else
       p[i].m.omega[0]+= time_step_half*p[i].f.torque[0]/I[0];
       p[i].m.omega[1]+= time_step_half*p[i].f.torque[1]/I[1];
       p[i].m.omega[2]+= time_step_half*p[i].f.torque[2]/I[2];
 #endif
+      // zeroth estimate of omega
+      for (int j = 0; j < 3; j++) omega_0[j] = p[i].m.omega[j];
+
       /* if the tensor of inertia is isotropic, the following refinement is not needed.
          Otherwise repeat this loop 2-3 times depending on the required accuracy */
       for(int times=0; times <= 5; times++)
@@ -352,18 +373,18 @@ void convert_torques_propagate_omega()
         double Wd[3];
 
 #ifdef ROTATIONAL_INERTIA
-        Wd[0] = (p[i].m.omega[1]*p[i].m.omega[2]*(I[1]-I[2]))/I[0]/p[i].p.rinertia[0];
-        Wd[1] = (p[i].m.omega[2]*p[i].m.omega[0]*(I[2]-I[0]))/I[1]/p[i].p.rinertia[1]; 
-        Wd[2] = (p[i].m.omega[0]*p[i].m.omega[1]*(I[0]-I[1]))/I[2]/p[i].p.rinertia[2];
+        Wd[0] = (p[i].m.omega[1]*p[i].m.omega[2]*(p[i].p.rinertia[1]-p[i].p.rinertia[2]))/p[i].p.rinertia[0];
+        Wd[1] = (p[i].m.omega[2]*p[i].m.omega[0]*(p[i].p.rinertia[2]-p[i].p.rinertia[0]))/p[i].p.rinertia[1];
+        Wd[2] = (p[i].m.omega[0]*p[i].m.omega[1]*(p[i].p.rinertia[0]-p[i].p.rinertia[1]))/p[i].p.rinertia[2];
 #else
         Wd[0] = (p[i].m.omega[1]*p[i].m.omega[2]*(I[1]-I[2]))/I[0];
         Wd[1] = (p[i].m.omega[2]*p[i].m.omega[0]*(I[2]-I[0]))/I[1]; 
         Wd[2] = (p[i].m.omega[0]*p[i].m.omega[1]*(I[0]-I[1]))/I[2];
 #endif
 
-        p[i].m.omega[0]+= time_step_half*Wd[0];
-        p[i].m.omega[1]+= time_step_half*Wd[1];
-        p[i].m.omega[2]+= time_step_half*Wd[2];
+        p[i].m.omega[0] = omega_0[0] + time_step_half*Wd[0];
+        p[i].m.omega[1] = omega_0[1] + time_step_half*Wd[1];
+        p[i].m.omega[2] = omega_0[2] + time_step_half*Wd[2];
       }
 
       ONEPART_TRACE(if(p[i].p.identity==check_id) fprintf(stderr,"%d: OPT: PV_2 v_new = (%.3e,%.3e,%.3e)\n",this_node,p[i].m.v[0],p[i].m.v[1],p[i].m.v[2]));
@@ -409,6 +430,18 @@ void convert_initial_torques()
 	p[i].f.torque[2] = tz;
       }
 
+#ifdef ROTATION_PER_PARTICLE
+      if (!(p[i].p.rotation & 2))
+        p[i].f.torque[0]=0;
+      
+      if (!(p[i].p.rotation & 4))
+        p[i].f.torque[1]=0;
+      
+      if (!(p[i].p.rotation & 8))
+        p[i].f.torque[2]=0;
+      
+#endif
+
       ONEPART_TRACE(if(p[i].p.identity==check_id) fprintf(stderr,"%d: OPT: SCAL f = (%.3e,%.3e,%.3e) v_old = (%.3e,%.3e,%.3e)\n",this_node,p[i].f.f[0],p[i].f.f[1],p[i].f.f[2],p[i].m.v[0],p[i].m.v[1],p[i].m.v[2]));
     }
   }
@@ -446,6 +479,16 @@ void convert_vel_space_to_body(Particle *p, double *vel_body)
   vel_body[2] = A[2 + 3*0]*p->m.v[0] + A[2 + 3*1]*p->m.v[1] + A[2 + 3*2]*p->m.v[2];
 }
 
+void convert_vec_space_to_body(Particle *p, double *v,double* res)
+{
+  double A[9];
+  define_rotation_matrix(p, A);
+
+  res[0] = A[0 + 3*0]*v[0] + A[0 + 3*1]*v[1] + A[0 + 3*2]*v[2];
+  res[1] = A[1 + 3*0]*v[0] + A[1 + 3*1]*v[1] + A[1 + 3*2]*v[2];
+  res[2] = A[2 + 3*0]*v[0] + A[2 + 3*1]*v[1] + A[2 + 3*2]*v[2];
+}
+
 
 /** Multiply two quaternions */
 void multiply_quaternions(double a[4], double b[4], double result[4])
@@ -456,6 +499,59 @@ void multiply_quaternions(double a[4], double b[4], double result[4])
  result[2] = a[0] * b[2] + a[2] * b[0] + a[3] * b[1] - a[1] * b[3]; 
  result[3] = a[0] * b[3] + a[3] * b[0] + a[1] * b[2] - a[2] * b[1];
 }
+
+
+/** Rotate the particle p around the NORMALIZED axis aSpaceFrame by amount phi */
+void rotate_particle(Particle* p, double* aSpaceFrame, double phi)
+{
+  // Convert rotation axis to body-fixed frame
+  double a[3];
+  convert_vec_space_to_body(p,aSpaceFrame,a);
+
+
+  // Apply restrictions from the rotation_per_particle feature
+#ifdef ROTATION_PER_PARTICLE
+//  printf("%g %g %g - ",a[0],a[1],a[2]);
+  // Rotation turned off entirely?
+  if (p->p.rotation <2) return;
+
+  // Per coordinate fixing
+  if (!(p->p.rotation & 2)) a[0]=0;
+  if (!(p->p.rotation & 4)) a[1]=0;
+  if (!(p->p.rotation & 8)) a[2]=0;
+  // Re-normalize rotation axis
+  double l=sqrt(sqrlen(a));
+  // Check, if the rotation axis is nonzero
+  if (l<1E-10) return;
+
+  for (int i=0;i<3;i++)
+    a[i]/=l;
+//  printf("%g %g %g\n",a[0],a[1],a[2]);
+
+#endif
+
+  double q[4];
+  q[0]=cos(phi/2);
+  double tmp=sin(phi/2);
+  q[1]=tmp*a[0];
+  q[2]=tmp*a[1];
+  q[3]=tmp*a[2];
+  
+  // Normalize
+  normalize_quaternion(q);
+
+  // Rotate the particle
+  double qn[4]; // Resulting quaternion
+  multiply_quaternions(p->r.quat,q,qn);
+  for (int k=0; k<4; k++)
+    p->r.quat[k]=qn[k];
+  convert_quat_to_quatu(p->r.quat, p->r.quatu);
+#ifdef DIPOLES
+  // When dipoles are enabled, update dipole moment
+  convert_quatu_to_dip(p->r.quatu, p->p.dipm, p->r.dip);
+#endif
+}
+
 
 
 #endif

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Copyright (C) 2016 The ESPResSo project
 # Copyright (C) 2014 Olaf Lenz
 #
 # Copying and distribution of this file, with or without modification,
@@ -45,7 +46,7 @@ function cmd {
 [ -z "$with_mpi" ] && with_mpi="true"
 [ -z "$with_fftw" ] && with_fftw="true"
 [ -z "$with_tcl" ] && with_tcl="true"
-[ -z "$with_python_interface" ] && with_python_interface="false"
+[ -z "$with_python_interface" ] && with_python_interface="true"
 [ -z "$myconfig" ] && myconfig="default"
 ! $with_mpi && check_procs=1
 [ -z "$check_procs" ] && check_procs=4
@@ -60,6 +61,20 @@ fi
 outp insource srcdir builddir \
     configure_params configure_vars with_mpi with_fftw \
     with_tcl with_python_interface myconfig check_procs
+
+# check indentation of python files
+pep8 --filename=*.pyx,*.pxd,*.py --select=E111 $srcdir/src/python/espressomd/
+ec=$?
+if [ $ec -eq 0 ]; then
+    echo ""
+    echo "Indentation in Python files correct..."
+    echo ""
+else
+    echo ""
+    echo "Error: Python files are not indented the right way. Please use 4 spaces per indentation level!"
+    echo ""
+    exit $ec
+fi
 
 if ! $insource; then
     if [ ! -d $builddir ]; then
@@ -79,6 +94,9 @@ fi
 
 # CONFIGURE
 start "CONFIGURE"
+if $with_coverage ; then
+    configure_params="CPPFLAGS=\"-coverage -O0\" CXXFLAGS=\"-coverage -O0\" $configure_params"
+fi
 
 if $with_mpi; then
     configure_params="--with-mpi $configure_params"
@@ -115,7 +133,7 @@ end "CONFIGURE"
 # BUILD
 start "BUILD"
 
-MYCONFIG_DIR=$srcdir/maintainer/jenkins/configs
+MYCONFIG_DIR=$srcdir/maintainer/configs
 if [ "$myconfig" = "default" ]; then
     echo "Using default myconfig."
 else
@@ -145,3 +163,7 @@ if $make_check; then
 
     end "TEST"
 fi
+
+for i in `find . -name  "*.gcno"` ; do
+    (cd `dirname $i` ; gcov `basename $i` > coverage.log 2>&1 )
+done

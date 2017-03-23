@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2010,2011,2012,2013,2014 The ESPResSo project
+  Copyright (C) 2010,2011,2012,2013,2014,2015,2016 The ESPResSo project
   Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010 
     Max-Planck-Institute for Polymer Research, Theory Group
   
@@ -361,7 +361,7 @@ int calc_hydrogen_bond_energy(Particle *s1, Particle *b1, Particle *b2, Particle
   double potential = 0.0;
 
   /* helper variables */
-  double ra, temp, tau_r, tau_d, tau_flip;
+  double ra, tau_r, tau_d, tau_flip;
   const Bonded_ia_parameters params = *iaparams;
   const double E0 = params.p.hydrogen_bond.E0;
   
