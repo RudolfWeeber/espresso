@@ -693,7 +693,7 @@ int dd_append_particles(ParticleList *pl, int fold_dir) {
     CELL_TRACE(fprintf(stderr,
                        "%d: dd_append_particles: Appen Part id=%d to cell %d\n",
                        this_node, pl->part[p].p.identity, c));
-    append_indexed_particle(&cells[c], &pl->part[p]);
+    append_indexed_particle(&cells[c], std::move(pl->part[p]));
   }
   return flag;
 }
@@ -897,7 +897,7 @@ void dd_topology_init(CellPList *old) {
          somewhere for the moment */
       if (nc == NULL)
         nc = local_cells.cell[0];
-      append_unindexed_particle(nc, &part[p]);
+      append_unindexed_particle(nc, std::move(part[p]));
     }
   }
   for (c = 0; c < local_cells.n; c++) {

@@ -36,6 +36,7 @@
 #include "p3m_gpu.hpp"
 
 #include "short_range_loop.hpp"
+#include "partCfg_global.hpp"
 
 #include <cassert>
 ActorList forceActors;
@@ -214,7 +215,7 @@ void force_calc() {
 #endif
 
 #ifdef COMFORCE
-  calc_comforce();
+  calc_comforce(partCfg());
 #endif
 
 #ifdef METADYNAMICS
