@@ -343,6 +343,10 @@ void lb_init_boundaries() {
 
 // TODO dirty hack. please someone get rid of void*
 int lbboundary_get_force(void* lbb, double *f) {
+// Do this on head node only
+if (this_node!=0) 
+  return 0;
+
 #if defined(LB_BOUNDARIES) || defined(LB_BOUNDARIES_GPU)
 
   int no = 0;
