@@ -22,7 +22,7 @@ from __future__ import print_function
 import unittest as ut
 import espressomd
 import numpy as np
-from espressomd.interactions import HarmonicBond,AngleHarmonic
+from espressomd.interactions import HarmonicBond,AngleHarmonic,Virtual
 import numpy as np
 from random import shuffle
 
@@ -508,6 +508,14 @@ class CollisionDetection(ut.TestCase):
             print()
         
         self.assertEqual(expected_angle_bonds,found_angle_bonds)
+    
+    def count_particles_with_bonds(self):
+        bonds=0
+        for p in self.s.part:
+            if (not p.virtual) and len(p.bonds)>0:
+                bonds+=1
+        return bonds
+
             
     @ut.skipIf(s.cell_system.get_state()["n_nodes"]>1, "skipped due to more than one node" )
     def test_zz_collision_probability(self):
@@ -516,31 +524,40 @@ class CollisionDetection(ut.TestCase):
         n=1000
         dx=s.box_l[0]/(n+1)
         for i in range(n):
-            s.part.add(id=2*i,pos=(dx*i,0,0))
-            s.part.add(id=2*i+1,pos=(dx*(i+0.2),0,0))
-        self.s.collision_detection.set_params(mode="bind_centers",distance=0.25*dx,bond_centers=self.H,collision_probability=0.5)
-        s.integrator.run(0,recalc_forces=True)
-        bonds=0
-        for p in s.part:
-            if len(p.bonds)>0:
-                bonds+=1
-        print(bonds)
-        self.assertAlmostEqual(float(bonds)/n,0.5,delta=0.1)
-                
-
-
-
-
-
-
+            s.part.add(id=2*i,pos=(dx*i,0,0),type=5)
+            s.part.add(id=2*i+1,pos=(dx*(i+0.2),0,0),type=5)
         
+        self.s.time=0
+        s.thermostat.turn_off()
+        H=HarmonicBond(k=0,r_0=0.2)
+        s.bonded_inter.add(H)
+        
+        self.s.collision_detection.set_params(mode="bind_centers",distance=0.25*dx,bond_centers=H,collision_probability=0.5,ignore_time=0.1)
+        s.integrator.run(0,recalc_forces=True)
+        bonds=self.count_particles_with_bonds()
+        self.assertAlmostEqual(float(bonds)/n,0.5,delta=0.1)
+        
+        # Check if ignore time is applied. There should be no additional collisions
+        s.integrator.run(1)
+        
+        prev_bonds=bonds
+
+        # Integrate until ignore time is passed
+        while self.s.time<self.s.collision_detection.ignore_time:
+            bonds=self.count_particles_with_bonds()
+            self.assertEqual(bonds,prev_bonds)
+            self.s.integrator.run(5)
+
+            
+            
+        s.integrator.run(1)
+        bonds=self.count_particles_with_bonds()
+        self.assertAlmostEqual(float(bonds)/n,(prev_bonds+(n-prev_bonds)*0.5)/n,delta=0.1)
 
 
 
 
-
-
-
+                
 
 
 if __name__ == "__main__":
