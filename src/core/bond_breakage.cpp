@@ -1,5 +1,6 @@
 #include <vector>
 #include <tuple>
+#include "errorhandling.hpp"
 #include "interaction_data.hpp"
 #include "particle_data.hpp"
 #include "bond_breakage.hpp" 
@@ -34,17 +35,30 @@ void break_simple_pair_bond(int t, int p1, int p2)
   int bond[2];
   bond[0]=t;
 
+ // // The bond can be on any of the two particles
+ // if (bond_exists(local_particles[p1],local_particles[p2],t)) {
+ //   // Delete the bond
+ //   bond[1]=p2;
+ //   local_change_bond(p1,bond,1);
+ // }
+ // if (bond_exists(local_particles[p2],local_particles[p1],t)) {
+ //   // Delete the bond
+ //   bond[1]=p1;
+ //   local_change_bond(p2,bond,1);
+ // }
+
   // The bond can be on any of the two particles
-  if (bond_exists(local_particles[p1],local_particles[p2],t)) {
+  if (pair_bond_exists_on(local_particles[p1],local_particles[p2],t)) {
     // Delete the bond
     bond[1]=p2;
     local_change_bond(p1,bond,1);
   }
-  if (bond_exists(local_particles[p2],local_particles[p1],t)) {
+  if (pair_bond_exists_on(local_particles[p2],local_particles[p1],t)) {
     // Delete the bond
     bond[1]=p1;
     local_change_bond(p2,bond,1);
   }
+
 }
 
 void break_bind_at_point_of_collision(int t, int p1, int p2) {
