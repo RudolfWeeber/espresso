@@ -686,7 +686,7 @@ void handle_collisions() {
           // Vs placement happens on the node that has p1
           if (!p1->l.ghost) {
             place_vs_and_relate_to_particle(current_vs_pid, pos, pid,
-                                            initial_pos);
+                                            p1->r.p);
             current_vs_pid++;
           } else { // Just update the books
             added_particle(current_vs_pid);
