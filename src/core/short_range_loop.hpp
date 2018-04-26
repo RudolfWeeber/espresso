@@ -105,7 +105,7 @@ void short_range_loop(ParticleKernel &&particle_kernel,
             [](Particle &p) { memcpy(p.l.p_old, p.r.p, 3 * sizeof(double)); },
             std::forward<ParticleKernel>(particle_kernel)),
         std::forward<PairKernel>(pair_kernel),
-        VerletCriterion{skin, max_cut, coulomb_cutoff, dipolar_cutoff,collision_detection_cutoff()});
+        VerletCriterion{skin, max_cut, coulomb_cutoff, dipolar_cutoff,collision_detection_cutoff(),collision_part_type1(),collision_part_type2()});
 
     /* Now everything is up-to-date */
     rebuild_verletlist = 0;

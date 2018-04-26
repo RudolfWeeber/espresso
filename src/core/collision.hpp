@@ -163,4 +163,16 @@ inline double collision_detection_cutoff() {
   return 0.;
 }
 
+inline int collision_part_type1() {
+  if (collision_params.mode == COLLISION_MODE_GLUE_TO_SURF)
+     return collision_params.part_type_to_attach_vs_to;
+  return -1;
+}
+
+inline int collision_part_type2() {
+  if (collision_params.mode == COLLISION_MODE_GLUE_TO_SURF)
+     return collision_params.part_type_to_be_glued;
+  return -1;
+}
+
 #endif
