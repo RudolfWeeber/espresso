@@ -33,6 +33,8 @@
 
 #include <memory>
 
+
+
 /************************************************
  * defines
  ************************************************/
@@ -869,7 +871,8 @@ void remove_all_bonds_to(int part);
     @param p    its new position
     @param _new  if true, the particle is allocated, else has to exists already
 */
-void local_place_particle(int part, const double p[3], int _new);
+struct Cell;
+void local_place_particle(int part, const double p[3], int _new, Cell* target_cell=nullptr);
 
 /** Used by \ref mpi_place_particle, should not be used elsewhere.
     Called if on a different node a new particle was added.

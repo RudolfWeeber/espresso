@@ -374,7 +374,7 @@ void place_vs_and_relate_to_particle(const int current_vs_pid,
   // A resort occurs after vs-based collisions anyway, which will move the vs
   // into the right cell.
   added_particle(current_vs_pid);
-  local_place_particle(current_vs_pid, initial_pos, 1);
+  local_place_particle(current_vs_pid, initial_pos, 1,*(local_cells.begin()));
   memmove(local_particles[current_vs_pid]->r.p, pos, 3 * sizeof(double));
   local_vs_relate_to(current_vs_pid, relate_to);
 

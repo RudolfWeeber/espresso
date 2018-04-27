@@ -858,7 +858,7 @@ void local_remove_particle(int part) {
   pl->n--;
 }
 
-void local_place_particle(int part, const double p[3], int _new) {
+void local_place_particle(int part, const double p[3], int _new, Cell* target_cell) {
   Cell *cell;
   double pp[3];
   int i[3], rl;
@@ -876,16 +876,21 @@ void local_place_particle(int part, const double p[3], int _new) {
 
   if (_new) {
     /* allocate particle anew */
-    cell = cell_structure.position_to_cell(pp);
-    if (!cell) {
-      fprintf(stderr, "%d: INTERNAL ERROR: particle %d at %f(%f) %f(%f) %f(%f) "
+    if (target_cell) {
+      rl = realloc_particlelist(target_cell, ++target_cell->n);
+      pt = new (&target_cell->part[target_cell->n - 1]) Particle;
+    }
+    else {
+        cell = cell_structure.position_to_cell(pp);
+        if (!cell) {
+          fprintf(stderr, "%d: INTERNAL ERROR: particle %d at %f(%f) %f(%f) %f(%f) "
                       "does not belong on this node\n",
               this_node, part, p[0], pp[0], p[1], pp[1], p[2], pp[2]);
-      errexit();
+          errexit();
+       } 
+      rl = realloc_particlelist(cell, ++cell->n);
+      pt = new (&cell->part[cell->n - 1]) Particle;
     }
-    rl = realloc_particlelist(cell, ++cell->n);
-    pt = new (&cell->part[cell->n - 1]) Particle;
-
     pt->p.identity = part;
     if (rl)
       update_local_particles(cell);
