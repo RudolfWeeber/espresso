@@ -2199,14 +2199,7 @@ void mpi_set_particle_gamma_rot_slave(int pnode, int part) {
 #if defined(LANGEVIN_PER_PARTICLE) && defined(ROTATION)
   if (pnode == this_node) {
     Particle *p = local_particles[part];
-#ifndef PARTICLE_ANISOTROPY    
     comm_cart.recv(pnode, SOME_TAG, p->p.gamma_rot);
-#else
-    Vector3d tmp;
-    comm_cart.recv(pnode, SOME_TAG, tmp);
-    p->p.gamma_rot=tmp;
-#endif 
-
   }
 
   on_particle_change();
