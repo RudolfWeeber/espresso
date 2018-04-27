@@ -893,7 +893,10 @@ void local_place_particle(int part, const double p[3], int _new, Cell* target_ce
     }
     pt->p.identity = part;
     if (rl)
-      update_local_particles(cell);
+      if (target_cell)
+          update_local_particles(target_cell);
+      else 
+          update_local_particles(cell);
     else
       local_particles[pt->p.identity] = pt;
   } else
