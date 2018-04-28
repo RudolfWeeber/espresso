@@ -9,7 +9,7 @@ from numpy import *
 import numpy as np
 from time import time
 import argparse
-import pickle
+import cPickle
 
 parser =argparse.ArgumentParser()
 parser.add_argument("--n_nodes",type=int,required=True)
@@ -23,7 +23,7 @@ parser.add_argument("--output_base",type=str,required=True)
 args=parser.parse_args()
 
 
-pickle.dump(args,open(args.output_base+"_args.pcl","w"))
+cPickle.dump(args,open(args.output_base+"_args.pcl","w"))
 
 
 if args.n_nodes<1: raise Exception()
@@ -93,7 +93,7 @@ for i in range(args.chains_per_node*args.n_nodes):
     print "Polymer",i,monomers,len(s.part)
     create_polymer(start_pos=np.random.random(3)*l,start_id=len(s.part),N_P=1,MPC=monomers,bond_length=cut_pol,bond=bond_pol,type_poly_neutral=1,mode=2)
 s.part[args.n_nodes:].type=1
-pickle.dump({
+cPickle.dump({
     "id": s.part[:].id,
     "pos": s.part[:].pos,
     "dip": s.part[:].dip, 
@@ -101,7 +101,7 @@ pickle.dump({
     "omega_lab": s.part[:].omega_lab, 
     "type": s.part[:].type, 
     "bonds": s.part[:].bonds}, 
-    open(args.output_base+"_pol.pcl","w"))
+    open(args.output_base+"_pol.pcl","w"),-1)
 
 
 
@@ -111,12 +111,12 @@ print s.analysis.energy()
 
 
 s.integrator.set_steepest_descent(f_max=0,gamma=0.001,max_displacement=0.01)
-while s.analysis.energy()["total"] > 0.3*len(s.part):
+while s.analysis.energy()["total"] > 0.2*len(s.part):
   print( s.analysis.energy()["total"] )
   s.integrator.run(10,recalc_forces=True)
 s.integrator.set_vv()
 s.time_step=0.0001
-s.integrator.run(1000)
+s.integrator.run(2000)
 s.time_step=0.008
 
 
@@ -129,7 +129,7 @@ s.integrator.run(100)
 print (time()-tick)
 
 print "Polymer warmup"
-for i in range(10):
+for i in range(1000):
     s.integrator.run(1000)
     print i
 
@@ -147,7 +147,7 @@ M =MagneticDipoleMoment(ids=s.part[:].id)
 print M.calculate()
 M_sat=args.n_nodes*dipm
 
-loops =50
+loops =5000
 steps=100
 for i in range(loops):
     tick=time()
@@ -159,7 +159,7 @@ for i in range(loops):
       print "skin",s.cell_system.tune_skin(min_skin=0.1,max_skin=2,tol=0.1,int_steps=100)
         
 
-pickle.dump({
+cPickle.dump({
     "id": s.part[:].id,
     "pos": s.part[:].pos,
     "dip": s.part[:].dip, 
@@ -167,7 +167,7 @@ pickle.dump({
     "omega_lab": s.part[:].omega_lab, 
     "type": s.part[:].type, 
     "bonds": s.part[:].bonds}, 
-    open(args.output_base+"_equil.pcl","w"))
+    open(args.output_base+"_equil.pcl","w"),-1)
 
 
 
