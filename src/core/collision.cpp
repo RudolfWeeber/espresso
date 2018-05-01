@@ -366,7 +366,7 @@ void coldet_do_three_particle_bond(Particle &p, Particle &p1, Particle &p2) {
 #ifdef VIRTUAL_SITES_RELATIVE
 void place_vs_and_relate_to_particle(const int current_vs_pid,
                                      const double *const pos,
-                                     const int relate_to { 
+                                     const int relate_to) { 
 
   // The virtual site is placed in the first cell on the node
   // A resort occurs after vs-based collisions anyway, which will move the vs
@@ -675,8 +675,7 @@ void handle_collisions() {
 
           // Vs placement happens on the node that has p1
           if (!p1->l.ghost) {
-            place_vs_and_relate_to_particle(current_vs_pid, pos, pid,
-                                            p1->r.p);
+            place_vs_and_relate_to_particle(current_vs_pid, pos, pid);
             current_vs_pid++;
           } else { // Just update the books
             added_particle(current_vs_pid);
