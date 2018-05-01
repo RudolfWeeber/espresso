@@ -642,11 +642,12 @@ void handle_collisions() {
           double pos1[3], pos2[3];
 
           // Enable rotation on the particles to which vs will be attached
-          p1->p.rotation = ROTATION_X | ROTATION_Y | ROTATION_Z;
-          p2->p.rotation = ROTATION_X | ROTATION_Y | ROTATION_Z;
+          if (p1) p1->p.rotation = ROTATION_X | ROTATION_Y | ROTATION_Z;
+          if (p2) p2->p.rotation = ROTATION_X | ROTATION_Y | ROTATION_Z;
 
           // The vs placement is done by the node on which p1 is non-ghost
           if (!p1->l.ghost) {
+            if (!p2) throw std::runtime_error("This shouldn't happen");
             bind_at_point_of_collision_calc_vs_pos(p1, p2, pos1, pos2);
             place_vs_and_relate_to_particle(current_vs_pid, pos1, c.pp1);
             current_vs_pid++;
@@ -662,27 +663,30 @@ void handle_collisions() {
           }
         }
         if (collision_params.mode & COLLISION_MODE_GLUE_TO_SURF) {
-          double pos[3];
-          const int pid = glue_to_surface_calc_vs_pos(p1, p2, pos);
 
-          // Change type of partilce being attached, to make it inert
-          if (p1->p.type == collision_params.part_type_to_be_glued) {
-            p1->p.type = collision_params.part_type_after_glueing;
-          }
-          if (p2->p.type == collision_params.part_type_to_be_glued) {
-            p2->p.type = collision_params.part_type_after_glueing;
-          }
 
           // Vs placement happens on the node that has p1
-          if (!p1->l.ghost) {
-            place_vs_and_relate_to_particle(current_vs_pid, pos, pid);
-            current_vs_pid++;
-          } else { // Just update the books
+          if (p1 && !p1->l.ghost) {
+             if (! p2) throw std::runtime_error("This shouldn't happen");
+             double pos[3];
+             const int pid = glue_to_surface_calc_vs_pos(p1, p2, pos);
+             place_vs_and_relate_to_particle(current_vs_pid, pos, pid);
+             current_vs_pid++;
+          }
+          else { // Just update the books
             added_particle(current_vs_pid);
             current_vs_pid++;
           }
-          glue_to_surface_bind_part_to_vs(p1, p2, current_vs_pid, c);
-        }
+          // Change type of partilce being attached, to make it inert
+          if (p1 && (p1->p.type == collision_params.part_type_to_be_glued)) {
+            p1->p.type = collision_params.part_type_after_glueing;
+          }
+          if (p2 && (p2->p.type == collision_params.part_type_to_be_glued)) {
+            p2->p.type = collision_params.part_type_after_glueing;
+          }
+          if (p1 && p2) glue_to_surface_bind_part_to_vs(p1, p2, current_vs_pid, c);
+        } // mode vs
+      } // at least one particle available locally 
       } // Loop over all collisions in the queue
 
       // If any node had a collision, all nodes need to do on_particle_change
@@ -692,7 +696,6 @@ void handle_collisions() {
         on_particle_change();
         announce_resort_particles();
       }
-    }  // total_collision>0
   }    // are we in one of the vs_based methods
 #endif // defined VIRTUAL_SITES_RELATIVE
 
