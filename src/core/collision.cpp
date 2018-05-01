@@ -366,16 +366,13 @@ void coldet_do_three_particle_bond(Particle &p, Particle &p1, Particle &p2) {
 #ifdef VIRTUAL_SITES_RELATIVE
 void place_vs_and_relate_to_particle(const int current_vs_pid,
                                      const double *const pos,
-                                     const int relate_to,
-                                     const double *const initial_pos) {
+                                     const int relate_to { 
 
-  // The virtual site is placed at initial_pos which will be in the local
-  // node's domain. It will then be moved to its final position.
+  // The virtual site is placed in the first cell on the node
   // A resort occurs after vs-based collisions anyway, which will move the vs
   // into the right cell.
   added_particle(current_vs_pid);
-  local_place_particle(current_vs_pid, initial_pos, 1,*(local_cells.begin()));
-  memmove(local_particles[current_vs_pid]->r.p, pos, 3 * sizeof(double));
+  local_place_particle(current_vs_pid, pos, 1,*(local_cells.begin()));
   local_vs_relate_to(current_vs_pid, relate_to);
 
   (local_particles[max_seen_particle])->p.isVirtual = 1;
@@ -638,11 +635,6 @@ void handle_collisions() {
         // domain
         // Vs is moved afterwards and resorted after all collision s are handled
         // Use position of non-ghost colliding particle.
-        double initial_pos[3];
-        if (p1->l.ghost)
-          memmove(initial_pos, p2->r.p, 3 * sizeof(double));
-        else
-          memmove(initial_pos, p1->r.p, 3 * sizeof(double));
 
         // If we are in the two vs mode
         // Virtual site related to first particle in the collision
@@ -656,11 +648,9 @@ void handle_collisions() {
           // The vs placement is done by the node on which p1 is non-ghost
           if (!p1->l.ghost) {
             bind_at_point_of_collision_calc_vs_pos(p1, p2, pos1, pos2);
-            place_vs_and_relate_to_particle(current_vs_pid, pos1, c.pp1,
-                                            initial_pos);
+            place_vs_and_relate_to_particle(current_vs_pid, pos1, c.pp1);
             current_vs_pid++;
-            place_vs_and_relate_to_particle(current_vs_pid, pos2, c.pp2,
-                                            initial_pos);
+            place_vs_and_relate_to_particle(current_vs_pid, pos2, c.pp2);
             current_vs_pid++;
             bind_at_poc_create_bond_between_vs(current_vs_pid, c);
           } else { // Just update the books
