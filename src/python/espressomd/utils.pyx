@@ -260,7 +260,7 @@ cpdef handle_errors(msg):
     """
     errors = mpi_gather_runtime_errors()
     for err in errors:
-        err.print()
+        print(err.format())
 
     for err in errors:
     # Cast because cython does not support typed enums completely
