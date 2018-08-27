@@ -21,7 +21,7 @@
 #                                                                              #
 #                   Active Matter: Rectification System Setup                  #
 #                                                                              #
-################################################################################
+##########################################################################
 
 from __future__ import print_function
 
@@ -36,7 +36,7 @@ from espressomd.lbboundaries import LBBoundary
 from espressomd.shapes import Cylinder, Wall, HollowCone
 
 
-assert_features(["LB_GPU","LB_BOUNDARIES_GPU"])
+assert_features(["LB_GPU", "LB_BOUNDARIES_GPU"])
 
 # Setup constants
 
@@ -49,13 +49,13 @@ except:
 # Setup the box (we pad the diameter to ensure that the LB boundaries
 # and therefore the constraints, are away from the edge of the box)
 
-length   = 100
+length = 100
 diameter = 20
-dt       = 0.01
+dt = 0.01
 
 # Setup the MD parameters
 
-system = espressomd.System(box_l=[length, diameter+4, diameter+4])
+system = espressomd.System(box_l=[length, diameter + 4, diameter + 4])
 system.cell_system.skin = 0.1
 system.time_step = dt
 system.min_global_cut = 0.5
@@ -79,13 +79,15 @@ system.actors.add(lbf)
 # 'infinite length' using the periodic boundaries, then the cylinder must
 # extend over the boundary.
 #
-################################################################################
+##########################################################################
 
 # Setup cylinder
 
-cylinder = LBBoundary(shape=Cylinder(center=[length/2.0, (diameter+4)/2.0, (diameter+4)/2.0],
-                                     axis=[1,0,0],
-                                     radius=diameter/2.0,
+cylinder = LBBoundary(
+    shape=Cylinder(
+        center=[length / 2.0, (diameter + 4) / 2.0, (diameter + 4) / 2.0],
+                                     axis=[1, 0, 0],
+                                     radius=diameter / 2.0,
                                      length=length,
                                      direction=-1))
 system.lbboundaries.add(cylinder)
@@ -100,14 +102,14 @@ wall = ...
 
 # Setup cone
 
-irad  = 4.0
-angle = pi/4.0
-orad  = (diameter - irad)/sin(angle)
-shift = 0.25*orad*cos(angle)
+irad = 4.0
+angle = pi / 4.0
+orad = (diameter - irad) / sin(angle)
+shift = 0.25 * orad * cos(angle)
 
 hollow_cone = HollowCone(
-    center=(length/2.0 - shift, (diameter+4)/2.0, (diameter+4)/2.0),
-    axis=[-1,0,0],
+    center=(length / 2.0 - shift, (diameter + 4) / 2.0, (diameter + 4) / 2.0),
+    axis=[-1, 0, 0],
     outer_radius=orad,
     inner_radius=irad,
     width=2.0,
@@ -115,7 +117,7 @@ hollow_cone = HollowCone(
     direction=1)
 system.lbboundaries.add(LBBoundary(shape=hollow_cone))
 
-################################################################################
+##########################################################################
 
 # Output the geometry
 
