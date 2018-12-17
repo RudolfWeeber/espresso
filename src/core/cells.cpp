@@ -302,6 +302,14 @@ namespace {
  *        old position.
  */
 void fold_and_reset(Particle &p) {
+  for (int i = 0; i < 3; i++)
+    if (abs(p.r.p[i] - p.r.p_old[i]) > box_l[i]) {
+      std::stringstream msg;
+      msg << "Particle " << p.identity()
+          << " moved by more than a box length in coordinate " << i;
+      throw std::runtime_error(msg.str());
+    }
+
   fold_position(p.r.p, p.l.i);
 
   p.l.p_old = p.r.p;

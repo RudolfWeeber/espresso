@@ -213,6 +213,9 @@ Vector3d get_mi_vector(T const &a, U const &b) {
 */
 template <typename T1, typename T2, typename T3>
 void fold_coordinate(T1 &pos, T2 &vel, T3 &image_box, int dir) {
+  if (std::isnan(pos[dir])) {
+    throw std::runtime_error("Particle coordinate is nan.");
+  }
   if (PERIODIC(dir)) {
     while (pos[dir] < 0) {
       pos[dir] += box_l[dir];
