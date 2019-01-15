@@ -3836,12 +3836,12 @@ void lb_init_GPU(LB_parameters_gpu *lbpar_gpu) {
       cudaMemcpy(h_gpu_check, gpu_check, sizeof(int), cudaMemcpyDeviceToHost));
   // fprintf(stderr, "initialization of lb gpu code %i\n",
   // lbpar_gpu->number_of_nodes);
-  cudaThreadSynchronize();
+  //  cudaThreadSynchronize();
 
-  if (!h_gpu_check[0]) {
-    fprintf(stderr, "initialization of lb gpu code failed! \n");
-    errexit();
-  }
+  //  if (!h_gpu_check[0]) {
+  //    fprintf(stderr, "initialization of lb gpu code failed! \n");
+  //    errexit();
+  //  }
 }
 
 /** reinitialization for the lb gpu fluid called from host
@@ -4002,14 +4002,10 @@ void lb_calc_particle_lattice_ia_gpu(bool couple_virtual) {
   if (lbpar_gpu.number_of_particles) {
     /** call of the particle kernel */
     /** values for the particle kernel */
-    int threads_per_block_particles = 64;
-    int blocks_per_grid_particles_y = 4;
+    int threads_per_block_particles = 2048;
     int blocks_per_grid_particles_x =
-        (lbpar_gpu.number_of_particles +
-         threads_per_block_particles * blocks_per_grid_particles_y - 1) /
-        (threads_per_block_particles * blocks_per_grid_particles_y);
-    dim3 dim_grid_particles =
-        make_uint3(blocks_per_grid_particles_x, blocks_per_grid_particles_y, 1);
+        lbpar_gpu.number_of_particles / threads_per_block_particles + 1;
+    dim3 dim_grid_particles = make_uint3(blocks_per_grid_particles_x, 1, 1);
 
     if (lbpar_gpu.lb_couple_switch & LB_COUPLE_TWO_POINT) {
       KERNELCALL(calc_fluid_particle_ia, dim_grid_particles,
@@ -4376,7 +4372,7 @@ void reinit_parameters_GPU(LB_parameters_gpu *lbpar_gpu) {
 /**integration kernel for the lb gpu fluid update called from host */
 void lb_integrate_GPU() {
   /** values for the kernel call */
-  int threads_per_block = 64;
+  int threads_per_block = 2048;
   int blocks_per_grid_y = 4;
   int blocks_per_grid_x =
       (lbpar_gpu.number_of_nodes + threads_per_block * blocks_per_grid_y - 1) /

@@ -34,6 +34,7 @@
 #error CU-file includes mpi.h! This should not happen!
 #endif
 
+__device__ cudaEvent_t host_forces_ready;
 static CUDA_global_part_vars global_part_vars_host = {0, 0, 0};
 __device__ __constant__ CUDA_global_part_vars global_part_vars_device[1];
 
@@ -200,6 +201,7 @@ void gpu_change_number_of_part_to_comm() {
 
   if (global_part_vars_host.number_of_particles != n_part &&
       global_part_vars_host.communication_enabled == 1 && this_node == 0) {
+    cudaEventCreate(&host_forces_ready);
 
     global_part_vars_host.seed = (unsigned int)std::random_device{}();
     global_part_vars_host.number_of_particles = n_part;
@@ -409,22 +411,22 @@ void copy_part_data_to_gpu(ParticleRange particles) {
 
 /** setup and call kernel to copy particle forces to host
  */
-void copy_forces_from_GPU(ParticleRange particles) {
+void copy_forces_from_GPU() {
 
   if (global_part_vars_host.communication_enabled == 1 &&
       global_part_vars_host.number_of_particles) {
 
     /** Copy result from device memory to host memory*/
     if (this_node == 0) {
-      cuda_safe_mem(cudaMemcpy(particle_forces_host, particle_forces_device,
-                               3 * global_part_vars_host.number_of_particles *
-                                   sizeof(float),
-                               cudaMemcpyDeviceToHost));
+      cuda_safe_mem(cudaMemcpyAsync(
+          particle_forces_host, particle_forces_device,
+          3 * global_part_vars_host.number_of_particles * sizeof(float),
+          cudaMemcpyDeviceToHost, stream[0]));
 #ifdef ROTATION
-      cuda_safe_mem(cudaMemcpy(particle_torques_host, particle_torques_device,
-                               global_part_vars_host.number_of_particles * 3 *
-                                   sizeof(float),
-                               cudaMemcpyDeviceToHost));
+      cuda_safe_mem(cudaMemcpyAsync(
+          particle_torques_host, particle_torques_device,
+          global_part_vars_host.number_of_particles * 3 * sizeof(float),
+          cudaMemcpyDeviceToHost, stream[0]));
 #endif
 #ifdef SHANCHEN
       cuda_safe_mem(cudaMemcpy(fluid_composition_host, fluid_composition_device,
@@ -432,7 +434,7 @@ void copy_forces_from_GPU(ParticleRange particles) {
                                    sizeof(CUDA_fluid_composition),
                                cudaMemcpyDeviceToHost));
 #endif
-
+      cudaEventRecord(host_forces_ready, stream[0]);
       /** values for the particle kernel */
       int threads_per_block_particles = 64;
       int blocks_per_grid_particles_y = 4;
@@ -448,9 +450,14 @@ void copy_forces_from_GPU(ParticleRange particles) {
       KERNELCALL(reset_particle_force, dim_grid_particles,
                  threads_per_block_particles, particle_forces_device,
                  particle_torques_device);
-      cudaThreadSynchronize();
     }
+  }
+}
 
+void distribute_gpu_forces(ParticleRange particles) {
+  if (global_part_vars_host.communication_enabled == 1 &&
+      global_part_vars_host.number_of_particles) {
+    cudaEventSynchronize(host_forces_ready);
     cuda_mpi_send_forces(particles, particle_forces_host,
                          particle_torques_host);
 #ifdef SHANCHEN

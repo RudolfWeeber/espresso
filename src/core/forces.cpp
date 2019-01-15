@@ -126,6 +126,10 @@ void force_calc() {
 
   calc_long_range_forces();
 
+#ifdef CUDA
+  copy_forces_from_GPU();
+#endif
+
   // Only calculate pair forces if the maximum cutoff is >0
   if (max_cut > 0) {
     short_range_loop([](Particle &p) { add_single_particle_force(&p); },
@@ -173,9 +177,6 @@ void force_calc() {
   meta_perform();
 #endif
 
-#ifdef CUDA
-  copy_forces_from_GPU(local_cells.particles());
-#endif
 
 // VIRTUAL_SITES distribute forces
 #ifdef VIRTUAL_SITES
@@ -188,6 +189,9 @@ void force_calc() {
 
   // Communication Step: ghost forces
   ghost_communicator(&cell_structure.collect_ghost_force_comm);
+#ifdef CUDA  
+  distribute_gpu_forces(local_cells.particles());
+#endif
 
   auto local_particles = local_cells.particles();
   // should be pretty late, since it needs to zero out the total force
