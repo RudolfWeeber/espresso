@@ -114,6 +114,22 @@ void force_calc() {
   }
 
   calc_long_range_forces();
+#if defined(LB_GPU) || defined(LB)
+#ifdef LB
+  if (lattice_switch & LATTICE_LB) {
+#ifdef ENGINE
+    ghost_communicator(&cell_structure.exchange_ghosts_comm,
+                       GHOSTTRANS_SWIMMING);
+#endif
+  }
+#endif
+  lb_lbcoupling_calc_particle_lattice_ia(thermo_virtual);
+#endif
+
+// Do not launch GPU kernels after this
+#ifdef CUDA
+  copy_forces_from_GPU(local_cells.particles());
+#endif
 
   // Only calculate pair forces if the maximum cutoff is >0
   if (max_cut > 0) {
@@ -152,16 +168,9 @@ void force_calc() {
   immersed_boundaries.volume_conservation();
 #endif
 
-#if defined(LB_GPU) || defined(LB)
-#ifdef LB
-  if (lattice_switch & LATTICE_LB) {
-#ifdef ENGINE
-    ghost_communicator(&cell_structure.exchange_ghosts_comm,
-                       GHOSTTRANS_SWIMMING);
-#endif
-  }
-#endif
-  lb_lbcoupling_calc_particle_lattice_ia(thermo_virtual);
+
+#ifdef CUDA
+  distribute_gpu_forces(local_cells.particles());
 #endif
 
 #ifdef METADYNAMICS
@@ -169,9 +178,6 @@ void force_calc() {
   meta_perform();
 #endif
 
-#ifdef CUDA
-  copy_forces_from_GPU(local_cells.particles());
-#endif
 
 // VIRTUAL_SITES distribute forces
 #ifdef VIRTUAL_SITES

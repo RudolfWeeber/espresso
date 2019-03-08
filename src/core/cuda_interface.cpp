@@ -31,6 +31,7 @@
 
 #include "utils/mpi/gather_buffer.hpp"
 #include "utils/mpi/scatter_buffer.hpp"
+#include "thrust/system/cuda/experimental/pinned_allocator.h" 
 
 /// MPI tag for cuda particle gathering
 #define REQ_CUDAGETPARTS 0xcc01
@@ -148,9 +149,10 @@ void cuda_mpi_get_particles(ParticleRange particles,
  * @param torques The torques as flat array of size 3 * particles.size(),
  *                this is only touched if ROTATION is active.
  */
+template <typename FloatContainer>
 static void add_forces_and_torques(ParticleRange particles,
-                                   const std::vector<float> &forces,
-                                   const std::vector<float> &torques) {
+                                   const FloatContainer &forces,
+                                   const FloatContainer &torques) {
   int i = 0;
   for (auto &part : particles) {
     for (int j = 0; j < 3; j++) {
@@ -164,8 +166,8 @@ static void add_forces_and_torques(ParticleRange particles,
 }
 
 void cuda_mpi_send_forces(ParticleRange particles,
-                          std::vector<float> &host_forces,
-                          std::vector<float> &host_torques) {
+                          PinnedVectorHost<float> &host_forces,
+                          PinnedVectorHost<float> &host_torques) {
   auto const n_elements = 3 * particles.size();
 
   if (this_node > 0) {

@@ -119,6 +119,10 @@ void on_lbboundary_change();
 /** called every time the walls for the lb fluid are changed */
 void on_lbboundary_change();
 
+
+/** @brief Clenaup that needs to happen before library dependencies are unloaded */
+void on_unload();
+
 /*@}*/
 
 #endif
