@@ -1604,20 +1604,8 @@ calc_viscous_force(LB_nodes_gpu n_a,
                    LB_rho_v_gpu *d_v, int flag_cs, uint64_t philox_counter,
                    float friction, float *lb_boundary_velocity) {
 // Zero out workspace
-#pragma unroll
-  for (int jj = 0; jj < 3; ++jj) {
-    delta_j[jj] = 0.0f;
-  }
 
-  // Zero out only if we are at the centre of the particle <=> flag_cs = 0
-  particle_force[3 * part_index + 0] =
-      flag_cs * particle_force[3 * part_index + 0];
-  particle_force[3 * part_index + 1] =
-      flag_cs * particle_force[3 * part_index + 1];
-  particle_force[3 * part_index + 2] =
-      flag_cs * particle_force[3 * part_index + 2];
-
-  float position[3];
+  float position[3]; 
   position[0] = particle_data[part_index].p[0];
   position[1] = particle_data[part_index].p[1];
   position[2] = particle_data[part_index].p[2];
@@ -1641,6 +1629,7 @@ calc_viscous_force(LB_nodes_gpu n_a,
   position[2] +=
       flag_cs * direction * particle_data[part_index].swim.director[2];
 #endif
+
 
   float3 const interpolated_u = velocity_interpolation(
       n_a, position, lb_boundary_velocity, node_index, delta);
@@ -1669,13 +1658,13 @@ calc_viscous_force(LB_nodes_gpu n_a,
    * (Eq. (9) Ahlrichs and Duenweg, JCP 111(17):8225 (1999)) */
 
   /* Viscous force */
-  float3 viscforce_density{0.0f, 0.0f, 0.0f};
-  viscforce_density.x -=
-      friction * (velocity[0] - interpolated_u.x * para->agrid / para->tau);
-  viscforce_density.y -=
-      friction * (velocity[1] - interpolated_u.y * para->agrid / para->tau);
-  viscforce_density.z -=
-      friction * (velocity[2] - interpolated_u.z * para->agrid / para->tau);
+  float3 viscforce_density;
+  viscforce_density.x =
+      -friction * (velocity[0] - interpolated_u.x * para->agrid / para->tau);
+  viscforce_density.y =
+      -friction * (velocity[1] - interpolated_u.y * para->agrid / para->tau);
+  viscforce_density.z =
+      -friction * (velocity[2] - interpolated_u.z * para->agrid / para->tau);
 
 #ifdef LB_ELECTROHYDRODYNAMICS
   viscforce_density.x += friction * particle_data[part_index].mu_E[0];
@@ -1703,17 +1692,33 @@ calc_viscous_force(LB_nodes_gpu n_a,
     (1999)) */
 
   // only add to particle_force for particle centre <=> (1-flag_cs) = 1
-  particle_force[3 * part_index + 0] += (1 - flag_cs) * viscforce_density.x;
-  particle_force[3 * part_index + 1] += (1 - flag_cs) * viscforce_density.y;
-  particle_force[3 * part_index + 2] += (1 - flag_cs) * viscforce_density.z;
+#ifdef ENGINE  
+  particle_force[3 * part_index + 0] = (1 - flag_cs) * viscforce_density.x;
+  particle_force[3 * part_index + 1] = (1 - flag_cs) * viscforce_density.y;
+  particle_force[3 * part_index + 2] = (1 - flag_cs) * viscforce_density.z;
+#else
+  particle_force[3 * part_index + 0] = viscforce_density.x;
+  particle_force[3 * part_index + 1] = viscforce_density.y;
+  particle_force[3 * part_index + 2] = viscforce_density.z;
+#endif
 
+#ifdef ENGINE
   // only add to particle_force for particle centre <=> (1-flag_cs) = 1
-  delta_j[0] -= ((1 - flag_cs) * viscforce_density.x) * para->time_step *
+  delta_j[0] = - ((1 - flag_cs) * viscforce_density.x) * para->time_step *
                 para->tau / para->agrid;
-  delta_j[1] -= ((1 - flag_cs) * viscforce_density.y) * para->time_step *
+  delta_j[1] = - ((1 - flag_cs) * viscforce_density.y) * para->time_step *
                 para->tau / para->agrid;
-  delta_j[2] -= ((1 - flag_cs) * viscforce_density.z) * para->time_step *
+  delta_j[2] = - ((1 - flag_cs) * viscforce_density.z) * para->time_step *
                 para->tau / para->agrid;
+#else
+  // only add to particle_force for particle centre <=> (1-flag_cs) = 1
+  delta_j[0] = - viscforce_density.x * para->time_step *
+                para->tau / para->agrid;
+  delta_j[1] = - viscforce_density.y * para->time_step *
+                para->tau / para->agrid;
+  delta_j[2] = - viscforce_density.z * para->time_step *
+                para->tau / para->agrid;
+#endif
 
 #ifdef ENGINE
   // add swimming force to source position
@@ -2666,7 +2671,7 @@ void lb_calc_particle_lattice_ia_gpu(bool couple_virtual, double friction) {
   if (lbpar_gpu.number_of_particles) {
     /* call of the particle kernel */
     /* values for the particle kernel */
-    int threads_per_block_particles = 64;
+    int threads_per_block_particles = 512;
     int blocks_per_grid_particles_y = 4;
     int blocks_per_grid_particles_x =
         (lbpar_gpu.number_of_particles +
