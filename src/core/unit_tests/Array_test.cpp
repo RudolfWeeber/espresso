@@ -17,16 +17,20 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#define BOOST_TEST_MODULE Utils::Span test
+#define BOOST_TEST_MODULE Utils::Array test
 #define BOOST_TEST_DYN_LINK
+
+#include <array>
+#include <numeric>
+#include <sstream>
+#include <vector>
+
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
 #include <boost/test/unit_test.hpp>
 
 #include "utils/Array.hpp"
 using Utils::Array;
-
-#include <array>
-#include <numeric>
-#include <vector>
 
 BOOST_AUTO_TEST_CASE(const_expr_ctor) {
   static_assert(4 == Array<int, 4>().size(), "");
@@ -78,4 +82,24 @@ BOOST_AUTO_TEST_CASE(broadcast) {
   static_assert(a[0] == 5, "");
   static_assert(a[1] == 5, "");
   static_assert(a[2] == 5, "");
+}
+
+BOOST_AUTO_TEST_CASE(serialization) {
+  Array<double, 24> a;
+  std::iota(std::begin(a), std::end(a), 0);
+
+  std::stringstream stream;
+  boost::archive::text_oarchive out_ar(stream);
+  out_ar << a;
+
+  boost::archive::text_iarchive in_ar(stream);
+  decltype(a) b;
+  in_ar >> b;
+
+  BOOST_CHECK(std::equal(std::begin(a), std::end(a), std::begin(b)));
+}
+
+BOOST_AUTO_TEST_CASE(zero_size) {
+  Array<int, 0> const a{};
+  BOOST_CHECK(a.size() == 0);
 }
