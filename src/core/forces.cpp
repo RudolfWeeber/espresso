@@ -95,6 +95,19 @@ void force_calc() {
   ESPRESSO_PROFILER_CXX_MARK_FUNCTION;
 
   espressoSystemInterface.update();
+#ifdef LB_GPU  
+  if (lattice_switch & LATTICE_LB_GPU) {
+    lb_lbcoupling_calc_particle_lattice_ia(thermo_virtual);
+  }
+#endif
+  
+  for (ActorList::iterator actor = forceActors.begin();
+       actor != forceActors.end(); ++actor) {
+    (*actor)->computeForces(espressoSystemInterface);
+#ifdef ROTATION
+    (*actor)->computeTorques(espressoSystemInterface);
+#endif
+  }
 
 #ifdef COLLISION_DETECTION
   prepare_local_collision_queue();
@@ -105,13 +118,6 @@ void force_calc() {
 #endif
   init_forces();
 
-  for (ActorList::iterator actor = forceActors.begin();
-       actor != forceActors.end(); ++actor) {
-    (*actor)->computeForces(espressoSystemInterface);
-#ifdef ROTATION
-    (*actor)->computeTorques(espressoSystemInterface);
-#endif
-  }
 
   calc_long_range_forces();
 #if defined(LB_GPU) || defined(LB)
@@ -123,7 +129,9 @@ void force_calc() {
 #endif
   }
 #endif
-  lb_lbcoupling_calc_particle_lattice_ia(thermo_virtual);
+  if (! (lattice_switch & LATTICE_LB_GPU)) {
+    lb_lbcoupling_calc_particle_lattice_ia(thermo_virtual);
+  }
 #endif
 
 // Do not launch GPU kernels after this
