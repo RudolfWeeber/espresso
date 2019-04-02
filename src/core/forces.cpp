@@ -94,9 +94,12 @@ void check_forces() {
 void force_calc() {
   ESPRESSO_PROFILER_CXX_MARK_FUNCTION;
 
+
+  // GPU methods can be launched before the forces on the particles are 
+  // cleared in init_forces()
   espressoSystemInterface.update();
 #ifdef LB_GPU  
-  if (lattice_switch & LATTICE_LB_GPU) {
+  if (lattice_switch == ActiveLB::GPU) {
     lb_lbcoupling_calc_particle_lattice_ia(thermo_virtual);
   }
 #endif
@@ -118,23 +121,18 @@ void force_calc() {
 #endif
   init_forces();
 
-
   calc_long_range_forces();
-#if defined(LB_GPU) || defined(LB)
 #ifdef LB
-  if (lattice_switch & LATTICE_LB) {
+  if (lattice_switch == ActiveLB::CPU) {
 #ifdef ENGINE
     ghost_communicator(&cell_structure.exchange_ghosts_comm,
                        GHOSTTRANS_SWIMMING);
 #endif
-  }
-#endif
-  if (! (lattice_switch & LATTICE_LB_GPU)) {
     lb_lbcoupling_calc_particle_lattice_ia(thermo_virtual);
   }
 #endif
 
-// Do not launch GPU kernels after this
+  // Do not launch GPU kernels after this
 #ifdef CUDA
   copy_forces_from_GPU(local_cells.particles());
 #endif
@@ -270,9 +268,9 @@ void calc_long_range_forces() {
     break;
   }
 
-/* If enabled, calculate electrostatics contribution from electrokinetics
- * species. */
-#ifdef EK_ELECTROSTATIC_COUPLING
+#ifdef ELECTROKINETICS
+  /* If enabled, calculate electrostatics contribution from electrokinetics
+   * species. */
   ek_calculate_electrostatic_coupling();
 #endif
 

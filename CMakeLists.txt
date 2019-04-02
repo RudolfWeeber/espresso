@@ -213,7 +213,7 @@ if(WITH_CUDA)
         set(CUDA_NVCC_FLAGS_RELEASE "${CUDA_NVCC_FLAGS_RELEASE} -O3 -DNDEBUG")
         set(CUDA_NVCC_FLAGS_MINSIZEREL "${CUDA_NVCC_FLAGS_MINSIZEREL} -Os -DNDEBUG")
         set(CUDA_NVCC_FLAGS_RELWITHDEBINFO "${CUDA_NVCC_FLAGS_RELWITHDEBINFO} -g -G -O2")
-        set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode=arch=compute_30,code=sm_30 -gencode=arch=compute_52,code=sm_52 -gencode=arch=compute_52,code=compute_52 -gencode=arch=compute_61,code=compute_61")
+        set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode=arch=compute_30,code=sm_30 -gencode=arch=compute_52,code=sm_52 -gencode=arch=compute_52,code=compute_52")
         list(APPEND CUDA_NVCC_FLAGS "-std=c++14")
         if (CUDA_VERSION VERSION_LESS "8.0" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER "5.0")
           list(APPEND CUDA_NVCC_FLAGS "-D_MWAITXINTRIN_H_INCLUDED -D_FORCE_INLINES")
@@ -505,12 +505,17 @@ endif()
 
 if(WITH_CLANG_TIDY)
   string(REGEX
-         REPLACE "^([1-9]+\\.[0-9]+).*$"
+          REPLACE "^([1-9]+)\\.[0-9]+.*$"
+          "\\1"
+          CLANG_MAJOR_VERSION
+          "${CMAKE_CXX_COMPILER_VERSION}")
+  string(REGEX
+         REPLACE "^[1-9]+\\.([0-9]+).*$"
                  "\\1"
                  CLANG_MINOR_VERSION
                  "${CMAKE_CXX_COMPILER_VERSION}")
   find_program(CLANG_TIDY_EXE
-               NAMES "clang-tidy-${CLANG_MINOR_VERSION}" "clang-tidy"
+               NAMES "clang-tidy-${CLANG_MAJOR_VERSION}.${CLANG_MINOR_VERSION}" "clang-tidy-${CLANG_MAJOR_VERSION}" "clang-tidy"
                DOC "Path to clang-tidy executable")
   if(NOT CLANG_TIDY_EXE)
     message(STATUS "clang-tidy not found.")
@@ -519,7 +524,7 @@ if(WITH_CLANG_TIDY)
     set(
       CMAKE_CXX_CLANG_TIDY
       "${CLANG_TIDY_EXE}"
-      "-checks=*,-clang-analyzer-alpha.*,-misc-unused-*,-android-*,-fuchsia-*,-google-*,-llvm-*,-modernize-*,-readability-*,-cppcoreguidelines-*,-clang-analyzer-deadcode*,-cert-*,-clang-analyzer-core.NullDereference,-clang-analyzer-core.DivideZero,-misc-misplaced-widening-cast,-misc-macro-parentheses,-clang-analyzer-security.FloatLoopCounter,-clang-analyzer-optin.mpi.MPI-Checker,-boost-use-to-string,-hicpp-*"
+      "-checks=*,clang-analyzer-alpha.*,-misc-unused-*,-android-*,-fuchsia-*,-google-*,-llvm-*,-modernize-*,-readability-*,-cppcoreguidelines-*,-clang-analyzer-deadcode*,-cert-*,-clang-analyzer-core.NullDereference,-clang-analyzer-core.DivideZero,-misc-misplaced-widening-cast,-misc-macro-parentheses, -clang-analyzer-security.FloatLoopCounter, -clang-analyzer-optin.mpi.MPI-Checker,-boost-use-to-string,-hicpp-*, modernize-use-nullptr, modernize-use-auto, modernize-pass-by-value, modernize-avoid-c-arrays, modernize-use-equals-default, modernize-deprecated-headers, readability-non-const-parameter"
       "-header-filter=.*"
       "-warnings-as-errors=*")
   endif()
