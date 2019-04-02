@@ -55,13 +55,10 @@ CUDA_energy energy_host;
 std::vector<CUDA_v_cs> host_v_cs;
 #endif
 
-
 cudaError_t _err;
 cudaError_t CU_err;
 
 cudaStream_t stream[1];
-
-
 
 void _cuda_safe_mem(cudaError_t CU_err, const char *file, unsigned int line) {
   if (cudaSuccess != CU_err) {
@@ -268,7 +265,8 @@ cudaEvent_t forces_torques_dtoh;
  * nodes)
  */
 void gpu_init_particle_comm() {
-  cuda_safe_mem(cudaEventCreateWithFlags(&forces_torques_dtoh,cudaEventDisableTiming));
+  cuda_safe_mem(
+      cudaEventCreateWithFlags(&forces_torques_dtoh, cudaEventDisableTiming));
   if (this_node == 0 && global_part_vars_host.communication_enabled == 0) {
     if (cuda_get_n_gpus() == -1) {
       runtimeErrorMsg()
@@ -324,12 +322,14 @@ void copy_part_data_to_gpu(ParticleRange particles) {
       cudaMemcpyAsync(particle_data_device, particle_data_host,
                       global_part_vars_host.number_of_particles *
                           sizeof(CUDA_particle_data),
-                      cudaMemcpyHostToDevice,stream[0]);
+                      cudaMemcpyHostToDevice, stream[0]);
   }
 }
 
-std::unique_ptr<PinnedVectorHost<float>> particle_forces_host{std::make_unique<PinnedVectorHost<float>>(PinnedVectorHost<float>{})};
-std::unique_ptr<PinnedVectorHost<float>> particle_torques_host{std::make_unique<PinnedVectorHost<float>>(PinnedVectorHost<float>{})};
+std::unique_ptr<PinnedVectorHost<float>> particle_forces_host{
+    std::make_unique<PinnedVectorHost<float>>(PinnedVectorHost<float>{})};
+std::unique_ptr<PinnedVectorHost<float>> particle_torques_host{
+    std::make_unique<PinnedVectorHost<float>>(PinnedVectorHost<float>{})};
 
 /** setup and call kernel to copy particle forces to host
  */
@@ -339,32 +339,32 @@ void copy_forces_from_GPU(ParticleRange particles) {
 
     /** Copy result from device memory to host memory*/
     if (this_node == 0) {
-  particle_forces_host->resize(3 * global_part_vars_host.number_of_particles);
-  particle_torques_host->resize(3 * global_part_vars_host.number_of_particles);
+      particle_forces_host->resize(3 *
+                                   global_part_vars_host.number_of_particles);
+      particle_torques_host->resize(3 *
+                                    global_part_vars_host.number_of_particles);
       cuda_safe_mem(cudaMemcpyAsync(
           &((*particle_forces_host)[0]), particle_forces_device,
           3 * global_part_vars_host.number_of_particles * sizeof(float),
-          cudaMemcpyDeviceToHost,stream[0]));
+          cudaMemcpyDeviceToHost, stream[0]));
 #ifdef ROTATION
       cuda_safe_mem(cudaMemcpyAsync(
           &((*particle_torques_host)[0]), particle_torques_device,
           global_part_vars_host.number_of_particles * 3 * sizeof(float),
-          cudaMemcpyDeviceToHost,stream[0]));
+          cudaMemcpyDeviceToHost, stream[0]));
 #endif
-cudaEventRecord(forces_torques_dtoh,stream[0]);
-
+      cudaEventRecord(forces_torques_dtoh, stream[0]);
     }
-
   }
 }
 
 void distribute_gpu_forces(ParticleRange particles) {
   if (global_part_vars_host.communication_enabled == 1 &&
       global_part_vars_host.number_of_particles) {
-cudaEventSynchronize(forces_torques_dtoh);
+    cudaEventSynchronize(forces_torques_dtoh);
     cuda_mpi_send_forces(particles, *particle_forces_host,
                          *particle_torques_host);
-    if (this_node==0) {      
+    if (this_node == 0) {
       /** values for the particle kernel */
       int threads_per_block_particles = 64;
       int blocks_per_grid_particles_y = 4;
@@ -385,8 +385,8 @@ cudaEventSynchronize(forces_torques_dtoh);
 }
 
 void free_cuda_buffers() {
-particle_forces_host.reset(nullptr);
-particle_torques_host.reset(nullptr);
+  particle_forces_host.reset(nullptr);
+  particle_torques_host.reset(nullptr);
 };
 
 #if defined(ENGINE) && defined(LB_GPU)

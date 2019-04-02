@@ -175,7 +175,7 @@ cdef class System(object):
         odict['minimize_energy'] = System.__getattribute__(
             self, "minimize_energy")
         odict['thermostat'] = System.__getattribute__(self, "thermostat")
-        IF COLLISION_DETECTION: 
+        IF COLLISION_DETECTION:
             odict['collision_detection'] = System.__getattribute__(
                 self, "collision_detection")
         return odict
@@ -183,7 +183,6 @@ cdef class System(object):
     def __setstate__(self, params):
         for property_ in params.keys():
             System.__setattr__(self, property_, params[property_])
-    
 
     property box_l:
         """
@@ -531,14 +530,5 @@ cdef class System(object):
         return int(pid)
 
 
-
-
-
-
-
-
-
 def _unload():
-  on_unload()
-
-
+    on_unload()

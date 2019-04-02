@@ -26,11 +26,11 @@
 #include "ParticleRange.hpp"
 #include "SystemInterface.hpp"
 
-
 #include "thrust/host_vector.h"
-#include "thrust/system/cuda/experimental/pinned_allocator.h" 
+#include "thrust/system/cuda/experimental/pinned_allocator.h"
 template <class T>
-using PinnedVectorHost = thrust::host_vector<T,thrust::system::cuda::experimental::pinned_allocator<T>>;
+using PinnedVectorHost = thrust::host_vector<
+    T, thrust::system::cuda::experimental::pinned_allocator<T>>;
 
 #ifdef ENGINE
 // velocities which need to be copied from the GPU to the CPU to calculate a
@@ -178,7 +178,6 @@ void cuda_mpi_send_v_cs(ParticleRange particles,
 #endif
 
 void free_cuda_buffers();
-
 
 #endif /* ifdef CUDA */
 

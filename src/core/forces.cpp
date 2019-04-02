@@ -94,16 +94,15 @@ void check_forces() {
 void force_calc() {
   ESPRESSO_PROFILER_CXX_MARK_FUNCTION;
 
-
-  // GPU methods can be launched before the forces on the particles are 
+  // GPU methods can be launched before the forces on the particles are
   // cleared in init_forces()
   espressoSystemInterface.update();
-#ifdef LB_GPU  
+#ifdef LB_GPU
   if (lattice_switch == ActiveLB::GPU) {
     lb_lbcoupling_calc_particle_lattice_ia(thermo_virtual);
   }
 #endif
-  
+
   for (ActorList::iterator actor = forceActors.begin();
        actor != forceActors.end(); ++actor) {
     (*actor)->computeForces(espressoSystemInterface);
@@ -174,7 +173,6 @@ void force_calc() {
   immersed_boundaries.volume_conservation();
 #endif
 
-
 #ifdef CUDA
   distribute_gpu_forces(local_cells.particles());
 #endif
@@ -183,7 +181,6 @@ void force_calc() {
   /* Metadynamics main function */
   meta_perform();
 #endif
-
 
 // VIRTUAL_SITES distribute forces
 #ifdef VIRTUAL_SITES

@@ -652,7 +652,4 @@ void on_ghost_flags_change() {
 #endif
 }
 
-
-void on_unload() {
-  free_cuda_buffers();
-}
+void on_unload() { free_cuda_buffers(); }
