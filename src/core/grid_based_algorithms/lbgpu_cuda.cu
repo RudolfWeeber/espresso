@@ -1583,14 +1583,14 @@ __device__ __inline__ float3 velocity_interpolation(
  *  @tparam no_of_neighbours       The number of neighbours to consider for
  * interpolation
  */
-template <std::size_t no_of_neighbours>
+template <std::size_t no_of_neighbours, int flag_cs>
 __device__ void
 calc_viscous_force(LB_nodes_gpu n_a,
                    Utils::Array<float, no_of_neighbours> &delta,
                    CUDA_particle_data *particle_data, float *particle_force,
                    unsigned int part_index, float *delta_j,
                    Utils::Array<unsigned int, no_of_neighbours> &node_index,
-                   LB_rho_v_gpu *d_v, int flag_cs, uint64_t philox_counter,
+                   LB_rho_v_gpu *d_v, uint64_t philox_counter,
                    float friction, float *lb_boundary_velocity) {
 // Zero out workspace
 #pragma unroll
@@ -2246,16 +2246,16 @@ __global__ void calc_fluid_particle_ia(
     {
       /* force acting on the particle. delta_j will be used later to compute the
        * force that acts back onto the fluid. */
-      calc_viscous_force<no_of_neighbours>(
+      calc_viscous_force<no_of_neighbours,0>(
           n_a, delta, particle_data, particle_force, part_index, delta_j,
-          node_index, d_v, 0, philox_counter, friction, lb_boundary_velocity);
+          node_index, d_v, philox_counter, friction, lb_boundary_velocity);
       calc_node_force<no_of_neighbours>(delta, delta_j, node_index, node_f);
 
 #ifdef ENGINE
       if (particle_data[part_index].swim.swimming) {
-        calc_viscous_force<no_of_neighbours>(
+        calc_viscous_force<no_of_neighbours,1>(
             n_a, delta, particle_data, particle_force, part_index, delta_j,
-            node_index, d_v, 1, philox_counter, friction, lb_boundary_velocity);
+            node_index, d_v, philox_counter, friction, lb_boundary_velocity);
         calc_node_force<no_of_neighbours>(delta, delta_j, node_index, node_f);
       }
 #endif
