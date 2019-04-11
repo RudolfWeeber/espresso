@@ -25,4 +25,3 @@ import atexit
 from espressomd.features import features, has_features, missing_features, assert_features
 from .system import System, _unload
 
-atexit.register(_unload)
