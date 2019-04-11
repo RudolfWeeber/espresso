@@ -17,6 +17,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "cuda.h" 
 #include "cuda_wrapper.hpp"
 
 #include "cuda_init.hpp"
@@ -39,6 +40,7 @@ static const int computeCapabilityMinMinor = 0;
 const char *cuda_error;
 
 void cuda_init() {
+  cuInit(0);
   cuda_safe_mem(cudaStreamCreateWithFlags(&stream[0], cudaStreamDefault));
 }
 

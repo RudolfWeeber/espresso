@@ -29,4 +29,4 @@ import espressomd
 
 import atexit
 
-atexit.register(_unload)
+#atexit.register(_unload)
