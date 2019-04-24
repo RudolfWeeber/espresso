@@ -27,6 +27,8 @@ from .system import System, _unload
 from .cuda_init import gpu_available
 import espressomd
 
-import atexit
+class FeaturesError(Exception):
 
-#atexit.register(_unload)
+    def __init__(self, missing_features_list):
+        message = "Missing features " + ", ".join(missing_features_list)
+        super(FeaturesError, self).__init__(message)
