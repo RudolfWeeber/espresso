@@ -24,7 +24,9 @@
 #ifdef CUDA
 
 #include "ParticleRange.hpp"
-#include "SystemInterface.hpp"
+
+#include <utils/Span.hpp>
+#include <utils/Vector.hpp>
 
 #include "thrust/host_vector.h"
 #include "thrust/system/cuda/experimental/pinned_allocator.h"
@@ -45,41 +47,49 @@ typedef struct {
 
 // Parameters for swimmers
 #ifdef ENGINE
-typedef struct {
+struct CUDA_ParticleParametersSwimming {
+  using Vector3f = Utils::Vector3f;
+
   // v_cs has to stay in the front for memmove reasons
   float v_cs[6];
   float v_swim;
   float f_swim;
-  float director[3];
+  Vector3f director;
   int push_pull;
   float dipole_length;
   bool swimming;
-} CUDA_ParticleParametersSwimming;
+};
 #endif
 
 /** data structure which must be copied to the GPU at each step run on the GPU
  */
 struct CUDA_particle_data {
+  using Vector3f = Utils::Vector3f;
 //   // This has to stay in front of the struct for memmove reasons
 #ifdef ENGINE
   CUDA_ParticleParametersSwimming swim;
 #endif
-  int identity;
 
   /** particle position given from md part*/
-  float p[3];
+  Vector3f p;
 
 #if defined(LB_GPU)
+  /** particle id */
+  int identity;
+#ifdef VIRTUAL_SITES
+  bool is_virtual;
+#endif
+
   /** particle momentum struct velocity p.m->v*/
-  float v[3];
+  Vector3f v;
 #endif
 
 #ifdef ROTATION
-  float director[3];
+  Vector3f director;
 #endif
 
 #if defined(LB_ELECTROHYDRODYNAMICS) && defined(LB_GPU)
-  float mu_E[3];
+  Vector3f mu_E;
 #endif
 
 #ifdef ELECTROSTATICS
@@ -90,12 +100,8 @@ struct CUDA_particle_data {
   float mass;
 #endif
 
-#ifdef VIRTUAL_SITES
-  bool is_virtual;
-#endif
-
 #ifdef DIPOLES
-  float dip[3];
+  Vector3f dip;
 #endif
 };
 
@@ -104,22 +110,11 @@ typedef struct {
   float bonded, non_bonded, coulomb, dipolar;
 } CUDA_energy;
 
-/** Note the particle's seed gets its own struct since it doesn't get copied
- * back and forth from the GPU */
-typedef struct {
-  unsigned int seed;
-} CUDA_particle_seed;
-
 extern CUDA_particle_data *particle_data_host;
 
 /** This structure contains global variables associated with all of the
  * particles and not with one individual particle */
 typedef struct {
-
-  /**  This is for seeding the particles' individual seeds and is initialized
-   * using irandom, beware if using for other purposes */
-  unsigned int seed;
-
   unsigned int number_of_particles;
 
   /** a boolean variable to indicate if particle info should be communicated
@@ -132,7 +127,6 @@ void distribute_gpu_forces(ParticleRange particles);
 void copy_energy_from_GPU();
 void copy_CUDA_energy_to_energy(CUDA_energy energy_host);
 void clear_energy_on_GPU();
-void copy_composition_from_GPU();
 
 CUDA_global_part_vars *gpu_get_global_particle_vars_pointer_host();
 CUDA_global_part_vars *gpu_get_global_particle_vars_pointer();
@@ -144,7 +138,6 @@ float *gpu_get_particle_torque_pointer();
 
 CUDA_energy *gpu_get_energy_pointer();
 float *gpu_get_particle_torque_pointer();
-CUDA_particle_seed *gpu_get_particle_seed_pointer();
 void gpu_change_number_of_part_to_comm();
 void gpu_init_particle_comm();
 

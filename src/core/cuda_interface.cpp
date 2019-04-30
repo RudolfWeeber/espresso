@@ -17,20 +17,20 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "config.hpp"
 #include "cuda_interface.hpp"
 
 #ifdef CUDA
 
 #include "communication.hpp"
-#include "config.hpp"
 #include "debug.hpp"
 #include "energy.hpp"
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
 #include "serialization/CUDA_particle_data.hpp"
 
 #include "thrust/system/cuda/experimental/pinned_allocator.h"
-#include "utils/mpi/gather_buffer.hpp"
-#include "utils/mpi/scatter_buffer.hpp"
+#include <utils/mpi/gather_buffer.hpp>
+#include <utils/mpi/scatter_buffer.hpp>
 
 /// MPI tag for cuda particle gathering
 #define REQ_CUDAGETPARTS 0xcc01
@@ -54,36 +54,26 @@ void cuda_bcast_global_part_params() {
 
 static void pack_particles(ParticleRange particles,
                            CUDA_particle_data *buffer) {
+  using Utils::Vector3f;
+
   int i = 0;
   for (auto const &part : particles) {
-    buffer[i].identity = part.p.identity;
-    auto const pos = folded_position(part);
-
-    buffer[i].p[0] = static_cast<float>(pos[0]);
-    buffer[i].p[1] = static_cast<float>(pos[1]);
-    buffer[i].p[2] = static_cast<float>(pos[2]);
+    buffer[i].p = static_cast<Vector3f>(folded_position(part));
 
 #ifdef LB_GPU
-    buffer[i].v[0] = static_cast<float>(part.m.v[0]);
-    buffer[i].v[1] = static_cast<float>(part.m.v[1]);
-    buffer[i].v[2] = static_cast<float>(part.m.v[2]);
+    buffer[i].identity = part.p.identity;
+    buffer[i].v = static_cast<Vector3f>(part.m.v);
 #ifdef VIRTUAL_SITES
     buffer[i].is_virtual = part.p.is_virtual;
-
 #endif
 #endif
 
 #ifdef DIPOLES
-    const Utils::Vector3d dip = part.calc_dip();
-    buffer[i].dip[0] = static_cast<float>(dip[0]);
-    buffer[i].dip[1] = static_cast<float>(dip[1]);
-    buffer[i].dip[2] = static_cast<float>(dip[2]);
+    buffer[i].dip = static_cast<Vector3f>(part.calc_dip());
 #endif
 
 #if defined(LB_ELECTROHYDRODYNAMICS) && defined(LB_GPU)
-    buffer[i].mu_E[0] = static_cast<float>(part.p.mu_E[0]);
-    buffer[i].mu_E[1] = static_cast<float>(part.p.mu_E[1]);
-    buffer[i].mu_E[2] = static_cast<float>(part.p.mu_E[2]);
+    buffer[i].mu_E = static_cast<Vector3f>(part.p.mu_E);
 #endif
 
 #ifdef ELECTROSTATICS
@@ -95,18 +85,14 @@ static void pack_particles(ParticleRange particles,
 #endif
 
 #ifdef ROTATION
-    const Utils::Vector3d director = part.r.calc_director();
-    buffer[i].director[0] = static_cast<float>(director[0]);
-    buffer[i].director[1] = static_cast<float>(director[1]);
-    buffer[i].director[2] = static_cast<float>(director[2]);
+    buffer[i].director = static_cast<Vector3f>(part.r.calc_director());
 #endif
 
 #ifdef ENGINE
     buffer[i].swim.v_swim = static_cast<float>(part.swim.v_swim);
     buffer[i].swim.f_swim = static_cast<float>(part.swim.f_swim);
-    buffer[i].swim.director[0] = static_cast<float>(director[0]);
-    buffer[i].swim.director[1] = static_cast<float>(director[1]);
-    buffer[i].swim.director[2] = static_cast<float>(director[2]);
+    buffer[i].swim.director = buffer[i].director;
+
 #if defined(LB) || defined(LB_GPU)
     buffer[i].swim.push_pull = part.swim.push_pull;
     buffer[i].swim.dipole_length = static_cast<float>(part.swim.dipole_length);
