@@ -255,6 +255,27 @@ class ScriptInterfaceHelper(PScriptInterface):
         for method_name in self._so_bind_methods:
             setattr(self, method_name, self.generate_caller(method_name))
 
+class ScriptObjectRegistry(ScriptInterfaceHelper):
+    """
+    Base class for container-like script interface objects, e.g.,
+    those derived from ScriptObjectRegistry in core
+
+    """
+
+    def __getitem__(self, key):
+        return self.call_method("get_elements")[key]
+
+    def __iter__(self):
+        elements = self.call_method("get_elements")
+        for e in elements:
+            yield e
+
+    def __len__(self):
+        return self.call_method("size")
+
+
+
+
 # Map from script object names to corresponding python classes
 _python_class_by_so_name = {}
 

@@ -186,6 +186,7 @@ class CheckpointTest(ut.TestCase):
             acc.get_mean(), np.array([1.0, 1.5, 2.0, 1.0, 1.0, 2.0]))
         np.testing.assert_array_equal(
             acc.get_variance(), np.array([0., 0.5, 2., 0., 0., 0.]))
+        self.assertTrue(acc in system.auto_update_accumulators)
 
     @ut.skipIf(not espressomd.has_features('ELECTROSTATICS'),
                "Skipping test due to missing features.")
@@ -212,6 +213,12 @@ class CheckpointTest(ut.TestCase):
             system.part[1].exclusions, [2]))
         self.assertTrue(tests_common.lists_contain_same_elements(
             system.part[2].exclusions, [0, 1]))
+
+    @ut.skipIf(not (espressomd.has_features("LB_BOUNDARIES") or espressomd.has_features("LB_BOUNDARIES_GPU")),"Missing featuers")
+    def test_lb_boundaries(self):
+        self.assertEqual(len(system.lbboundaries),1)
+        np.testing.assert_allclose(system.lbboundaries[0].velocity,[1,1,0])
+        self.assertEqual(type(system.lbboundaires[0].shape),Wall)
 
 
 if __name__ == '__main__':

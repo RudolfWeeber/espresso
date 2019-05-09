@@ -65,6 +65,7 @@ public:
   }
 
   Variant get_parameter(const std::string &name) const override;
+  Variant get_state() const override {return m_p->get_state(); }
   VariantMap get_parameters() const override;
   Variant call_method(const std::string &name,
                       const VariantMap &parameters) override;

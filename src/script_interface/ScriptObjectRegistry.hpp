@@ -23,6 +23,7 @@
 #define SCRIPT_INTERFACE_REGISTRY_HPP
 
 #include "ScriptInterface.hpp"
+#include "Serializer.hpp" 
 
 namespace ScriptInterface {
 
@@ -80,6 +81,40 @@ public:
 
     return none;
   }
+  /**
+ * @brief  Return a Variant representation of the state of the object.
+ *
+ * This should return the internal state of the instance, so that
+ * the instance can be restored from this information.  The default
+ * implementation stores all the public parameters, including object
+ * parameters that are captured by calling get_state on them.
+ */
+  Variant get_state() const override {
+  std::vector<Variant> state;
+
+  state.reserve(m_elements.size());
+
+  for (auto const &e : m_elements) {
+    auto v = Variant{e->id()};
+    state.emplace_back(boost::apply_visitor(Serializer{}, v));
+  }
+  return state;
+}
+
+void set_state(Variant const &state) override {
+  using boost::get;
+  using std::vector;
+
+  UnSerializer u;
+  
+  m_elements.clear();
+
+  for (auto &e : get<vector<Variant>>(state)) {
+    auto oid = get_value<std::shared_ptr<ManagedType>>(
+       boost::apply_visitor(u, e));
+    m_elements.emplace_back(oid);
+  }
+}
 
 private:
   std::vector<std::shared_ptr<ManagedType>> m_elements;
