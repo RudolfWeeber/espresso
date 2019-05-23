@@ -58,7 +58,8 @@ class Observables(ut.TestCase):
                 pos[i] = p[i].pos = pos[i-1] + np.random.uniform(
                     low=0, high=max_bond_length, size=3)
             # expected values
-            distances = np.linalg.norm(pos[1:] - pos[:-1], axis=1)
+            vec_distances = pos[1:] - pos[:-1]
+            distances = np.sqrt(np.sum(vec_distances**2, axis=1))
             # observed values
             self.system.integrator.run(0)
             res_obs_single = obs_single.calculate()
@@ -94,8 +95,8 @@ class Observables(ut.TestCase):
             # expected values
             v1 = pos[:-2] - pos[1:-1]
             v2 = pos[2:] - pos[1:-1]
-            l1 = np.linalg.norm(v1, axis=1)
-            l2 = np.linalg.norm(v2, axis=1)
+            l1 = np.sqrt(np.sum(v1**2, axis=1))
+            l2 = np.sqrt(np.sum(v2**2, axis=1))
             angles = np.arccos((v1 * v2).sum(1) / l1 / l2)
             # observed values
             self.system.integrator.run(0)

@@ -47,7 +47,7 @@ class PolymerPositions(ut.TestCase):
 
         """
         for p in positions:
-            distances = np.linalg.norm(p[1:] - p[:-1], axis=1)
+            distances = np.sqrt(np.sum((p[1:] - p[:-1])**2, axis=1))
             max_deviation = np.max(abs(distances - bond_length))
             self.assertLess(max_deviation, 1e-10)
 
@@ -74,7 +74,7 @@ class PolymerPositions(ut.TestCase):
         # use folded coordinates
         particle_positions %= self.box_l
         for pos in particle_positions:
-            distances = np.linalg.norm(particle_positions - pos, axis=1)
+            distances = np.sqrt(np.sum((particle_positions - pos)**2, axis=1))
             # exclude zero distance, i.e.,  distance to pos itself
             distances = distances[np.nonzero(distances)]
             self.assertGreaterEqual(min(distances), r_min)
