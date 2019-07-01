@@ -330,15 +330,6 @@ rocm-maxset:
 ubuntu:arm64:
   <<: *arch_definition
 
-ubuntu:armhf:
-  <<: *arch_definition
-
-ubuntu:i386:
-  <<: *arch_definition
-  only:
-    - branches
-    - tags
-
 ubuntu:ppc64le:
   <<: *arch_definition
 
