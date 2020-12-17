@@ -105,8 +105,12 @@ public:
   virtual Utils::Vector3d get_external_force() const = 0;
 
   // Global parameters
-  virtual void set_viscosity(double viscosity) = 0;
+  virtual void set_viscosity(double viscosity, double magic_number) = 0;
   virtual double get_viscosity() const = 0;
+  virtual double get_bulk_viscosity() const = 0;
+  virtual double get_shear_viscosity() const = 0;
+  virtual double get_gamma_odd() const = 0;
+  virtual double get_gamma_even() const = 0;
   virtual double get_kT() const = 0;
 
   // Grid, domain, halo
@@ -157,6 +161,20 @@ enum class OutputVTK : unsigned {
   density = 1u << 0u,
   velocity_vector = 1u << 1u,
   pressure_tensor = 1u << 2u,
+};
+
+struct LBRelaxationRates {
+  double omega_bulk;
+  double omega_shear;
+  double omega_odd;
+  double omega_even;
+  template <class Archive>
+  void serialize(Archive &ar, const unsigned int version) {
+    ar &omega_bulk;
+    ar &omega_shear;
+    ar &omega_odd;
+    ar &omega_even;
+  }
 };
 
 #endif // LB_WALBERLA_H

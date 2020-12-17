@@ -231,7 +231,7 @@ protected:
   };
 
 public:
-  LBWalberlaImpl(double viscosity, double agrid, double tau,
+  LBWalberlaImpl(double agrid, double tau,
                  const Utils::Vector3d &box_dimensions,
                  const Utils::Vector3i &node_grid, int n_ghost_layers) {
     m_n_ghost_layers = n_ghost_layers;

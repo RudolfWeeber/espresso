@@ -25,8 +25,14 @@
 
 void walberla_mpi_init();
 
-LBWalberlaBase *new_lb_walberla(double viscosity, double density, double agrid,
-                                double tau,
+LBWalberlaBase *new_lb_walberla(double viscosity, double magic_number,
+                                double density, double agrid, double tau,
+                                const Utils::Vector3d &box_dimensions,
+                                const Utils::Vector3i &node_grid, double kT,
+                                unsigned int seed);
+
+LBWalberlaBase *new_lb_walberla(LBRelaxationRates relaxation_rates,
+                                double density, double agrid, double tau,
                                 const Utils::Vector3d &box_dimensions,
                                 const Utils::Vector3i &node_grid, double kT,
                                 unsigned int seed);

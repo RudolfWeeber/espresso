@@ -32,22 +32,42 @@ void walberla_mpi_init() {
       walberla::mpi::Environment(argc, argv);
 }
 
-LBWalberlaBase *new_lb_walberla(double viscosity, double density, double agrid,
-                                double tau,
+LBWalberlaBase *new_lb_walberla(double viscosity, double magic_number,
+                                double density, double agrid, double tau,
                                 const Utils::Vector3d &box_dimensions,
                                 const Utils::Vector3i &node_grid, double kT,
                                 unsigned int seed) {
 
   LBWalberlaBase *lb_walberla_instance;
   if (kT == 0.) { // un-thermalized LB
-    lb_walberla_instance =
-        new walberla::LBWalberlaD3Q19MRT(walberla::LBWalberlaD3Q19MRT{
-            viscosity, density, agrid, tau, box_dimensions, node_grid, 1});
+    lb_walberla_instance = new walberla::LBWalberlaD3Q19MRT(
+        walberla::LBWalberlaD3Q19MRT{viscosity, magic_number, density, agrid,
+                                     tau, box_dimensions, node_grid, 1});
   } else { // thermalized LB
     lb_walberla_instance = new walberla::LBWalberlaD3Q19FluctuatingMRT(
-        walberla::LBWalberlaD3Q19FluctuatingMRT{viscosity, density, agrid, tau,
-                                                box_dimensions, node_grid, 1,
-                                                kT, seed});
+        walberla::LBWalberlaD3Q19FluctuatingMRT{
+            viscosity, magic_number, density, agrid, tau, box_dimensions,
+            node_grid, 1, kT, seed});
+  }
+  return lb_walberla_instance;
+}
+
+LBWalberlaBase *new_lb_walberla(LBRelaxationRates relaxation_rates,
+                                double density, double agrid, double tau,
+                                const Utils::Vector3d &box_dimensions,
+                                const Utils::Vector3i &node_grid, double kT,
+                                unsigned int seed) {
+
+  LBWalberlaBase *lb_walberla_instance;
+  if (kT == 0.) { // un-thermalized LB
+    lb_walberla_instance = new walberla::LBWalberlaD3Q19MRT(
+        walberla::LBWalberlaD3Q19MRT{relaxation_rates, density, agrid, tau,
+                                     box_dimensions, node_grid, 1});
+  } else { // thermalized LB
+    lb_walberla_instance = new walberla::LBWalberlaD3Q19FluctuatingMRT(
+        walberla::LBWalberlaD3Q19FluctuatingMRT{relaxation_rates, density,
+                                                agrid, tau, box_dimensions,
+                                                node_grid, 1, kT, seed});
   }
   return lb_walberla_instance;
 }

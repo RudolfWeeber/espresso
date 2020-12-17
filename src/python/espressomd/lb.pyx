@@ -183,8 +183,12 @@ cdef class HydrodynamicInteraction(Actor):
         Fluid density.
     visc : :obj:`float`
         Fluid kinematic viscosity.
+    magic_number : :obj:`float`
+        Magic number to define the relaxation time from viscosity.
     bulk_visc : :obj:`float`, optional
         Fluid bulk viscosity.
+    shear_visc : :obj:`float`, optional
+        Fluid shear viscosity.
     gamma_odd : :obj:`int`, optional
         Relaxation parameter :math:`\\gamma_{\\textrm{odd}}` for kinetic modes.
     gamma_even : :obj:`int`, optional
@@ -231,10 +235,10 @@ cdef class HydrodynamicInteraction(Actor):
             raise ValueError("tau has to be a positive double")
 
     def valid_keys(self):
-        return "agrid", "dens", "ext_force_density", "visc", "tau", "bulk_visc", "gamma_odd", "gamma_even", "kT", "seed"
+        return "agrid", "dens", "ext_force_density", "visc", "magic_number", "tau", "bulk_visc", "shear_visc", "gamma_odd", "gamma_even", "kT", "seed"
 
     def required_keys(self):
-        return ["dens", "agrid", "visc", "tau"]
+        return ["dens", "agrid", "tau"]
 
     def default_params(self):
         return {"agrid": -1.0,
@@ -365,6 +369,22 @@ cdef class HydrodynamicInteraction(Actor):
         def __get__(self):
             return python_lbfluid_get_viscosity(self.agrid, self.tau)
 
+    property bulk_viscosity:
+        def __get__(self):
+            return python_lbfluid_get_bulk_viscosity(self.agrid, self.tau)
+
+    property shear_viscosity:
+        def __get__(self):
+            return python_lbfluid_get_shear_viscosity(self.agrid, self.tau)
+
+    property gamma_odd:
+        def __get__(self):
+            return python_lbfluid_get_gamma_odd(self.agrid, self.tau)
+
+    property gamma_even:
+        def __get__(self):
+            return python_lbfluid_get_gamma_even(self.agrid, self.tau)
+
     property tau:
         def __get__(self):
             return lb_lbfluid_get_tau()
@@ -399,6 +419,10 @@ IF LB_WALBERLA:
                     "ext_force_density": [0.0, 0.0, 0.0],
                     "visc": -1.0,
                     "bulk_visc": -1.0,
+                    "shear_visc": -1.0,
+                    "gamma_odd": -1.0,
+                    "gamma_even": -1.0,
+                    "magic_number": 3.0/16.0,
                     "tau": -1.0,
                     "kT": 0.0,
                     "seed": 0}
@@ -407,17 +431,47 @@ IF LB_WALBERLA:
             raise Exception("This may not be called")
 
         def _activate_method(self):
+            cdef LBRelaxationRates relaxation_rates
+
             self.validate_params()
 
             # unit conversion
             lb_visc = self._params["visc"] * \
                 self._params['tau'] / self._params['agrid']**2
+            lb_magic_number = self._params["magic_number"]
+            
+            lb_bulk_visc = self._params["bulk_visc"] * \
+                self._params['tau'] / self._params['agrid']**2
+            lb_shear_visc = self._params["shear_visc"] * \
+                self._params['tau'] / self._params['agrid']**2
+            lb_gamma_odd = self._params["gamma_odd"] * \
+                self._params['tau'] / self._params['agrid']**2
+            lb_gamma_even = self._params["gamma_even"] * \
+                self._params['tau'] / self._params['agrid']**2
+            
             lb_dens = self._params['dens'] * self._params['agrid']**3
             lb_kT = self._params['kT'] * \
-                self._params['tau']**2 / self._params['agrid']**2 
-            mpi_init_lb_walberla(
-                lb_visc, lb_dens, self._params["agrid"], self._params["tau"],
-                lb_kT, self._params['seed'])
+                self._params['tau']**2 / self._params['agrid']**2
+
+            default_params = self.default_params()
+
+            if ((not lb_bulk_visc == default_params["bulk_visc"]) and
+               (not lb_shear_visc == default_params["shear_visc"]) and
+               (not lb_gamma_odd == default_params["gamma_odd"]) and
+               (not lb_gamma_even == default_params["gamma_even"])):
+
+                relaxation_rates.omega_bulk = lb_bulk_visc
+                relaxation_rates.omega_shear = lb_shear_visc
+                relaxation_rates.omega_odd = lb_gamma_odd
+                relaxation_rates.omega_even = lb_gamma_even
+                mpi_init_lb_walberla(
+                    relaxation_rates, lb_dens, self._params["agrid"],
+                    self._params["tau"], lb_kT, self._params['seed'])
+            else:
+                mpi_init_lb_walberla(
+                    lb_visc, lb_magic_number, lb_dens,
+                    self._params["agrid"], self._params["tau"],
+                    lb_kT, self._params['seed'])
             utils.handle_errors("LB fluid activation")
             self.ext_force_density = self._params["ext_force_density"]
 

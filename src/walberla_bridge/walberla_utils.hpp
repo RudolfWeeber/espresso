@@ -25,6 +25,8 @@
 #include <utils/Vector.hpp>
 #include <utils/interpolation/bspline_3d.hpp>
 
+#include <core/math/Matrix3.h>
+
 #include <boost/optional.hpp>
 
 #include <cstddef>

@@ -47,12 +47,26 @@ LBWalberlaParams *lb_walberla_params();
  *  WALBERLA
  *
  *  @param viscosity Fluid viscosity
+ *  @param magic_number Fluid magic number
  *  @param density Fluid density
  *  @param agrid  Size of one lb cell
  *  @param tau    LB time step
  */
-void mpi_init_lb_walberla(double viscosity, double density, double agrid,
-                          double tau, double kT, unsigned int seed);
+void mpi_init_lb_walberla(double viscosity, double magic_number, double density,
+                          double agrid, double tau, double kT,
+                          unsigned int seed);
+
+/** @brief Create the LBWalberla instance and sets the lattice switch to
+ *  WALBERLA
+ *
+ *  @param relaxation_rates Fluid relaxation rates
+ *  @param density Fluid density
+ *  @param agrid  Size of one lb cell
+ *  @param tau    LB time step
+ */
+void mpi_init_lb_walberla(LBRelaxationRates relaxation_rates, double density,
+                          double agrid, double tau, double kT,
+                          unsigned int seed);
 
 /** @brief Destruct the LBWalberla instance and set lattice switch to NONE */
 void mpi_destruct_lb_walberla();

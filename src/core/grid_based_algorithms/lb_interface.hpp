@@ -126,9 +126,19 @@ double lb_lbfluid_get_agrid();
 double lb_lbfluid_get_gamma_even();
 
 /**
+ * @brief Get the global LB relaxation parameter for odd modes.
+ */
+double lb_lbfluid_get_gamma_odd();
+
+/**
  * @brief Get the global LB bulk viscosity.
  */
 double lb_lbfluid_get_bulk_viscosity();
+
+/**
+ * @brief Get the global LB shear viscosity.
+ */
+double lb_lbfluid_get_shear_viscosity();
 
 /**
  * @brief Get the global LB viscosity.

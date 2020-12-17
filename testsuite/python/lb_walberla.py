@@ -34,6 +34,25 @@ class LbWalberlaTest(ut.TestCase):
         s.time_step = 0.2
         s.cell_system.skin = 0.
         dens_init = 1.3
+        bulk_visc = 0.4
+        shear_visc = 0.3
+        gamma_odd = 0.1
+        gamma_even = 0.2
+        lbf = LBFluidWalberla(
+            agrid=.6,
+            dens=dens_init,
+            bulk_visc=bulk_visc,
+            shear_visc=shear_visc,
+            gamma_odd=gamma_odd,
+            gamma_even=gamma_even,
+            tau=s.time_step)
+        s.actors.add(lbf)
+        np.testing.assert_almost_equal(lbf.bulk_viscosity, bulk_visc)
+        np.testing.assert_almost_equal(lbf.shear_viscosity, shear_visc)
+        np.testing.assert_almost_equal(lbf.gamma_odd, gamma_odd)
+        np.testing.assert_almost_equal(lbf.gamma_even, gamma_even)
+        s.actors.remove(lbf)
+
         lbf = LBFluidWalberla(
             agrid=.6,
             dens=dens_init,

@@ -158,8 +158,38 @@ double lb_lbfluid_get_viscosity() {
 }
 
 double lb_lbfluid_get_bulk_viscosity() {
-  if (lattice_switch == ActiveLB::WALBERLA)
-    throw std::runtime_error("Getting bulk viscosity not implemented.");
+#ifdef LB_WALBERLA
+  if (lattice_switch == ActiveLB::WALBERLA) {
+    return lb_walberla()->get_bulk_viscosity();
+  }
+#endif
+  throw NoLBActive();
+}
+
+double lb_lbfluid_get_shear_viscosity() {
+#ifdef LB_WALBERLA
+  if (lattice_switch == ActiveLB::WALBERLA) {
+    return lb_walberla()->get_shear_viscosity();
+  }
+#endif
+  throw NoLBActive();
+}
+
+double lb_lbfluid_get_gamma_odd() {
+#ifdef LB_WALBERLA
+  if (lattice_switch == ActiveLB::WALBERLA) {
+    return lb_walberla()->get_gamma_odd();
+  }
+#endif
+  throw NoLBActive();
+}
+
+double lb_lbfluid_get_gamma_even() {
+#ifdef LB_WALBERLA
+  if (lattice_switch == ActiveLB::WALBERLA) {
+    return lb_walberla()->get_gamma_even();
+  }
+#endif
   throw NoLBActive();
 }
 

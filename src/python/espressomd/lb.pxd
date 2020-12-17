@@ -38,6 +38,14 @@ cdef class HydrodynamicInteraction(Actor):
     #
 
 IF LB_WALBERLA:
+    cdef extern from "LBWalberlaBase.hpp":
+        cdef cppclass LBRelaxationRates:
+            double omega_bulk;
+            double omega_shear;
+            double omega_odd;
+            double omega_even;
+
+
     cdef extern from "grid_based_algorithms/lb_interface.hpp":
 
         cdef enum OutputVTK:
@@ -64,6 +72,9 @@ cdef extern from "grid_based_algorithms/lb_interface.hpp":
     void lb_lbfluid_set_ext_force_density(const Vector3d forcedensity) except +
     const Vector3d lb_lbfluid_get_ext_force_density() except +
     double lb_lbfluid_get_bulk_viscosity() except +
+    double lb_lbfluid_get_shear_viscosity() except +
+    double lb_lbfluid_get_gamma_odd() except +
+    double lb_lbfluid_get_gamma_even() except +
     void lb_lbfluid_sanity_checks() except +
     void lb_lbfluid_save_checkpoint(string filename, bool binary) except +
     void lb_lbfluid_load_checkpoint(string filename, bool binary) except +
@@ -111,7 +122,8 @@ cdef extern from "grid_based_algorithms/lb_interpolation.hpp" namespace "Interpo
 
 IF LB_WALBERLA:
     cdef extern from "grid_based_algorithms/lb_walberla_instance.hpp":
-        void mpi_init_lb_walberla(double viscosity, double density, double agrid, double tau, double kT, unsigned int seed) except +
+        void mpi_init_lb_walberla(double viscosity, double magic_number, double density, double agrid, double tau, double kT, unsigned int seed) except +
+        void mpi_init_lb_walberla(LBRelaxationRates relaxation_rates, double density, double agrid, double tau, double kT, unsigned int seed) except +
         void mpi_destruct_lb_walberla() except +
 
 
@@ -141,6 +153,15 @@ cdef inline double python_lbfluid_get_viscosity(p_agrid, p_tau) except +:
 
 cdef inline double python_lbfluid_get_bulk_viscosity(p_agrid, p_tau) except +:
     return lb_lbfluid_get_bulk_viscosity() / p_tau * (p_agrid * p_agrid)
+
+cdef inline double python_lbfluid_get_shear_viscosity(p_agrid, p_tau) except +:
+    return lb_lbfluid_get_shear_viscosity() / p_tau * (p_agrid * p_agrid)
+
+cdef inline double python_lbfluid_get_gamma_odd(p_agrid, p_tau) except +:
+    return lb_lbfluid_get_gamma_odd() / p_tau * (p_agrid * p_agrid)
+
+cdef inline double python_lbfluid_get_gamma_even(p_agrid, p_tau) except +:
+    return lb_lbfluid_get_gamma_even() / p_tau * (p_agrid * p_agrid)
 
 cdef inline double python_lbfluid_get_gamma() except +:
     return lb_lbcoupling_get_gamma()
