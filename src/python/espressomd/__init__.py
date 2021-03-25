@@ -51,7 +51,7 @@ def has_features(*args):
 
 
 def missing_features(*args):
-    """Returns a list of the missing features in the argument"""
+    """Re turns a list of the missing features in the argument"""
 
     if len(args) == 1 and not isinstance(
             args[0], str) and hasattr(args[0], "__iter__"):
