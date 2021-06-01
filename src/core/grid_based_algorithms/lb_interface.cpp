@@ -518,11 +518,12 @@ lb_lbnode_get_pressure_tensor(const Utils::Vector3i &ind) {
         ::Communication::Result::one_rank, Walberla::get_node_pressure_tensor,
         ind);
 
-    // reverts the correction done by walberla
-    //    auto const revert_factor =
-    //        lb_lbfluid_get_viscosity() / (lb_lbfluid_get_viscosity() + 1.0
-    //        / 6.0); stress[1] /= revert_factor; stress[3] /= revert_factor;
-    //        stress[4] /= revert_factor;
+    // correction factor
+    auto const adjust_factor =
+            lb_lbfluid_get_viscosity() / (lb_lbfluid_get_viscosity() + 1.0 / 6.0);
+    stress[1] *= adjust_factor;
+    stress[3] *= adjust_factor;
+    stress[4] *= adjust_factor;
 
     return stress;
   }

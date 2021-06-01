@@ -110,3 +110,4 @@ void mpi_destruct_lb_walberla() {
   Communication::mpiCallbacks().call_all(destruct_lb_walberla);
 }
 #endif
+

@@ -209,3 +209,4 @@ cdef inline python_lbfluid_set_gamma(p_gamma) except +:
         c_gamma = p_gamma
         # call c-function
         lb_lbcoupling_set_gamma(c_gamma)
+

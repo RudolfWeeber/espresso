@@ -179,3 +179,4 @@ enum class OutputVTK : unsigned {
 };
 
 #endif // LB_WALBERLA_H
+

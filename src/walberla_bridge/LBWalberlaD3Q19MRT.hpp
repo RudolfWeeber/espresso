@@ -49,3 +49,4 @@ public:
 } // namespace walberla
 
 #undef LatticeModelName
+

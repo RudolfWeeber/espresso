@@ -395,7 +395,6 @@ IF LB_WALBERLA:
         """
         Initialize the lattice-Boltzmann method for hydrodynamic flow using waLBerla.
         See :class:`HydrodynamicInteraction` for the list of parameters.
-
         """
 
         def _set_params_in_es_core(self):
@@ -614,7 +613,6 @@ def _add_lb_slice_properties():
         """
         Setter function that sets attribute on every member of lb_slice.
         If values contains only one element, all members are set to it.
-
         """
 
         indices = [lb_slice.x_indices, lb_slice.y_indices, lb_slice.z_indices]
@@ -668,3 +666,4 @@ def _add_lb_slice_properties():
 
 
 _add_lb_slice_properties()
+
