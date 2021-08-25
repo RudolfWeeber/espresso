@@ -72,7 +72,7 @@ cdef class ParticleHandle:
         """
 
         pickle_attr = copy(particle_attributes)
-        for i in ["director", "dip", "image_box", "node"]:
+        for i in ["director", "dip", "image_box", "node", "lees_edwards_flag"]:
             if i in pickle_attr:
                 pickle_attr.remove(i)
         IF MASS == 0:
@@ -246,6 +246,9 @@ cdef class ParticleHandle:
         def __get__(self):
             self.update_particle_data()
             return self.particle_data.l.lees_edwards_offset
+
+        def __set__(self, value):
+            set_particle_lees_edwards_offset(self._id, value)
 
     property lees_edwards_flag:
         """Containes the accumulated Lees-Edwards flag to indicate

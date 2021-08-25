@@ -72,7 +72,6 @@ cdef extern from "particle_data.hpp":
         vector[int] exclusions() except +
         Vector3d calc_dip()
 
-
     IF ENGINE:
         ctypedef struct particle_parameters_swimming "ParticleParametersSwimming":
             bool swimming
@@ -89,6 +88,7 @@ cdef extern from "particle_data.hpp":
     void set_particle_v(int part, const Vector3d & v)
 
     void set_particle_f(int part, const Vector3d & f)
+    void set_particle_lees_edwards_offset(int, const double)
 
     IF ROTATION:
         void set_particle_rotation(int part, int rot)
