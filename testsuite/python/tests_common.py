@@ -642,6 +642,7 @@ def check_non_bonded_loop_trace(system):
     """
 
     cs_pairs = system.cell_system.non_bonded_loop_trace()
+    # format [id1, id2, pos1, pos2, vec2, mpi_node]
 
     distance_vec = system.distance_vec
     cutoff = system.cell_system.max_cut_nonbonded
