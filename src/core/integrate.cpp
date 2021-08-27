@@ -259,6 +259,9 @@ int integrate(int n_steps, int reuse_forces) {
     bool early_exit = integrator_step_1(particles);
     if (early_exit)
       break;
+
+    particles = cell_structure.local_particles();
+
     if (box_geo.type() == BoxType::LEES_EDWARDS) {
       std::for_each(particles.begin(), particles.end(),
                     [](auto &p) { LeesEdwards::push(p, box_geo, time_step); });
