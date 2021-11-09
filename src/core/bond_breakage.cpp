@@ -1,6 +1,7 @@
 #include "bond_breakage.hpp"
 #include "cells.hpp"
 #include "communication.hpp"
+#include "particle_data.hpp"
 #include "utils/mpi/gather_buffer.hpp"
 
 #include <boost/variant.hpp>
@@ -167,8 +168,18 @@ ActionSet actions_for_breakage(const QueueEntry &e) {
 // andler for the different delete events
 class execute : public boost::static_visitor<> {
 public:
-  void operator()(const DeleteBond &d) {}
-  void operator()(const DeleteAllBonds d) {}
+  void operator()(const DeleteBond &d) const {
+    auto p = cell_structure.get_local_particle(d.particle_id);
+    if (!p)
+      return;
+    local_remove_bond(*p, {d.bond_type, d.bond_partner_id});
+  }
+  void operator()(const DeleteAllBonds d) const {
+    auto p = cell_structure.get_local_particle(d.particle_id_1);
+    if (!p)
+      return;
+    local_remove_pair_bonds_to(*p, d.particle_id_2);
+  };
 };
 
 void process_queue() {
@@ -187,7 +198,7 @@ void process_queue() {
 
   // Execute actions
   for (auto const &a : actions) {
-    // boost::apply_visitor(execute, a);
+    boost::apply_visitor(execute{}, a);
   };
 }
 } // namespace BondBreakage
