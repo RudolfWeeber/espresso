@@ -193,6 +193,35 @@ struct RemoveBond {
         ar & bond;
     }
 };
+void local_remove_bond(Particle& p, const std::vector<int>& bond) {
+   RemoveBond{bond}(p);
+};
+
+/**
+ * @brief Delete pair bnods to a specific partner
+ */
+struct RemovePairBondsTo {
+   int other_pid;
+
+    void operator()(Particle &p) const {
+      using Bond = std::vector<int>;
+      std::vector<Bond> to_delete;
+      for (auto b: p.bonds()) {
+         if (b.partner_ids().size()==1 and b.partner_ids()[0]==other_pid)
+           to_delete.push_back(Bond{b.bond_id(),other_pid});
+      }
+      for (auto b: to_delete) {
+        RemoveBond{b}(p);
+      }
+    }
+    template<class Archive>
+            void serialize(Archive &ar, long int) {
+        ar & other_pid;
+    }
+};
+void local_remove_pair_bonds_to(Particle& p, int other_pid) {
+RemovePairBondsTo{other_pid}(p);
+};
 
 
 /**
