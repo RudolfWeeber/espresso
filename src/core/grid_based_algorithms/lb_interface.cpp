@@ -35,7 +35,6 @@
 
 #include <utils/Vector.hpp>
 
-#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <limits>
@@ -85,21 +84,13 @@ void lb_lbfluid_propagate() {
 
 /**
  * @brief Check the boundary velocities.
- * Sanity check if the velocity defined at LB boundaries is within the Mach
- * number limits of the scheme i.e. u < 0.3.
  */
-void lb_boundary_mach_check() {
-  // Boundary velocities are stored in MD units, therefore we need to scale them
-  // in order to get lattice units.
-  auto const conv_fac = lb_lbfluid_get_tau() / lb_lbfluid_get_agrid();
-  double constexpr mach_limit = 0.3;
-  using LBBoundaries::lbboundaries;
-  if (std::any_of(lbboundaries.begin(), lbboundaries.end(),
-                  [conv_fac, mach_limit](auto const &b) {
-                    return (b->velocity() * conv_fac).norm() >= mach_limit;
-                  })) {
+inline void lb_boundary_mach_check() {
+#if defined(LB_BOUNDARIES) || defined(LB_BOUNDARIES_GPU)
+  if (LBBoundaries::sanity_check_mach_limit()) {
     runtimeErrorMsg() << "Lattice velocity exceeds the Mach number limit";
   }
+#endif
 }
 
 void lb_lbfluid_sanity_checks(double time_step) {
@@ -1119,7 +1110,7 @@ const Lattice &lb_lbfluid_get_lattice() { return lblattice; }
 
 ActiveLB lb_lbfluid_get_lattice_switch() { return lattice_switch; }
 
-void mpi_lb_lbfluid_calc_fluid_momentum_local(int, int) {
+static void mpi_lb_lbfluid_calc_fluid_momentum_local() {
   lb_calc_fluid_momentum(nullptr, lbpar, lbfields, lblattice);
 }
 
@@ -1132,7 +1123,7 @@ Utils::Vector3d lb_lbfluid_calc_fluid_momentum() {
     lb_calc_fluid_momentum_GPU(fluid_momentum.data());
 #endif
   } else if (lattice_switch == ActiveLB::CPU) {
-    mpi_call(mpi_lb_lbfluid_calc_fluid_momentum_local, -1, -1);
+    mpi_call(mpi_lb_lbfluid_calc_fluid_momentum_local);
     lb_calc_fluid_momentum(fluid_momentum.data(), lbpar, lbfields, lblattice);
   }
   return fluid_momentum;

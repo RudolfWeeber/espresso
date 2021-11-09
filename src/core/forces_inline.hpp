@@ -462,7 +462,7 @@ inline bool add_bonded_force(Particle &p1, int bond_id,
       return false;
   }
 
-  auto const &iaparams = bonded_ia_params[bond_id];
+  auto const &iaparams = *bonded_ia_params.at(bond_id);
 
   switch (number_of_partners(iaparams)) {
   case 0:
