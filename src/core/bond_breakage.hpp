@@ -11,9 +11,13 @@ enum class ActionType {
 };
 
 struct BreakageSpec {
-  int bond_type;
   double breakage_length;
   ActionType action_type;
 };
 extern std::unordered_map<int, BreakageSpec> breakage_specs;
+
+/** @brief Checks if the bond between the particles shoudl break, if yes, queue
+ * it */
+bool check_and_handle_breakage(int particle_id, int bond_partner_id,
+                               int bond_type, double distance);
 } // namespace BondBreakage

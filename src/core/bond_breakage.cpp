@@ -102,8 +102,8 @@ void queue_breakage(int particle_id, int bond_partner_id, int bond_type) {
 
 /** @brief Checks if the bond between the particles shoudl break, if yes, queue
  * it */
-bool check_and_handlebond_breakage(int particle_id, int bond_partner_id,
-                                   int bond_type, double distance) {
+bool check_and_handle_breakage(int particle_id, int bond_partner_id,
+                               int bond_type, double distance) {
   // Retrieve specification for this bond type
   auto spec = get_breakage_spec(bond_type);
   if (!spec)
