@@ -48,5 +48,5 @@ private:
   std::shared_ptr<::BondBreakage::BreakageSpec> m_breakage_spec;
 };
 
-}; // namespace BondBreakage
+} // namespace BondBreakage
 } /* namespace ScriptInterface */

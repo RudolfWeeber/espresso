@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import numpy as np
-from .utils import to_char_pointer, to_str, handle_errors
+from .utils import to_char_pointer, to_str, handle_errors, is_valid_type
 from .utils cimport Vector3d, make_array_locked
 cimport cpython.object
 
@@ -35,7 +35,7 @@ cdef class PObjectRef:
     cdef shared_ptr[ObjectHandle] sip
 
     def print_sip(self):
-        print( < long > (self.sip.get()))
+        print(< long > (self.sip.get()))
 
 cdef class PScriptInterface:
 
@@ -371,6 +371,60 @@ class ScriptObjectRegistry(ScriptInterfaceHelper):
         return self.call_method("size")
 
 
+class ScriptObjectMap(ScriptObjectRegistry):
+
+    """
+    Represents a script interface ObjectMap (dict)-like object
+
+    Item acces via [key].
+    """
+
+    _key_type = int
+
+    def __init__(self, *args, **kwargs):
+        if args:
+            params, (_unpickle_so_class, (_so_name, bytestring)) = args
+            assert _so_name == self._so_name
+            self = _unpickle_so_class(_so_name, bytestring)
+            self.__setstate__(params)
+        else:
+            super().__init__(**kwargs)
+
+    def remove(self, key):
+        """
+        Removes the element with the given key
+        """
+        # Validate key type
+        if not is_valid_type(key, self._key_type):
+            raise ValueError(
+                "Key has to be of type " + str(self._key_type))
+
+        self.call_method("erase", key=key)
+
+    def clear(self):
+        """
+        Remove all elements.
+
+        """
+        self.call_method("clear")
+
+    def _get(self, key):
+        if not is_valid_type(key, self._key_type):
+            raise ValueError(
+                "Key has to be of type " + str(self._key_type))
+
+        return self.call_method("get", key=key)
+
+    def __getitem__(self, key):
+        return self._get(key)
+
+    def __setitem__(self, key, value):
+        self.call_method("insert", key=key, object=value)
+
+    def __delitem__(self, key):
+        self.remove(key)
+
+
 # Map from script object names to their corresponding python classes
 _python_class_by_so_name = {}
 
@@ -393,7 +447,7 @@ def script_interface_register(c):
 cdef void init(MpiCallbacks & cb):
     cdef Factory[ObjectHandle] f
 
-    initialize(& f)
+    initialize( & f)
 
     global _om
     _om = make_shared[ContextManager](cb, f)

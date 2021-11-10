@@ -124,6 +124,11 @@ protected:
       return none;
     }
 
+    if (method == "get") {
+      auto key = get_value<KeyType>(parameters.at("key"));
+      return Variant{m_elements.at(key)};
+    }
+
     if (method == "get_map") {
       std::unordered_map<KeyType, Variant> ret;
 

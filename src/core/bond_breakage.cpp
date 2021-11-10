@@ -9,7 +9,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "boost/functional/hash_fwd.hpp"
+#include "boost/functional/hash.hpp"
 
 namespace BondBreakage {
 
