@@ -62,7 +62,6 @@
 #include <utility>
 #include <vector>
 
-namespace {
 /**
  * @brief A generic particle update.
  *
@@ -350,7 +349,6 @@ struct UpdateVisitor : public boost::static_visitor<void> {
     msg(*cell_structure.get_local_particle(id));
   }
 };
-} // namespace
 
 void mpi_send_update_message_local(int node, int id) {
   if (node == comm_cart.rank()) {
@@ -505,11 +503,9 @@ int get_particle_node(int id) {
 
 void clear_particle_node() { particle_node.clear(); }
 
-namespace {
 /* Limit cache to 100 MiB */
 std::size_t const max_cache_size = (100ul * 1048576ul) / sizeof(Particle);
 Utils::Cache<int, Particle> particle_fetch_cache(max_cache_size);
-} // namespace
 
 void invalidate_fetch_cache() { particle_fetch_cache.invalidate(); }
 std::size_t fetch_cache_max_size() { return particle_fetch_cache.max_size(); }
@@ -1067,7 +1063,6 @@ void local_change_exclusion(int part1, int part2, int _delete) {
   }
 }
 
-namespace {
 /* keep a unique list for particle i. Particle j is only added if it is not i
    and not already in the list. */
 void add_partner(std::vector<int> &il, int i, int j, int distance) {
@@ -1080,7 +1075,6 @@ void add_partner(std::vector<int> &il, int i, int j, int distance) {
   il.push_back(j);
   il.push_back(distance);
 }
-} // namespace
 
 void mpi_send_exclusion_local(int part1, int part2, int _delete) {
   local_change_exclusion(part1, part2, _delete);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <unordered_map>
 
 namespace BondBreakage {
@@ -14,7 +15,7 @@ struct BreakageSpec {
   double breakage_length;
   ActionType action_type;
 };
-extern std::unordered_map<int, BreakageSpec> breakage_specs;
+extern std::unordered_map<int, std::shared_ptr<BreakageSpec>> breakage_specs;
 
 /** @brief Checks if the bond between the particles shoudl break, if yes, queue
  * it */

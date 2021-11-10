@@ -5,13 +5,16 @@
 #include "utils/mpi/gather_buffer.hpp"
 
 #include <boost/variant.hpp>
+#include <memory>
 #include <unordered_set>
 #include <vector>
+
+#include "boost/functional/hash_fwd.hpp"
 
 namespace BondBreakage {
 
 // Bond breakage specifications
-std::unordered_map<int, BreakageSpec> breakage_specs;
+std::unordered_map<int, std::shared_ptr<BreakageSpec>> breakage_specs;
 
 // Delete Actions
 struct DeleteBond {
@@ -90,7 +93,7 @@ Queue queue;
 /** @brief Retrieve breakage specification for the bond type */
 boost::optional<BreakageSpec> get_breakage_spec(int bond_type) {
   if (breakage_specs.find(bond_type) != breakage_specs.end()) {
-    return {breakage_specs.at(bond_type)};
+    return {*(breakage_specs.at(bond_type))};
   }
   return {};
 }
@@ -163,6 +166,7 @@ ActionSet actions_for_breakage(const QueueEntry &e) {
                        p1->p.vs_relative.to_particle_id},
     };
   }
+  return {};
 }
 
 // andler for the different delete events
