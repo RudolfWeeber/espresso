@@ -138,6 +138,14 @@ protected:
       return ret;
     }
 
+    if (method == "keys") {
+      std::vector<Variant> res;
+      for (auto const &kv : m_elements) {
+        res.push_back(kv.first);
+      }
+      return res;
+    }
+
     if (method == "clear") {
       clear();
       return none;

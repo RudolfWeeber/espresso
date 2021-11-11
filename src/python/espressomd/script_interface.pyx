@@ -35,7 +35,7 @@ cdef class PObjectRef:
     cdef shared_ptr[ObjectHandle] sip
 
     def print_sip(self):
-        print(< long > (self.sip.get()))
+        print( < long > (self.sip.get()))
 
 cdef class PScriptInterface:
 
@@ -424,6 +424,15 @@ class ScriptObjectMap(ScriptObjectRegistry):
     def __delitem__(self, key):
         self.remove(key)
 
+    def keys(self):
+        return self.call_method("keys")
+
+    def __iter__(self):
+        for k in self.keys(): yield k
+
+    def items(self):
+        for k in self.keys(): yield k, self[k]
+
 
 # Map from script object names to their corresponding python classes
 _python_class_by_so_name = {}
@@ -447,7 +456,7 @@ def script_interface_register(c):
 cdef void init(MpiCallbacks & cb):
     cdef Factory[ObjectHandle] f
 
-    initialize( & f)
+    initialize(& f)
 
     global _om
     _om = make_shared[ContextManager](cb, f)
