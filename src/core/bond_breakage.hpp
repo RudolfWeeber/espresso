@@ -21,4 +21,9 @@ extern std::unordered_map<int, std::shared_ptr<BreakageSpec>> breakage_specs;
  * it */
 bool check_and_handle_breakage(int particle_id, int bond_partner_id,
                                int bond_type, double distance);
+
+void clear_queue();
+
+void process_queue();
+
 } // namespace BondBreakage
