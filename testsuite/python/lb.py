@@ -479,12 +479,11 @@ class LBTest:
             rtol=rtol)
 
         # Check node velocities
-        for n in lbf.nodes():
-            print(np.array(n.velocity) / fluid_velocity)
-            # WALBERLA todo
-            # np.testing.assert_allclose(
-            #    np.copy(n.velocity), fluid_velocity, atol=1E-6,
-            # err_msg=f"Fluid node velocity not as expected on node {n.index}")
+        # for n in lbf.nodes():
+        # WALBERLA todo
+        # np.testing.assert_allclose(
+        #    np.copy(n.velocity), fluid_velocity, atol=1E-6,
+        # err_msg=f"Fluid node velocity not as expected on node {n.index}")
 
     @utx.skipIfMissingFeatures("EXTERNAL_FORCES")
     def test_unequal_time_step(self):
