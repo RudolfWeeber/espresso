@@ -58,6 +58,7 @@
 #include "generated_kernels/InitialPDFsSetterSinglePrecision.h"
 #include "generated_kernels/StreamSweepDoublePrecision.h"
 #include "generated_kernels/StreamSweepSinglePrecision.h"
+#include "generated_kernels/UpdateVelocityFromPDFSweep.h"
 #include "generated_kernels/macroscopic_values_accessors_double_precision.h"
 #include "generated_kernels/macroscopic_values_accessors_single_precision.h"
 #include "vtk_writers.hpp"
@@ -310,6 +311,8 @@ protected:
 
   // Stream sweep
   std::shared_ptr<StreamSweep> m_stream;
+  std::shared_ptr<walberla::pystencils::UpdateVelocityFromPDFSweep>
+      m_update_velocity_field_from_pdf;
 
   // Collision sweep
   std::shared_ptr<CollisionModel> m_collision_model;
@@ -404,6 +407,10 @@ public:
         m_last_applied_force_field_id, m_pdf_field_id, m_velocity_field_id);
     set_collision_model();
 
+    m_update_velocity_field_from_pdf =
+        std::make_shared<walberla::pystencils::UpdateVelocityFromPDFSweep>(
+            m_last_applied_force_field_id, m_pdf_field_id, m_velocity_field_id);
+
     // Synchronize ghost layers
     (*m_full_communication)();
   }
@@ -421,6 +428,12 @@ private:
   inline void integrate_stream(std::shared_ptr<Lattice_T> const &blocks) {
     for (auto b = blocks->begin(); b != blocks->end(); ++b)
       (*m_stream)(&*b);
+  };
+
+  inline void
+  update_velocity_field_from_pdf(std::shared_ptr<Lattice_T> const &blocks) {
+    for (auto b = blocks->begin(); b != blocks->end(); ++b)
+      (*m_update_velocity_field_from_pdf)(&*b);
   }
 
   inline void integrate_boundaries(std::shared_ptr<Lattice_T> const &blocks) {
@@ -468,6 +481,8 @@ private:
     integrate_stream(blocks);
     // LB collide
     integrate_collide(blocks);
+
+    update_velocity_field_from_pdf(blocks);
     // Refresh ghost layers
     (*m_full_communication)();
   }

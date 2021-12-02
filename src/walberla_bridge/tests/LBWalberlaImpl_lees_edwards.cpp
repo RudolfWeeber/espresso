@@ -68,6 +68,8 @@ BOOST_AUTO_TEST_CASE(test_lees_edwards) {
     }
     std::cout << std::endl;
   }
+  for (int i = -1; i <= 64; i++)
+    std::cout << (*(lb.get_node_velocity(Vector3i{0, i, 0})))[0] << std::endl;
 }
 
 int main(int argc, char **argv) {
