@@ -126,6 +126,7 @@ public:
   virtual void update_boundary_from_list(std::vector<int> const &,
                                          std::vector<double> const &) = 0;
 
+  virtual void update_vel() = 0;
   virtual void set_collision_model() = 0;
 
   virtual void set_collision_model(double kT, unsigned int seed) = 0;

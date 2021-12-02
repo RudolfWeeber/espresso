@@ -587,6 +587,32 @@ BOOST_DATA_TEST_CASE(vtk_exceptions,
   BOOST_CHECK_THROW(lb->switch_vtk("unknown", 0), std::runtime_error);
 }
 
+BOOST_DATA_TEST_CASE(velocity_field_ghost_comm,
+                     bdata::make(LbGeneratorVector{unthermalized_lbs()[0]}),
+                     lb_generator) {
+  auto lb = lb_generator(params);
+  for (auto const &n : all_nodes_incl_ghosts(lb->lattice())) {
+    lb->set_node_velocity(n,
+                          Vector3d{double(n[0]), double(n[1]), double(n[2])});
+  }
+  lb->update_vel();
+
+  const double eps = 1E-10;
+
+  for (auto const &n : all_nodes_incl_ghosts(lb->lattice())) {
+    auto expected = Vector3d{double(n[0]), double(n[1]), double(n[2])};
+    for (int k : {0, 1, 2}) {
+      if (expected[k] < 0)
+        expected[k] += lb->lattice().get_grid_dimensions()[k];
+      else if (expected[k] >= lb->lattice().get_grid_dimensions()[k])
+        expected[k] -= lb->lattice().get_grid_dimensions()[k];
+    }
+    auto actual = *(lb->get_node_velocity(n));
+    std::cout << actual << '|' << expected << std::endl;
+    BOOST_CHECK((expected - actual).norm() < eps);
+  }
+}
+
 int main(int argc, char **argv) {
   int n_nodes;
   Vector3i mpi_shape{};

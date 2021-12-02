@@ -436,6 +436,13 @@ private:
       (*m_update_velocity_field_from_pdf)(&*b);
   }
 
+public:
+  void update_vel() {
+    auto const &blocks = lattice().get_blocks();
+    update_velocity_field_from_pdf(blocks);
+  }
+
+private:
   inline void integrate_boundaries(std::shared_ptr<Lattice_T> const &blocks) {
     for (auto b = blocks->begin(); b != blocks->end(); ++b)
       (*m_boundary)(&*b);
