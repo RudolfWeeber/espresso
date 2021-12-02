@@ -596,6 +596,7 @@ BOOST_DATA_TEST_CASE(velocity_field_ghost_comm,
                           Vector3d{double(n[0]), double(n[1]), double(n[2])});
   }
   lb->update_vel();
+  lb->ghost_communication();
 
   const double eps = 1E-10;
 
