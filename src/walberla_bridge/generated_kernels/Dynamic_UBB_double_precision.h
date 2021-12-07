@@ -1,4 +1,4 @@
-// kernel generated with pystencils v0.4.3+4.g30da657, lbmpy v0.4.3+2.g0e17e61, lbmpy_walberla/pystencils_walberla from commit 88f85eb7a979f81d68e76009811aeed53ec3014e
+// kernel generated with pystencils v0.4.3+12.g29e0e84, lbmpy v0.4.3+2.g0e17e61, lbmpy_walberla/pystencils_walberla from commit 08f04ef64f95609b47838db85862033a1600afa1
 
 //======================================================================================================================
 //
@@ -78,10 +78,10 @@ public:
         };
 
         IndexVectors() = default;
-        bool operator==(IndexVectors const &other) const { return other.cpuVectors_ == cpuVectors_; }
+        bool operator==(IndexVectors & other) { return other.cpuVectors_ == cpuVectors_; }
 
         CpuIndexVector & indexVector(Type t) { return cpuVectors_[t]; }
-        IndexInfo * pointerCpu(Type t)  { return cpuVectors_[t].data(); }
+        IndexInfo * pointerCpu(Type t)  { return &(cpuVectors_[t][0]); }
 
         void syncGPU()
         {

@@ -44,8 +44,8 @@ std::shared_ptr<LBWalberlaBase>
 new_lb_walberla(std::shared_ptr<LatticeWalberla> const &lattice,
                 double viscosity, double density, bool single_precision) {
   if (single_precision)
-    return std::make_shared<walberla::LBWalberlaImpl<float>>(lattice, viscosity,
-                                                             density);
+    return std::make_shared<walberla::LBWalberlaImpl<double>>(
+        lattice, viscosity, density);
   return std::make_shared<walberla::LBWalberlaImpl<double>>(lattice, viscosity,
                                                             density);
 }

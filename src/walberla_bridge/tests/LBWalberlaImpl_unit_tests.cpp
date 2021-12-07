@@ -592,8 +592,10 @@ BOOST_DATA_TEST_CASE(velocity_field_ghost_comm,
                      lb_generator) {
   auto lb = lb_generator(params);
   for (auto const &n : all_nodes_incl_ghosts(lb->lattice())) {
-    lb->set_node_velocity(n,
-                          Vector3d{double(n[0]), double(n[1]), double(n[2])});
+    auto v = Vector3d{double(n[0]), double(n[1]), double(n[2])};
+    lb->set_node_velocity(n, v, true);
+    auto set_v = *(lb->get_node_velocity(n, true));
+    BOOST_CHECK_SMALL((v - set_v).norm(), 1E-9);
   }
   lb->update_vel();
   lb->ghost_communication();
@@ -608,7 +610,7 @@ BOOST_DATA_TEST_CASE(velocity_field_ghost_comm,
       else if (expected[k] >= lb->lattice().get_grid_dimensions()[k])
         expected[k] -= lb->lattice().get_grid_dimensions()[k];
     }
-    auto actual = *(lb->get_node_velocity(n));
+    auto actual = *(lb->get_node_velocity(n, true));
     std::cout << n << " | " << actual << " | " << expected << std::endl;
     //    BOOST_CHECK((expected - actual).norm() < eps);
   }

@@ -26,6 +26,7 @@ set(WalberlaBridgeCodegen_SRC
     generated_kernels/UpdateVelocityFromPDFSweep.cpp
     generated_kernels/PDFPackInfoDoublePrecision.cpp
     generated_kernels/Field3dPackInfoDoublePrecision.cpp
+    generated_kernels/LeesEdwards_Collision.cpp
     )
 if(WALBERLA_USE_AVX)
   list(APPEND WalberlaBridgeCodegen_SRC
