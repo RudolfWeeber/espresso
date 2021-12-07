@@ -1,4 +1,4 @@
-// kernel generated with pystencils v0.4.3, lbmpy v0.4.3,
+// kernel generated with pystencils v0.4.3+4.g30da657, lbmpy v0.4.3+2.g0e17e61,
 // lbmpy_walberla/pystencils_walberla from commit
 // 88f85eb7a979f81d68e76009811aeed53ec3014e
 
@@ -293,9 +293,9 @@ initialpdfssettersingleprecision_initialpdfssettersingleprecision(
 } // namespace internal_b8085d63d6b7e842485134abbac511e8
 
 void InitialPDFsSetterSinglePrecision::run(IBlock *block) {
-  auto force = block->getData<field::GhostLayerField<float, 3>>(forceID);
   auto velocity = block->getData<field::GhostLayerField<float, 3>>(velocityID);
   auto pdfs = block->getData<field::GhostLayerField<float, 19>>(pdfsID);
+  auto force = block->getData<field::GhostLayerField<float, 3>>(forceID);
 
   auto &rho_0 = this->rho_0_;
   WALBERLA_ASSERT_GREATER_EQUAL(0, -int_c(force->nrOfGhostLayers()));
@@ -352,9 +352,9 @@ void InitialPDFsSetterSinglePrecision::runOnCellInterval(
   if (ci.empty())
     return;
 
-  auto force = block->getData<field::GhostLayerField<float, 3>>(forceID);
   auto velocity = block->getData<field::GhostLayerField<float, 3>>(velocityID);
   auto pdfs = block->getData<field::GhostLayerField<float, 19>>(pdfsID);
+  auto force = block->getData<field::GhostLayerField<float, 3>>(forceID);
 
   auto &rho_0 = this->rho_0_;
   WALBERLA_ASSERT_GREATER_EQUAL(ci.xMin(), -int_c(force->nrOfGhostLayers()));

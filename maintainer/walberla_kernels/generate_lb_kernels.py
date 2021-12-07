@@ -26,9 +26,9 @@ import sympy as sp
 import pystencils as ps
 from lbmpy.creationfunctions import create_lb_collision_rule, create_mrt_orthogonal, create_srt
 import lbmpy.forcemodels
-from pystencils_walberla import CodeGeneration, codegen
+from pystencils_walberla import CodeGeneration, codegen, generate_pack_info_for_field
 
-from lbmpy_walberla import generate_boundary, generate_lb_pack_info
+from lbmpy_walberla import generate_boundary
 from walberla_lbm_generation import generate_macroscopic_values_accessors
 
 import lbmpy.boundaries
@@ -242,7 +242,21 @@ def generate_update_vel_sweep(lb_method):
 #        compile_macroscopic_values_getter(lb_method, ["velocity"], field_layout="fzyx")
     codegen.generate_sweep(ctx, 
                            "UpdateVelocityFromPDFSweep", 
-                           update_vel_from_pdf_kernel) 
+                           update_vel_from_pdf_kernel,
+                           ghost_layers_to_include=1) 
+
+
+def generate_pack_infos(method):
+    global ctx
+    fields = generate_fields(ctx, method.stencil)
+    for name, field in \
+            (("PDF", fields["pdfs"]), 
+             ("Field3d", fields["velocity"])):
+        print(name, field)
+        generate_pack_info_for_field(
+            ctx,
+            f'{name}PackInfo{precision_prefix}',
+            field)
 
 
 def check_dependencies():
@@ -499,14 +513,7 @@ with PatchedCodeGeneration() as ctx:
         f.write(content)
 
     # communication
-    generate_lb_pack_info(
-        ctx,
-        f'PushPackInfo{precision_prefix}',
-        method.stencil,
-        fields['pdfs'],
-        streaming_pattern='push'
-    )
-
+    generate_pack_infos(method)
     # Info header containing correct template definitions for stencil and field
     #ctx.write_file(f"InfoHeader{precision_prefix}.h", info_header)
 

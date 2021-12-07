@@ -79,6 +79,8 @@
 #include "generated_kernels/CollideSweepSinglePrecisionLeesEdwards.h"
 #include "generated_kernels/CollideSweepSinglePrecisionThermalized.h"
 #endif
+#include "generated_kernels/Field3dPackInfoDoublePrecision.h"
+#include "generated_kernels/PDFPackInfoDoublePrecision.h"
 
 #include <utils/Vector.hpp>
 #include <utils/interpolation/bspline_3d.hpp>
@@ -382,14 +384,14 @@ public:
 
     m_full_communication = std::make_shared<FullCommunicator>(blocks);
     m_full_communication->addPackInfo(
-        std::make_shared<field::communication::PackInfo<PdfField>>(
-            m_pdf_field_id, n_ghost_layers));
+        std::make_shared<pystencils::PDFPackInfoDoublePrecision>(
+            m_pdf_field_id));
     m_full_communication->addPackInfo(
-        std::make_shared<field::communication::PackInfo<VectorField>>(
-            m_last_applied_force_field_id, n_ghost_layers));
+        std::make_shared<pystencils::Field3dPackInfoDoublePrecision>(
+            m_last_applied_force_field_id));
     m_full_communication->addPackInfo(
-        std::make_shared<field::communication::PackInfo<VectorField>>(
-            m_velocity_field_id, n_ghost_layers));
+        std::make_shared<pystencils::Field3dPackInfoDoublePrecision>(
+            m_velocity_field_id));
     m_full_communication->addPackInfo(
         std::make_shared<field::communication::PackInfo<FlagField>>(
             m_flag_field_id, n_ghost_layers));
@@ -412,7 +414,7 @@ public:
             m_last_applied_force_field_id, m_pdf_field_id, m_velocity_field_id);
 
     // Synchronize ghost layers
-    (*m_full_communication)();
+    (*m_full_communication).communicate();
   }
 
 private:
@@ -475,7 +477,8 @@ private:
     // LB stream
     integrate_stream(blocks);
     // Refresh ghost layers
-    (*m_full_communication)();
+    (*m_full_communication).communicate();
+    update_velocity_field_from_pdf(blocks);
   }
 
   void integrate_pull_scheme() {
@@ -491,7 +494,8 @@ private:
 
     update_velocity_field_from_pdf(blocks);
     // Refresh ghost layers
-    (*m_full_communication)();
+    (*m_full_communication).communicate();
+    update_velocity_field_from_pdf(blocks);
   }
 
 public:
@@ -506,7 +510,7 @@ public:
     integrate_vtk_writers();
   }
 
-  void ghost_communication() override { (*m_full_communication)(); }
+  void ghost_communication() override { (*m_full_communication).communicate(); }
 
   void set_collision_model() override {
     auto const omega = shear_mode_relaxation_rate();
