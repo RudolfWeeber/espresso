@@ -51,10 +51,10 @@ class IntegratorNPT(ut.TestCase):
             self.system.integrator.set_isotropic_npt(ext_pressure=1, piston=-1)
         with self.assertRaises(RuntimeError):
             self.system.integrator.set_isotropic_npt(
-                ext_pressure=1, piston=1, direction=[0, 0, 0])
+                ext_pressure=1, piston=1, direction=[False, False, False])
         with self.assertRaises(Exception):
             self.system.integrator.set_isotropic_npt(
-                ext_pressure=1, piston=1, direction=[1, 0])
+                ext_pressure=1, piston=1, direction=[True, False])
 
     def test_integrator_recovery(self):
         # the system is still in a valid state after a failure
@@ -114,7 +114,7 @@ class IntegratorNPT(ut.TestCase):
         # the core state is unchanged
         system.integrator.run(1)
         np.testing.assert_allclose(
-            np.copy(system.part[:].pos),
+            np.copy(system.part.all().pos),
             positions_start + np.array([[-1.2e-3, 0, 0], [1.2e-3, 0, 0]]))
 
     def run_with_p3m(self, p3m, **npt_kwargs):
@@ -122,11 +122,13 @@ class IntegratorNPT(ut.TestCase):
         np.random.seed(42)
         # set up particles
         system.box_l = [6] * 3
-        system.part.add(pos=np.random.uniform(0, system.box_l[0], (11, 3)))
+        partcl = system.part.add(
+            pos=np.random.uniform(
+                0, system.box_l[0], (11, 3)))
         if espressomd.has_features("P3M"):
-            system.part[:].q = np.sign(np.arange(-5, 6))
+            partcl.q = np.sign(np.arange(-5, 6))
         if espressomd.has_features("DP3M"):
-            system.part[:].dip = tests_common.random_dipoles(11)
+            partcl.dip = tests_common.random_dipoles(11)
         system.non_bonded_inter[0, 0].lennard_jones.set_params(
             epsilon=1, sigma=1, cutoff=2**(1 / 6), shift=0.25)
         system.integrator.set_steepest_descent(
@@ -149,7 +151,8 @@ class IntegratorNPT(ut.TestCase):
             prefactor=1.0, accuracy=1e-2, mesh=3 * [36], cao=7, r_cut=1.0,
             alpha=2.995, tune=False)
         with self.assertRaisesRegex(RuntimeError, 'If magnetostatics is being used you must use the cubic box NpT'):
-            self.run_with_p3m(dp3m, cubic_box=False, direction=(0, 1, 1))
+            self.run_with_p3m(
+                dp3m, cubic_box=False, direction=(False, True, True))
         self.tearDown()
         try:
             self.run_with_p3m(dp3m)
@@ -164,7 +167,8 @@ class IntegratorNPT(ut.TestCase):
             prefactor=1.0, accuracy=1e-2, mesh=3 * [8], cao=3, r_cut=0.36,
             alpha=5.35, tune=False)
         with self.assertRaisesRegex(RuntimeError, 'If electrostatics is being used you must use the cubic box NpT'):
-            self.run_with_p3m(p3m, cubic_box=False, direction=(0, 1, 1))
+            self.run_with_p3m(
+                p3m, cubic_box=False, direction=(False, True, True))
         self.tearDown()
         try:
             self.run_with_p3m(p3m)

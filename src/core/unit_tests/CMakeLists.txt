@@ -23,10 +23,12 @@ include(unit_test)
 unit_test(NAME RuntimeError_test SRC RuntimeError_test.cpp DEPENDS
           Boost::serialization)
 unit_test(NAME RuntimeErrorCollector_test SRC RuntimeErrorCollector_test.cpp
-          DEPENDS EspressoCore Boost::mpi MPI::MPI_CXX)
+          DEPENDS EspressoCore Boost::mpi MPI::MPI_CXX NUM_PROC 2)
 unit_test(NAME EspressoSystemStandAlone_test SRC
           EspressoSystemStandAlone_test.cpp DEPENDS EspressoCore Boost::mpi
           MPI::MPI_CXX NUM_PROC 2)
+unit_test(NAME EspressoSystemInterface_test SRC
+          EspressoSystemInterface_test.cpp DEPENDS EspressoCore Boost::mpi)
 unit_test(NAME MpiCallbacks_test SRC MpiCallbacks_test.cpp DEPENDS
           EspressoUtils Boost::mpi MPI::MPI_CXX NUM_PROC 2)
 unit_test(NAME ParticleIterator_test SRC ParticleIterator_test.cpp DEPENDS
@@ -47,6 +49,8 @@ unit_test(NAME BoxGeometry_test SRC BoxGeometry_test.cpp DEPENDS EspressoCore)
 unit_test(NAME LocalBox_test SRC LocalBox_test.cpp DEPENDS EspressoCore)
 unit_test(NAME Lattice_test SRC Lattice_test.cpp DEPENDS EspressoCore)
 unit_test(NAME lb_exceptions SRC lb_exceptions.cpp DEPENDS EspressoCore)
+unit_test(NAME Verlet_list_test SRC Verlet_list_test.cpp DEPENDS EspressoCore
+          NUM_PROC 4)
 unit_test(NAME thermostats_test SRC thermostats_test.cpp DEPENDS EspressoCore)
 unit_test(NAME random_test SRC random_test.cpp DEPENDS EspressoUtils Random123)
 unit_test(NAME BondList_test SRC BondList_test.cpp DEPENDS EspressoCore)

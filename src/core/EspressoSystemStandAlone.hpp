@@ -16,6 +16,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#ifndef ESPRESSO_SYSTEM_STAND_ALONE_HPP
+#define ESPRESSO_SYSTEM_STAND_ALONE_HPP
 
 #include <utils/Vector.hpp>
 
@@ -26,9 +28,12 @@ class EspressoSystemStandAlone {
 public:
   EspressoSystemStandAlone(int argc, char **argv);
   void set_box_l(Utils::Vector3d const &box_l) const;
+  void set_node_grid(Utils::Vector3i const &node_grid) const;
   void set_time_step(double time_step) const;
   void set_skin(double new_skin) const;
 
 private:
   bool head_node;
 };
+
+#endif

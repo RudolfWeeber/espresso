@@ -91,18 +91,16 @@ void IBM_ForcesIntoFluid_CPU() {
  *  Called from the integration loop right after the LB update.
  */
 void IBM_UpdateParticlePositions(ParticleRange const &particles,
-                                 double time_step) {
+                                 double time_step, int this_node) {
   // Get velocities
   if (lattice_switch == ActiveLB::CPU)
     ParticleVelocitiesFromLB_CPU();
 #ifdef CUDA
   if (lattice_switch == ActiveLB::GPU)
-    ParticleVelocitiesFromLB_GPU(particles);
+    ParticleVelocitiesFromLB_GPU(particles, this_node);
 #endif
 
-  // Do update: Euler
-  const double skin2 = Utils::sqr(0.5 * skin);
-  // Loop over particles in local cells
+  // Euler integrator
   for (auto &p : particles) {
     if (p.p.is_virtual) {
 #ifdef EXTERNAL_FORCES
@@ -117,13 +115,11 @@ void IBM_UpdateParticlePositions(ParticleRange const &particles,
       if (!(p.p.ext_flag & 8))
 #endif
         p.r.p[2] += p.m.v[2] * time_step;
-
-      // Check if the particle might have crossed a box border
-      const double dist2 = (p.r.p - p.l.p_old).norm2();
-      if (dist2 > skin2) {
-        cell_structure.set_resort_particles(Cells::RESORT_LOCAL);
-      }
     }
+  }
+
+  if (cell_structure.check_resort_required(particles, skin)) {
+    cell_structure.set_resort_particles(Cells::RESORT_LOCAL);
   }
 }
 
