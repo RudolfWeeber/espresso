@@ -518,6 +518,11 @@ private:
     if (lees_edwards_bc()) {
       apply_lees_edwards_force_to_be_applied_backwards_interpolation(blocks);
     }
+    // Refresh ghost layers
+    (*m_full_communication).communicate();
+    if (lees_edwards_bc()) {
+      apply_lees_edwards_pdf_interpolation(blocks);
+    }
     // Reset force fields
     integrate_reset_force(blocks);
     // Handle boundaries
