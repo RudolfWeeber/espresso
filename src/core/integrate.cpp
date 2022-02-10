@@ -206,6 +206,7 @@ void integrator_step_2(ParticleRange &particles, double kT) {
 
 int integrate(int n_steps, int reuse_forces) {
   ESPRESSO_PROFILER_CXX_MARK_FUNCTION;
+
   /* Prepare the integrator */
   on_integration_start(time_step);
 
@@ -263,10 +264,12 @@ int integrate(int n_steps, int reuse_forces) {
     if (n_rigidbonds)
       save_old_position(particles, cell_structure.ghost_particles());
 #endif
+
     LeesEdwards::update_pos_offset(*LeesEdwards::active_protocol, box_geo,
                                    get_sim_time());
     LeesEdwards::update_shear_velocity(*LeesEdwards::active_protocol, box_geo,
                                        get_sim_time());
+
     bool early_exit = integrator_step_1(particles);
     if (early_exit)
       break;
@@ -279,6 +282,8 @@ int integrate(int n_steps, int reuse_forces) {
     if (box_geo.type() == BoxType::LEES_EDWARDS) {
       offset = LeesEdwards::verlet_list_offset(box_geo);
     }
+
+    particles = cell_structure.local_particles();
     if (cell_structure.check_resort_required(particles, skin, offset)) {
       cell_structure.set_resort_particles(Cells::RESORT_LOCAL);
     }
