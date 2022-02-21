@@ -53,7 +53,7 @@ using Utils::Vector3d;
 using Utils::Vector3i;
 
 namespace bdata = boost::unit_test::data;
-constexpr const int offset = 0.;
+constexpr const int offset = 10.;
 
 Vector3i mpi_shape{};
 BOOST_AUTO_TEST_CASE(test_interpolation) {
@@ -68,21 +68,16 @@ BOOST_AUTO_TEST_CASE(test_interpolation) {
 
   auto const grid_size_y = lattice->get_grid_dimensions()[1];
 
-  auto const force_pos = Vector3d{32., double(grid_size_y), 32.};
-  auto const force_node = Vector3i{32, grid_size_y, 32};
+  auto const force_pos = Vector3d{32+0.5, double(grid_size_y)-0.5, 32.+0.5};
+  auto const force_node = Vector3i{32, 63, 32};
   auto const f1 = Vector3d{0.3, -0.2, 0.3};
   lb.add_force_at_pos(force_pos, f1);
 
   lb.integrate();
 
   auto const node = Vector3i{force_node[0] - offset, -1, 32};
-//  for (auto const &n : all_nodes_incl_ghosts(lb.lattice())) {
-//    if (lb.lattice().node_in_local_halo(node)) {
-  auto const laf = *(lb.get_node_last_applied_force(node));
-  printf("laf: %f %f %f",laf[0], laf[1], laf[2]);
+  auto const laf = *(lb.get_node_last_applied_force(node, true));
   BOOST_CHECK_SMALL((laf - f1).norm(), 1E-10);
-//    }
-//  }
 }
 
 int main(int argc, char **argv) {
