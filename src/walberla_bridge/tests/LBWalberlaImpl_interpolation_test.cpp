@@ -53,10 +53,10 @@ using Utils::Vector3d;
 using Utils::Vector3i;
 
 namespace bdata = boost::unit_test::data;
-constexpr const int offset = 10.;
+constexpr const int offset = 10;
 
 Vector3i mpi_shape{};
-BOOST_AUTO_TEST_CASE(test_interpolation) {
+BOOST_AUTO_TEST_CASE(test_interpolation_force) {
   double density = 1;
   double viscosity = 1. / 7.;
   auto lattice =
@@ -79,6 +79,76 @@ BOOST_AUTO_TEST_CASE(test_interpolation) {
   auto const laf = *(lb.get_node_last_applied_force(node, true));
   BOOST_CHECK_SMALL((laf - f1).norm(), 1E-10);
 }
+
+BOOST_AUTO_TEST_CASE(test_interpolation_velocity) {
+  double density = 1;
+  double viscosity = 1. / 7.;
+  auto lattice =
+      std::make_shared<LatticeWalberla>(Vector3i{64, 64, 64}, mpi_shape, 1);
+  auto lb = walberla::LBWalberlaImpl<double>(lattice, viscosity, density);
+  auto le_pack = std::make_unique<LeesEdwardsPack>(
+      0, 1, [=]() { return offset; }, []() { return 0.0; });
+  lb.set_collision_model(std::move(le_pack));
+
+  auto const node_up = Vector3i{32, 63, 32};
+  auto const vel = Vector3d{0.05, 0.01, 0.15};
+  lb.set_node_velocity_at_boundary(node_up, vel);
+
+  lb.integrate();
+ 
+  //auto const node_down = Vector3i{32 - offset, -1, 32};
+  auto const node_down = Vector3i{60, -1, 20};
+  auto const vel_up = *(lb.get_node_velocity(node_up));
+  auto const vel_down = *(lb.get_node_velocity(node_down));
+ 
+  printf("node_up %f %f %f \n", vel_up[0], vel_up[1], vel_up[2]);
+  printf("node_down %f %f %f \n", vel_down[0], vel_down[1], vel_down[2]);
+
+  BOOST_CHECK_SMALL((vel_up - vel_down).norm(), 1E-10);
+}
+
+//BOOST_AUTO_TEST_CASE(test_interpolation_pdfs) {
+//  double density = 1;
+//  double viscosity = 1. / 7.;
+//  auto lattice =
+//      std::make_shared<LatticeWalberla>(Vector3i{64, 64, 64}, mpi_shape, 1);
+//  auto lb = walberla::LBWalberlaImpl<double>(lattice, viscosity, density);
+//  auto le_pack = std::make_unique<LeesEdwardsPack>(
+//      0, 1, [=]() { return 0.0; }, []() { return 0.0; });
+//  lb.set_collision_model(std::move(le_pack));
+//
+//  auto const node_up = Vector3i{32, 63, 32};
+//  auto const pop = std::vector<double>{0.00, 0.01, 0.02, 
+//                                       0.03, 0.04, 0.05,
+//                                       0.06, 0.07, 0.08,
+//                                       0.09, 0.10, 0.11,
+//                                       0.12, 0.13, 0.14, 
+//                                       0.15, 0.16, 0.17,
+//                                       0.18};
+//
+//  lb.set_node_pop(node_up, pop);
+//  
+//  lb.integrate();
+// 
+//  auto const node_down_unshifted = Vector3i{32, -1, 32};
+//  auto const pop_unshifted = *(lb.get_node_pop(node_down_unshifted));
+//
+//  auto le_pack = std::make_unique<LeesEdwardsPack>(
+//      0, 1, [=]() { return offset; }, []() { return 0.0; });
+//  lb.set_collision_model(std::move(le_pack));
+//
+//  lb.set_node_pop(node_up, pop);
+//  
+//  lb.integrate();
+//  
+//  auto const node_down_shifted = Vector3i{32 - offset, -1, 32};
+//  auto const pop_shifted = *(lb.get_node_pop(node_down_shifted));
+//
+//  printf("unshifted: %d", pop_unshifted[0]);
+//  printf("shifted: %d", pop_shifted[0]);
+//
+//  BOOST_CHECK_SMALL((pop_shifted - pop_unshifted).norm(), 1E-10);
+//}
 
 int main(int argc, char **argv) {
   int n_nodes;
