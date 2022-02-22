@@ -23,7 +23,6 @@ import espressomd.interactions
 from espressomd.bond_breakage import BreakageSpec
 from espressomd.interactions import HarmonicBond
 
-
 class BondBreakageCommon:
     system = espressomd.System(box_l=[10] * 3)
     system.cell_system.skin = 0.4
@@ -53,8 +52,8 @@ class BondBreakage(BondBreakageCommon, ut.TestCase):
     def test_00_interface(self):
         self.assertEqual(len(self.system.bond_breakage), 0)
 
-        spec2 = BreakageSpec(breakage_length=1.2, action_type=1)
-        spec4 = BreakageSpec(breakage_length=.2, action_type=2)
+        spec2 = BreakageSpec(breakage_length=1.2, action_type="revert_center_bond")
+        spec4 = BreakageSpec(breakage_length=.2, action_type="revert_vs_bond")
         self.system.bond_breakage[2] = spec2
         self.system.bond_breakage[4] = spec4
         self.assertEqual(self.system.bond_breakage[2], spec2)
@@ -76,7 +75,7 @@ class BondBreakage(BondBreakageCommon, ut.TestCase):
         # Particles closer than cutoff
         system.bond_breakage.clear()
         system.bond_breakage[self.h1._bond_id] = BreakageSpec(
-            breakage_length=2, action_type=1)
+            breakage_length=2, action_type="revert_center_bond")
 
         self.p1.bonds = ((self.h1, self.p2))
         system.integrator.run(1)
@@ -88,7 +87,7 @@ class BondBreakage(BondBreakageCommon, ut.TestCase):
 
         # Different bond type
         system.bond_breakage[self.h1._bond_id] = BreakageSpec(
-            breakage_length=0.2, action_type=1)
+            breakage_length=0.2, action_type="revert_center_bond")
         self.p1.bonds = [(self.h2, self.p2)]
         self.p2.bonds = [(self.h2, self.p1)]
         system.integrator.run(1)
@@ -101,8 +100,7 @@ class BondBreakage(BondBreakageCommon, ut.TestCase):
         # Particles closer than cutoff
         system.bond_breakage.clear()
         system.bond_breakage[self.h1._bond_id] = BreakageSpec(
-            breakage_length=0, action_type=1)
-        print(system.bond_breakage[self.h1._bond_id].get_params())
+            breakage_length=0, action_type="revert_center_bond")
 
         self.p1.bonds = [(self.h1, self.p2)]
         system.integrator.run(1)
@@ -118,7 +116,7 @@ class BondBreakage(BondBreakageCommon, ut.TestCase):
         # Particles closer than cutoff
         system.bond_breakage.clear()
         system.bond_breakage[self.h1._bond_id] = BreakageSpec(
-            breakage_length=0.5, action_type=2)
+            breakage_length=0.5, action_type="revert_vs_bond")
 
         self.p1.bonds = [(self.h2, self.p2)]
         self.p1v.bonds = [(self.h1, self.p2v)]
@@ -146,6 +144,18 @@ class NetworkBreakage(BondBreakageCommon, ut.TestCase):
     cls.system.min_global_cut = 0.6
     cls.system.time_step = 0.01
     cls.system.cell_system.skin = 0.4
+
+
+  def countBonds(self, pairs):
+    bonds_count = 0
+    for pair in pairs:
+      for bond in self.system.part.by_id(pair[0]).bonds:
+        if bond[1] == pair[1]:
+          bonds_count += 1
+      for bond in self.system.part.by_id(pair[1]).bonds:
+        if bond[1] == pair[0]:
+          bonds_count += 1
+    return bonds_count
   
   def setUp(self):
     
@@ -194,7 +204,7 @@ class NetworkBreakage(BondBreakageCommon, ut.TestCase):
     self.system.integrator.run(1)
  
     self.system.collision_detection.set_params(mode="off")
-    self.system.bond_breakage[harm._bond_id] = BreakageSpec(breakage_length=crit, action_type=1)
+    self.system.bond_breakage[harm._bond_id] = BreakageSpec(breakage_length=crit, action_type="revert_center_bond")
     self.system.integrator.run(1)
 
     bonds_dist = 0
@@ -204,18 +214,7 @@ class NetworkBreakage(BondBreakageCommon, ut.TestCase):
       if dist <= crit:
         bonds_dist += 1
  
-    bonds_count = 0
-    for pair in pairs:
-      num_bonds = len(self.system.part.by_id(pair[0]).bonds)
-      for i in range(num_bonds):
-        if self.system.part.by_id(pair[0]).bonds[i][1] == pair[1]:
-          bonds_count += 1
-      num_bonds = len(self.system.part.by_id(pair[1]).bonds)
-      for i in range(num_bonds):
-        if self.system.part.by_id(pair[1]).bonds[i][1] == pair[0]:
-          bonds_count += 1
-    
-    print(bonds_dist, bonds_count)
+    bonds_count = self.countBonds(pairs)
     np.testing.assert_equal(bonds_dist, bonds_count)
   
   def test_zz_vs_bonds(self):
@@ -234,7 +233,7 @@ class NetworkBreakage(BondBreakageCommon, ut.TestCase):
     self.system.integrator.run(1)
     
     self.system.collision_detection.set_params(mode="off")
-    self.system.bond_breakage[harm._bond_id] = BreakageSpec(breakage_length=crit_vs, action_type=2)
+    self.system.bond_breakage[harm._bond_id] = BreakageSpec(breakage_length=crit_vs, action_type="revert_vs_bond")
     self.system.integrator.run(1)
     
     bonds_dist = 0
@@ -250,18 +249,8 @@ class NetworkBreakage(BondBreakageCommon, ut.TestCase):
           if dist > 0.0:
             bonds_dist += 1
     
-    bonds_count = 0
-    for pair in pairs:
-      num_bonds = len(self.system.part.by_id(pair[0]).bonds)
-      for i in range(num_bonds):
-        if self.system.part.by_id(pair[0]).bonds[i][1] == pair[1]:
-          bonds_count += 1
-      num_bonds = len(self.system.part.by_id(pair[1]).bonds)
-      for i in range(num_bonds):
-        if self.system.part.by_id(pair[1]).bonds[i][1] == pair[0]:
-          bonds_count += 1
+    bonds_count = self.countBonds(pairs)
     
-    print(bonds_dist, bonds_count)
     np.testing.assert_equal(bonds_dist, bonds_count)
 
 if __name__ == "__main__":
