@@ -304,7 +304,7 @@ void delete_particle_bonds(int part);
  * @param bond The bond in the form {bond_id, partner_1, partner_2, ...} */
 void local_remove_bond(Particle &p, const std::vector<int> &bond);
 
-/** @breif Removes all pair bonds on the particle which have the specified
+/** @brief Removes all pair bonds on the particle which have the specified
  * particle id as partner */
 void local_remove_pair_bonds_to(Particle &p, int other_pid);
 
