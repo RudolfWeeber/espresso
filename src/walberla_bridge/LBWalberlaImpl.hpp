@@ -516,7 +516,7 @@ private:
     (*m_full_communication).communicate();
     if (lees_edwards_bc()) {
       apply_lees_edwards_pdf_interpolation(blocks);
-      //apply_lees_edwards_vel_interpolation_and_shift(blocks);
+      apply_lees_edwards_vel_interpolation_and_shift(blocks);
       apply_lees_edwards_last_applied_force_interpolation(blocks);
     }
   }
