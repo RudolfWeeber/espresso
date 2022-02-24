@@ -159,21 +159,20 @@ BOOST_AUTO_TEST_CASE(test_interpolation_pdfs) {
   le_pack = std::make_unique<LeesEdwardsPack>(
       0, 1, [=]() { return offset; }, []() { return 0.0; });
   lb.set_collision_model(std::move(le_pack));
-
-  lb.set_node_pop(node_up, pop);
+  
+  auto const node_up_2 = Vector3i{25, 63, 32};
+  lb.set_node_pop(node_up_2, pop);
   
   lb.integrate();
  
-  // This needs to go and the ghost layer population has to be used
-  auto const node_down_shifted = Vector3i{32 - offset, 0, 32};
-  //auto const node_down_shifted = Vector3i{32 - offset, -1, 32};
-  auto const pop_shifted = *(lb.get_node_pop(node_down_shifted));
+  auto const node_down_shifted = Vector3i{25 - offset, -1, 32};
+  auto const pop_shifted = *(lb.get_node_pop(node_down_shifted, true));
 
 //  printf("unshifted: %f", pop_unshifted[0]);
 //  printf("shifted: %f", pop_shifted[0]);
   
   for (int i = 0; i < pop_unshifted.size(); i++){
-    BOOST_CHECK_SMALL((pop_unshifted[i] - pop_shifted[i]), 1E-10);
+    BOOST_CHECK_SMALL((pop_shifted[i] - pop_unshifted[i]), 1E-10);
   }
 }
 
