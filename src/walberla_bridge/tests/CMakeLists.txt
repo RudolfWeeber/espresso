@@ -58,3 +58,9 @@ unit_test(NAME LBWalberlaImpl_lees_edwards_test SRC LBWalberlaImpl_lees_edwards.
           Boost::mpi ${WALBERLA_LIBS})
 target_include_directories(LBWalberlaImpl_lees_edwards_test PRIVATE ${WALBERLA_INCLUDE_DIRS}
                                                    ${walberla_BINARY_DIR}/src)
+
+unit_test(NAME LBWalberlaImpl_interpolation_test SRC LBWalberlaImpl_interpolation_test.cpp
+          DEPENDS WalberlaBridge cxx_walberla_interface EspressoUtils
+          Boost::mpi ${WALBERLA_LIBS})
+target_include_directories(LBWalberlaImpl_interpolation_test PRIVATE ${WALBERLA_INCLUDE_DIRS}
+                                                   ${walberla_BINARY_DIR}/src)
