@@ -47,7 +47,7 @@ HybridDecomposition::HybridDecomposition(boost::mpi::communicator comm,
                                          std::set<int> n_square_types)
     : m_comm(std::move(comm)), m_box(box_geo), m_cutoff_regular(cutoff_regular),
       m_regular_decomposition(RegularDecomposition(
-          m_comm, cutoff_regular + skin, m_box, local_box)),
+          m_comm, cutoff_regular + skin, m_box, local_box, {})),
       m_n_square(AtomDecomposition(m_comm, m_box)),
       m_n_square_types(std::move(n_square_types)) {
 

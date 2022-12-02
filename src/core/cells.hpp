@@ -82,6 +82,13 @@ extern CellStructure cell_structure;
 void set_hybrid_decomposition(std::set<int> n_square_types,
                               double cutoff_regular);
 
+/** @brief Initialize cell structure \ref RegularDecomposition
+ * @param fully_connected_boundary If engaged, fully connect cells on the given
+ * boundary in the given direciton
+ */
+void set_regular_decomposition(
+    boost::optional<std::pair<int, int>> fully_connected_boundary);
+
 /** Reinitialize the cell structures.
  *  @param new_cs The new topology to use afterwards.
  */

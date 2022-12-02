@@ -529,9 +529,10 @@ public:
    * @param box Box Geometry.
    * @param local_geo Geometry of the local box.
    */
-  void set_regular_decomposition(boost::mpi::communicator const &comm,
-                                 double range, BoxGeometry const &box,
-                                 LocalBox<double> &local_geo);
+  void set_regular_decomposition(
+      boost::mpi::communicator const &comm, double range,
+      BoxGeometry const &box, LocalBox<double> &local_geo,
+      boost::optional<std::pair<int, int>> fully_connected_boundary);
 
   /**
    * @brief Set the particle decomposition to @ref HybridDecomposition.

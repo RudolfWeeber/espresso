@@ -115,8 +115,21 @@ class CellSystem(ScriptInterfaceHelper):
         use_verlet_lists : :obj:`bool`, optional
             Activates or deactivates the usage of Verlet lists.
             Defaults to ``True``.
-
+        fully_connected_boundary : tuple, optional
+            If set, connects all sells on a given boundary along the given direciton.
+            Example: ('2','0') connects all cells on the boundary normal to 
+            the z-direcion along the x axis. This corresponds to
+            z as shear plane normal and x as shear direction in Lees-Edwards
+            boundary conditions.
         """
+
+        if "fully_connected_boundary" in kwargs:
+            fcb = kwargs["fully_connected_boundary"]
+            if hasattr(fcb, "__getitem__"):
+                if len(fcb) != 2:
+                    raise ValueError(
+                        "fully_connected_boundary must contain two coordinate letters, e.g. ('x', 'y')")
+
         self.call_method("initialize", name="regular_decomposition", **kwargs)
 
     def set_n_square(self, **kwargs):

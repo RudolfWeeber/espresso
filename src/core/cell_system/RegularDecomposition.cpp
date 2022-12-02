@@ -397,7 +397,16 @@ void RegularDecomposition::init_cell_interactions() {
   auto const node_pos = cart_info.coords;
   auto const global_halo_offset = hadamard_product(node_pos, cell_grid) - halo;
   auto const global_size = hadamard_product(node_grid, cell_grid);
-
+  auto at_boundary = [&global_size](int coord, int m, int n, int o) {
+    if (coord == 0)
+      return (o > 1 and o < global_size[coord] - 1);
+    else if (coord == 1)
+      return (n > 1 and n < global_size[coord] - 1);
+    else if (coord == 2)
+      return (m > 1 and m < global_size[coord] - 1);
+    else
+      throw std::runtime_error("Invalid coordinate index.");
+  };
   /* Tanslate a node local index (relative to the origin of the local grid)
    * to a global index. */
   auto global_index =
@@ -431,21 +440,19 @@ void RegularDecomposition::init_cell_interactions() {
         Utils::Vector3i lower_index = {m - 1, n - 1, o - 1};
         Utils::Vector3i upper_index = {m + 1, n + 1, o + 1};
 
-        //        /* In the fully connected case, we consider all cells
-        //         * in the direction as neighbors, not only the nearest ones.
+        /* In the fully connected case, we consider all cells
+        * in the direction as neighbors, not only the nearest ones.
         //         */
-        //        for (int i = 0; i < 3; i++) {
-        //          if (dd.fully_connected[i]) {
-        //            // Fully connected is only needed at the box surface
-        //            if (i==0 and (n!=start[1] or n!=end[1]-1) and (o!=start[2]
-        //            or o!=end[2]-1)) continue; if (i==1 and (m!=start[0] or
-        //            m!=end[0]-1) and (o!=start[2] or o!=end[2]-1)) continue;
-        //            if (i==2 and (m!=start[0] or m!=end[0]-1) and (n!=start[1]
-        //            or n!=end[1]-1)) continue; lower_index[i] = 0;
-        //            upper_index[i] = global_size[i] - 1;
-        //          }
-        //        }
+        if (fully_connected_boundary()) {
+          int fc_boundary = (*fully_connected_boundary()).first;
+          int fc_direction = (*fully_connected_boundary()).second;
 
+          // Fully connected is only needed at the box surface
+          if (not at_boundary(fc_boundary, m, n, o))
+            continue;
+          lower_index[fc_direction] = 0;
+          upper_index[fc_direction] = global_size[fc_boundary] - 1;
+        }
         /* In non-periodic directions, the halo needs not
          * be considered. */
         for (int i = 0; i < 3; i++) {
@@ -629,11 +636,12 @@ GhostCommunicator RegularDecomposition::prepare_comm() {
   return ghost_comm;
 }
 
-RegularDecomposition::RegularDecomposition(boost::mpi::communicator comm,
-                                           double range,
-                                           BoxGeometry const &box_geo,
-                                           LocalBox<double> const &local_geo)
-    : m_comm(std::move(comm)), m_box(box_geo), m_local_box(local_geo) {
+RegularDecomposition::RegularDecomposition(
+    boost::mpi::communicator comm, double range, BoxGeometry const &box_geo,
+    LocalBox<double> const &local_geo,
+    boost::optional<std::pair<int, int>> fully_connected)
+    : m_comm(std::move(comm)), m_box(box_geo), m_local_box(local_geo),
+      m_fully_connected_boundary(fully_connected) {
   /* set up new regular decomposition cell structure */
   create_cell_grid(range);
 

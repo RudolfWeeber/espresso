@@ -264,9 +264,10 @@ void CellStructure::set_atom_decomposition(boost::mpi::communicator const &comm,
 
 void CellStructure::set_regular_decomposition(
     boost::mpi::communicator const &comm, double range, BoxGeometry const &box,
-    LocalBox<double> &local_geo) {
-  set_particle_decomposition(
-      std::make_unique<RegularDecomposition>(comm, range, box, local_geo));
+    LocalBox<double> &local_geo,
+    boost::optional<std::pair<int, int>> fully_connected_boundary) {
+  set_particle_decomposition(std::make_unique<RegularDecomposition>(
+      comm, range, box, local_geo, fully_connected_boundary));
   m_type = CellStructureType::CELL_STRUCTURE_REGULAR;
   local_geo.set_cell_structure_type(m_type);
 }

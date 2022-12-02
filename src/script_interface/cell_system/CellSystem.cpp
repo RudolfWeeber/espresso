@@ -113,6 +113,18 @@ CellSystem::CellSystem() {
          auto const ns_types = hd.get_n_square_types();
          return Variant{std::vector<int>(ns_types.begin(), ns_types.end())};
        }},
+      {"fully_connected_boundary", AutoParameter::read_only,
+       []() {
+         if (::cell_structure.decomposition_type() !=
+             CellStructureType::CELL_STRUCTURE_REGULAR) {
+           return Variant{none};
+         }
+         auto const rd = get_regular_decomposition();
+         auto const fcb = rd.fully_connected_boundary();
+         if (not fcb)
+           return Variant{none};
+         return Variant{std::vector<int>({(*fcb).first, (*fcb).second})};
+       }},
       {"cutoff_regular", AutoParameter::read_only,
        []() {
          if (::cell_structure.decomposition_type() !=
@@ -249,6 +261,15 @@ void CellSystem::initialize(CellStructureType const &cs_type,
         get_value_or<std::vector<int>>(params, "n_square_types", {});
     auto n_square_types = std::set<int>{ns_types.begin(), ns_types.end()};
     set_hybrid_decomposition(std::move(n_square_types), cutoff_regular);
+  } else if (cs_type == CellStructureType::CELL_STRUCTURE_REGULAR) {
+    auto const fully_connected_boundary =
+        get_value_or<std::vector<int>>(params, "fully_connected_boundary", {});
+
+    boost::optional<std::pair<int, int>> fcb_pair = {};
+    if (!fully_connected_boundary.empty()) {
+      fcb_pair = {{fully_connected_boundary[0], fully_connected_boundary[1]}};
+    }
+    set_regular_decomposition(fcb_pair);
   } else {
     cells_re_init(cs_type);
   }

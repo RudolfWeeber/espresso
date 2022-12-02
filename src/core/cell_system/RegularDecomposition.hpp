@@ -77,6 +77,7 @@ struct RegularDecomposition : public ParticleDecomposition {
   /** inverse @ref RegularDecomposition::cell_size "cell_size". */
   Utils::Vector3d inv_cell_size = {};
 
+  boost::optional<std::pair<int, int>> m_fully_connected_boundary = {};
   boost::mpi::communicator m_comm;
   BoxGeometry const &m_box;
   LocalBox<double> m_local_box;
@@ -89,8 +90,12 @@ struct RegularDecomposition : public ParticleDecomposition {
 public:
   RegularDecomposition(boost::mpi::communicator comm, double range,
                        BoxGeometry const &box_geo,
-                       LocalBox<double> const &local_geo);
+                       LocalBox<double> const &local_geo,
+                       boost::optional<std::pair<int, int>> fully_connected);
 
+  boost::optional<std::pair<int, int>> fully_connected_boundary() const {
+    return m_fully_connected_boundary;
+  };
   GhostCommunicator const &exchange_ghosts_comm() const override {
     return m_exchange_ghosts_comm;
   }
