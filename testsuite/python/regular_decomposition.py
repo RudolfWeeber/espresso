@@ -99,25 +99,27 @@ class RegularDecomposition(ut.TestCase):
         system = self.system
         system.periodic = [True] * 3
         # Check fthat it's initially disabled
-#        self.assertEqual(system.cell_system.get_params()[
-#                         "fully_connected_boundary"], None)
-#
-#        # check setting and getting the parameter
-#        system.cell_system.set_regular_decomposition(
-#            fully_connected_boundary=(2, 1))
-#        self.assertEqual(system.cell_system.get_params()[
-#                         "fully_connected_boundary"], [2, 1])
-#        # Check that the setting survies cell system re-intis
-#        system.cell_system.min_global_cut = system.box_l / 4.1
-#        self.assertEqual(system.cell_system.get_params()[
-#                         "fully_connected_boundary"], [2, 1])
-#
-        system.cell_system.set_regular_decomposition()
+        self.assertEqual(system.cell_system.get_params()[
+                         "fully_connected_boundary"], None)
+
+        # check setting and getting the parameter
+        system.cell_system.set_regular_decomposition(
+            fully_connected_boundary=(2, 1))
+        self.assertEqual(system.cell_system.get_params()[
+                         "fully_connected_boundary"], [2, 1])
+        # Check that the setting survies cell system re-intis
+        system.cell_system.min_global_cut = system.box_l / 4.1
+        self.assertEqual(system.cell_system.get_params()[
+                         "fully_connected_boundary"], [2, 1])
+
         # Check that particle visibility
-#        fc_normal = np.array((0, 0, 1))
-#        fc_normal_idx = 2 
-#        fc_dir = np.array((0, 1, 0))
-        N = 3
+        # Place particles on a cubic lattice and use the 
+        # non_bonded_loop_trace() to check that all pairs are seen
+        # as expected
+        fc_normal = np.array((0, 0, 1))  # z
+        fc_normal_coord = 2  # z
+        fc_dir = np.array((0, 1, 0))  # y
+        N = 6  # smallest to work for box size 50. Otherwise fully connected makes no difference
         system.non_bonded_inter[0, 0].lennard_jones.set_params(
             sigma=1, epsilon=1, cutoff=system.box_l[0] / N + 0.01, shift="auto")
         indices = [np.array((i, j, k)) for i in range(N)
@@ -128,39 +130,67 @@ class RegularDecomposition(ut.TestCase):
         ids = [id_for_idx(idx) for idx in indices]
         dx = system.box_l / N
         positions = [idx * dx for idx in indices]
-        max_range = system.box_l[0] / N
-        epsilon = 1E-10
-        print(system.cell_system.get_state())
         system.part.add(id=ids, pos=positions)
+        particles = {i: system.part.by_id(i) for i in ids}
 
         def distance(id1, id2):
             return system.distance(
-                system.part.by_id(id1), system.part.by_id(id2))
-        must_find = [tuple(sorted([i[0], i[1]]))
-                     for i in itertools.combinations(ids, 2)
-                     if distance(*i) <= max_range + epsilon]
-        can_find = [tuple(sorted([i[0], i[1]]))
-                    for i in itertools.combinations(ids, 2)
-                    if distance(*i) <= 2 * max_range * np.sqrt(3) + epsilon]
-#        fully_connected_neighbors = \
-#            [tuple(sorted([id_for_idx(idx), id_for_idx(idx - 1 * fc_normal + i * fc_dir)]))
-# for idx in indices if idx[fc_normal_idx] == 0 for i in range(1, N)]
-        system.cell_system.get_pairs(1)
+                particles[id1], particles[id2])
+        distances = {tuple(i): distance(*i)
+                     for i in itertools.combinations(ids, 2)}
+
+        max_range = np.amax(system.box_l) / N
+        two_cells = 2 * np.amax(system.cell_system.get_state()["cell_size"])
+        two_cells_2d = two_cells * np.sqrt(2)
+        two_cells_3d = two_cells * np.sqrt(3)
+        assert np.all(system.box_l / 2 > two_cells)
+
+        # next neighbors
+        must_find_nn = [i for i, d in distances.items() if d <= max_range]
+
+        # Fully connected neighbos
+        indices_lower_boundary = [
+            idx for idx in indices if idx[fc_normal_coord] == 0]
+        must_find_fc = [tuple(sorted((id_for_idx(idx), id_for_idx(idx + i * fc_dir - fc_normal))))
+                        for idx in indices_lower_boundary for i in range(-N + 1, N)]
+
+        # all neighbors that must be found
+        must_find = set(must_find_nn + must_find_fc)
+
+        def assert_can_find(pair):
+            # are the particles within a range that MAY be found by the
+            # pair loop
+            p1 = particles[pair[0]]
+            p2 = particles[pair[1]]
+            d = system.distance_vec(p1, p2)
+            # if not accross periodic boundary: particles must be in cells
+            # sharing at least one corner
+            if np.abs(
+                    p1.pos - p2.pos)[fc_normal_coord] < system.box_l[fc_normal_coord] / 2: 
+                self.assertLess(np.linalg.norm(d), two_cells_3d)
+            # If across a the fully connected boundary
+            # substract the distance in the fully connected direciont (all are
+            # valid
+            d_trans = d - d * fc_dir
+            # in the other TWO directions, cells have to share a corner
+            self.assertLess(np.linalg.norm(d_trans), two_cells_2d)
+
+        # Use the cell system trace to get all pairs
+        # as opposed to get_pairs() this does not have a distance check
         cs_pairs = system.cell_system.non_bonded_loop_trace()
         found = []
-        for id1, id2, rest1, rest2, rest3, rest4 in cs_pairs:
-            print(sorted([id1, id2]), rest1, rest2, rest3, rest4, system.distance(
-                system.part.by_id(id1), system.part.by_id(id2))) 
-            p = tuple(sorted((id1, id2)))
-            assert p in can_find or p in must_find
-            if p in must_find: must_find.remove(p)
-            found.append(p)
-        # Check for double counting of pairs
+        for id1, id2, _rest1, _rest2, _rest3, _rest4 in cs_pairs:
+            p = tuple(sorted((id1, id2)))  # Make teh pair unique
+            found.append(p)  # to check for double countin
+            if (p in must_find): must_find.remove(p)
+            else:
+                assert_can_find(p)  # close enough so that cells share a corner
 
-        assert len(found) == len(set(found))
+        # Check for double counting of pairs
+        self.assertEqual(len(found), len(set(found)))
 
         # check that all required pairs have been seen
-        self.assertEqual(must_find, [])        
+        self.assertEqual(must_find, set([]))      
 
 
 if __name__ == "__main__":

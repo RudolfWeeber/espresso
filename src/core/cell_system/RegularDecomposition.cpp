@@ -397,16 +397,32 @@ void RegularDecomposition::init_cell_interactions() {
   auto const node_pos = cart_info.coords;
   auto const global_halo_offset = hadamard_product(node_pos, cell_grid) - halo;
   auto const global_size = hadamard_product(node_grid, cell_grid);
-  auto at_boundary = [&global_size](int coord, int m, int n, int o) {
+  auto at_boundary = [&global_size](int coord, int x, int y, int z) {
     if (coord == 0)
-      return (o > 1 and o < global_size[coord] - 1);
+      return (x == 0 or x == global_size[0] - 1);
     else if (coord == 1)
-      return (n > 1 and n < global_size[coord] - 1);
+      return (y == 0 or y == global_size[1] - 1);
     else if (coord == 2)
-      return (m > 1 and m < global_size[coord] - 1);
+      return (z == 0 or z == global_size[2] - 1);
     else
       throw std::runtime_error("Invalid coordinate index.");
   };
+  auto fcb_is_inner_connection = [&global_size, this](Utils::Vector3i a,
+                                                      Utils::Vector3i b) {
+    if (not fully_connected_boundary())
+      return false;
+
+    const int fc_normal = (*fully_connected_boundary()).first;
+    const int fc_dir = (*fully_connected_boundary()).second;
+
+    bool involves_ghost_cell =
+        (a[fc_normal] == -1 or a[fc_normal] == global_size[fc_normal] or
+         b[fc_normal] == -1 or b[fc_normal] == global_size[fc_normal]);
+    if (involves_ghost_cell)
+      return false;
+    return (abs((a - b)[fc_dir]) > 1);
+  };
+
   /* Tanslate a node local index (relative to the origin of the local grid)
    * to a global index. */
   auto global_index =
@@ -448,10 +464,10 @@ void RegularDecomposition::init_cell_interactions() {
           int fc_direction = (*fully_connected_boundary()).second;
 
           // Fully connected is only needed at the box surface
-          if (not at_boundary(fc_boundary, m, n, o))
-            continue;
-          lower_index[fc_direction] = 0;
-          upper_index[fc_direction] = global_size[fc_boundary] - 1;
+          if (at_boundary(fc_boundary, m, n, o)) {
+            lower_index[fc_direction] = -1;
+            upper_index[fc_direction] = global_size[fc_boundary];
+          }
         }
         /* In non-periodic directions, the halo needs not
          * be considered. */
@@ -473,6 +489,12 @@ void RegularDecomposition::init_cell_interactions() {
         for (int p = lower_index[2]; p <= upper_index[2]; p++)
           for (int q = lower_index[1]; q <= upper_index[1]; q++)
             for (int r = lower_index[0]; r <= upper_index[0]; r++) {
+              if (fully_connected_boundary()) {
+                // Avoid fully connecting the boundary layer and the
+                // next INNER layer
+                if (fcb_is_inner_connection({m, n, o}, {r, q, p}))
+                  continue;
+              }
               neighbors.insert(Utils::Vector3i{r, q, p});
             }
 
