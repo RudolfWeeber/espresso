@@ -70,8 +70,14 @@
 #include <stdexcept>
 #include <utility>
 
-#ifdef VALGRIND_INSTRUMENTATION
+#ifdef VALGRIND_MARKERS
 #include <callgrind.h>
+#endif
+
+#ifdef WALBERLA
+#ifdef WALBERLA_STATIC_ASSERT
+#error "waLberla headers should not be visible to the ESPResSo core"
+#endif
 #endif
 
 int integ_switch = INTEG_METHOD_NVT;
@@ -296,7 +302,7 @@ int integrate(int n_steps, int reuse_forces) {
   // Keep track of the number of Verlet updates (i.e. particle resorts)
   int n_verlet_updates = 0;
 
-#ifdef VALGRIND_INSTRUMENTATION
+#ifdef VALGRIND_MARKERS
   CALLGRIND_START_INSTRUMENTATION;
 #endif
   // Integration loop
@@ -365,7 +371,7 @@ int integrate(int n_steps, int reuse_forces) {
     // propagate one-step functionalities
     if (integ_switch != INTEG_METHOD_STEEPEST_DESCENT) {
       auto const lb_active = LB::get_lattice_switch() != ActiveLB::NONE;
-#ifdef LB_WALBERLA
+#ifdef WALBERLA
       auto const ek_active = not EK::ek_container.empty();
 #else
       auto constexpr ek_active = false;
@@ -433,7 +439,7 @@ int integrate(int n_steps, int reuse_forces) {
   LeesEdwards::update_box_params();
   ESPRESSO_PROFILER_CXX_MARK_LOOP_END(integration_loop);
 
-#ifdef VALGRIND_INSTRUMENTATION
+#ifdef VALGRIND_MARKERS
   CALLGRIND_STOP_INSTRUMENTATION;
 #endif
 

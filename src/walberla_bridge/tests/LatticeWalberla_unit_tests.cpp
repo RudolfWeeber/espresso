@@ -20,7 +20,7 @@
 #define BOOST_TEST_DYN_LINK
 #include "config/config.hpp"
 
-#ifdef LB_WALBERLA
+#ifdef WALBERLA
 
 #define BOOST_TEST_NO_MAIN
 
@@ -92,9 +92,9 @@ BOOST_DATA_TEST_CASE(domain_and_halo, bdata::xrange(3u), n_ghost_layers) {
     constexpr auto origin = Vector3i{0, 0, 0};
     if (n >= origin and n < params.grid_dimensions) {
       boost::mpi::communicator world;
-      boost::mpi::all_reduce(world, boost::mpi::inplace(is_local),
-                             std::plus<int>());
-      BOOST_CHECK(is_local == 1);
+      auto const is_local_sum =
+          boost::mpi::all_reduce(world, is_local, std::plus<int>());
+      BOOST_CHECK(is_local_sum == 1);
     }
   }
 }
@@ -126,6 +126,6 @@ int main(int argc, char **argv) {
   return res;
 }
 
-#else // ifdef LB_WALBERLA
+#else // WALBERLA
 int main(int argc, char **argv) {}
 #endif

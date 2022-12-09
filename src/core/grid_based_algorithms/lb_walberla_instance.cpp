@@ -18,7 +18,7 @@
  */
 #include "config/config.hpp"
 
-#ifdef LB_WALBERLA
+#ifdef WALBERLA
 #include "lb_walberla_instance.hpp"
 
 #include "communication.hpp"
@@ -44,10 +44,8 @@
 #include <memory>
 #include <stdexcept>
 
-namespace {
 static std::weak_ptr<LBWalberlaBase> lb_walberla_instance;
 static std::shared_ptr<LBWalberlaParams> lb_walberla_params_instance;
-} // namespace
 
 std::shared_ptr<LBWalberlaBase> lb_walberla() {
   auto lb_walberla_instance_handle = lb_walberla_instance.lock();
@@ -111,7 +109,7 @@ bool activate_lb_walberla(std::shared_ptr<LBWalberlaBase> lb_fluid,
   }
   ::lb_walberla_instance = std::weak_ptr<LBWalberlaBase>{lb_fluid};
   ::lb_walberla_params_instance = lb_params;
-  ::lattice_switch = ActiveLB::WALBERLA;
+  ::lattice_switch = ActiveLB::WALBERLA_LB;
   return false;
 }
 

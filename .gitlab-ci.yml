@@ -1,4 +1,4 @@
-image: ghcr.io/espressomd/docker/ubuntu-20.04:efd89c5f66b8a65f579a7807d0059939fcb4b12f
+image: ghcr.io/espressomd/docker/ubuntu-22.04:3fd42369f84239b8c4f5d77067d404789c55ff44
 
 stages:
   - prepare
@@ -68,7 +68,7 @@ style_doxygen:
     - mkdir build
     - cd build
     - cp ../maintainer/configs/maxset.hpp myconfig.hpp
-    - cmake .. -DWITH_CUDA=ON -DWITH_SCAFACOS=ON
+    - cmake .. -D ESPRESSO_BUILD_WITH_CUDA=ON -D ESPRESSO_BUILD_WITH_GSL=ON -D ESPRESSO_BUILD_WITH_HDF5=ON -D ESPRESSO_BUILD_WITH_SCAFACOS=ON -D ESPRESSO_BUILD_WITH_WALBERLA_LIB=ON -D ESPRESSO_BUILD_WITH_STOKESIAN_DYNAMICS=ON
     - sh ../maintainer/CI/dox_warnings.sh
   tags:
     - espresso
@@ -80,10 +80,10 @@ default:
   <<: *global_job_definition
   stage: build
   variables:
-     CC: 'gcc-9'
-     CXX: 'g++-9'
+     CC: 'gcc-10'
+     CXX: 'g++-10'
+     GCOV: 'gcov-10'
      with_cuda: 'false'
-     with_cxx_standard: '17'
      myconfig: 'default'
      with_coverage: 'true'
      with_scafacos: 'true'
@@ -101,53 +101,18 @@ maxset:
   <<: *global_job_definition
   stage: build
   variables:
-     CC: 'gcc-9'
-     CXX: 'g++-9'
+     CC: 'gcc-10'
+     CXX: 'g++-10'
+     GCOV: 'gcov-10'
      with_cuda: 'false'
-     with_cxx_standard: '17'
+     with_cxx_standard: '20'
      myconfig: 'maxset'
      with_coverage: 'true'
      with_scafacos: 'true'
+     with_walberla: 'true'
      with_stokesian_dynamics: 'true'
      check_skip_long: 'true'
-     cmake_params: '-DTEST_NP=8'
-  script:
-    - bash maintainer/CI/build_cmake.sh
-  tags:
-    - espresso
-    - no-cuda
-    - numa
-
-maxset-walberla:
-  <<: *global_job_definition
-  stage: build
-  variables:
-     with_cuda: 'false'
-     myconfig: 'maxset'
-     with_coverage: 'true'
-     with_walberla: 'true'
-     with_scafacos: 'false'
-     with_stokesian_dynamics: 'false'
-     check_skip_long: 'true'
-  script:
-    - bash maintainer/CI/build_cmake.sh
-  tags:
-    - espresso
-    - no-cuda
-    - numa
-
-maxset-walberla-avx:
-  <<: *global_job_definition
-  stage: build
-  variables:
-     with_cuda: 'false'
-     myconfig: 'maxset'
-     with_coverage: 'true'
-     with_walberla: 'true'
-     with_scafacos: 'false'
-     with_stokesian_dynamics: 'false'
-     check_skip_long: 'true'
-     cmake_params: '-DWALBERLA_USE_AVX=TRUE'
+     cmake_params: '-D ESPRESSO_TEST_NP=8 -D ESPRESSO_BUILD_WITH_WALBERLA_USE_AVX=ON'
   script:
     - bash maintainer/CI/build_cmake.sh
   tags:
@@ -160,8 +125,9 @@ no_rotation:
   <<: *global_job_definition
   stage: build
   variables:
-     CC: 'gcc-9'
-     CXX: 'g++-9'
+     CC: 'gcc-10'
+     CXX: 'g++-10'
+     GCOV: 'gcov-10'
      with_cuda: 'false'
      myconfig: 'no_rotation'
      with_coverage: 'true'
@@ -177,11 +143,13 @@ no_rotation:
 ubuntu:wo-dependencies:
   <<: *global_job_definition
   stage: build
-  image: ghcr.io/espressomd/docker/ubuntu-wo-dependencies:efd89c5f66b8a65f579a7807d0059939fcb4b12f
+  image: ghcr.io/espressomd/docker/ubuntu-wo-dependencies:3fd42369f84239b8c4f5d77067d404789c55ff44
   variables:
      myconfig: 'maxset'
      with_cuda: 'false'
      with_hdf5: 'false'
+     with_fftw: 'false'
+     with_gsl: 'false'
      make_check_unit_tests: 'false'
      make_check_python: 'false'
   script:
@@ -195,9 +163,10 @@ ubuntu:wo-dependencies:
 debian:10:
   <<: *global_job_definition
   stage: build
-  image: ghcr.io/espressomd/docker/debian:efd89c5f66b8a65f579a7807d0059939fcb4b12f
+  image: ghcr.io/espressomd/docker/debian:3fd42369f84239b8c4f5d77067d404789c55ff44
   variables:
      with_cuda: 'false'
+     with_gsl: 'false'
      myconfig: 'maxset'
      make_check_python: 'false'
      with_stokesian_dynamics: 'true'
@@ -210,9 +179,10 @@ debian:10:
 fedora:36:
   <<: *global_job_definition
   stage: build
-  image: ghcr.io/espressomd/docker/fedora:efd89c5f66b8a65f579a7807d0059939fcb4b12f
+  image: ghcr.io/espressomd/docker/fedora:3fd42369f84239b8c4f5d77067d404789c55ff44
   variables:
      with_cuda: 'false'
+     with_gsl: 'false'
      myconfig: 'maxset'
      make_check_python: 'true'
      with_stokesian_dynamics: 'true'
@@ -228,8 +198,8 @@ clang-sanitizer:
   <<: *global_job_definition
   stage: build
   variables:
-     CC: 'clang-9'
-     CXX: 'clang++-9'
+     CC: 'clang-14'
+     CXX: 'clang++-14'
      myconfig: 'maxset'
      with_cuda: 'true'
      with_cuda_compiler: 'clang'
@@ -239,6 +209,7 @@ clang-sanitizer:
      with_asan: 'true'
      with_ubsan: 'true'
      with_scafacos: 'true'
+     with_walberla: 'true'
      with_stokesian_dynamics: 'true'
   script:
     - bash maintainer/CI/build_cmake.sh
@@ -251,10 +222,10 @@ clang-sanitizer:
 fast_math:
   <<: *global_job_definition
   stage: build
-  image: ghcr.io/espressomd/docker/cuda:efd89c5f66b8a65f579a7807d0059939fcb4b12f
   variables:
-     CC: 'gcc-9'
-     CXX: 'g++-9'
+     CC: 'gcc-10'
+     CXX: 'g++-10'
+     GCOV: 'gcov-10'
      myconfig: 'maxset'
      with_cuda: 'true'
      with_coverage: 'false'
@@ -268,10 +239,9 @@ fast_math:
     - cuda
   when: manual
 
-cuda11-maxset:
+cuda11-coverage:
   <<: *global_job_definition
   stage: build
-  image: ghcr.io/espressomd/docker/ubuntu-22.04:efd89c5f66b8a65f579a7807d0059939fcb4b12f
   variables:
      CC: 'gcc-10'
      CXX: 'g++-10'
@@ -281,6 +251,7 @@ cuda11-maxset:
      with_coverage: 'true'
      check_skip_long: 'true'
      with_scafacos: 'true'
+     with_walberla: 'true'
      with_stokesian_dynamics: 'true'
   script:
     - bash maintainer/CI/build_cmake.sh
@@ -289,12 +260,13 @@ cuda11-maxset:
     - cuda
     - numa
 
-cuda10-maxset:
+cuda11-maxset:
   <<: *global_job_definition
   stage: build
   variables:
-     CC: 'gcc-8'
-     CXX: 'g++-8'
+     CC: 'gcc-10'
+     CXX: 'g++-10'
+     GCOV: 'gcov-10'
      myconfig: 'maxset'
      with_cuda: 'true'
      with_coverage: 'false'
@@ -302,8 +274,8 @@ cuda10-maxset:
      test_timeout: '900'
      srcdir: '${CI_PROJECT_DIR}'
      with_scafacos: 'true'
-     with_stokesian_dynamics: 'true'
      with_walberla: 'true'
+     with_stokesian_dynamics: 'true'
      cmake_params: '-DWALBERLA_USE_STD_EXPERIMENTAL_FILESYSTEM=TRUE'
   script:
     - bash maintainer/CI/build_cmake.sh
@@ -320,14 +292,16 @@ tutorials-samples-maxset:
   <<: *global_job_definition
   stage: build
   variables:
-     CC: 'gcc-8'
-     CXX: 'g++-8'
+     CC: 'gcc-10'
+     CXX: 'g++-10'
+     GCOV: 'gcov-10'
      myconfig: 'maxset'
      with_cuda: 'true'
      with_coverage: 'false'
      with_coverage_python: 'true'
      with_scafacos: 'true'
      with_walberla: 'true'
+     with_stokesian_dynamics: 'true'
      cmake_params: '-DWALBERLA_USE_STD_EXPERIMENTAL_FILESYSTEM=TRUE'
      make_check_unit_tests: 'false'
      make_check_python: 'false'
@@ -340,17 +314,20 @@ tutorials-samples-maxset:
   tags:
     - espresso
     - cuda
+    - numa
 
 tutorials-samples-default:
   <<: *global_job_definition
   stage: build
   variables:
-     CC: 'gcc-8'
-     CXX: 'g++-8'
+     CC: 'gcc-10'
+     CXX: 'g++-10'
+     GCOV: 'gcov-10'
      myconfig: 'default'
      with_cuda: 'true'
      with_coverage: 'false'
      with_scafacos: 'true'
+     with_walberla: 'true'
      make_check_unit_tests: 'false'
      make_check_python: 'false'
      make_check_tutorials: 'true'
@@ -362,6 +339,7 @@ tutorials-samples-default:
   tags:
     - espresso
     - cuda
+    - numa
   only:
     - schedules
 
@@ -369,24 +347,26 @@ tutorials-samples-empty:
   <<: *global_job_definition
   stage: build
   variables:
-     CC: 'gcc-8'
-     CXX: 'g++-8'
+     CC: 'gcc-10'
+     CXX: 'g++-10'
+     GCOV: 'gcov-10'
      myconfig: 'empty'
      with_cuda: 'true'
      with_coverage: 'false'
-     with_scafacos: 'true'
+     with_scafacos: 'false'
+     with_walberla: 'false'
      make_check_unit_tests: 'false'
      make_check_python: 'false'
      make_check_tutorials: 'true'
      make_check_samples: 'true'
      make_check_benchmarks: 'true'
      test_timeout: '1200'
-     with_scafacos: 'false'
   script:
     - bash maintainer/CI/build_cmake.sh
   tags:
     - espresso
     - cuda
+    - numa
   only:
     - schedules
 
@@ -394,12 +374,14 @@ tutorials-samples-no-gpu:
   <<: *global_job_definition
   stage: build
   variables:
-     CC: 'gcc-8'
-     CXX: 'g++-8'
+     CC: 'gcc-10'
+     CXX: 'g++-10'
+     GCOV: 'gcov-10'
      myconfig: 'maxset'
      with_cuda: 'true'
      with_coverage: 'false'
      with_scafacos: 'true'
+     with_walberla: 'true'
      make_check_unit_tests: 'false'
      make_check_python: 'false'
      make_check_tutorials: 'true'
@@ -419,14 +401,16 @@ installation:
   <<: *global_job_definition
   stage: build
   variables:
-     CC: 'gcc-8'
-     CXX: 'g++-8'
+     CC: 'gcc-10'
+     CXX: 'g++-10'
+     GCOV: 'gcov-10'
      myconfig: 'maxset'
      with_cuda: 'true'
      with_coverage: 'false'
      make_check_unit_tests: 'false'
      make_check_python: 'false'
      with_scafacos: 'true'
+     with_walberla: 'true'
      with_stokesian_dynamics: 'true'
      srcdir: '${CI_PROJECT_DIR}'
      build_type: 'Release'
@@ -437,7 +421,7 @@ installation:
     # get path of installed files
     - CI_INSTALL_DIR="/tmp/espresso-unit-tests"
     - CI_INSTALL_PYTHON_PATH=$(dirname $(find "${CI_INSTALL_DIR}/lib" -name espressomd))
-    - CI_CORES=$(cmake -L . | grep CTEST_ARGS | grep --color=never -Po '(?<=-j)[0-9]+')
+    - CI_CORES=$(cmake -L . | grep ESPRESSO_CTEST_ARGS | grep --color=never -Po '(?<=-j)[0-9]+')
     # deploy object-in-fluid module
     - cp -r "src/python/object_in_fluid" "${CI_INSTALL_PYTHON_PATH}/object_in_fluid"
     # run all tests with the installed files
@@ -454,13 +438,14 @@ empty:
   <<: *global_job_definition
   stage: build
   variables:
-     CC: 'clang-9'
-     CXX: 'clang++-9'
+     CC: 'clang-14'
+     CXX: 'clang++-14'
      myconfig: 'empty'
      with_cuda: 'true'
      with_cuda_compiler: 'clang'
      with_static_analysis: 'true'
      with_scafacos: 'false'
+     with_walberla: 'false'
      with_stokesian_dynamics: 'false'
      with_coverage: 'false'
      with_coverage_python: 'true'
@@ -475,7 +460,7 @@ check_sphinx:
   <<: *global_job_definition
   stage: additional_checks
   needs:
-    - cuda10-maxset
+    - cuda11-maxset
   when: on_success
   script:
     - cd ${CI_PROJECT_DIR}/build
@@ -497,7 +482,7 @@ run_tutorials:
   <<: *global_job_definition
   stage: additional_checks
   needs:
-    - cuda10-maxset
+    - cuda11-maxset
   when: on_success
   script:
     - cd ${CI_PROJECT_DIR}/build
@@ -523,7 +508,7 @@ run_doxygen:
   <<: *global_job_definition
   stage: additional_checks
   needs:
-    - cuda10-maxset
+    - cuda11-maxset
   when: on_success
   only:
     - python
@@ -544,7 +529,7 @@ maxset_no_gpu:
   stage: additional_checks
   when: on_success
   needs:
-    - cuda10-maxset
+    - cuda11-maxset
   script:
     - export CUDA_VISIBLE_DEVICES=""
     - cd ${CI_PROJECT_DIR}/build
@@ -559,10 +544,10 @@ maxset_3_cores:
   stage: additional_checks
   when: on_success
   needs:
-    - cuda10-maxset
+    - cuda11-maxset
   script:
     - cd ${CI_PROJECT_DIR}/build
-    - cmake -DTEST_NP=3 .
+    - cmake -D ESPRESSO_TEST_NP=3 .
     - make -t && make check_unit_tests && make check_python_parallel_odd
   tags:
     - espresso
