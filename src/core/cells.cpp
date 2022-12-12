@@ -211,7 +211,7 @@ void cells_re_init(CellStructureType new_cs) {
   case CellStructureType::CELL_STRUCTURE_REGULAR: {
     auto current_regular_decomposition =
         dynamic_cast<RegularDecomposition const *>(
-            &(Utils::as_const(cell_structure).decomposition()));
+            &(std::as_const(cell_structure).decomposition()));
     if (current_regular_decomposition) {
       cell_structure.set_regular_decomposition(
           comm_cart, interaction_range(), box_geo, local_geo,
