@@ -397,16 +397,13 @@ void RegularDecomposition::init_cell_interactions() {
   auto const node_pos = cart_info.coords;
   auto const global_halo_offset = hadamard_product(node_pos, cell_grid) - halo;
   auto const global_size = hadamard_product(node_grid, cell_grid);
-  auto at_boundary = [&global_size](int coord, int x, int y, int z) {
-    if (coord == 0)
-      return (x == 0 or x == global_size[0] - 1);
-    else if (coord == 1)
-      return (y == 0 or y == global_size[1] - 1);
-    else if (coord == 2)
-      return (z == 0 or z == global_size[2] - 1);
-    else
-      throw std::runtime_error("Invalid coordinate index.");
+  auto at_boundary = [&global_size](int coord, Utils::Vector3i cell_idx) {
+    return (cell_idx[coord] == 0 or cell_idx[coord] == global_size[coord]);
   };
+
+  // For the fully connected feature (cells that don't share at least a corner)
+  // only apply if one cell is a ghost cell (i.e. connections across the
+  // periodic boudnary.
   auto fcb_is_inner_connection = [&global_size, this](Utils::Vector3i a,
                                                       Utils::Vector3i b) {
     if (not fully_connected_boundary())
@@ -420,7 +417,7 @@ void RegularDecomposition::init_cell_interactions() {
          b[fc_normal] == -1 or b[fc_normal] == global_size[fc_normal]);
     if (involves_ghost_cell)
       return false;
-    return (abs((a - b)[fc_dir]) > 1);
+    return (abs((a - b)[fc_dir]) > 1); // cells do not share at least a corner
   };
 
   /* Tanslate a node local index (relative to the origin of the local grid)
@@ -441,6 +438,18 @@ void RegularDecomposition::init_cell_interactions() {
   auto local_index =
       [&](Utils::Vector3i const &global_index) -> Utils::Vector3i {
     return (global_index - global_halo_offset);
+  };
+  // Validation
+  if (fully_connected_boundary()) {
+    if ((*fully_connected_boundary()).first ==
+        (*fully_connected_boundary()).second) {
+      throw std::runtime_error("fully_connectd_boudnary normal and connection "
+                               "coordinates need to differ.");
+    }
+    if (node_grid[(*fully_connected_boundary()).second] != 1) {
+      throw std::runtime_error(
+          "The MPI nodegrid must be 1 in the fully connected direction.");
+    };
   };
 
   /* We only consider local cells (e.g. not halo cells), which
@@ -464,11 +473,12 @@ void RegularDecomposition::init_cell_interactions() {
           int fc_direction = (*fully_connected_boundary()).second;
 
           // Fully connected is only needed at the box surface
-          if (at_boundary(fc_boundary, m, n, o)) {
+          if (at_boundary(fc_boundary, {m, n, o})) {
             lower_index[fc_direction] = -1;
             upper_index[fc_direction] = global_size[fc_boundary];
           }
         }
+
         /* In non-periodic directions, the halo needs not
          * be considered. */
         for (int i = 0; i < 3; i++) {

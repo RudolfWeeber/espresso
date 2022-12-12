@@ -269,7 +269,8 @@ void CellSystem::initialize(CellStructureType const &cs_type,
     if (!fully_connected_boundary.empty()) {
       fcb_pair = {{fully_connected_boundary[0], fully_connected_boundary[1]}};
     }
-    set_regular_decomposition(fcb_pair);
+    context()->parallel_try_catch(
+        [&fcb_pair]() { set_regular_decomposition(fcb_pair); });
   } else {
     cells_re_init(cs_type);
   }

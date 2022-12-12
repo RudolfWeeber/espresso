@@ -113,13 +113,13 @@ class RegularDecomposition(ut.TestCase):
                          "fully_connected_boundary"], [2, 1])
 
         # Check that particle visibility
-        # Place particles on a cubic lattice and use the 
+        # Place particles on a cubic lattice and use the
         # non_bonded_loop_trace() to check that all pairs are seen
         # as expected
         fc_normal = np.array((0, 0, 1))  # z
         fc_normal_coord = 2  # z
         fc_dir = np.array((0, 1, 0))  # y
-        N = 6  # smallest to work for box size 50. Otherwise fully connected makes no difference
+        N = 7  # smallest to work for box size 50. Otherwise fully connected makes no difference
         system.non_bonded_inter[0, 0].lennard_jones.set_params(
             sigma=1, epsilon=1, cutoff=system.box_l[0] / N + 0.01, shift="auto")
         indices = [np.array((i, j, k)) for i in range(N)
@@ -166,7 +166,7 @@ class RegularDecomposition(ut.TestCase):
             # if not accross periodic boundary: particles must be in cells
             # sharing at least one corner
             if np.abs(
-                    p1.pos - p2.pos)[fc_normal_coord] < system.box_l[fc_normal_coord] / 2: 
+                    p1.pos - p2.pos)[fc_normal_coord] < system.box_l[fc_normal_coord] / 2:
                 self.assertLess(np.linalg.norm(d), two_cells_3d)
             # If across a the fully connected boundary
             # substract the distance in the fully connected direciont (all are
@@ -182,7 +182,8 @@ class RegularDecomposition(ut.TestCase):
         for id1, id2, _rest1, _rest2, _rest3, _rest4 in cs_pairs:
             p = tuple(sorted((id1, id2)))  # Make teh pair unique
             found.append(p)  # to check for double countin
-            if (p in must_find): must_find.remove(p)
+            if (p in must_find):
+                must_find.remove(p)
             else:
                 assert_can_find(p)  # close enough so that cells share a corner
 
@@ -190,7 +191,7 @@ class RegularDecomposition(ut.TestCase):
         self.assertEqual(len(found), len(set(found)))
 
         # check that all required pairs have been seen
-        self.assertEqual(must_find, set([]))      
+        self.assertEqual(must_find, set([]))
 
 
 if __name__ == "__main__":

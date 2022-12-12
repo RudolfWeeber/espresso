@@ -77,10 +77,10 @@ struct RegularDecomposition : public ParticleDecomposition {
   /** inverse @ref RegularDecomposition::cell_size "cell_size". */
   Utils::Vector3d inv_cell_size = {};
 
-  boost::optional<std::pair<int, int>> m_fully_connected_boundary = {};
   boost::mpi::communicator m_comm;
   BoxGeometry const &m_box;
   LocalBox<double> m_local_box;
+  boost::optional<std::pair<int, int>> m_fully_connected_boundary = {};
   std::vector<Cell> cells;
   std::vector<Cell *> m_local_cells;
   std::vector<Cell *> m_ghost_cells;
