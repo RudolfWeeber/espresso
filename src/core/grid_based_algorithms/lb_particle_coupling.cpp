@@ -24,6 +24,7 @@
 #include "errorhandling.hpp"
 #include "grid.hpp"
 #include "random.hpp"
+#include "thermostat.hpp"
 
 #include "grid_based_algorithms/lb_interface.hpp"
 #include "grid_based_algorithms/lb_interpolation.hpp"
@@ -122,6 +123,23 @@ Utils::Vector3d lb_particle_coupling_drift_vel_offset(const Particle &p) {
   return vel_offset;
 }
 
+double get_particle_lb_gamma(Particle const &p) {
+  auto gamma = lb_lbcoupling_get_gamma();
+
+#ifdef THERMOSTAT_PER_PARTICLE
+  // override default if particle-specific gamma
+#ifdef PARTICLE_ANISOTROPY
+  // lb gamma not anisotropic
+  auto const particle_gamma = p.gamma()[0];
+#else
+  auto const particle_gamma = p.gamma();
+#endif
+  gamma = (p.gamma() >= Thermostat::GammaType{}) ? particle_gamma : gamma;
+#endif
+
+  return gamma;
+}
+
 Utils::Vector3d lb_drag_force(Particle const &p,
                               Utils::Vector3d const &shifted_pos,
                               Utils::Vector3d const &vel_offset) {
@@ -131,9 +149,11 @@ Utils::Vector3d lb_drag_force(Particle const &p,
       lb_lbinterpolation_get_interpolated_velocity(shifted_pos) *
       LB::get_lattice_speed();
 
+  auto const gamma = get_particle_lb_gamma(p);
+
   Utils::Vector3d v_drift = interpolated_u + vel_offset;
   /* calculate viscous force (eq. (9) @cite ahlrichs99a) */
-  return -lb_lbcoupling_get_gamma() * (p.v() - v_drift);
+  return -gamma * (p.v() - v_drift);
 }
 
 template <class T, std::size_t N>
@@ -319,21 +339,22 @@ void lb_lbcoupling_calc_particle_lattice_ia(bool couple_virtual,
       }
       using Utils::sqr;
       auto const kT = LB::get_kT() * sqr(LB::get_lattice_speed());
+
       /* Eq. (16) @cite ahlrichs99a.
        * The factor 12 comes from the fact that we use random numbers
        * from -0.5 to 0.5 (equally distributed) which have variance 1/12.
        * time_step comes from the discretization.
        */
-      auto const noise_amplitude =
-          (kT > 0.)
-              ? std::sqrt(12. * 2. * lb_lbcoupling_get_gamma() * kT / time_step)
-              : 0.0;
 
       std::unordered_set<int> coupled_ghost_particles;
 
       /* Couple particles ranges */
       for (auto &p : particles) {
         if (should_be_coupled(p, coupled_ghost_particles)) {
+          auto const noise_amplitude =
+              (kT > 0.) ? std::sqrt(12. * 2. * get_particle_lb_gamma(p) * kT /
+                                    time_step)
+                        : 0.0;
           couple_particle(p, couple_virtual, noise_amplitude,
                           lb_particle_coupling.rng_counter_coupling, time_step);
         }
@@ -341,6 +362,10 @@ void lb_lbcoupling_calc_particle_lattice_ia(bool couple_virtual,
 
       for (auto &p : more_particles) {
         if (should_be_coupled(p, coupled_ghost_particles)) {
+          auto const noise_amplitude =
+              (kT > 0.) ? std::sqrt(12. * 2. * get_particle_lb_gamma(p) * kT /
+                                    time_step)
+                        : 0.0;
           couple_particle(p, couple_virtual, noise_amplitude,
                           lb_particle_coupling.rng_counter_coupling, time_step);
         }
