@@ -33,6 +33,7 @@
 #include <field/GhostLayerField.h>
 #include <field/vtk/FlagFieldCellFilter.h>
 #include <field/vtk/VTKWriter.h>
+#include <iostream>
 
 #include <domain_decomposition/SharedSweep.h>
 
