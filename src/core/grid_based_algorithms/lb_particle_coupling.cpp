@@ -18,6 +18,7 @@
  */
 #include "LocalBox.hpp"
 #include "Particle.hpp"
+#include "algorithm/periodic_fold.hpp"
 #include "cells.hpp"
 #include "communication.hpp"
 #include "config/config.hpp"
@@ -192,14 +193,17 @@ std::vector<Utils::Vector3d> positions_in_halo(Utils::Vector3d pos,
         if (box_geo.type() == BoxType::LEES_EDWARDS) {
           auto le = box_geo.lees_edwards_bc();
           auto normal_shift = (pos_shifted - pos)[le.shear_plane_normal];
+          auto folded_offset = Algorithm::periodic_fold(
+              le.pos_offset, box_geo.length()[le.shear_direction]);
           if (normal_shift > std::numeric_limits<double>::epsilon())
-            pos_shifted[le.shear_direction] += le.pos_offset;
+            pos_shifted[le.shear_direction] += folded_offset;
           if (normal_shift < -std::numeric_limits<double>::epsilon())
-            pos_shifted[le.shear_direction] -= le.pos_offset;
+            pos_shifted[le.shear_direction] -= folded_offset;
         }
 
         if (in_local_halo(pos_shifted)) {
           res.push_back(pos_shifted);
+          //          std::cout << "coupling at "<<pos_shifted<<std::endl;
         }
       }
     }

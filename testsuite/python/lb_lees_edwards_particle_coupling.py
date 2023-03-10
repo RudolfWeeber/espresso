@@ -33,8 +33,8 @@ class LBLeesEdwardsParticleCoupling(ut.TestCase):
         system.cell_system.skin = 0.1
         system.cell_system.set_n_square()
 
-        offset = 1
-        idx = int(offset)
+        offset = 1.1
+        idx = int(offset % system.box_l[0])
         protocol = lees_edwards.LinearShear(
             shear_velocity=0., initial_pos_offset=offset, time_0=0.)
         system.lees_edwards.set_boundary_conditions(
@@ -56,14 +56,16 @@ class LBLeesEdwardsParticleCoupling(ut.TestCase):
                  lbf[mid_x, 0, mid_z - 1],
                  lbf[mid_x - 1, 0, mid_z],
                  lbf[mid_x, 0, mid_z],
-                 lbf[mid_x - 1 + idx, upper_y, mid_z],
-                 lbf[mid_x + idx, upper_y, mid_z - 1],
-                 lbf[mid_x - 1 + idx, upper_y, mid_z],
-                 lbf[mid_x + idx, upper_y, mid_z]]
+                 lbf[(mid_x - 1 + idx) % lbf.shape[0], upper_y, mid_z],
+                 lbf[(mid_x + idx) % lbf.shape[0], upper_y, mid_z - 1],
+                 lbf[(mid_x - 1 + idx) % lbf.shape[0], upper_y, mid_z],
+                 lbf[(mid_x + idx) % lbf.shape[0], upper_y, mid_z]]
         for n in nodes:
             n.velocity = v0
 
         system.integrator.run(1)
+        print(lbf[:, 0, mid_z].velocity.reshape((-1, 3))[:, 0])
+        print(lbf[:, lbf.shape[1] - 1, mid_z].velocity.reshape((-1, 3))[:, 0])
         lb_forces = np.array([n.last_applied_force for n in nodes])
         lb_force = np.sum(lb_forces, axis=0)
         np.testing.assert_allclose(lb_force, -np.copy(p.f))
