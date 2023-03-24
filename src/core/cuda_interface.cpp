@@ -69,14 +69,11 @@ static void pack_particles(ParticleRange particles,
 #endif
 
 #ifdef ENGINE
-    buffer[i].swim.v_swim = static_cast<float>(part.swimming().v_swim);
     buffer[i].swim.f_swim = static_cast<float>(part.swimming().f_swim);
     buffer[i].swim.director = buffer[i].director;
-
-    buffer[i].swim.push_pull = part.swimming().push_pull;
-    buffer[i].swim.dipole_length =
-        static_cast<float>(part.swimming().dipole_length);
     buffer[i].swim.swimming = part.swimming().swimming;
+    buffer[i].swim.is_engine_force_applier =
+        part.swimming().is_engine_force_applier;
 #endif
     i++;
   }

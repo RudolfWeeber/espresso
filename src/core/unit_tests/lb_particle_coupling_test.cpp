@@ -242,11 +242,6 @@ BOOST_AUTO_TEST_CASE(drift_vel_offset) {
   Particle p{};
   BOOST_CHECK_EQUAL(lb_particle_coupling_drift_vel_offset(p).norm(), 0);
   Utils::Vector3d expected{};
-#ifdef ENGINE
-  p.swimming().swimming = true;
-  p.swimming().v_swim = 2.;
-  expected += p.swimming().v_swim * p.calc_director();
-#endif
 #ifdef LB_ELECTROHYDRODYNAMICS
   p.mu_E() = Utils::Vector3d{-2., 1.5, 1.};
   expected += p.mu_E();
@@ -279,8 +274,6 @@ BOOST_DATA_TEST_CASE(swimmer_force, bdata::make(kTs), kT) {
   Particle p{};
   p.swimming().swimming = true;
   p.swimming().f_swim = 2.;
-  p.swimming().dipole_length = 3.;
-  p.swimming().push_pull = 1;
   p.pos() = first_lb_node + Utils::Vector3d::broadcast(0.5);
 
   auto const coupling_pos =
@@ -345,12 +338,7 @@ BOOST_DATA_TEST_CASE(particle_coupling, bdata::make(kTs), kT) {
   Particle p{};
   Utils::Vector3d expected = noise * Random::noise_uniform<RNGSalt::PARTICLES>(
                                          rng->value(), 0, p.id());
-#ifdef ENGINE
-  p.swimming().swimming = true;
-  p.swimming().v_swim = 2.;
-  p.swimming().push_pull = 1;
-  expected += gamma * p.swimming().v_swim * p.calc_director();
-#endif
+
 #ifdef LB_ELECTROHYDRODYNAMICS
   p.mu_E() = Utils::Vector3d{-2., 1.5, 1.};
   expected += gamma * p.mu_E();
@@ -414,9 +402,6 @@ BOOST_DATA_TEST_CASE_F(CleanupActorLB, coupling_particle_lattice_ia,
   auto const p_opt = copy_particle_to_head_node(comm, pid);
   if (rank == 0) {
     auto const &p = *p_opt;
-#ifdef ENGINE
-    expected += gamma * p.swimming().v_swim * p.calc_director();
-#endif
 #ifdef LB_ELECTROHYDRODYNAMICS
     expected += gamma * p.mu_E();
 #endif

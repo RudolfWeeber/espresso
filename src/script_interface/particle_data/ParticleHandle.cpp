@@ -440,48 +440,25 @@ ParticleHandle::ParticleHandle() {
            if (dict.count("f_swim") != 0) {
              swim.f_swim = get_value<double>(dict.at("f_swim"));
            }
-           if (dict.count("v_swim") != 0) {
-             swim.v_swim = get_value<double>(dict.at("v_swim"));
-           }
-           if (swim.f_swim != 0. and swim.v_swim != 0.) {
-             throw std::invalid_argument(
-                 error_msg("swimming", "cannot be set with 'v_swim' and "
-                                       "'f_swim' at the same time"));
-           }
-           if (dict.count("mode") != 0) {
-             auto const mode = get_value<std::string>(dict.at("mode"));
-             if (mode == "pusher") {
-               swim.push_pull = -1;
-             } else if (mode == "puller") {
-               swim.push_pull = +1;
-             } else if (mode == "N/A") {
-               swim.push_pull = 0;
-             } else {
-               throw std::invalid_argument(
-                   error_msg("swimming.mode",
-                             "has to be either 'pusher', 'puller' or 'N/A'"));
+           if (dict.count("is_engine_force_applier") != 0) {
+             if (!p.is_virtual()) {
+               // throw std::runtime_error("Particles that are
+               // engine_force_applier must be virtual");
              }
+             swim.is_engine_force_applier =
+                 get_value<bool>(dict.at("is_engine_force_applier"));
            }
-           if (dict.count("dipole_length") != 0) {
-             swim.dipole_length = get_value<double>(dict.at("dipole_length"));
-           }
+
            p.swimming() = swim;
          });
        },
        [this]() {
          auto const swim = get_particle_data(m_pid).swimming();
-         std::string mode;
-         if (swim.push_pull == -1) {
-           mode = "pusher";
-         } else if (swim.push_pull == 1) {
-           mode = "puller";
-         } else {
-           mode = "N/A";
-         }
-         return VariantMap{{{"mode", mode},
-                            {"v_swim", swim.v_swim},
-                            {"f_swim", swim.f_swim},
-                            {"dipole_length", swim.dipole_length}}};
+         return VariantMap{
+             {{"f_swim", swim.f_swim},
+              {"is_engine_force_applier", swim.is_engine_force_applier},
+              // TODO without this 3rd entry it does not work. Why?
+              {"swimming", swim.swimming}}};
        }},
 #endif // ENGINE
   });

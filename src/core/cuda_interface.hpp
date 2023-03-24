@@ -36,12 +36,10 @@ struct CUDA_ParticleParametersSwimming {
 
   // v_cs has to stay in the front for memmove reasons
   float v_cs[6];
-  float v_swim;
   float f_swim;
   Vector3f director;
-  int push_pull;
-  float dipole_length;
   bool swimming;
+  bool is_engine_force_applier;
 };
 #endif
 

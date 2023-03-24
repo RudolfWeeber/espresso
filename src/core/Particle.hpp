@@ -54,21 +54,10 @@ struct ParticleParametersSwimming {
   /** Imposed constant force. */
   double f_swim = 0.;
   /** Constant velocity to relax to. */
-  double v_swim = 0.;
-  /** Flag for the swimming mode in a LB fluid.
-   *  Values:
-   *  - -1: pusher
-   *  - +1: puller
-   *  - 0: no swimming
-   */
-  int push_pull = 0;
-  /** Distance of the source of propulsion from the particle
-   *  center in a LB fluid.
-   */
-  double dipole_length = 0.;
+  bool is_engine_force_applier = false;
 
   template <class Archive> void serialize(Archive &ar, long int /* version */) {
-    ar &swimming &f_swim &v_swim &push_pull &dipole_length;
+    ar &swimming &f_swim &is_engine_force_applier;
   }
 };
 
