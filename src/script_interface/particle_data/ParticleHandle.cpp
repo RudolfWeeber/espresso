@@ -441,8 +441,9 @@ ParticleHandle::ParticleHandle() {
              swim.f_swim = get_value<double>(dict.at("f_swim"));
            }
            if (dict.count("is_engine_force_applier") != 0) {
-            auto const is_force_applier  =get_value<bool>(dict.at("is_engine_force_applier"));
-            swim.is_engine_force_applier =is_force_applier;  
+             auto const is_force_applier =
+                 get_value<bool>(dict.at("is_engine_force_applier"));
+             swim.is_engine_force_applier = is_force_applier;
            }
            p.swimming() = swim;
          });
@@ -450,9 +451,9 @@ ParticleHandle::ParticleHandle() {
        [this]() {
          auto const swim = get_particle_data(m_pid).swimming();
          return VariantMap{
-              {"f_swim", swim.f_swim},
-              {"is_engine_force_applier", swim.is_engine_force_applier},
-              };
+             {"f_swim", swim.f_swim},
+             {"is_engine_force_applier", swim.is_engine_force_applier},
+         };
        }},
 #endif // ENGINE
   });

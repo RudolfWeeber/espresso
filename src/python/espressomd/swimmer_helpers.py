@@ -19,14 +19,18 @@ import numpy as np
 from .math import calc_quaternions_from_angles
 from .virtual_sites import VirtualSitesRelative
 
-def add_dipole_particle(system, particle, dipole_length, dipole_particle_type, mode = "pusher"):
+
+def add_dipole_particle(system, particle, dipole_length,
+                        dipole_particle_type, mode="pusher"):
     """
-    Adds a virtual site pointing opposite of the swimmer particle 
+    Adds a virtual particle pointing opposite of the swimmer particle 
     either in front of (mode="puller") or behind (mode="pusher") the swimmer.
-    
+    The virtual particle is set up to exert the swimming force of the swimmer 
+    particle on a fluid in the opposite direction.
+
     Parameters
     ----------
-    
+
     system : :obj:`espressomd.System`
         The system that the particle belongs to.
     particle : :obj:`espressomd.ParticleHandle`
@@ -39,31 +43,39 @@ def add_dipole_particle(system, particle, dipole_length, dipole_particle_type, m
     mode : :obj:`str`
         Allowed values: "pusher" (default) and "puller". Determines wether the virtual dipole particle 
         will be placed in front of or behind the swimmer.
+
+    Returns
+    -------
+
+    dipole_particle : :obj:`espressomd.ParticleHandle`
+        The newly created particle.
     """
     if mode == "pusher":
         dip_sign = -1
     elif mode == "puller":
         dip_sign = 1
     else:
-        raise ValueError(f"'mode' must be 'pusher' or 'puller'. You gave '{mode}'")
-    
+        raise ValueError(
+            f"'mode' must be 'pusher' or 'puller'. You gave '{mode}'")
+
     if dipole_length < 0:
         raise ValueError("'dipole_length' must be >= 0.")
-    
-    if not isinstance(system.virtual_sites, VirtualSitesRelative):
-        raise RuntimeError("system.virtual_sites must be espressomd.virtual_sites.VirtualSitesRelative.")
-    if not system.virtual_sites.have_quaternion :
-        raise RuntimeError("system.virtual_sites must have quaternion option turned on ('have_quaternion = True').")
 
-    dip_partcl = system.part.add(pos = particle.pos + dip_sign * dipole_length * particle.director,
-                           virtual = True,
-                           type=dipole_particle_type,
-                            swimming={
-                                "f_swim": particle.swimming["f_swim"],
-                                "is_engine_force_applier": True,
-                            },
-        )
+    if not isinstance(system.virtual_sites, VirtualSitesRelative):
+        raise RuntimeError(
+            "system.virtual_sites must be espressomd.virtual_sites.VirtualSitesRelative.")
+    if not system.virtual_sites.have_quaternion:
+        raise RuntimeError(
+            "system.virtual_sites must have quaternion option turned on ('have_quaternion = True').")
+
+    dip_partcl = system.part.add(pos=particle.pos + dip_sign * dipole_length * particle.director,
+                                 virtual=True,
+                                 type=dipole_particle_type,
+                                 swimming={
+                                     "f_swim": particle.swimming["f_swim"],
+                                     "is_engine_force_applier": True,
+                                 },
+                                 )
     dip_partcl.vs_auto_relate_to(particle)
     dip_partcl.vs_quat = calc_quaternions_from_angles(np.pi, 0)
     return dip_partcl
-    

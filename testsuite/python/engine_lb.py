@@ -68,7 +68,8 @@ class SwimmerTest:
             swimming={"f_swim": 0.10},
             type=1,
         )
-        p0_dip = espressomd.swimmer_helpers.add_dipole_particle(system, p0, 0.5, dipole_partcl_type)
+        p0_dip = espressomd.swimmer_helpers.add_dipole_particle(
+            system, p0, 0.5, dipole_partcl_type)
 
         p1 = system.part.add(
             pos=[7.99, 2, 3],
@@ -80,7 +81,8 @@ class SwimmerTest:
             swimming={"f_swim": 0.09},
             type=0,
         )
-        p1_dip = espressomd.swimmer_helpers.add_dipole_particle(system, p1, 0.6, dipole_partcl_type)
+        p1_dip = espressomd.swimmer_helpers.add_dipole_particle(
+            system, p1, 0.6, dipole_partcl_type)
 
         p2 = system.part.add(
             pos=[2, 3, 7.99],
@@ -92,7 +94,8 @@ class SwimmerTest:
             swimming={"f_swim": 0.08},
             type=1,
         )
-        p2_dip = espressomd.swimmer_helpers.add_dipole_particle(system, p2, 0.7, dipole_partcl_type, mode="puller")
+        p2_dip = espressomd.swimmer_helpers.add_dipole_particle(
+            system, p2, 0.7, dipole_partcl_type, mode="puller")
 
         p3 = system.part.add(
             pos=[1.5, 7.99, 1],
@@ -104,7 +107,8 @@ class SwimmerTest:
             swimming={"f_swim": 0.07},
             type=0,
         )
-        p3_dip = espressomd.swimmer_helpers.add_dipole_particle(system, p3, 0.8, dipole_partcl_type, mode="puller")
+        p3_dip = espressomd.swimmer_helpers.add_dipole_particle(
+            system, p3, 0.8, dipole_partcl_type, mode="puller")
 
         return [p0, p1, p2, p3], [p0_dip, p1_dip, p2_dip, p3_dip]
 
@@ -127,8 +131,9 @@ class SwimmerTest:
                 np.copy(dip.director), -np.copy(sw.director), atol=1e-15
             )
         with self.assertRaises(ValueError):
-            espressomd.swimmer_helpers.add_dipole_particle(self.system, swimmers[0], 0.5, 1, mode="unknown_mode")
-    
+            espressomd.swimmer_helpers.add_dipole_particle(
+                self.system, swimmers[0], 0.5, 1, mode="unknown_mode")
+
     def test_momentum_conservation(self):
         """
         friction as well as 'active' forces apply to particles
@@ -158,9 +163,11 @@ class SwimmerTest:
         lb_mom = self.system.analysis.linear_momentum(
             include_particles=False, include_lbfluid=True
         )
-        part_mom = np.sum([np.copy(s.v) * np.copy(s.mass) for s in swimmers], axis=0)
+        part_mom = np.sum([np.copy(s.v) * np.copy(s.mass)
+                          for s in swimmers], axis=0)
 
-        # compensate for one timestep offset between force calculation and LB - update
+        # compensate for one timestep offset between force calculation and LB -
+        # update
         for part in swimmers:
             part_mom += np.copy(part.f) * self.system.time_step
 
@@ -186,7 +193,8 @@ class SwimmerTest:
             force = -self.gamma * (v_swimmer - v_fluid) + f_swim * director
 
             self.system.integrator.run(1, reuse_forces=True)
-            np.testing.assert_allclose(np.copy(swimmer.f), force, atol=self.tol)
+            np.testing.assert_allclose(
+                np.copy(swimmer.f), force, atol=self.tol)
 
     def test_fluid_force(self):
         """
@@ -208,7 +216,8 @@ class SwimmerTest:
             rotation=3 * [False],
             swimming={"f_swim": f_swim},
         )
-        dip_0 = espressomd.swimmer_helpers.add_dipole_particle(self.system,sw_0, dip_length, 10, mode = modes[0])
+        espressomd.swimmer_helpers.add_dipole_particle(
+            self.system, sw_0, dip_length, 10, mode=modes[0])
         sw_1 = self.system.part.add(
             pos=sw1_pos,
             director=[1, 0, 0],
@@ -216,13 +225,15 @@ class SwimmerTest:
             rotation=3 * [False],
             swimming={"f_swim": f_swim},
         )
-        dip_1 = espressomd.swimmer_helpers.add_dipole_particle(self.system, sw_1, dip_length, 10, mode= modes[1])
+        espressomd.swimmer_helpers.add_dipole_particle(
+            self.system, sw_1, dip_length, 10, mode=modes[1])
 
         self.system.integrator.run(2)
 
         for sw, mode in zip([sw_0, sw_1], modes):
-            dip_sign = 1 if mode =="puller" else -1
-            sw_source_pos = sw.pos + self.system.time_step * sw.v + dip_sign * dip_length * sw.director
+            dip_sign = 1 if mode == "puller" else -1
+            sw_source_pos = sw.pos + self.system.time_step * \
+                sw.v + dip_sign * dip_length * sw.director
             # fold into box
             sw_source_pos -= np.floor(sw_source_pos / self.system.box_l) * np.array(
                 self.system.box_l
@@ -230,7 +241,8 @@ class SwimmerTest:
             sw_source_nodes = tests_common.get_lb_nodes_around_pos(
                 sw_source_pos, self.lbf
             )
-            sw_source_forces = np.array([n.last_applied_force for n in sw_source_nodes])
+            sw_source_forces = np.array(
+                [n.last_applied_force for n in sw_source_nodes])
             np.testing.assert_allclose(
                 np.sum(sw_source_forces, axis=0),
                 -f_swim * np.array(sw.director),

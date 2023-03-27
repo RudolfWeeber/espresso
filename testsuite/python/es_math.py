@@ -69,7 +69,8 @@ class TestMath(ut.TestCase):
             direc_shouldbe = [np.sin(theta) * np.cos(phi),
                               np.sin(theta) * np.sin(phi),
                               np.cos(theta)]
-            part.quat = espressomd.math.calc_quaternions_from_angles(theta, phi)
+            part.quat = espressomd.math.calc_quaternions_from_angles(
+                theta, phi)
             np.testing.assert_allclose(np.copy(part.director), direc_shouldbe)
 
 
