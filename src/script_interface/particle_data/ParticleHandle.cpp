@@ -441,24 +441,18 @@ ParticleHandle::ParticleHandle() {
              swim.f_swim = get_value<double>(dict.at("f_swim"));
            }
            if (dict.count("is_engine_force_applier") != 0) {
-             if (!p.is_virtual()) {
-               // throw std::runtime_error("Particles that are
-               // engine_force_applier must be virtual");
-             }
-             swim.is_engine_force_applier =
-                 get_value<bool>(dict.at("is_engine_force_applier"));
+            auto const is_force_applier  =get_value<bool>(dict.at("is_engine_force_applier"));
+            swim.is_engine_force_applier =is_force_applier;  
            }
-
            p.swimming() = swim;
          });
        },
        [this]() {
          auto const swim = get_particle_data(m_pid).swimming();
          return VariantMap{
-             {{"f_swim", swim.f_swim},
+              {"f_swim", swim.f_swim},
               {"is_engine_force_applier", swim.is_engine_force_applier},
-              // TODO without this 3rd entry it does not work. Why?
-              {"swimming", swim.swimming}}};
+              };
        }},
 #endif // ENGINE
   });

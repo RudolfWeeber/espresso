@@ -432,7 +432,7 @@ if espressomd.has_features('THERMOSTAT_PER_PARTICLE'):
 if espressomd.has_features('ENGINE'):
     p3.swimming = {"f_swim": 0.03}
 if espressomd.has_features('ENGINE') and lbf_class:
-    p4.swimming = {"v_swim": 0.02, "mode": "puller", "dipole_length": 1.}
+    p4.swimming = {"v_swim": 0.02, "is_engine_force_applier": True}
 if espressomd.has_features('LB_ELECTROHYDRODYNAMICS') and lbf_class:
     p8.mu_E = [-0.1, 0.2, -0.3]
 

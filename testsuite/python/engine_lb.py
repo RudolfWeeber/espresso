@@ -20,7 +20,7 @@
 import espressomd
 import espressomd.lb
 import espressomd.virtual_sites
-import espressomd.math
+import espressomd.swimmer_helpers
 import unittest as ut
 import unittest_decorators as utx
 import numpy as np
@@ -49,20 +49,6 @@ class SwimmerTest:
     # largest dipole used in the test
     system.min_global_cut = 2.0001 * LB_params["agrid"]
 
-    def add_dipole_particle(self, partcl, dipole_length, partcl_type):
-        dip_partcl = self.system.part.add(
-            pos=partcl.pos - dipole_length * partcl.director,
-            virtual=True,
-            type=partcl_type,
-            swimming={
-                "f_swim": partcl.swimming["f_swim"],
-                "is_engine_force_applier": True,
-            },
-        )
-        dip_partcl.vs_auto_relate_to(partcl)
-        dip_partcl.vs_quat = espressomd.math.calc_quaternions_from_angles(np.pi, 0)
-        return dip_partcl
-
     def add_all_types_of_swimmers(self, fix=False, rotation=False):
         """
         Places pushers and pullers in the corners of a box such that the
@@ -82,7 +68,7 @@ class SwimmerTest:
             swimming={"f_swim": 0.10},
             type=1,
         )
-        p0_dip = self.add_dipole_particle(p0, 0.5, dipole_partcl_type)
+        p0_dip = espressomd.swimmer_helpers.add_dipole_particle(system, p0, 0.5, dipole_partcl_type)
 
         p1 = system.part.add(
             pos=[7.99, 2, 3],
@@ -94,7 +80,7 @@ class SwimmerTest:
             swimming={"f_swim": 0.09},
             type=0,
         )
-        p1_dip = self.add_dipole_particle(p1, 0.6, dipole_partcl_type)
+        p1_dip = espressomd.swimmer_helpers.add_dipole_particle(system, p1, 0.6, dipole_partcl_type)
 
         p2 = system.part.add(
             pos=[2, 3, 7.99],
@@ -106,7 +92,7 @@ class SwimmerTest:
             swimming={"f_swim": 0.08},
             type=1,
         )
-        p2_dip = self.add_dipole_particle(p2, -0.7, dipole_partcl_type)
+        p2_dip = espressomd.swimmer_helpers.add_dipole_particle(system, p2, 0.7, dipole_partcl_type, mode="puller")
 
         p3 = system.part.add(
             pos=[1.5, 7.99, 1],
@@ -118,7 +104,7 @@ class SwimmerTest:
             swimming={"f_swim": 0.07},
             type=0,
         )
-        p3_dip = self.add_dipole_particle(p3, -0.8, dipole_partcl_type)
+        p3_dip = espressomd.swimmer_helpers.add_dipole_particle(system, p3, 0.8, dipole_partcl_type, mode="puller")
 
         return [p0, p1, p2, p3], [p0_dip, p1_dip, p2_dip, p3_dip]
 
@@ -140,7 +126,9 @@ class SwimmerTest:
             np.testing.assert_allclose(
                 np.copy(dip.director), -np.copy(sw.director), atol=1e-15
             )
-
+        with self.assertRaises(ValueError):
+            espressomd.swimmer_helpers.add_dipole_particle(self.system, swimmers[0], 0.5, 1, mode="unknown_mode")
+    
     def test_momentum_conservation(self):
         """
         friction as well as 'active' forces apply to particles
@@ -208,33 +196,33 @@ class SwimmerTest:
         """
         f_swim = 0.11
         dip_length = 2 * self.LB_params["agrid"]
+        modes = ["pusher", "puller"]
 
         sw0_pos = np.array([3.8, 1.1, 1.1])
         sw1_pos = np.array([1.8, 4.1, 4.1])
 
-        dip_0 = dip_length
-        dip_1 = -dip_length
-        sw0 = self.system.part.add(
+        sw_0 = self.system.part.add(
             pos=sw0_pos,
             director=[1, 0, 0],
             mass=0.9,
             rotation=3 * [False],
             swimming={"f_swim": f_swim},
         )
-        self.add_dipole_particle(sw0, dip_0, 10)
-        sw1 = self.system.part.add(
+        dip_0 = espressomd.swimmer_helpers.add_dipole_particle(self.system,sw_0, dip_length, 10, mode = modes[0])
+        sw_1 = self.system.part.add(
             pos=sw1_pos,
             director=[1, 0, 0],
             mass=0.7,
             rotation=3 * [False],
             swimming={"f_swim": f_swim},
         )
-        self.add_dipole_particle(sw1, dip_1, 10)
+        dip_1 = espressomd.swimmer_helpers.add_dipole_particle(self.system, sw_1, dip_length, 10, mode= modes[1])
 
         self.system.integrator.run(2)
 
-        for sw, dip in zip([sw0, sw1], [dip_0, dip_1]):
-            sw_source_pos = sw.pos + self.system.time_step * sw.v - dip * sw.director
+        for sw, mode in zip([sw_0, sw_1], modes):
+            dip_sign = 1 if mode =="puller" else -1
+            sw_source_pos = sw.pos + self.system.time_step * sw.v + dip_sign * dip_length * sw.director
             # fold into box
             sw_source_pos -= np.floor(sw_source_pos / self.system.box_l) * np.array(
                 self.system.box_l

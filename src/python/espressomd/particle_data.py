@@ -324,7 +324,8 @@ class ParticleHandle(ScriptInterfaceHelper):
         use the swimming attribute to create the typical dipolar flowfield of 
         self-propelled particles. Setting ``is_engine_force_applier`` to ``True`` will 
         make the particle not experience any friction or noise, but instead apply the swim 
-        force ``f_swim`` to the fluid. For this, the particle also has to be marked ``virtual``.
+        force ``f_swim`` to the fluid. 
+        ``espressomd.swimmer_helpers.add_dipole_particle`` can help you with this setup.
 
         Parameters
         ----------
@@ -343,14 +344,12 @@ class ParticleHandle(ScriptInterfaceHelper):
         Examples
         --------
         >>> import espressomd
+        >>> # swimming withut hydrodynamics
         >>> system = espressomd.System(box_l=[10, 10, 10])
         >>> partcl = system.part.add(pos=[1, 0, 0], swimming={'f_swim': 0.03})
-        >>> # LB dipole creating particle
-        >>> system.part.add(pos=[2, 0, 0], 
-        ...                 swimming={'f_swim': 0.01, 'is_engine_force_applier': True},
-        ...                 virtual = True,
-        ...                 )
-        # TODO: finish example after updating active matter tutorial
+        >>> # swimming with hydrodynamics
+        >>> import espressomd.swimmer_helpers.add_dipole_particle as add_dip
+        >>> dipole_partcl = add_dip(system, partcl, 2., 0)
 
     Methods
     -------

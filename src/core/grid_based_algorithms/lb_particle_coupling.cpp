@@ -247,7 +247,7 @@ void couple_particle(Particle &p, bool couple_virtual, double noise_amplitude,
     return;
 
   // Calculate coupling force
-  Utils::Vector3d force_on_particle = {{0., 0., 0.}};
+  Utils::Vector3d force_on_particle{};
   for (auto pos : positions_in_halo(p.pos(), box_geo)) {
     if (in_local_halo(pos)) {
       if (!p.swimming().is_engine_force_applier) {
