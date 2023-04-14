@@ -62,14 +62,6 @@ friction_thermo_langevin(LangevinThermostat const &langevin, Particle const &p,
   }
 #endif // THERMOSTAT_PER_PARTICLE
 
-  // Get effective velocity in the thermostatting
-#ifdef ENGINE
-  auto const &velocity = (p.swimming().v_swim != 0)
-                             ? p.v() - p.swimming().v_swim * p.calc_director()
-                             : p.v();
-#else
-  auto const &velocity = p.v();
-#endif // ENGINE
 #ifdef PARTICLE_ANISOTROPY
   // Particle frictional isotropy check
   auto const aniso_flag = (pref_friction[0] != pref_friction[1]) ||
@@ -91,7 +83,7 @@ friction_thermo_langevin(LangevinThermostat const &langevin, Particle const &p,
   auto const &noise_op = pref_noise;
 #endif // PARTICLE_ANISOTROPY
 
-  return friction_op * velocity +
+  return friction_op * p.v() +
          noise_op * Random::noise_uniform<RNGSalt::LANGEVIN>(
                         langevin.rng_counter(), langevin.rng_seed(), p.id());
 }

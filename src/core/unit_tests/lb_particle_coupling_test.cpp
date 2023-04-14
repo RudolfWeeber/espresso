@@ -242,11 +242,6 @@ BOOST_AUTO_TEST_CASE(drift_vel_offset) {
   Particle p{};
   BOOST_CHECK_EQUAL(lb_particle_coupling_drift_vel_offset(p).norm(), 0);
   Utils::Vector3d expected{};
-#ifdef ENGINE
-  p.swimming().swimming = true;
-  p.swimming().v_swim = 2.;
-  expected += p.swimming().v_swim * p.calc_director();
-#endif
 #ifdef LB_ELECTROHYDRODYNAMICS
   p.mu_E() = Utils::Vector3d{-2., 1.5, 1.};
   expected += p.mu_E();
@@ -279,21 +274,18 @@ BOOST_DATA_TEST_CASE(swimmer_force, bdata::make(kTs), kT) {
   Particle p{};
   p.swimming().swimming = true;
   p.swimming().f_swim = 2.;
-  p.swimming().dipole_length = 3.;
-  p.swimming().push_pull = 1;
-  p.pos() = first_lb_node + Utils::Vector3d::broadcast(0.5);
+  p.swimming().is_engine_force_applier = true;
+  p.pos() = first_lb_node - Utils::Vector3d{0., 0., 1.5};
 
-  auto const coupling_pos =
-      p.pos() +
-      Utils::Vector3d{0., 0., p.swimming().dipole_length / params.agrid};
+  lb_lbcoupling_set_rng_state(42);
+  auto &rng = lb_particle_coupling.rng_counter_coupling;
 
-  // swimmer coupling
   {
     if (in_local_halo(p.pos())) {
-      add_swimmer_force(p, params.time_step);
+      couple_particle(p, true, 0., rng, params.time_step);
     }
-    if (in_local_halo(coupling_pos)) {
-      auto const interpolated = LB::get_force_to_be_applied(coupling_pos);
+    if (in_local_halo(p.pos())) {
+      auto const interpolated = LB::get_force_to_be_applied(p.pos());
       auto const expected =
           params.force_md_to_lb(Utils::Vector3d{0., 0., p.swimming().f_swim});
 
@@ -310,7 +302,7 @@ BOOST_DATA_TEST_CASE(swimmer_force, bdata::make(kTs), kT) {
               0.5 + static_cast<double>(j) * params.agrid,
               0.5 + static_cast<double>(k) * params.agrid,
           };
-          if ((pos - coupling_pos).norm() < 1e-6)
+          if ((pos - p.pos()).norm() < 1e-6)
             continue;
           if (in_local_halo(pos)) {
             auto const interpolated = LB::get_force_to_be_applied(pos);
@@ -323,10 +315,10 @@ BOOST_DATA_TEST_CASE(swimmer_force, bdata::make(kTs), kT) {
 
   // remove force of the particle from the fluid
   {
-    if (in_local_halo(coupling_pos)) {
-      add_md_force(coupling_pos, -Utils::Vector3d{0., 0., p.swimming().f_swim},
+    if (in_local_halo(p.pos())) {
+      add_md_force(p.pos(), -Utils::Vector3d{0., 0., p.swimming().f_swim},
                    params.time_step);
-      auto const reset = LB::get_force_to_be_applied(coupling_pos);
+      auto const reset = LB::get_force_to_be_applied(p.pos());
       BOOST_REQUIRE_SMALL(reset.norm(), tol);
     }
   }
@@ -345,12 +337,7 @@ BOOST_DATA_TEST_CASE(particle_coupling, bdata::make(kTs), kT) {
   Particle p{};
   Utils::Vector3d expected = noise * Random::noise_uniform<RNGSalt::PARTICLES>(
                                          rng->value(), 0, p.id());
-#ifdef ENGINE
-  p.swimming().swimming = true;
-  p.swimming().v_swim = 2.;
-  p.swimming().push_pull = 1;
-  expected += gamma * p.swimming().v_swim * p.calc_director();
-#endif
+
 #ifdef LB_ELECTROHYDRODYNAMICS
   p.mu_E() = Utils::Vector3d{-2., 1.5, 1.};
   expected += gamma * p.mu_E();
@@ -403,7 +390,7 @@ BOOST_DATA_TEST_CASE_F(CleanupActorLB, coupling_particle_lattice_ia,
 
 #ifdef ENGINE
   set_particle_property(pid, &Particle::swimming,
-                        ParticleParametersSwimming{true, 0., 2., 1, 3.});
+                        ParticleParametersSwimming{2., true, false});
 #endif
 #ifdef LB_ELECTROHYDRODYNAMICS
   set_particle_property(pid, &Particle::mu_E, Utils::Vector3d{-2., 1.5, 1.});
@@ -414,9 +401,6 @@ BOOST_DATA_TEST_CASE_F(CleanupActorLB, coupling_particle_lattice_ia,
   auto const p_opt = copy_particle_to_head_node(comm, pid);
   if (rank == 0) {
     auto const &p = *p_opt;
-#ifdef ENGINE
-    expected += gamma * p.swimming().v_swim * p.calc_director();
-#endif
 #ifdef LB_ELECTROHYDRODYNAMICS
     expected += gamma * p.mu_E();
 #endif
