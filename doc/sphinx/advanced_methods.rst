@@ -192,6 +192,8 @@ Several modes are available:
 * ``"revert_bind_at_point_of_collision"``: delete a bond between the virtual site
 * ``"none"``: cancel an existing bond breakage specification
 
+For a pair bond, the breakage distance refers to the minimum image distance between the primary particle and its bond partner.
+For an angle bond, the distance refers to the distance *between the two bond partners* of the primary particle.
 Example::
 
     import espressomd
