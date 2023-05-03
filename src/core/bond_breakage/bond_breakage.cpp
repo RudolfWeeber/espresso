@@ -22,14 +22,15 @@
 #include "cells.hpp"
 #include "communication.hpp"
 #include "errorhandling.hpp"
+#include "event.hpp"
 #include "particle_data.hpp"
 
 #include <utils/mpi/gather_buffer.hpp>
 
 #include <boost/mpi.hpp>
 #include <boost/optional.hpp>
-#include <boost/serialization/optional.hpp>
 #include <boost/serialization/access.hpp>
+#include <boost/serialization/optional.hpp>
 #include <boost/variant.hpp>
 
 #include <cassert>
@@ -54,7 +55,6 @@ using Action = boost::variant<DeleteBond, DeleteAngleBond, DeleteAllBonds>;
 
 // Set of actions
 using ActionSet = std::unordered_set<Action>;
-
 
 // Broken bond record
 struct QueueEntry {
@@ -85,12 +85,14 @@ boost::optional<BreakageSpec> get_breakage_spec(int bond_type) {
 }
 
 /** Add a particle+bond combination to the breakage queue */
-void queue_breakage(int particle_id, const BondPartners& bond_partners, int bond_type) {
+void queue_breakage(int particle_id, const BondPartners &bond_partners,
+                    int bond_type) {
   queue.emplace_back(QueueEntry{particle_id, bond_partners, bond_type});
 }
 
-bool check_and_handle_breakage(int particle_id, const BondPartners& bond_partners,
-                               int bond_type, double distance) {
+bool check_and_handle_breakage(int particle_id,
+                               const BondPartners &bond_partners, int bond_type,
+                               double distance) {
   // Retrieve specification for this bond type
   auto const spec = get_breakage_spec(bond_type);
   if (!spec)
@@ -116,8 +118,9 @@ Queue gather_global_queue(Queue const &local_queue) {
 
 /** @brief Constructs the actions to take for a breakage queue entry */
 ActionSet actions_for_breakage(QueueEntry const &e) {
-  auto is_angle_bond = [](const auto& bond_partners) 
-    { return bond_partners[1]; }; // optional for secodn partner enaged 
+  auto is_angle_bond = [](const auto &bond_partners) {
+    return bond_partners[1];
+  }; // optional for secodn partner enaged
 
   // Retrieve relevant breakage spec
   auto const spec = get_breakage_spec(e.bond_type);
@@ -128,14 +131,15 @@ ActionSet actions_for_breakage(QueueEntry const &e) {
     if (not is_angle_bond(e.bond_partners)) {
       return {DeleteBond{e.particle_id, *(e.bond_partners[0]), e.bond_type}};
     } else {
-      return {DeleteAngleBond{e.particle_id, {{*(e.bond_partners[0]), *(e.bond_partners[1])}}, e.bond_type}};
-
+      return {DeleteAngleBond{e.particle_id,
+                              {{*(e.bond_partners[0]), *(e.bond_partners[1])}},
+                              e.bond_type}};
     }
   }
 #ifdef VIRTUAL_SITES_RELATIVE
   // revert bind at point of collision for pair bonds
-  if ((*spec).action_type == ActionType::REVERT_BIND_AT_POINT_OF_COLLISION
-       and not is_angle_bond(e.bond_partners)) {
+  if ((*spec).action_type == ActionType::REVERT_BIND_AT_POINT_OF_COLLISION and
+      not is_angle_bond(e.bond_partners)) {
     // We need to find the base particles for the two virtual sites
     // between which the bond broke.
     auto p1 = cell_structure.get_local_particle(e.particle_id);
@@ -161,8 +165,7 @@ ActionSet actions_for_breakage(QueueEntry const &e) {
         DeleteAllBonds{p2->vs_relative().to_particle_id,
                        p1->vs_relative().to_particle_id},
     };
-  }
-  else {  // revert bind at point of collision for angle bonds
+  } else { // revert bind at point of collision for angle bonds
     auto vs = cell_structure.get_local_particle(e.particle_id);
     auto p1 = cell_structure.get_local_particle(*(e.bond_partners[0]));
     auto p2 = cell_structure.get_local_particle(*(e.bond_partners[1]));
@@ -177,14 +180,12 @@ ActionSet actions_for_breakage(QueueEntry const &e) {
       return {};
     }
 
-    return {
-        // Angle bond on the virtual site
-        DeleteAngleBond{e.particle_id, {p1->id(), p2->id()}, e.bond_type},
-        // Bond between base particles. We do not know, on which of the two
-        // the bond is defined, since bonds are stored only on one partner
-        DeleteAllBonds{p1->id(), p2->id()},
-        DeleteAllBonds{p2->id(), p1->id()}
-    };
+    return {// Angle bond on the virtual site
+            DeleteAngleBond{e.particle_id, {p1->id(), p2->id()}, e.bond_type},
+            // Bond between base particles. We do not know, on which of the two
+            // the bond is defined, since bonds are stored only on one partner
+            DeleteAllBonds{p1->id(), p2->id()},
+            DeleteAllBonds{p2->id(), p1->id()}};
   }
 #endif // VIRTUAL_SITES_RELATIVE
   return {};
@@ -201,7 +202,8 @@ public:
   }
   void operator()(DeleteAngleBond const &d) const {
     if (auto p = ::cell_structure.get_local_particle(d.particle_id)) {
-      remove_bond(*p, BondView(d.bond_type, {&d.bond_partner_id[0], 2}));
+      local_remove_bond(
+          *p, {d.bond_type, d.bond_partner_id[0], d.bond_partner_id[1]});
     }
     on_particle_change();
   }
