@@ -49,6 +49,7 @@ add_library(
   rotation.cpp
   Observable_stat.cpp
   SystemInterface.cpp
+  short_range_data.cpp
   thermostat.cpp
   tuning.cpp
   virtual_sites.cpp

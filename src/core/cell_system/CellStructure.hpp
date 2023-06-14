@@ -336,6 +336,7 @@ public:
    */
   void remove_all_particles();
 
+public:
   /**
    * @brief Get the underlying particle decomposition.
    *
@@ -347,12 +348,11 @@ public:
     return assert(m_decomposition), *m_decomposition;
   }
 
-private:
+public:
   ParticleDecomposition &decomposition() {
     return assert(m_decomposition), *m_decomposition;
   }
 
-public:
   /**
    * @brief Increase the local resort level at least to @p level.
    */

@@ -1,39 +1,61 @@
-struct ShortRangeData {
-  using VecType = std::vector;
-  using Floattype = double;
-  using IntType = int;
+#include "BoxGeometry.hpp"
+#include "cell_system/Cell.hpp"
+#include "cells.hpp"
+#include "grid.hpp"
+#include "utils/Vector.hpp"
+#include <functional>
+#include <map>
+#include <vector>
 
-  VecType<Floattype> x;
+struct ShortRangeData {
+  template <typename T> using VecType = std::vector<T>;
+  using FloatType = double;
+
+  using IntType = int;
+  using CellRef = Cell *;
+  VecType<FloatType> x;
   VecType<FloatType> y;
   VecType<FloatType> z;
   VecType<FloatType> q;
-  VecType<Inttype> type;
+  VecType<IntType> type;
+  std::map<CellRef, size_t> start_idx;
+  std::map<CellRef, size_t> end_idx;
+};
+
+template <typename VecType>
+void apply_mi_convention(VecType &d, int coord, BoxGeometry &box_geo) {
+  if (!box_geo.periodic(coord))
+    return;
+  auto const half_length = box_geo.length_half()[coord];
+  auto const length = box_geo.length()[coord];
+  std::for_each(d.bgin(), d.end(), [half_length, length](auto &dx) {
+    while (dx >= half_length)
+      dx -= length;
+    while (dx < -half_length)
+      dx += length;
+  });
 }
 
-template <typanema Callable, typename VecType>
-auto run_on_all_in_cell(int left_idx, int end_idx, VecType &vec, Callable op) {
-  VecType res(end_id - left_idx - 1);
-  auto begin = vec.begin() + left_idx + 1;
+template <typename BinaryOp, typename VecType, typename ScalarType>
+auto scalar_vec_op_const(int start_idx, int end_idx, VecType &vec,
+                         ScalarType &scalar, BinaryOp op) {
+  VecType res(end_idx - start_idx);
+  auto begin = vec.begin() + start_idx;
   auto end = vec.begin() + end_idx;
-  std::transform(begin, end, res.begin(), op);
+  std::transform(begin, end, res.begin(),
+                 [scalar, op](auto a) { return op(scalar, a); });
   return res;
 }
 
-template <typname VecType, BinaryOp>
-auto vec_op_const(int left_idx, int end_idx, VecType &vec, double single) {
-  run_on_all_in_cell(left_idx, end_idx, sd.x,
-                     [single, op](auto v) { return op(single, v); });
-}
-
 template <typename ShortRangeData> struct LHS {
-  ShortRangeData::FloatType x;
-  ShortRangeData::FloatType y;
-  ShortRangeData::FloatType z;
-  ShortRangeData::FloatType q;
-  ShortRangeData::IntType type;
-}
+  typename ShortRangeData::FloatType x;
+  typename ShortRangeData::FloatType y;
+  typename ShortRangeData::FloatType z;
+  typename ShortRangeData::FloatType q;
+  typename ShortRangeData::IntType type;
+};
 
-auto populate_lhs_from_arrays(const ShortRangeData& sd, int i) {
+auto populate_lhs_from_arrays(const ShortRangeData &sd, int i) {
   LHS<ShortRangeData> res = {.x = sd.x[i],
                              .y = sd.y[i],
                              .z = sd.z[i],
@@ -42,46 +64,84 @@ auto populate_lhs_from_arrays(const ShortRangeData& sd, int i) {
   return res;
 }
 
-/**
- * @brief Iterates over all particles in the cell range,
- *        and over all pairs within the cells and with
- *        their neighbors.
- */
-template <typename CellIterator, typename PairKernel>
-void link_cell(CellIterator first, CellIterator last,
-               PairKernel &&pair_kernel) {
-  for (; first != last; ++first) {
-    for (auto i = first->start_index(); i < first->end_index(); i++) {
-      auto left = populate_lhs_from_arrays(sd, i);
+template <typename VecType>
+auto calc_norm(const VecType &x, const VecType &y, const VecType &z) {
+  VecType res(x.size());
+  for (int i = 0; i < x.size(); i++) {
+    res[i] = std::sqrt(x[i] * x[i] + y[i] * y[i] + z[i] * z[i]);
+  }
+  return res;
+}
 
-      /* Distances within the cell */
-      auto d_x = vec_op_const(i, end_idx, sd.x, left.x, std::minus<double>);
-      auto d_y = vec_op_const(i, end_idx, sd.y, left.y, std::minus<double>);
-      auto d_z = vec_op_const(i, end_idx, sd.z, left.z, std::minus<double>);
+template <typename PairKernel>
+void run_one_on_many(ShortRangeData &sd, int lhs_idx, int rhs_begin,
+                     int rhs_end, PairKernel kernel) {
+  auto left = populate_lhs_from_arrays(sd, lhs_idx);
 
-      apply_mi_coord(d_x, 0, box_geo);
-      apply_mi_coord(d_y, 1, box_geo);
-      apply_mi_coord(d_z, 2, box_geo);
-      // scalar distance
-      auto d = calc_norm(d_x, d_y, d_z);
+  auto d_x = scalar_vec_op_const(rhs_begin, rhs_end, sd.x, left.x,
+                                 std::minus<double>());
+  auto d_y = scalar_vec_op_const(rhs_begin, rhs_end, sd.y, left.y,
+                                 std::minus<double>());
+  auto d_z = scalar_vec_op_const(rhs_begin, rhs_end, sd.z, left.z,
+                                 std::minus<double>());
 
-      // Charge product
-      auto qq = vec_op_const(i, end_idx, sd.q, left.q, std::multiply<double>);
+  apply_mi_convention(d_x, 0, box_geo);
+  apply_mi_convention(d_y, 1, box_geo);
+  apply_mi_convention(d_z, 2, box_geo);
+  // scalar distance
+  auto d = calc_norm(d_x, d_y, d_z);
 
-      // Execute kernel on all pairs
-      int n = d_x.size();
-      for (int k = 0; k < n; k++) {
-         kernel(first_partner_idx+k,Vector3d{d_x[k,d_y[k],d_z[k]},d[k],left.type,sd.type[first_partner_idx+k]);
-      }
+  // Charge product
+  auto qq = scalar_vec_op_const(rhs_begin, rhs_end, sd.q, left.q,
+                                std::multiplies<double>());
 
-      for (auto &neighbor : first->neighbors().red()) {
-        for (auto &p2 : neighbor->particles()) {
-          pair_kernel(p1, p2);
-        }
+  // Execute kernel on all pairs
+  for (int right_idx = rhs_begin; right_idx < rhs_end; right_idx++) {
+    kernel(sd, left, lhs_idx, right_idx,
+           Utils::Vector3d{d_x[right_idx], d_y[right_idx], d_z[right_idx]},
+           d[right_idx], qq[right_idx]);
+  }
+}
+template <typename PairKernel>
+void run_short_rane_kernel(CellStructure &cs, ShortRangeData &sd,
+                           PairKernel kernel) {
+
+  for (auto const &cell : cs.decomposition().local_cells()) {
+    int start_idx = sd.start_idx[cell];
+    int end_idx = sd.end_idx[cell];
+    for (int i = start_idx; i < end_idx; i++) {
+      run_on_on_many(sd, i, start_idx, end_idx, kernel);
+      for (auto const &neighbor_cell : cell->neighbors().red()) {
+        int neighbor_start_idx = sd.start_idx[neighbor_cell];
+        int neighbor_end_idx = sd.end_idx[neighbor_cell];
+        run_one_on_many(sd, i, neighbor_start_idx, neighbor_end_idx, kernel);
       }
     }
   }
 }
-} // namespace Algorithm
 
-#endif
+ShortRangeData populate_short_range_data(CellStructure &cs) {
+  ShortRangeData sd;
+  int idx = 0;
+  auto add_particles = [&sd, &idx](auto const &particles) {
+    for (auto const &p : particles) {
+      sd.x.push_back(p.pos()[0]);
+      sd.y.push_back(p.pos()[1]);
+      sd.z.push_back(p.pos()[2]);
+      sd.q.push_back(p.q());
+      sd.type.push_back(p.type());
+      idx++;
+    }
+  };
+
+  for (auto const &cell : cs.decomposition().local_cells()) {
+    sd.start_idx[cell] = idx;
+    add_particles(cell->particles());
+    sd.end_idx[cell] = idx;
+  };
+  for (auto const &cell : cs.decomposition().ghost_cells()) {
+    sd.start_idx[cell] = idx;
+    add_particles(cell->particles());
+    sd.end_idx[cell] = idx;
+  };
+}
