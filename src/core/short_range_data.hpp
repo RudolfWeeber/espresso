@@ -1,3 +1,5 @@
+#pragma once
+
 #include "BoxGeometry.hpp"
 #include "cell_system/Cell.hpp"
 #include "cells.hpp"
@@ -28,7 +30,7 @@ void apply_mi_convention(VecType &d, int coord, BoxGeometry &box_geo) {
     return;
   auto const half_length = box_geo.length_half()[coord];
   auto const length = box_geo.length()[coord];
-  std::for_each(d.bgin(), d.end(), [half_length, length](auto &dx) {
+  std::for_each(d.begin(), d.end(), [half_length, length](auto &dx) {
     while (dx >= half_length)
       dx -= length;
     while (dx < -half_length)
@@ -54,8 +56,7 @@ template <typename ShortRangeData> struct LHS {
   typename ShortRangeData::FloatType q;
   typename ShortRangeData::IntType type;
 };
-
-auto populate_lhs_from_arrays(const ShortRangeData &sd, int i) {
+inline auto populate_lhs_from_arrays(const ShortRangeData &sd, int i) {
   LHS<ShortRangeData> res = {.x = sd.x[i],
                              .y = sd.y[i],
                              .z = sd.z[i],
@@ -76,6 +77,7 @@ auto calc_norm(const VecType &x, const VecType &y, const VecType &z) {
 template <typename PairKernel>
 void run_one_on_many(ShortRangeData &sd, int lhs_idx, int rhs_begin,
                      int rhs_end, PairKernel kernel) {
+  printf("rom: %d | %d %d\n", lhs_idx, rhs_begin, rhs_end);
   auto left = populate_lhs_from_arrays(sd, lhs_idx);
 
   auto d_x = scalar_vec_op_const(rhs_begin, rhs_end, sd.x, left.x,
@@ -97,51 +99,31 @@ void run_one_on_many(ShortRangeData &sd, int lhs_idx, int rhs_begin,
 
   // Execute kernel on all pairs
   for (int right_idx = rhs_begin; right_idx < rhs_end; right_idx++) {
-    kernel(sd, left, lhs_idx, right_idx,
-           Utils::Vector3d{d_x[right_idx], d_y[right_idx], d_z[right_idx]},
-           d[right_idx], qq[right_idx]);
+    const int data_idx = right_idx - rhs_begin;
+    kernel(sd, lhs_idx, right_idx,
+           Utils::Vector3d{d_x[data_idx], d_y[data_idx], d_z[data_idx]},
+           d[data_idx], qq[data_idx]);
   }
 }
 template <typename PairKernel>
-void run_short_rane_kernel(CellStructure &cs, ShortRangeData &sd,
-                           PairKernel kernel) {
+void run_short_range_kernel(CellStructure &cs, ShortRangeData &sd,
+                            PairKernel kernel) {
 
   for (auto const &cell : cs.decomposition().local_cells()) {
-    int start_idx = sd.start_idx[cell];
-    int end_idx = sd.end_idx[cell];
+    const int start_idx = sd.start_idx[cell];
+    const int end_idx = sd.end_idx[cell];
+    if (start_idx == end_idx)
+      continue;
     for (int i = start_idx; i < end_idx; i++) {
-      run_on_on_many(sd, i, start_idx, end_idx, kernel);
+      run_one_on_many(sd, i, i + 1, end_idx, kernel);
       for (auto const &neighbor_cell : cell->neighbors().red()) {
-        int neighbor_start_idx = sd.start_idx[neighbor_cell];
-        int neighbor_end_idx = sd.end_idx[neighbor_cell];
+        const int neighbor_start_idx = sd.start_idx[neighbor_cell];
+        const int neighbor_end_idx = sd.end_idx[neighbor_cell];
+        if (neighbor_start_idx == neighbor_end_idx)
+          continue;
         run_one_on_many(sd, i, neighbor_start_idx, neighbor_end_idx, kernel);
       }
     }
   }
 }
-
-ShortRangeData populate_short_range_data(CellStructure &cs) {
-  ShortRangeData sd;
-  int idx = 0;
-  auto add_particles = [&sd, &idx](auto const &particles) {
-    for (auto const &p : particles) {
-      sd.x.push_back(p.pos()[0]);
-      sd.y.push_back(p.pos()[1]);
-      sd.z.push_back(p.pos()[2]);
-      sd.q.push_back(p.q());
-      sd.type.push_back(p.type());
-      idx++;
-    }
-  };
-
-  for (auto const &cell : cs.decomposition().local_cells()) {
-    sd.start_idx[cell] = idx;
-    add_particles(cell->particles());
-    sd.end_idx[cell] = idx;
-  };
-  for (auto const &cell : cs.decomposition().ghost_cells()) {
-    sd.start_idx[cell] = idx;
-    add_particles(cell->particles());
-    sd.end_idx[cell] = idx;
-  };
-}
+void calc_lj_forces();

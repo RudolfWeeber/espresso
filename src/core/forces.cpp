@@ -45,6 +45,7 @@
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
 #include "npt.hpp"
 #include "rotation.hpp"
+#include "short_range_data.hpp"
 #include "short_range_loop.hpp"
 #include "system/System.hpp"
 #include "thermostat.hpp"
@@ -183,27 +184,31 @@ void force_calc(CellStructure &cell_structure, double time_step, double kT) {
 #else
   auto const dipole_cutoff = INACTIVE_CUTOFF;
 #endif
-
-  short_range_loop(
-      [coulomb_kernel_ptr = coulomb_kernel.get_ptr()](
-          Particle &p1, int bond_id, Utils::Span<Particle *> partners) {
-        return add_bonded_force(p1, bond_id, partners, coulomb_kernel_ptr);
-      },
-      [coulomb_kernel_ptr = coulomb_kernel.get_ptr(),
-       dipoles_kernel_ptr = dipoles_kernel.get_ptr(),
-       elc_kernel_ptr = elc_kernel.get_ptr()](Particle &p1, Particle &p2,
-                                              Distance const &d) {
-        add_non_bonded_pair_force(p1, p2, d.vec21, sqrt(d.dist2), d.dist2,
-                                  coulomb_kernel_ptr, dipoles_kernel_ptr,
-                                  elc_kernel_ptr);
+  bool use_soa_short_range = true;
+  if (use_soa_short_range) {
+    calc_lj_forces();
+  } else {
+    short_range_loop(
+        [coulomb_kernel_ptr = coulomb_kernel.get_ptr()](
+            Particle &p1, int bond_id, Utils::Span<Particle *> partners) {
+          return add_bonded_force(p1, bond_id, partners, coulomb_kernel_ptr);
+        },
+        [coulomb_kernel_ptr = coulomb_kernel.get_ptr(),
+         dipoles_kernel_ptr = dipoles_kernel.get_ptr(),
+         elc_kernel_ptr = elc_kernel.get_ptr()](Particle &p1, Particle &p2,
+                                                Distance const &d) {
+          add_non_bonded_pair_force(p1, p2, d.vec21, sqrt(d.dist2), d.dist2,
+                                    coulomb_kernel_ptr, dipoles_kernel_ptr,
+                                    elc_kernel_ptr);
 #ifdef COLLISION_DETECTION
-        if (collision_params.mode != CollisionModeType::OFF)
-          detect_collision(p1, p2, d.dist2);
+          if (collision_params.mode != CollisionModeType::OFF)
+            detect_collision(p1, p2, d.dist2);
 #endif
-      },
-      maximal_cutoff(n_nodes), maximal_cutoff_bonded(),
-      VerletCriterion<>{skin, interaction_range(), coulomb_cutoff,
-                        dipole_cutoff, collision_detection_cutoff()});
+        },
+        maximal_cutoff(n_nodes), maximal_cutoff_bonded(),
+        VerletCriterion<>{skin, interaction_range(), coulomb_cutoff,
+                          dipole_cutoff, collision_detection_cutoff()});
+  }
 
   Constraints::constraints.add_forces(particles, get_sim_time());
 
