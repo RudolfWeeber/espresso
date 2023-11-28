@@ -293,7 +293,8 @@ inline boost::optional<Utils::Vector3d> calc_bond_pair_force(
     Particle const &p1, Particle const &p2,
     Bonded_IA_Parameters const &iaparams, Utils::Vector3d const &dx,
     Coulomb::ShortRangeForceKernel::kernel_type const *kernel) {
-  if (auto const *iap = boost::get<FeneBond>(&iaparams)) {
+  if (auto const *iap = boost::get<FeneBond>(&iaparams),
+      const BoxGeometry & box_geo) {
     return iap->force(dx);
   }
   if (auto const *iap = boost::get<HarmonicBond>(&iaparams)) {
@@ -323,6 +324,13 @@ inline boost::optional<Utils::Vector3d> calc_bond_pair_force(
   if (boost::get<VirtualBond>(&iaparams)) {
     return Utils::Vector3d{};
   }
+  if (auto const *iap = boost::get<VelDependentTabulated>(&iaparams)) {
+    auto dv = box_geo.velocity_difference(box_geo.folded_position(p1),
+                                          box_geo.folded_position(p2), p1.v(),
+                                          p2.v());
+    return iap->force(dx, dv);
+  }
+
   throw BondUnknownTypeError();
 }
 
@@ -343,7 +351,7 @@ inline bool add_bonded_two_body_force(
       return false;
     }
   } else {
-    auto result = calc_bond_pair_force(p1, p2, iaparams, dx, kernel);
+    auto result = calc_bond_pair_force(p1, p2, iaparams, dx, kernel, box_geo);
     if (result) {
       p1.force() += result.get();
       p2.force() -= result.get();

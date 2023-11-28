@@ -24,6 +24,8 @@
  *  For more information on how to add new interactions, see @ref bondedIA_new.
  */
 
+#include "TabulatedPotential.hpp"
+#include "VelDependentTabulated.hpp"
 #include "angle_common.hpp"
 #include "angle_cosine.hpp"
 #include "angle_cossquare.hpp"
@@ -42,8 +44,6 @@
 #include "quartic.hpp"
 #include "rigid_bond.hpp"
 #include "thermalized_bond.hpp"
-
-#include "TabulatedPotential.hpp"
 
 #include <boost/serialization/access.hpp>
 #include <boost/serialization/variant.hpp>
@@ -98,7 +98,8 @@ using Bonded_IA_Parameters =
                    AngleCossquareBond, DihedralBond, TabulatedDistanceBond,
                    TabulatedAngleBond, TabulatedDihedralBond, ThermalizedBond,
                    RigidBond, IBMTriel, IBMVolCons, IBMTribend,
-                   OifGlobalForcesBond, OifLocalForcesBond, VirtualBond>;
+                   OifGlobalForcesBond, OifLocalForcesBond, VirtualBond,
+                   VelDependentTabulated>;
 
 class BondedInteractionsMap {
   using container_type =
