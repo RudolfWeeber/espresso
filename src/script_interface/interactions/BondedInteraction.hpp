@@ -352,9 +352,9 @@ public:
   VelDependentTabulated() {
     add_parameters({
         {"min", AutoParameter::read_only,
-         [this]() { return get_struct().pot->minval; }},
+         [this]() { return get_struct().approach_tab.minval; }},
         {"max", AutoParameter::read_only,
-         [this]() { return get_struct().pot->maxval; }},
+         [this]() { return get_struct().approach_tab.maxval; }},
         {"approach_force", AutoParameter::read_only,
          [this]() { return get_struct().approach_tab.force_tab; }},
         {"reced_force", AutoParameter::read_only,

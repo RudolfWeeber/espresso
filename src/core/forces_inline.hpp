@@ -289,12 +289,13 @@ inline void add_non_bonded_pair_force(
  *  @param[in] dx          Vector between @p p1 and @p p2.
  *  @param[in] kernel      %Coulomb force kernel.
  */
-inline boost::optional<Utils::Vector3d> calc_bond_pair_force(
-    Particle const &p1, Particle const &p2,
-    Bonded_IA_Parameters const &iaparams, Utils::Vector3d const &dx,
-    Coulomb::ShortRangeForceKernel::kernel_type const *kernel) {
-  if (auto const *iap = boost::get<FeneBond>(&iaparams),
-      const BoxGeometry & box_geo) {
+inline boost::optional<Utils::Vector3d>
+calc_bond_pair_force(Particle const &p1, Particle const &p2,
+                     Bonded_IA_Parameters const &iaparams,
+                     Utils::Vector3d const &dx,
+                     Coulomb::ShortRangeForceKernel::kernel_type const *kernel,
+                     const BoxGeometry &box_geo) {
+  if (auto const *iap = boost::get<FeneBond>(&iaparams)) {
     return iap->force(dx);
   }
   if (auto const *iap = boost::get<HarmonicBond>(&iaparams)) {
@@ -325,9 +326,9 @@ inline boost::optional<Utils::Vector3d> calc_bond_pair_force(
     return Utils::Vector3d{};
   }
   if (auto const *iap = boost::get<VelDependentTabulated>(&iaparams)) {
-    auto dv = box_geo.velocity_difference(box_geo.folded_position(p1),
-                                          box_geo.folded_position(p2), p1.v(),
-                                          p2.v());
+    auto dv = box_geo.velocity_difference(box_geo.folded_position(p1.pos()),
+                                          box_geo.folded_position(p2.pos()),
+                                          p1.v(), p2.v());
     return iap->force(dx, dv);
   }
 

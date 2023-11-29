@@ -1,4 +1,3 @@
-
 /*
  * Copyright (C) 2010-2022 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
@@ -38,7 +37,7 @@
 #include <vector>
 
 struct VelDependentTabulated {
-  const int num = 1; // bond partner
+  static const int num = 1; // bond partner
   TabulatedPotential approach_tab;
   TabulatedPotential reced_tab;
   VelDependentTabulated() = default;
@@ -51,7 +50,6 @@ struct VelDependentTabulated {
           "approach_force and reced_force must have the same length");
     }
     std::vector<double> energy(approach_force.size());
-    std::fill(energy, 0.0);
     approach_tab = {min_val, max_val, approach_force, energy};
     reced_tab = {min_val, max_val, reced_force, energy};
   }
@@ -69,9 +67,9 @@ private:
   void serialize(Archive &ar, long int /* version */) {
     ar &approach_tab;
     ar &reced_tab;
-  };
+  }
 };
-boost::optional<Utils::vector3d>
+inline boost::optional<Utils::Vector3d>
 VelDependentTabulated::force(Utils::Vector3d const &dx,
                              const Utils::Vector3d &dv) const {
   auto const dist = dx.norm();

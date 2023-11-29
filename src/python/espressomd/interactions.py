@@ -1132,7 +1132,7 @@ class VelDependentTabulated(BondedInteraction):
 
     _so_name = "Interactions::VelDependentTabulated"
     _so_feature = "TABULATED"
-    _type_number = BONDED_IA.VelDependentTabulated
+    _type_number = BONDED_IA.VEL_DEPENDENT_TABULATED
 
     def get_default_params(self):
         """Gets default values of optional parameters.
