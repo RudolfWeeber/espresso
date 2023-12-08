@@ -782,6 +782,7 @@ class BONDED_IA(enum.IntEnum):
     OIF_GLOBAL_FORCES = enum.auto()
     OIF_LOCAL_FORCES = enum.auto()
     VIRTUAL_BOND = enum.auto()
+    VEL_DEPENDENT_TABULATED = enum.auto()
 
 
 class BondedInteraction(ScriptInterfaceHelper, metaclass=abc.ABCMeta):
@@ -1118,6 +1119,20 @@ class TabulatedDistance(BondedInteraction):
     _so_name = "Interactions::TabulatedDistanceBond"
     _so_feature = "TABULATED"
     _type_number = BONDED_IA.TABULATED_DISTANCE
+
+    def get_default_params(self):
+        """Gets default values of optional parameters.
+
+        """
+        return {}
+
+
+@script_interface_register
+class VelDependentTabulated(BondedInteraction):
+
+    _so_name = "Interactions::VelDependentTabulated"
+    _so_feature = "TABULATED"
+    _type_number = BONDED_IA.VEL_DEPENDENT_TABULATED
 
     def get_default_params(self):
         """Gets default values of optional parameters.

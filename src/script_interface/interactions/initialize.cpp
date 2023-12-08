@@ -40,6 +40,8 @@ void initialize(Utils::Factory<ObjectHandle> *om) {
   om->register_new<DihedralBond>("Interactions::DihedralBond");
   om->register_new<TabulatedDistanceBond>(
       "Interactions::TabulatedDistanceBond");
+  om->register_new<VelDependentTabulated>(
+      "Interactions::VelDependentTabulated");
   om->register_new<TabulatedAngleBond>("Interactions::TabulatedAngleBond");
   om->register_new<TabulatedDihedralBond>(
       "Interactions::TabulatedDihedralBond");

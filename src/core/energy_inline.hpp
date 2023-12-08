@@ -242,6 +242,9 @@ calc_bonded_energy(Bonded_IA_Parameters const &iaparams, Particle const &p1,
     if (boost::get<VirtualBond>(&iaparams)) {
       return {0.};
     }
+    if (boost::get<VelDependentTabulated>(&iaparams)) {
+      return {0.};
+    }
     throw BondUnknownTypeError();
   } // 1 partner
   if (n_partners == 2) {

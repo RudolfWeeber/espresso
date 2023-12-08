@@ -346,6 +346,32 @@ private:
   }
 };
 
+class VelDependentTabulated
+    : public BondedInteractionImpl<::VelDependentTabulated> {
+public:
+  VelDependentTabulated() {
+    add_parameters({
+        {"min", AutoParameter::read_only,
+         [this]() { return get_struct().approach_tab.minval; }},
+        {"max", AutoParameter::read_only,
+         [this]() { return get_struct().approach_tab.maxval; }},
+        {"approach_force", AutoParameter::read_only,
+         [this]() { return get_struct().approach_tab.force_tab; }},
+        {"reced_force", AutoParameter::read_only,
+         [this]() { return get_struct().reced_tab.force_tab; }},
+    });
+  }
+
+private:
+  void construct_bond(VariantMap const &params) override {
+    m_bonded_ia =
+        std::make_shared<::Bonded_IA_Parameters>(CoreBondedInteraction(
+            get_value<double>(params, "min"), get_value<double>(params, "max"),
+            get_value<std::vector<double>>(params, "approach_force"),
+            get_value<std::vector<double>>(params, "reced_force")));
+  }
+};
+
 class TabulatedAngleBond : public BondedInteractionImpl<::TabulatedAngleBond> {
 public:
   TabulatedAngleBond() {

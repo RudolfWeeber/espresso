@@ -102,7 +102,8 @@ calc_bonded_virial_pressure_tensor(
     Particle const &p2, BoxGeometry const &box_geo,
     Coulomb::ShortRangeForceKernel::kernel_type const *kernel) {
   auto const dx = box_geo.get_mi_vector(p1.pos(), p2.pos());
-  auto const result = calc_bond_pair_force(p1, p2, iaparams, dx, kernel);
+  auto const result =
+      calc_bond_pair_force(p1, p2, iaparams, dx, kernel, box_geo);
   if (result) {
     auto const &force = result.get();
 
