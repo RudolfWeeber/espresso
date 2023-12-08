@@ -30,7 +30,7 @@ def AssertThermostatType(*allowed_thermostats):
     .. code-block:: cython
 
         cdef class Thermostat:
-            @AssertThermostatType(THERMO_LANGEVIN, THERMO_DPD)
+            @AssertThermostatType(THERMO_LANGEVIN, THERMO_DPD, THERMO_LB)
             def set_langevin(self, kT=None, gamma=None, gamma_rotation=None,
                      act_on_virtual=False, seed=None):
                 ...
@@ -236,7 +236,7 @@ cdef class Thermostat:
         return thermo_list
 
     def _set_temperature(self, kT):
-        mpi_set_temperature(kT)
+        if kT != temperature: mpi_set_temperature(kT)
         utils.handle_errors("Temperature change failed")
 
     def turn_off(self):
@@ -264,7 +264,7 @@ cdef class Thermostat:
         lb_lbcoupling_set_gamma(0.0)
         mpi_bcast_lb_particle_coupling()
 
-    @AssertThermostatType(THERMO_LANGEVIN, THERMO_DPD)
+    @AssertThermostatType(THERMO_LANGEVIN, THERMO_DPD, THERMO_LB)
     def set_langevin(self, kT, gamma, gamma_rotation=None,
                      act_on_virtual=False, seed=None):
         """
@@ -520,7 +520,7 @@ cdef class Thermostat:
 
         mpi_set_thermo_virtual(act_on_virtual)
 
-    @AssertThermostatType(THERMO_LB, THERMO_DPD)
+    @AssertThermostatType(THERMO_LB, THERMO_DPD, THERMO_LANGEVIN)
     def set_lb(
         self,
         seed=None,
