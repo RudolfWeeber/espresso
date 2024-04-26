@@ -29,6 +29,7 @@
 #include <blockforest/Initialization.h>
 #include <blockforest/StructuredBlockForest.h>
 #include <blockforest/communication/UniformBufferedScheme.h>
+#include "gpu/communication/UniformGPUScheme.h"
 #include <domain_decomposition/BlockDataID.h>
 #include <domain_decomposition/IBlock.h>
 #include <field/AddToStorage.h>
@@ -40,6 +41,7 @@
 #include <stencil/D3Q27.h>
 #if defined(__CUDACC__)
 #include <gpu/AddGPUFieldToStorage.h>
+#include <gpu/communication/MemcpyPackInfo.h>
 #include <gpu/communication/GPUPackInfo.h>
 #endif
 
@@ -113,15 +115,22 @@ protected:
     using PdfField = field::GhostLayerField<FT, Stencil::Size>;
     using VectorField = field::GhostLayerField<FT, uint_t{3u}>;
     template <class Field>
-    using PackInfo = field::communication::PackInfo<Field>;
+    using PdfCommPackInfo = field::communication::PackInfo<Field>;
+    template <class Field>
+    using FullCommPackInfo = field::communication::PackInfo<Field>;
+    template <class Stencil>
+    using CommScheme = blockforest::communication::UniformBufferedScheme<Stencil>; 
   };
-
 #if defined(__CUDACC__)
   template <typename FT> struct FieldTrait<FT, lbmpy::Arch::GPU> {
     using PdfField = gpu::GPUField<FT>;
     using VectorField = gpu::GPUField<FT>;
     template <class Field>
-    using PackInfo = gpu::communication::GPUPackInfo<Field>;
+    using PdfCommPackInfo = gpu::communication::MemcpyPackInfo<Field>;
+    template <class Field>
+    using FullCommPackInfo = gpu::communication::GPUPackInfo<Field>;
+    template <class Stencil>
+    using CommScheme = gpu::communication::UniformGPUScheme<Stencil>;  
   };
 #endif
 
@@ -252,10 +261,13 @@ protected:
    * We use the same directions as the stencil during integration.
    */
   using PDFStreamingCommunicator =
-      blockforest::communication::UniformBufferedScheme<Stencil>;
+      typename FieldTrait<FloatType, Architecture>::template CommScheme<Stencil>;
   template <class Field>
-  using PackInfo =
-      typename FieldTrait<FloatType, Architecture>::template PackInfo<Field>;
+  using FullCommPackInfo =
+      typename FieldTrait<FloatType, Architecture>::template FullCommPackInfo<Field>;
+  template <class Field>
+  using PdfCommPackInfo =
+      typename FieldTrait<FloatType, Architecture>::template PdfCommPackInfo<Field>;
 
   // communicators
   std::shared_ptr<FullCommunicator> m_boundary_communicator;
@@ -396,20 +408,17 @@ public:
     m_pdf_streaming_communicator =
         std::make_shared<PDFStreamingCommunicator>(blocks);
     m_pdf_streaming_communicator->addPackInfo(
-        std::make_shared<PackInfo<PdfField>>(m_pdf_field_id, n_ghost_layers));
+        std::make_shared<PdfCommPackInfo<PdfField>>(m_pdf_field_id));
     m_pdf_streaming_communicator->addPackInfo(
-        std::make_shared<PackInfo<VectorField>>(m_last_applied_force_field_id,
-                                                n_ghost_layers));
+        std::make_shared<PdfCommPackInfo<VectorField>>(m_last_applied_force_field_id));
 
     m_pdf_full_communicator = std::make_shared<FullCommunicator>(blocks);
     m_pdf_full_communicator->addPackInfo(
-        std::make_shared<PackInfo<PdfField>>(m_pdf_field_id, n_ghost_layers));
+        std::make_shared<FullCommPackInfo<PdfField>>(m_pdf_field_id));
     m_pdf_full_communicator->addPackInfo(
-        std::make_shared<PackInfo<VectorField>>(m_last_applied_force_field_id,
-                                                n_ghost_layers));
+        std::make_shared<FullCommPackInfo<VectorField>>(m_last_applied_force_field_id));
     m_pdf_full_communicator->addPackInfo(
-        std::make_shared<PackInfo<VectorField>>(m_velocity_field_id,
-                                                n_ghost_layers));
+        std::make_shared<FullCommPackInfo<VectorField>>(m_velocity_field_id));
 
     m_boundary_communicator = std::make_shared<FullCommunicator>(blocks);
     m_boundary_communicator->addPackInfo(
@@ -494,7 +503,7 @@ private:
     // LB stream
     integrate_stream(blocks);
     // Refresh ghost layers
-    ghost_communication_pdfs();
+//    ghost_communication_pdfs();
   }
 
   void integrate_pull_scheme() {
