@@ -14,40 +14,13 @@ The summer school "Simulating soft matter across scales" will take place on Octo
 This is the Molecular Dynamics software ESPResSo ("Extensible
 Simulation Package for Research on Soft Matter Systems").
 
-ESPResSo is a highly versatile software package for performing and
-analyzing scientific Molecular Dynamics many-particle simulations of
-"coarse-grained" bead-spring models as they are used in soft-matter
-research in physics, chemistry and molecular biology. It can be used
-to simulate systems as for example polymers, liquid crystals,
-colloids, ferrofluids and biological systems such as DNA and lipid
-membranes.
+ESPResSo is an open-source platform designed for particle-based simulations using molecular dynamics, Monte Carlo techniques and couplings to lattice-based methods such as the lattice-Boltzmann method.
+Focused on coarse-grained models, it can be used for research in soft matter science, statistical and biophysics, and process engineering.
+To this end, a wide range of features is provided including, e.g., solvers for electrostatics and magnetostatics in various geometries, modelling chemical reactions and grand-canonical systems, hydrodynamics via Stokesian dynamics and the lattice-Boltzmann method, diffusion-advection-reaction equations, active particles and shear boundary conditions, and rigid body mechanics.
 
-In "coarse-grained" models, a whole group of atoms or molecules are
-treated as a single bead.  Although many details are coarse-grained
-away in these models, they can often predict qualitative properties,
-such as for example the scaling behavior of a system, and can give
-insight into theoretical models.  Due to the drastic reduction of
-degrees of freedom, coarse-graining allows to investigate systems
-which would be out of reach of the commonly used atom-based
-simulations, due to the large time- and length scales of the studied
-processes.
-
-ESPResSo is capable of doing classical Molecular Dynamics simulations
-of many types of systems in different statistical ensembles (microcanonical,
-canonical, isobaric-isothermal, (semi-)grand canonical, reaction, constant pH,
-Gibbs ensemble) and non-equilibrium situations, using standard potentials
-such as the Lennard-Jones or Morse potential. It contains many advanced
-simulation algorithms, which take into account hydrodynamic
-(lattice-Boltzmann) and electrostatic interactions (P3M, ELC, MMM1D).
-Rigid bodies can be modelled by virtual site interactions, and it can
-integrate rotationally non-invariant particles.
-
-ESPResSo is free, open-source software (GPL). It is parallelized and
-can be employed on desktop machines, convenience clusters as well as
-on supercomputers with hundreds of CPUs. The parallel code is
-controlled via the scripting language Python, which gives the software
-its great flexibility and allows for many unconventional simulation
-protocols, as are often required when studying coarse-grained models.
+ESPResSo is controlled by a Python interface, allowing great flexibility in building and running simulation models. The simulation core is written in C++ and parallelized using MPI to allow for better performance.
+Hence, the software can b employed on desktop machines, clusters as well as
+on supercomputers. 
 
 ESPResSo is used in scientific working groups all over the world both
 as a production platform as well as a research platform for developing
@@ -58,15 +31,17 @@ contributors from all over the world.
 
 ## Documentation
 
-The [user guide](https://espressomd.github.io/doc/index.html) will
-walk you through the basic usage of ESPResSo. Advanced simulation
-methods are extensively documented, with examples and links to the
-relevant literature. Additional resources such as tutorials and
-doxygen documentation can be found on https://espressomd.github.io.
-The official website is https://espressomd.org/wordpress/.
+* [User guide](https://espressomd.github.io/doc/index.html) Installation, use, and features
+* [Tutorials](https://espressomd.github.io/#tutorials) for the simulation of various systems, e.g., Lennard-Jones particles, polymers and polyelectrolytes, particles in a fluid flow, ferrofluids, etc.
+* [Video lectures](https://www.youtube.com/@espressosimulationpackage7832)
+* [Documentation for developers](https://espressomd.github.io/#development)
+* [Wiki](https://github.com/espressomd/espresso/wiki/)
+* [Official website](https:/espressomd.org)
 
 ## Installation
 
+You can try ESPResSo in the [cloud](https://espressomd.github.io/tutorials.html) without installing it. However, for good performance, install the software on your system.
+ 
 Detailed installation instructions for Ubuntu and macOS can be found in the
 user guide, section [Installation](https://espressomd.github.io/doc/installation.html).
 Common installation issues are addressed in the
@@ -78,7 +53,7 @@ together with past releases until 4.0. When choosing a release, we recommend tha
 you get the latest bugfix release in that line. For example, for 4.2 you would like
 to use 4.2.2.
 
-### Join the community
+## Join the community
 
 Please consider subscribing to our
 [mailing list](https://espressomd.org/wordpress/community-and-support/mailing-lists/)
@@ -86,7 +61,7 @@ if you're actively using ESPResSo, as we occasionally need community
 feedback when making decisions on the future of specific features in
 upcoming releases. You'll also get notifications on bugfix releases.
 
-### Please cite us!
+## Please cite us!
 
 If you use ESPResSo to publish scientific results, we would ask you to
 acknowledge this usage by mentioning the software with its version number and
@@ -98,7 +73,7 @@ publications, as indicated in the documentation. For detailed instructions, see
 
 ## License
 
-Copyright (C) 2010-2022 The ESPResSo project
+Copyright (C) 2010-2024 The ESPResSo project
 
 Copyright (C) 2002-2010 Max-Planck-Institute for Polymer Research, Theory Group
 
