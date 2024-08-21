@@ -747,7 +747,7 @@ class LBTest:
         # ext_force_density is a force density, therefore v = ext_force_density
         # / dens * tau * (n_time_steps + 0.5)
         fluid_velocity = np.array(ext_force_density) * self.system.time_step * (
-            n_time_steps + 0.5) / self.params['density']
+            n_time_steps - 1 / 2) / self.params['density']
         # Check global linear momentum = density * volume * velocity
         rtol = self.rtol
         if hasattr(lbf, "single_precision") and lbf.single_precision:

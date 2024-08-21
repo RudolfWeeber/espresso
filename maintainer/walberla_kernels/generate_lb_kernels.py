@@ -29,6 +29,7 @@ import pystencils_espresso
 
 import lbmpy
 import lbmpy.creationfunctions
+import lbmpy.macroscopic_value_kernels
 import lbmpy.forcemodels
 import lbmpy.stencils
 import lbmpy.enums
@@ -107,6 +108,15 @@ with code_generation_context.CodeGeneration() as ctx:
         relaxation_rates=relaxation_rates.rr_getter,
         force_model=lbmpy.forcemodels.Schiller(force_field.center_vector)
     )
+
+    # Generate sweep to updae velocity field from pdf
+    for params, target_suffix in paramlist(parameters, ("GPU", "CPU", "AVX")):
+        pystencils_walberla.generate_sweep(
+            ctx,
+            f"UpdateVelFromPDF{precision_prefix}{target_suffix}",
+            lbmpy.macroscopic_value_kernels.macroscopic_values_getter(
+                method, None, fields["velocity"], fields["pdfs"]),
+            **params)
 
     # generate stream kernels
     for params, target_suffix in paramlist(parameters, ("GPU", "CPU", "AVX")):

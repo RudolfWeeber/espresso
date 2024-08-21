@@ -559,11 +559,11 @@ protected:
 
 public:
   void integrate() override {
-    if (has_lees_edwards_bc()) {
-      integrate_pull_scheme();
-    } else {
-      integrate_push_scheme();
-    }
+    //    if (has_lees_edwards_bc()) {
+    integrate_pull_scheme();
+    //    } else {
+    //      integrate_push_scheme();
+    //    }
     // Handle VTK writers
     integrate_vtk_writers();
   }

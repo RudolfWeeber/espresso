@@ -31,6 +31,8 @@
 #include "generated_kernels/InitialPDFsSetterSinglePrecisionCUDA.h"
 #include "generated_kernels/StreamSweepDoublePrecisionCUDA.h"
 #include "generated_kernels/StreamSweepSinglePrecisionCUDA.h"
+#include "generated_kernels/UpdateVelFromPDFDoublePrecisionCUDA.h"
+#include "generated_kernels/UpdateVelFromPDFSinglePrecisionCUDA.h"
 
 #include "generated_kernels/CollideSweepDoublePrecisionLeesEdwardsCUDA.h"
 #include "generated_kernels/CollideSweepDoublePrecisionThermalizedCUDA.h"
@@ -49,6 +51,7 @@ template <> struct KernelTrait<double, Arch::GPU> {
       pystencils::CollideSweepDoublePrecisionLeesEdwardsCUDA;
   using StreamSweep = pystencils::StreamSweepDoublePrecisionCUDA;
   using InitialPDFsSetter = pystencils::InitialPDFsSetterDoublePrecisionCUDA;
+  using UpdateVelFromPDF = pystencils::UpdateVelFromPDFDoublePrecisionCUDA;
 };
 
 template <> struct KernelTrait<float, Arch::GPU> {
@@ -58,6 +61,7 @@ template <> struct KernelTrait<float, Arch::GPU> {
       pystencils::CollideSweepSinglePrecisionLeesEdwardsCUDA;
   using StreamSweep = pystencils::StreamSweepSinglePrecisionCUDA;
   using InitialPDFsSetter = pystencils::InitialPDFsSetterSinglePrecisionCUDA;
+  using UpdateVelFromPDF = pystencils::UpdateVelFromPDFSinglePrecisionCUDA;
 };
 
 template <> struct BoundaryHandlingTrait<double, Arch::GPU> {
