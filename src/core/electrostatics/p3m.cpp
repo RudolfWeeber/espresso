@@ -89,6 +89,9 @@
 #include <string>
 #include <tuple>
 #include <utility>
+#ifdef CALIPER
+#include <caliper/cali.h>
+#endif
 
 #ifdef FFTW3_H
 #error "The FFTW3 library shouldn't be visible in this translation unit"
@@ -451,6 +454,9 @@ Utils::Vector9d CoulombP3MImpl<FloatType, Architecture>::long_range_pressure(
 template <typename FloatType, Arch Architecture>
 double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
     bool force_flag, bool energy_flag, ParticleRange const &particles) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   auto const &system = get_system();
   auto const &box_geo = *system.box_geo;
 #ifdef NPT
@@ -465,9 +471,17 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
             system.coulomb.impl->solver)) {
       charge_assign(particles);
     }
+    std::cout << "after CA " << p3m.mesh.rs_scalar.size() << std::endl;
+
     p3m.fft_buffers->perform_scalar_halo_gather();
+    std::cout << "after HG " << p3m.mesh.rs_scalar.size() << std::endl;
+    std::cout << "buffer size before "
+              << sizeof(p3m.fft_buffers->get_scalar_mesh()) << std::endl;
     p3m.fft->forward_fft(p3m.fft_buffers->get_scalar_mesh());
     p3m.update_mesh_views();
+    std::cout << "buffer size after "
+              << sizeof(p3m.fft_buffers->get_scalar_mesh()) << std::endl;
+    std::cout << "after FT " << p3m.mesh.rs_scalar.size() << std::endl;
   }
 
   auto p_q_range = ParticlePropertyRange::charge_range(particles);
@@ -492,6 +506,8 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
     /* i*k differentiation */
     auto constexpr mesh_start = Utils::Vector3i::broadcast(0);
     auto const &mesh_stop = p3m.mesh.size;
+    std::cout << "stop" << mesh_stop << std::endl;
+
     auto const &offset = p3m.mesh.start;
     auto const wavevector = Utils::Vector3<FloatType>((2. * std::numbers::pi) *
                                                       box_geo.length_inv());

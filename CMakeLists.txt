@@ -506,7 +506,7 @@ if(ESPRESSO_BUILD_WITH_CUDA)
       $<$<AND:$<BOOL:${ESPRESSO_WARNINGS_ARE_ERRORS}>,$<CUDA_COMPILER_ID:Clang>>:-Werror>
   )
 endif()
-
+find_package(Heffte REQUIRED)
 # disable warning from -Wextra on ARM processors
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_SYSTEM_PROCESSOR MATCHES
                                             "arm")

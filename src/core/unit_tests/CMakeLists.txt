@@ -86,6 +86,9 @@ if(ESPRESSO_BUILD_WITH_FFTW)
   espresso_unit_test(SRC math_test.cpp DEPENDS espresso::utils espresso::core)
 endif()
 
+espresso_unit_test(SRC field_layout_helpers_test.cpp DEPENDS espresso::utils
+                   espresso::core)
+
 if(ESPRESSO_BUILD_WITH_CUDA)
   espresso_unit_test(SRC cuda_test.cu DEPENDS espresso::utils espresso::core
                      espresso::cuda)

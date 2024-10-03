@@ -30,6 +30,9 @@
 #include "fft/fft.hpp"
 
 #include <memory>
+#ifdef CALIPER
+#include <caliper/cali.h>
+#endif
 
 template <typename FloatType>
 FFTBackendLegacy<FloatType>::FFTBackendLegacy(P3MLocalMesh const &local_mesh)
@@ -49,11 +52,17 @@ void FFTBackendLegacy<FloatType>::init(P3MParameters const &params) {
 
 template <typename FloatType>
 void FFTBackendLegacy<FloatType>::forward_fft(FloatType *rs_mesh) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   fft->forward_fft(::comm_cart, rs_mesh);
 }
 
 template <typename FloatType>
 void FFTBackendLegacy<FloatType>::backward_fft(FloatType *rs_mesh) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   fft->backward_fft(::comm_cart, rs_mesh, check_complex_residuals);
 }
 

@@ -41,6 +41,10 @@
 #include <span>
 #include <utility>
 
+#ifdef CALIPER
+#include <caliper/cali.h>
+#endif
+
 template <typename T>
 static void mesh_sendrecv(T const *const sendbuf, int scount, int dest,
                           T *const recvbuf, int rcount, int source,
@@ -164,6 +168,9 @@ template <typename FloatType>
 void p3m_send_mesh<FloatType>::gather_grid(boost::mpi::communicator const &comm,
                                            std::span<FloatType *> meshes,
                                            Utils::Vector3i const &dim) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   auto const node_neighbors = Utils::Mpi::cart_neighbors<3>(comm);
   send_grid.resize(max * meshes.size());
   recv_grid.resize(max * meshes.size());
@@ -204,6 +211,9 @@ template <typename FloatType>
 void p3m_send_mesh<FloatType>::spread_grid(boost::mpi::communicator const &comm,
                                            std::span<FloatType *> meshes,
                                            Utils::Vector3i const &dim) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   auto const node_neighbors = Utils::Mpi::cart_neighbors<3>(comm);
   send_grid.resize(max * meshes.size());
   recv_grid.resize(max * meshes.size());
