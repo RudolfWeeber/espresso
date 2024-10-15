@@ -471,6 +471,9 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
             system.coulomb.impl->solver)) {
       charge_assign(particles);
     }
+    for (int i=0;i<6;i++) {
+    std::cout<<"margin " <<i<<"=" <<p3m.local_mesh.margin[i]<<std::endl;
+  }
 
     p3m.fft_buffers->perform_scalar_halo_gather();
     p3m.fft->forward_fft(p3m.fft_buffers->get_scalar_mesh());

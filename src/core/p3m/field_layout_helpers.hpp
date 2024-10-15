@@ -6,37 +6,30 @@
 // Function to extract a 3D block from the halo field
 template <typename T>
 std::vector<T> extract_block(const std::vector<T> &in_array,
-                             Utils::Vector3i dimensions, int n_halo) {
+                             Utils::Vector3i dimensions, Utils::Vector3i start, Utils::Vector3i stop) {
   // Extract the dimensions
   int nx = dimensions[0];
   int ny = dimensions[1];
   int nz = dimensions[2];
 
   // Validate input
-  if (nx <= 2 * n_halo || ny <= 2 * n_halo || nz <= 2 * n_halo) {
-    throw std::invalid_argument(
-        "n_halo is too large for the given dimensions.");
-  }
 
   // Calculate the size of the block excluding halo regions
-  int nx_block = nx - 2 * n_halo;
-  int ny_block = ny - 2 * n_halo;
-  int nz_block = nz - 2 * n_halo;
-  Utils::Vector3i block_dimensions = {nx_block, ny_block, nz_block};
+  Utils::Vector3i block_dim = stop-start;
 
   // Output vector to hold the block
-  std::vector<T> out_array(nx_block * ny_block * nz_block);
+  std::vector<T> out_array(block_dim[0] * block_dim[1] * block_dim[2]);
 
   // Extract the block
-  for (int z = 0; z < nz_block; ++z) {
-    for (int y = 0; y < ny_block; ++y) {
-      for (int x = 0; x < nx_block; ++x) {
+  for (int z = 0; z < block_dim[2]; ++z) {
+    for (int y = 0; y < block_dim[1]; ++y) {
+      for (int x = 0; x < block_dim[0]; ++x) {
         // Compute indices for input and output arrays
         int in_index =
-            Utils::get_linear_index(x + n_halo, y + n_halo, z + n_halo,
+            Utils::get_linear_index(x + start[0], y + start[1], z + start[2],
                                     dimensions, Utils::MemoryOrder::ROW_MAJOR);
 
-        int out_index = Utils::get_linear_index(x, y, z, block_dimensions,
+        int out_index = Utils::get_linear_index(x, y, z, block_dim,
                                                 Utils::MemoryOrder::ROW_MAJOR);
 
         // Copy the value
@@ -51,31 +44,21 @@ std::vector<T> extract_block(const std::vector<T> &in_array,
 // Function to pad the 3D cropped field with zeros to restore the halo regions
 template <typename T>
 std::vector<T> pad_with_zeros(const std::vector<T> &cropped_array,
-                              Utils::Vector3i cropped_dimensions, int n_halo) {
-  // Extract the dimensions of the cropped field
-  int nx_block = cropped_dimensions[0];
-  int ny_block = cropped_dimensions[1];
-  int nz_block = cropped_dimensions[2];
-
-  // Calculate the dimensions of the padded field (original size with halo
-  // regions)
-  int nx = nx_block + 2 * n_halo;
-  int ny = ny_block + 2 * n_halo;
-  int nz = nz_block + 2 * n_halo;
+                              Utils::Vector3i cropped_dim, Utils::Vector3i pad_left, Utils::Vector3i pad_right) {
 
   // Output vector to hold the padded field (initialized with zeros)
-  std::vector<T> padded_array(nx * ny * nz, 0.0);
-  Utils::Vector3i padded_dimensions = {nx, ny, nz};
+  Utils::Vector3i padded_dim = cropped_dim+pad_left+pad_right;
+  std::vector<T> padded_array(padded_dim[0]*padded_dim[1]*padded_dim[2]);
 
   // Fill in the original cropped field into the padded array
-  for (int z = 0; z < nz_block; ++z) {
-    for (int y = 0; y < ny_block; ++y) {
-      for (int x = 0; x < nx_block; ++x) {
+  for (int z = 0; z < cropped_dim[2]; ++z) {
+    for (int y = 0; y < cropped_dim[1]; ++y) {
+      for (int x = 0; x < cropped_dim[0]; ++x) {
         // Compute indices for cropped and padded arrays
         int cropped_index = Utils::get_linear_index(
-            x, y, z, cropped_dimensions, Utils::MemoryOrder::ROW_MAJOR);
+            x, y, z, cropped_dim, Utils::MemoryOrder::ROW_MAJOR);
         int padded_index = Utils::get_linear_index(
-            x + n_halo, y + n_halo, z + n_halo, padded_dimensions,
+            x + pad_left[0], y + pad_left[1], z + pad_left[2], padded_dim,
             Utils::MemoryOrder::ROW_MAJOR);
 
         // Copy the value
