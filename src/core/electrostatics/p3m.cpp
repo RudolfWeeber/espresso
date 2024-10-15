@@ -289,7 +289,7 @@ template <int cao> struct AssignCharge {
     using value_type =
         typename std::remove_reference_t<decltype(p3m)>::value_type;
     p3m_interpolate(p3m.local_mesh, w, [q, &p3m](int ind, double w) {
-      p3m.mesh.rs_scalar[ind] += value_type(w * q);
+      p3m.mesh.rs_charge_density[ind] += value_type(w * q);
     });
   }
 

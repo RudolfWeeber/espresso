@@ -221,6 +221,11 @@ struct P3MLocalMesh {
 template <typename FloatType> struct P3MFFTMesh {
   /** @brief real-space scalar mesh for charge assignment and FFT. */
   std::span<FloatType> rs_scalar;
+  // !!! Real space scalar charge denisty
+  std::span<FloatType> rs_charge_density;
+
+  
+
   /** @brief real-space vector meshes for the electric or dipolar field. */
   std::array<std::span<FloatType>, 3> rs_fields;
 

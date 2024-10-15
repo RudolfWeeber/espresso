@@ -89,6 +89,8 @@ template <typename FloatType> struct p3m_data_struct {
     }
     mesh.stop = mesh.start + mesh.size;
     fft_buffers->update_mesh_views(mesh);
+    // !!!
+    mesh.rs_charge_density = mesh.rs_scalar;
   }
 
   template <typename T, class... Args> void make_fft_instance(Args... args) {
