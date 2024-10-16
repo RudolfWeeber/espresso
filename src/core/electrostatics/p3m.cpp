@@ -473,8 +473,11 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
       charge_assign(particles);
     }
     for (int i=0;i<6;i++) {
-    std::cout<<"margin " <<i<<"=" <<p3m.local_mesh.margin[i]<<std::endl;
   }
+
+
+  // halo communication  
+  p3m.fft_buffers->perform_scalar_halo_gather();
   
   // !!! Get real space cahrge density without ghost layers
   const Utils::Vector3i halo_left = 
@@ -487,8 +490,18 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
     p3m.local_mesh.margin[5]};
   auto charge_density_no_halos = extract_block(p3m.mesh.rs_charge_density, p3m.local_mesh.dim, halo_left,p3m.local_mesh.dim-halo_right);
 
+  // !! Check charge density matches
+  double q_particles = std::accumulate(particles.begin(), particles.end(), 0.0, [](double sum, const Particle& p) { return sum +p.q(); });
+  double q_mesh = 
+    std::accumulate(charge_density_no_halos.begin(), charge_density_no_halos.end(), 0.0);
+  boost::mpi::all_reduce(comm_cart, q_particles, std::plus<>());
+  boost::mpi::all_reduce(comm_cart, q_mesh, std::plus<>());
+  if (std::abs(q_particles-q_mesh) > 10*std::numeric_limits<double>::epsilon()) {
+    std::cout << q_particles << " "<<q_mesh<<std::endl;
+    throw std::runtime_error("Some charge went missing");
+  
+___
 
-    p3m.fft_buffers->perform_scalar_halo_gather();
     p3m.fft->forward_fft(p3m.fft_buffers->get_scalar_mesh());
     p3m.update_mesh_views();
   }
