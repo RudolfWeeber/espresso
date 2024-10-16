@@ -494,14 +494,17 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
   double q_particles = std::accumulate(particles.begin(), particles.end(), 0.0, [](double sum, const Particle& p) { return sum +p.q(); });
   double q_mesh = 
     std::accumulate(charge_density_no_halos.begin(), charge_density_no_halos.end(), 0.0);
-  boost::mpi::all_reduce(comm_cart, q_particles, std::plus<>());
-  boost::mpi::all_reduce(comm_cart, q_mesh, std::plus<>());
+  q_particles = boost::mpi::all_reduce(comm_cart, q_particles, std::plus<>());
+ q_mesh =  boost::mpi::all_reduce(comm_cart, q_mesh, std::plus<>());
   if (std::abs(q_particles-q_mesh) > 10*std::numeric_limits<double>::epsilon()) {
     std::cout << q_particles << " "<<q_mesh<<std::endl;
     throw std::runtime_error("Some charge went missing");
-  
-___
+  }
 
+  // !! which part of the grid do we own
+  Utils::Vector3i lower(p3m.mesh.start);
+  Utils::Vector3i upper(p3m.mesh.stop);
+  std::cout<< "rank "<<comm_cart.rank()<<": "<<lower << "|"<<upper<<std::endl;
     p3m.fft->forward_fft(p3m.fft_buffers->get_scalar_mesh());
     p3m.update_mesh_views();
   }
