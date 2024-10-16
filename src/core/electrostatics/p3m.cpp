@@ -57,6 +57,7 @@
 #include "communication.hpp"
 #include "errorhandling.hpp"
 #include "integrators/Propagation.hpp"
+#include "p3m/field_layout_helpers.hpp" 
 #include "npt.hpp"
 #include "system/GpuParticleData.hpp"
 #include "system/System.hpp"
@@ -474,6 +475,18 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
     for (int i=0;i<6;i++) {
     std::cout<<"margin " <<i<<"=" <<p3m.local_mesh.margin[i]<<std::endl;
   }
+  
+  // !!! Get real space cahrge density without ghost layers
+  const Utils::Vector3i halo_left = 
+    {p3m.local_mesh.margin[0],
+    p3m.local_mesh.margin[2],
+    p3m.local_mesh.margin[4]};
+  const Utils::Vector3i halo_right = 
+    {p3m.local_mesh.margin[1],
+    p3m.local_mesh.margin[3],
+    p3m.local_mesh.margin[5]};
+  auto charge_density_no_halos = extract_block(p3m.mesh.rs_charge_density, p3m.local_mesh.dim, halo_left,p3m.local_mesh.dim-halo_right);
+
 
     p3m.fft_buffers->perform_scalar_halo_gather();
     p3m.fft->forward_fft(p3m.fft_buffers->get_scalar_mesh());

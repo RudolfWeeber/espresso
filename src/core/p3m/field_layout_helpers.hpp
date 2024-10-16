@@ -4,8 +4,8 @@
 #include <vector>
 
 // Function to extract a 3D block from the halo field
-template <typename T>
-std::vector<T> extract_block(const std::vector<T> &in_array,
+template <typename Container>
+auto extract_block(const Container &in_array,
                              Utils::Vector3i dimensions, Utils::Vector3i start, Utils::Vector3i stop) {
   // Extract the dimensions
   int nx = dimensions[0];
@@ -18,7 +18,7 @@ std::vector<T> extract_block(const std::vector<T> &in_array,
   Utils::Vector3i block_dim = stop-start;
 
   // Output vector to hold the block
-  std::vector<T> out_array(block_dim[0] * block_dim[1] * block_dim[2]);
+  std::vector<typename Container::value_type> out_array(block_dim[0] * block_dim[1] * block_dim[2]);
 
   // Extract the block
   for (int z = 0; z < block_dim[2]; ++z) {
