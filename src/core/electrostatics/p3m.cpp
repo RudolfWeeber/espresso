@@ -57,6 +57,7 @@
 #include "communication.hpp"
 #include "errorhandling.hpp"
 #include "integrators/Propagation.hpp"
+#include "heffte.h"
 #include "p3m/field_layout_helpers.hpp" 
 #include "npt.hpp"
 #include "system/GpuParticleData.hpp"
@@ -94,9 +95,10 @@
 #include <caliper/cali.h>
 #endif
 
-#ifdef FFTW3_H
-#error "The FFTW3 library shouldn't be visible in this translation unit"
-#endif
+// !!
+//#ifdef FFTW3_H
+//#error "The FFTW3 library shouldn't be visible in this translation unit"
+//#endif
 
 template <typename FloatType, Arch Architecture>
 void CoulombP3MImpl<FloatType, Architecture>::count_charged_particles() {
@@ -467,7 +469,7 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
   auto constexpr npt_flag = false;
 #endif
 
-  if (p3m.sum_q2 > 0.) {
+//  if (p3m.sum_q2 > 0.) {
     if (not has_actor_of_type<ElectrostaticLayerCorrection>(
             system.coulomb.impl->solver)) {
       charge_assign(particles);
@@ -502,12 +504,28 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
   }
 
   // !! which part of the grid do we own
-  Utils::Vector3i lower(p3m.mesh.start);
-  Utils::Vector3i upper(p3m.mesh.stop);
-  std::cout<< "rank "<<comm_cart.rank()<<": "<<lower << "|"<<upper<<std::endl;
+  Utils::Vector3i lower = Utils::Vector3i(p3m.local_mesh.ld_ind)+halo_left;
+  Utils::Vector3i upper = lower + Utils::Vector3i(p3m.local_mesh.dim)-halo_left-halo_right; 
+  std::cout<< "rs rank "<<comm_cart.rank()<<": "<<lower << "|"<<upper<<"|"<<charge_density_no_halos.size() << std::endl;
+  std::cout<< "ks rank "<<comm_cart.rank()<<": "<<Utils::Vector3i(p3m.mesh.start) << "|"<<Utils::Vector3i(p3m.mesh.stop)<<std::endl;
+
+  
+   // !! Heffte box setup
+  auto const [KX, KY, KZ] = p3m.fft->get_permutations();
+   const heffte::box3d<> in_box({lower[0],lower[1],lower[2]},{upper[0]-1,upper[1]-1,upper[2]-1},{2,1,0});
+//   const heffte::box3d<> out_box({lower[0],lower[1],lower[2]},{upper[0]-1,upper[1]-1,upper[2]-1});
+   const heffte::box3d<> out_box(
+      {p3m.mesh.start[0],p3m.mesh.start[1],p3m.mesh.start[2]},
+      {p3m.mesh.stop[0]-1,p3m.mesh.stop[1]-1,p3m.mesh.stop[2]-1},
+      {KX,KY,KZ});
+
+   using backend_tag = heffte::backend::default_backend<heffte::tag::cpu>::type;
+   heffte::fft3d<backend_tag> fft3d(in_box,out_box,comm_cart);
+   auto ks_charge_density = fft3d.forward(charge_density_no_halos);
+
     p3m.fft->forward_fft(p3m.fft_buffers->get_scalar_mesh());
     p3m.update_mesh_views();
-  }
+//  }
 
   auto p_q_range = ParticlePropertyRange::charge_range(particles);
   auto p_force_range = ParticlePropertyRange::force_range(particles);
@@ -537,6 +555,11 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
                                                       box_geo.length_inv());
     auto indices = Utils::Vector3i{};
     auto index = std::size_t(0u);
+    std::array<std::vector<std::complex<FloatType>>,3> ks_E_fields;
+    auto const fft_mesh_length = Utils::product(p3m.mesh.size);
+    for (int i: {0,1,2}) {
+       ks_E_fields[i].resize(fft_mesh_length);
+    };
 
     /* compute electric field */
     // Eq. (3.49) @cite deserno00b
@@ -544,6 +567,10 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
       auto const rho_hat =
           std::complex<FloatType>(p3m.mesh.rs_scalar[2u * index + 0u],
                                   p3m.mesh.rs_scalar[2u * index + 1u]);
+      auto const rho_hat_heffte = ks_charge_density[index];
+      if (std::abs(rho_hat_heffte-rho_hat)>1E-10) {
+        std::cout << "diff "<<comm_cart.rank()<< " | "<< indices << " | "<<rho_hat<<" | " <<rho_hat_heffte<<std::endl;
+      }
       auto const phi_hat = p3m.g_force[index] * rho_hat;
 
       for (int d = 0; d < 3; d++) {
@@ -556,10 +583,20 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
         /* i*k*(Re+i*Im) = - Im*k + i*Re*k     (i=sqrt(-1)) */
         p3m.mesh.rs_fields[d_rs][2u * index + 0u] = -k * phi_hat.imag();
         p3m.mesh.rs_fields[d_rs][2u * index + 1u] = +k * phi_hat.real();
+        ks_E_fields[d_rs][index] = std::complex<FloatType>(0,1) *phi_hat*std::complex<FloatType>(k,0);
+        // !! compare
+        std::complex<FloatType> tmp(p3m.mesh.rs_fields[d_rs][2u * index + 0u], 
+                                    p3m.mesh.rs_fields[d_rs][2u * index + 1u]);
+        if (std::abs(ks_E_fields[d_rs][index]-tmp)>1E-10) {
+            std::cout << "E-fields diff "<<d_rs<<" | "<<indices<< " | "<<tmp << " | "<<ks_E_fields[d_rs][index]<<std::endl;
+        }
       }
 
       ++index;
     });
+
+    auto rs_E_field_x=fft3d.backward(ks_E_fields[0]);
+      
 
     auto const check_residuals =
         not p3m.params.tuning and check_complex_residuals;
@@ -567,6 +604,16 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
     for (auto &rs_mesh : p3m.fft_buffers->get_vector_mesh()) {
       p3m.fft->backward_fft(rs_mesh);
     }
+
+    // !! check E field in rs
+    for (int i=0;i<rs_E_field_x.size();i++) {
+      if (std::abs(rs_E_field_x[i]-p3m.mesh.rs_fields[0][i])>1E-10) {
+        std::cout << "rs e field diff | "<<i<<" | "<<p3m.mesh.rs_fields[0][i] << " | " << rs_E_field_x[i]<<std::endl;
+      }
+    }
+
+
+
     p3m.fft_buffers->perform_vector_halo_spread();
     p3m.fft->check_complex_residuals = false;
 
