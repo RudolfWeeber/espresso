@@ -512,8 +512,9 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
   
    // !! Heffte box setup
   auto const [KX, KY, KZ] = p3m.fft->get_permutations();
-   const heffte::box3d<> in_box({lower[0],lower[1],lower[2]},{upper[0]-1,upper[1]-1,upper[2]-1},{2,1,0});
-//   const heffte::box3d<> out_box({lower[0],lower[1],lower[2]},{upper[0]-1,upper[1]-1,upper[2]-1});
+   const heffte::box3d<> in_box({lower[0],lower[1],lower[2]},{upper[0]-1,upper[1]-1,upper[2]-1},{0,1,2});
+   // Note: the legacy FFT permutates the coordinate indices during transform
+   // this is accounted for by the indx order passed to the out_box
    const heffte::box3d<> out_box(
       {p3m.mesh.start[0],p3m.mesh.start[1],p3m.mesh.start[2]},
       {p3m.mesh.stop[0]-1,p3m.mesh.stop[1]-1,p3m.mesh.stop[2]-1},
@@ -557,6 +558,7 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
     auto index = std::size_t(0u);
     std::array<std::vector<std::complex<FloatType>>,3> ks_E_fields;
     auto const fft_mesh_length = Utils::product(p3m.mesh.size);
+    std::cout << "fft mesh length"<<fft_mesh_length<<std::endl;
     for (int i: {0,1,2}) {
        ks_E_fields[i].resize(fft_mesh_length);
     };
@@ -595,7 +597,21 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
       ++index;
     });
 
-    auto rs_E_field_x=fft3d.backward(ks_E_fields[0]);
+    
+      Utils::Vector3i rs_indices;
+      for (int d: {0,1,2}) {
+        rs_indices[d] = (d + p3m.mesh.ks_pnum) % 3;
+      }
+       std::cout << "rs indices  "<< rs_indices<<std::endl;
+
+
+      const heffte::box3d<> in_box_with_coord_rot({lower[0],lower[1],lower[2]},{upper[0]-1,upper[1]-1,upper[2]-1},{rs_indices[0],rs_indices[1],rs_indices[2]});
+      const heffte::box3d<> out_box_no_coord_rot(
+      {p3m.mesh.start[0],p3m.mesh.start[1],p3m.mesh.start[2]},
+      {p3m.mesh.stop[0]-1,p3m.mesh.stop[1]-1,p3m.mesh.stop[2]-1});
+    heffte::fft3d<backend_tag> fft3d_no_coord_rot(in_box_with_coord_rot,out_box_no_coord_rot,comm_cart);
+    auto rs_E_field_x_no_halo=fft3d.backward(ks_E_fields[0]);
+    auto rs_E_field_x = pad_with_zeros(rs_E_field_x_no_halo,upper-lower,halo_left,halo_right);
       
 
     auto const check_residuals =
@@ -604,17 +620,19 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
     for (auto &rs_mesh : p3m.fft_buffers->get_vector_mesh()) {
       p3m.fft->backward_fft(rs_mesh);
     }
+    p3m.update_mesh_views();
+    std::cout << "rs E field size  "<< rs_E_field_x.size()<< " | "<<(p3m.local_mesh.dim) <<std::endl;
 
     // !! check E field in rs
     for (int i=0;i<rs_E_field_x.size();i++) {
-      if (std::abs(rs_E_field_x[i]-p3m.mesh.rs_fields[0][i])>1E-10) {
+//      if (std::abs(rs_E_field_x[i]-p3m.mesh.rs_fields[0][2*i])>1E-10) {
         std::cout << "rs e field diff | "<<i<<" | "<<p3m.mesh.rs_fields[0][i] << " | " << rs_E_field_x[i]<<std::endl;
-      }
+//      }
     }
-
-
-
     p3m.fft_buffers->perform_vector_halo_spread();
+
+
+
     p3m.fft->check_complex_residuals = false;
 
     auto const force_prefac = prefactor / volume;
