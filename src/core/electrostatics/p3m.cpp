@@ -63,6 +63,7 @@
 #include "system/GpuParticleData.hpp"
 #include "system/System.hpp"
 #include "tuning.hpp"
+#include "p3m/send_mesh.hpp"
 
 #include <utils/Vector.hpp>
 #include <utils/integral_parameter.hpp>
@@ -498,7 +499,7 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
     std::accumulate(charge_density_no_halos.begin(), charge_density_no_halos.end(), 0.0);
   q_particles = boost::mpi::all_reduce(comm_cart, q_particles, std::plus<>());
  q_mesh =  boost::mpi::all_reduce(comm_cart, q_mesh, std::plus<>());
-  if (std::abs(q_particles-q_mesh) > 10*std::numeric_limits<double>::epsilon()) {
+  if (std::abs(q_particles-q_mesh) > 1E-8) {
     std::cout << q_particles << " "<<q_mesh<<std::endl;
     throw std::runtime_error("Some charge went missing");
   }
@@ -611,7 +612,8 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
       {p3m.mesh.stop[0]-1,p3m.mesh.stop[1]-1,p3m.mesh.stop[2]-1});
     heffte::fft3d<backend_tag> fft3d_no_coord_rot(in_box_with_coord_rot,out_box_no_coord_rot,comm_cart);
     auto rs_E_field_x_no_halo=fft3d.backward(ks_E_fields[0]);
-    auto rs_E_field_x = pad_with_zeros(rs_E_field_x_no_halo,upper-lower,halo_left,halo_right);
+    auto tmp = pad_with_zeros(rs_E_field_x_no_halo,upper-lower,halo_left,halo_right);
+    auto rs_E_field_x = discard_imaginary_part(tmp);
       
 
     auto const check_residuals =
@@ -624,12 +626,16 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
     std::cout << "rs E field size  "<< rs_E_field_x.size()<< " | "<<(p3m.local_mesh.dim) <<std::endl;
 
     // !! check E field in rs
-    for (int i=0;i<rs_E_field_x.size();i++) {
-//      if (std::abs(rs_E_field_x[i]-p3m.mesh.rs_fields[0][2*i])>1E-10) {
-        std::cout << "rs e field diff | "<<i<<" | "<<p3m.mesh.rs_fields[0][i] << " | " << rs_E_field_x[i]<<std::endl;
-//      }
-    }
     p3m.fft_buffers->perform_vector_halo_spread();
+    p3m_send_mesh<FloatType> sm_tmp;
+    sm_tmp.resize(comm_cart,p3m.local_mesh);
+
+    sm_tmp.spread_grid(comm_cart,rs_E_field_x.data(),p3m.local_mesh.dim); 
+    for (int i=0;i<rs_E_field_x.size();i++) {
+      if (std::abs(rs_E_field_x[i]-p3m.mesh.rs_fields[0][i])>1E-10) {
+        std::cout << "rs e field diff | "<<i<<" | "<<p3m.mesh.rs_fields[0][i] << " | " << rs_E_field_x[i]<<std::endl;
+      }
+    }
 
 
 

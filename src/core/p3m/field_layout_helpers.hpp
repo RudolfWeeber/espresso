@@ -69,3 +69,13 @@ std::vector<T> pad_with_zeros(const std::vector<T> &cropped_array,
 
   return padded_array;
 }
+
+
+template <typename T>
+std::vector<T> discard_imaginary_part(std::vector<std::complex<T>>& v) {
+   std::vector<T> res(v.size());
+   for (int i=0;i<v.size();i++) {
+    res[i]=v[i].real();
+   }
+   return res;
+}
