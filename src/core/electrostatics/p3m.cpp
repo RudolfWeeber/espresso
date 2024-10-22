@@ -101,6 +101,37 @@
 //#error "The FFTW3 library shouldn't be visible in this translation unit"
 //#endif
 
+#include <iostream>
+#include <cstdlib>   // for std::getenv
+#include <string>
+#include <sstream>   // for std::istringstream
+#include <vector>
+
+std::vector<int> get_ints_from_env(const std::string& env_var_name) {
+    const char* env_p = std::getenv(env_var_name.c_str());
+    std::vector<int> values;
+
+    if (env_p != nullptr) {
+        std::string env_value(env_p);
+        std::istringstream iss(env_value);
+        std::string token;
+
+        // Assuming the values are separated by spaces
+        while (std::getline(iss, token, ' ')) {
+            values.push_back(std::stoi(token));
+        }
+    } else {
+        std::cerr << "Environment variable " << env_var_name << " not found." << std::endl;
+    }
+
+    return values;
+}
+
+
+
+
+
+
 template <typename FloatType, Arch Architecture>
 void CoulombP3MImpl<FloatType, Architecture>::count_charged_particles() {
   auto local_n = 0;
@@ -507,13 +538,12 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
   // !! which part of the grid do we own
   Utils::Vector3i lower = Utils::Vector3i(p3m.local_mesh.ld_ind)+halo_left;
   Utils::Vector3i upper = lower + Utils::Vector3i(p3m.local_mesh.dim)-halo_left-halo_right; 
-  std::cout<< "rs rank "<<comm_cart.rank()<<": "<<lower << "|"<<upper<<"|"<<charge_density_no_halos.size() << std::endl;
-  std::cout<< "ks rank "<<comm_cart.rank()<<": "<<Utils::Vector3i(p3m.mesh.start) << "|"<<Utils::Vector3i(p3m.mesh.stop)<<std::endl;
 
   
    // !! Heffte box setup
   auto const [KX, KY, KZ] = p3m.fft->get_permutations();
-   const heffte::box3d<> in_box({lower[0],lower[1],lower[2]},{upper[0]-1,upper[1]-1,upper[2]-1},{0,1,2});
+  auto [R_X, R_Y, R_Z] = std::tuple{0,1,2};
+   const heffte::box3d<> in_box({lower[0],lower[1],lower[2]},{upper[0]-1,upper[1]-1,upper[2Z]-1},{R_X,R_Y,R_Z});
    // Note: the legacy FFT permutates the coordinate indices during transform
    // this is accounted for by the indx order passed to the out_box
    const heffte::box3d<> out_box(
@@ -521,6 +551,9 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
       {p3m.mesh.stop[0]-1,p3m.mesh.stop[1]-1,p3m.mesh.stop[2]-1},
       {KX,KY,KZ});
 
+    
+//  std::cout<< "rs rank "<<comm_cart.rank()<<": "<<in_box<<std::endl;
+//  std::cout<< "ks rank "<<comm_cart.rank()<<": "<<out_box<<std::endl;
    using backend_tag = heffte::backend::default_backend<heffte::tag::cpu>::type;
    heffte::fft3d<backend_tag> fft3d(in_box,out_box,comm_cart);
    auto ks_charge_density = fft3d.forward(charge_density_no_halos);
@@ -603,32 +636,24 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
       for (int d: {0,1,2}) {
         rs_indices[d] = (d + p3m.mesh.ks_pnum) % 3;
       }
-       std::cout << "rs indices  "<< rs_indices<<std::endl;
+       std::cout << comm_cart.rank() << " rs indices  "<< rs_indices<<std::endl;
+    p3m_send_mesh<FloatType> sm_tmp;
+    sm_tmp.resize(comm_cart,p3m.local_mesh);
+    for (auto &rs_mesh : p3m.fft_buffers->get_vector_mesh()) {
+      p3m.fft->backward_fft(rs_mesh);
+    }
+    auto const check_residuals =
+        not p3m.params.tuning and check_complex_residuals;
+    p3m.fft->check_complex_residuals = check_residuals;
 
+    // !! check E field in rs
+    p3m.fft_buffers->perform_vector_halo_spread();
 
-      const heffte::box3d<> in_box_with_coord_rot({lower[0],lower[1],lower[2]},{upper[0]-1,upper[1]-1,upper[2]-1},{rs_indices[0],rs_indices[1],rs_indices[2]});
-      const heffte::box3d<> out_box_no_coord_rot(
-      {p3m.mesh.start[0],p3m.mesh.start[1],p3m.mesh.start[2]},
-      {p3m.mesh.stop[0]-1,p3m.mesh.stop[1]-1,p3m.mesh.stop[2]-1});
-    heffte::fft3d<backend_tag> fft3d_no_coord_rot(in_box_with_coord_rot,out_box_no_coord_rot,comm_cart);
     auto rs_E_field_x_no_halo=fft3d.backward(ks_E_fields[0]);
     auto tmp = pad_with_zeros(rs_E_field_x_no_halo,upper-lower,halo_left,halo_right);
     auto rs_E_field_x = discard_imaginary_part(tmp);
       
 
-    auto const check_residuals =
-        not p3m.params.tuning and check_complex_residuals;
-    p3m.fft->check_complex_residuals = check_residuals;
-    for (auto &rs_mesh : p3m.fft_buffers->get_vector_mesh()) {
-      p3m.fft->backward_fft(rs_mesh);
-    }
-    p3m.update_mesh_views();
-    std::cout << "rs E field size  "<< rs_E_field_x.size()<< " | "<<(p3m.local_mesh.dim) <<std::endl;
-
-    // !! check E field in rs
-    p3m.fft_buffers->perform_vector_halo_spread();
-    p3m_send_mesh<FloatType> sm_tmp;
-    sm_tmp.resize(comm_cart,p3m.local_mesh);
 
     sm_tmp.spread_grid(comm_cart,rs_E_field_x.data(),p3m.local_mesh.dim); 
     for (int i=0;i<rs_E_field_x.size();i++) {
