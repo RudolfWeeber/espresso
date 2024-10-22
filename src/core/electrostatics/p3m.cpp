@@ -543,33 +543,18 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
    // !! Heffte box setup
   auto const [KX, KY, KZ] = p3m.fft->get_permutations();
   auto [R_X, R_Y, R_Z] = std::tuple{0,1,2};
-   const heffte::box3d<> in_box({lower[0],lower[1],lower[2]},{upper[0]-1,upper[1]-1,upper[2Z]-1},{R_X,R_Y,R_Z});
-   // Note: the legacy FFT permutates the coordinate indices during transform
-   // this is accounted for by the indx order passed to the out_box
-   const heffte::box3d<> out_box(
-      {p3m.mesh.start[0],p3m.mesh.start[1],p3m.mesh.start[2]},
-      {p3m.mesh.stop[0]-1,p3m.mesh.stop[1]-1,p3m.mesh.stop[2]-1},
-      {KX,KY,KZ});
-
+   const heffte::box3d<> in_box({lower[0],lower[1],lower[2]},{upper[0]-1,upper[1]-1,upper[2Z]-1},{2,1,0});
+  auto const out_box = in_box;
     
-//  std::cout<< "rs rank "<<comm_cart.rank()<<": "<<in_box<<std::endl;
-//  std::cout<< "ks rank "<<comm_cart.rank()<<": "<<out_box<<std::endl;
    using backend_tag = heffte::backend::default_backend<heffte::tag::cpu>::type;
    heffte::fft3d<backend_tag> fft3d(in_box,out_box,comm_cart);
    auto ks_charge_density = fft3d.forward(charge_density_no_halos);
-
-    p3m.fft->forward_fft(p3m.fft_buffers->get_scalar_mesh());
-    p3m.update_mesh_views();
-//  }
 
   auto p_q_range = ParticlePropertyRange::charge_range(particles);
   auto p_force_range = ParticlePropertyRange::force_range(particles);
   auto p_unfolded_pos_range =
       ParticlePropertyRange::unfolded_pos_range(particles, box_geo);
 
-  // Note: after these calls, the grids are in the order yzx and not xyz
-  // anymore!!!
-  /* The dipole moment is only needed if we don't have metallic boundaries. */
   auto const box_dipole =
       (p3m.params.epsilon != P3M_EPSILON_METALLIC)
           ? std::make_optional(calc_dipole_moment(
@@ -583,88 +568,51 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
   if (force_flag) {
     /* i*k differentiation */
     auto constexpr mesh_start = Utils::Vector3i::broadcast(0);
-    auto const &mesh_stop = p3m.mesh.size;
+    auto const mesh_stop = upper-lower;
 
-    auto const &offset = p3m.mesh.start;
     auto const wavevector = Utils::Vector3<FloatType>((2. * std::numbers::pi) *
                                                       box_geo.length_inv());
     auto indices = Utils::Vector3i{};
     auto index = std::size_t(0u);
     std::array<std::vector<std::complex<FloatType>>,3> ks_E_fields;
-    auto const fft_mesh_length = Utils::product(p3m.mesh.size);
-    std::cout << "fft mesh length"<<fft_mesh_length<<std::endl;
+    auto const fft_mesh_length = Utils::product(upper-lower);
     for (int i: {0,1,2}) {
        ks_E_fields[i].resize(fft_mesh_length);
     };
-
+  auto const force_influence_function = grid_influence_function<FloatType, 1>(
+      p3m.params, lower, upper, 0,1,2,
+      get_system().box_geo->length_inv());
     /* compute electric field */
     // Eq. (3.49) @cite deserno00b
     for_each_3d(mesh_start, mesh_stop, indices, [&]() {
-      auto const rho_hat =
-          std::complex<FloatType>(p3m.mesh.rs_scalar[2u * index + 0u],
-                                  p3m.mesh.rs_scalar[2u * index + 1u]);
-      auto const rho_hat_heffte = ks_charge_density[index];
-      if (std::abs(rho_hat_heffte-rho_hat)>1E-10) {
-        std::cout << "diff "<<comm_cart.rank()<< " | "<< indices << " | "<<rho_hat<<" | " <<rho_hat_heffte<<std::endl;
-      }
-      auto const phi_hat = p3m.g_force[index] * rho_hat;
-
+      auto const& rho_hat = ks_charge_density[index];
+      auto const phi_hat = force_influence_function[index] * rho_hat;
+      auto const global_index = indices+lower;
       for (int d = 0; d < 3; d++) {
-        /* direction in r-space: */
-        int d_rs = (d + p3m.mesh.ks_pnum) % 3;
-        /* directions */
-        auto const k = FloatType(p3m.d_op[d_rs][indices[d] + offset[d]]) *
-                       wavevector[d_rs];
+        auto const k = FloatType(p3m.d_op[d][global_index[d]]) *
+                       wavevector[d];
 
         /* i*k*(Re+i*Im) = - Im*k + i*Re*k     (i=sqrt(-1)) */
-        p3m.mesh.rs_fields[d_rs][2u * index + 0u] = -k * phi_hat.imag();
-        p3m.mesh.rs_fields[d_rs][2u * index + 1u] = +k * phi_hat.real();
-        ks_E_fields[d_rs][index] = std::complex<FloatType>(0,1) *phi_hat*std::complex<FloatType>(k,0);
-        // !! compare
-        std::complex<FloatType> tmp(p3m.mesh.rs_fields[d_rs][2u * index + 0u], 
-                                    p3m.mesh.rs_fields[d_rs][2u * index + 1u]);
-        if (std::abs(ks_E_fields[d_rs][index]-tmp)>1E-10) {
-            std::cout << "E-fields diff "<<d_rs<<" | "<<indices<< " | "<<tmp << " | "<<ks_E_fields[d_rs][index]<<std::endl;
-        }
+        ks_E_fields[d][index] = std::complex<FloatType>(0,1) *phi_hat*std::complex<FloatType>(k,0);
       }
 
       ++index;
     });
 
     
-      Utils::Vector3i rs_indices;
-      for (int d: {0,1,2}) {
-        rs_indices[d] = (d + p3m.mesh.ks_pnum) % 3;
-      }
-       std::cout << comm_cart.rank() << " rs indices  "<< rs_indices<<std::endl;
     p3m_send_mesh<FloatType> sm_tmp;
     sm_tmp.resize(comm_cart,p3m.local_mesh);
-    for (auto &rs_mesh : p3m.fft_buffers->get_vector_mesh()) {
-      p3m.fft->backward_fft(rs_mesh);
-    }
-    auto const check_residuals =
-        not p3m.params.tuning and check_complex_residuals;
-    p3m.fft->check_complex_residuals = check_residuals;
-
-    // !! check E field in rs
-    p3m.fft_buffers->perform_vector_halo_spread();
-
-    auto rs_E_field_x_no_halo=fft3d.backward(ks_E_fields[0]);
-    auto tmp = pad_with_zeros(rs_E_field_x_no_halo,upper-lower,halo_left,halo_right);
-    auto rs_E_field_x = discard_imaginary_part(tmp);
-      
-
-
-    sm_tmp.spread_grid(comm_cart,rs_E_field_x.data(),p3m.local_mesh.dim); 
-    for (int i=0;i<rs_E_field_x.size();i++) {
-      if (std::abs(rs_E_field_x[i]-p3m.mesh.rs_fields[0][i])>1E-10) {
-        std::cout << "rs e field diff | "<<i<<" | "<<p3m.mesh.rs_fields[0][i] << " | " << rs_E_field_x[i]<<std::endl;
+    for (int d: {0,1,2}) {
+    auto rs_E_field_no_halo=fft3d.backward(ks_E_fields[d]);
+    auto tmp = pad_with_zeros(rs_E_field_no_halo,upper-lower,halo_left,halo_right);
+    auto rs_E_field = discard_imaginary_part(tmp);
+    sm_tmp.spread_grid(comm_cart,rs_E_field.data(),p3m.local_mesh.dim); 
+    for (int i=0;i<rs_E_field.size();i++) {
+       p3m.mesh.rs_fields[d][i] = rs_E_field[i];
       }
     }
 
 
-
-    p3m.fft->check_complex_residuals = false;
 
     auto const force_prefac = prefactor / volume;
     Utils::integral_parameter<int, AssignForces, 1, 7>(
@@ -684,15 +632,17 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
   }
 
   /* === k-space energy calculation  === */
+  auto const energy_influence_function = grid_influence_function<FloatType, 0>(
+      p3m.params, p3m.mesh.start, p3m.mesh.stop, 0,1,2,
+      get_system().box_geo->length_inv());
   if (energy_flag or npt_flag) {
     auto node_energy = 0.;
-    auto const mesh_length = Utils::product(p3m.mesh.size);
+    auto const mesh_length = Utils::product(upper-lower);
     for (int i = 0; i < mesh_length; i++) {
       // Use the energy optimized influence function for energy!
       // Eq. (3.40) @cite deserno00b
       node_energy +=
-          double(p3m.g_energy[i] * (Utils::sqr(p3m.mesh.rs_scalar[2 * i + 0]) +
-                                    Utils::sqr(p3m.mesh.rs_scalar[2 * i + 1])));
+          double(energy_influence_function[i] * std::abs(Utils::sqr(ks_charge_density[i])));
     }
     node_energy /= 2. * volume;
 
