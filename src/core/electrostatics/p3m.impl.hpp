@@ -66,6 +66,9 @@ struct CoulombP3MImpl : public CoulombP3M {
   p3m_data_struct_coulomb<FloatType> &p3m;
 
 private:
+  constexpr const Utils::Vector3i mem_layout() const
+      { return {2,1,0}; // column major 
+  }
   /** @brief Coulomb P3M meshes and FFT algorithm. */
   std::unique_ptr<p3m_data_struct_coulomb<FloatType>> p3m_impl;
   int tune_timings;
@@ -73,6 +76,7 @@ private:
   bool check_complex_residuals;
   bool m_is_tuned;
 
+  // !! Influence functions
 public:
   CoulombP3MImpl(
       std::unique_ptr<p3m_data_struct_coulomb<FloatType>> &&p3m_handle,

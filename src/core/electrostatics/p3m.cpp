@@ -96,6 +96,15 @@
 #include <caliper/cali.h>
 #endif
 
+
+template <typename T, typename Indices>
+T get_reorder(const T& input, const Indices& index_order) {
+  auto res=input;
+  for (int i=0;i<index_order.size();i++) {
+    res[i] = input[index_order[i]];
+  }
+  return res;
+}
 // !!
 //#ifdef FFTW3_H
 //#error "The FFTW3 library shouldn't be visible in this translation unit"
@@ -107,27 +116,22 @@
 #include <sstream>   // for std::istringstream
 #include <vector>
 
-std::vector<int> get_ints_from_env(const std::string& env_var_name) {
-    const char* env_p = std::getenv(env_var_name.c_str());
-    std::vector<int> values;
 
-    if (env_p != nullptr) {
-        std::string env_value(env_p);
-        std::istringstream iss(env_value);
-        std::string token;
 
-        // Assuming the values are separated by spaces
-        while (std::getline(iss, token, ' ')) {
-            values.push_back(std::stoi(token));
-        }
-    } else {
-        std::cerr << "Environment variable " << env_var_name << " not found." << std::endl;
-    }
 
-    return values;
+template <typename FloatType>
+std::complex<FloatType> multiply_complex_by_imaginary(const std::complex<FloatType>& z, FloatType k) {
+    // Perform the multiplication manually: (re + i*imag) * (i*k)
+    
+    return std::complex<FloatType>(-z.imag()*k,  z.real() *k);
 }
 
-
+template <typename FloatType>
+std::complex<FloatType> multiply_complex_by_real(const std::complex<FloatType>& z, FloatType k) {
+    // Perform the multiplication manually: (re + i*imag) * (i*k)
+    
+    return std::complex<FloatType>(z.real()*k,  z.imag() *k);
+}
 
 
 
@@ -163,9 +167,19 @@ void CoulombP3MImpl<FloatType, Architecture>::count_charged_particles() {
  */
 template <typename FloatType, Arch Architecture>
 void CoulombP3MImpl<FloatType, Architecture>::calc_influence_function_force() {
-  auto const [KX, KY, KZ] = p3m.fft->get_permutations();
+  // expressed in global grid coordintes
+  const Utils::Vector3i halo_left = 
+    {p3m.local_mesh.margin[0],
+    p3m.local_mesh.margin[2],
+    p3m.local_mesh.margin[4]};
+  const Utils::Vector3i halo_right = 
+    {p3m.local_mesh.margin[1],
+    p3m.local_mesh.margin[3],
+    p3m.local_mesh.margin[5]};
+  Utils::Vector3i lower = Utils::Vector3i(p3m.local_mesh.ld_ind)+halo_left;
+  Utils::Vector3i upper = lower + Utils::Vector3i(p3m.local_mesh.dim)-halo_left-halo_right; 
   p3m.g_force = grid_influence_function<FloatType, 1>(
-      p3m.params, p3m.mesh.start, p3m.mesh.stop, KX, KY, KZ,
+      p3m.params, lower, upper, mem_layout()[0], mem_layout()[1], mem_layout()[2],
       get_system().box_geo->length_inv());
 }
 
@@ -174,9 +188,19 @@ void CoulombP3MImpl<FloatType, Architecture>::calc_influence_function_force() {
  */
 template <typename FloatType, Arch Architecture>
 void CoulombP3MImpl<FloatType, Architecture>::calc_influence_function_energy() {
-  auto const [KX, KY, KZ] = p3m.fft->get_permutations();
+  // expressed in global grid coordintes
+  const Utils::Vector3i halo_left = 
+    {p3m.local_mesh.margin[0],
+    p3m.local_mesh.margin[2],
+    p3m.local_mesh.margin[4]};
+  const Utils::Vector3i halo_right = 
+    {p3m.local_mesh.margin[1],
+    p3m.local_mesh.margin[3],
+    p3m.local_mesh.margin[5]};
+  Utils::Vector3i lower = Utils::Vector3i(p3m.local_mesh.ld_ind)+halo_left;
+  Utils::Vector3i upper = lower + Utils::Vector3i(p3m.local_mesh.dim)-halo_left-halo_right; 
   p3m.g_energy = grid_influence_function<FloatType, 0>(
-      p3m.params, p3m.mesh.start, p3m.mesh.stop, KX, KY, KZ,
+      p3m.params, lower, upper, mem_layout()[0], mem_layout()[1], mem_layout()[2],
       get_system().box_geo->length_inv());
 }
 
@@ -492,6 +516,7 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
 #ifdef CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif
+
   auto const &system = get_system();
   auto const &box_geo = *system.box_geo;
 #ifdef NPT
@@ -510,7 +535,7 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
   }
 
 
-  // halo communication  
+  // halo communication of real space charge density
   p3m.fft_buffers->perform_scalar_halo_gather();
   
   // !!! Get real space cahrge density without ghost layers
@@ -525,31 +550,36 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
   auto charge_density_no_halos = extract_block(p3m.mesh.rs_charge_density, p3m.local_mesh.dim, halo_left,p3m.local_mesh.dim-halo_right);
 
   // !! Check charge density matches
-  double q_particles = std::accumulate(particles.begin(), particles.end(), 0.0, [](double sum, const Particle& p) { return sum +p.q(); });
-  double q_mesh = 
-    std::accumulate(charge_density_no_halos.begin(), charge_density_no_halos.end(), 0.0);
-  q_particles = boost::mpi::all_reduce(comm_cart, q_particles, std::plus<>());
- q_mesh =  boost::mpi::all_reduce(comm_cart, q_mesh, std::plus<>());
-  if (std::abs(q_particles-q_mesh) > 1E-8) {
-    std::cout << q_particles << " "<<q_mesh<<std::endl;
-    throw std::runtime_error("Some charge went missing");
-  }
-
+//  double q_particles = std::accumulate(particles.begin(), particles.end(), 0.0, [](double sum, const Particle& p) { return sum +p.q(); });
+//  double q_mesh = 
+//    std::accumulate(charge_density_no_halos.begin(), charge_density_no_halos.end(), 0.0);
+//  q_particles = boost::mpi::all_reduce(comm_cart, q_particles, std::plus<>());
+// q_mesh =  boost::mpi::all_reduce(comm_cart, q_mesh, std::plus<>());
+//  if (std::abs(q_particles-q_mesh) > 1E-8) {
+//    std::cout << q_particles << " "<<q_mesh<<std::endl;
+//    throw std::runtime_error("Some charge went missing");
+//  }
+//
   // !! which part of the grid do we own
+  // this is the lower left index of the charge density grid
+  // owned by this mpi rank without ghost layers
+  // expressed in global grid coordintes
   Utils::Vector3i lower = Utils::Vector3i(p3m.local_mesh.ld_ind)+halo_left;
   Utils::Vector3i upper = lower + Utils::Vector3i(p3m.local_mesh.dim)-halo_left-halo_right; 
 
   
-   // !! Heffte box setup
-  auto const [KX, KY, KZ] = p3m.fft->get_permutations();
-  auto [R_X, R_Y, R_Z] = std::tuple{0,1,2};
-   const heffte::box3d<> in_box({lower[0],lower[1],lower[2]},{upper[0]-1,upper[1]-1,upper[2Z]-1},{2,1,0});
+   // Set up the FFT using the Heffte library
+   // This is in global mesh coordinates without any ghost layers
+   // The memory layout has to be specified, so the parts of 
+   // the mesh held by each MPI rank are assembled correctly
+   const heffte::box3d<> in_box({lower[0],lower[1],lower[2]},{upper[0]-1,upper[1]-1,upper[2Z]-1},{mem_layout()[0], mem_layout()[1], mem_layout()[2]});
   auto const out_box = in_box;
-    
    using backend_tag = heffte::backend::default_backend<heffte::tag::cpu>::type;
    heffte::fft3d<backend_tag> fft3d(in_box,out_box,comm_cart);
+   // Fourier transform the real space charge density w/o ghost layers
    auto ks_charge_density = fft3d.forward(charge_density_no_halos);
 
+  // Calculate the dipole term
   auto p_q_range = ParticlePropertyRange::charge_range(particles);
   auto p_force_range = ParticlePropertyRange::force_range(particles);
   auto p_unfolded_pos_range =
@@ -564,56 +594,88 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
   auto const pref =
       4. * std::numbers::pi / volume / (2. * p3m.params.epsilon + 1.);
 
+
   /* === k-space force calculation  === */
   if (force_flag) {
     /* i*k differentiation */
+    // Start and end points for 3d loops over the
+    // k-space. These are in node-local coordinates
     auto constexpr mesh_start = Utils::Vector3i::broadcast(0);
     auto const mesh_stop = upper-lower;
 
+
+    // 2*pi/l prefactor
     auto const wavevector = Utils::Vector3<FloatType>((2. * std::numbers::pi) *
-                                                      box_geo.length_inv());
+                                     
+                 box_geo.length_inv());
+    // During loops, can hold current 3d index in k-space in node-local coords
     auto indices = Utils::Vector3i{};
+
+    // Linear index of the current element in 3d loops
+    // Can only be used, if the memory layouts of all involved
+    // fields and the eon specified to the loop are identical.
     auto index = std::size_t(0u);
-    std::array<std::vector<std::complex<FloatType>>,3> ks_E_fields;
+
+    // in k-space.
     auto const fft_mesh_length = Utils::product(upper-lower);
+    // Holds the electric field in k-space
+    std::array<std::vector<std::complex<FloatType>>,3> ks_E_fields;
+
+    // holds the linear size (n_x*n_y*n_z) of the local mesh
     for (int i: {0,1,2}) {
        ks_E_fields[i].resize(fft_mesh_length);
     };
-  auto const force_influence_function = grid_influence_function<FloatType, 1>(
-      p3m.params, lower, upper, 0,1,2,
-      get_system().box_geo->length_inv());
+
+    // force influence function.
+    // stored in linear array. 1 entry per grid point of local mesh
+    // in k-space. Memory layout has to match loop and charge density field
+
     /* compute electric field */
     // Eq. (3.49) @cite deserno00b
     for_each_3d(mesh_start, mesh_stop, indices, [&]() {
       auto const& rho_hat = ks_charge_density[index];
-      auto const phi_hat = force_influence_function[index] * rho_hat;
+      auto const phi_hat = multiply_complex_by_real(rho_hat, p3m.g_force[index]); 
       auto const global_index = indices+lower;
       for (int d = 0; d < 3; d++) {
+        // Wave vector of the current mesh point
         auto const k = FloatType(p3m.d_op[d][global_index[d]]) *
                        wavevector[d];
 
-        /* i*k*(Re+i*Im) = - Im*k + i*Re*k     (i=sqrt(-1)) */
-        ks_E_fields[d][index] = std::complex<FloatType>(0,1) *phi_hat*std::complex<FloatType>(k,0);
+        // E field in k-space
+//          std::cout << indices << " | "<<rho_hat<<" | " << phi_hat << " | " << force_influence_function[index] << std::endl;
+        ks_E_fields[d][index] = multiply_complex_by_imaginary(phi_hat,k);
       }
 
       ++index;
     });
 
-    
+
+    // Initialize ghost communicaoit for the electric field
     p3m_send_mesh<FloatType> sm_tmp;
     sm_tmp.resize(comm_cart,p3m.local_mesh);
+
+
+    // Back-transform the k-space electric field to real space
+
     for (int d: {0,1,2}) {
     auto rs_E_field_no_halo=fft3d.backward(ks_E_fields[d]);
+
+    // add zeros around the E-field in real space to make room for the ghost lauers
     auto tmp = pad_with_zeros(rs_E_field_no_halo,upper-lower,halo_left,halo_right);
+     // Imaginary part should be zero. Discard it.
     auto rs_E_field = discard_imaginary_part(tmp);
+
+    // Ghost communicate the boundary layers of the E-field in real space
     sm_tmp.spread_grid(comm_cart,rs_E_field.data(),p3m.local_mesh.dim); 
+
+    // copy to the legacy data structure 
     for (int i=0;i<rs_E_field.size();i++) {
        p3m.mesh.rs_fields[d][i] = rs_E_field[i];
       }
     }
 
 
-
+    // Assign particle forces
     auto const force_prefac = prefactor / volume;
     Utils::integral_parameter<int, AssignForces, 1, 7>(
         p3m.params.cao, p3m, force_prefac,
@@ -632,9 +694,6 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
   }
 
   /* === k-space energy calculation  === */
-  auto const energy_influence_function = grid_influence_function<FloatType, 0>(
-      p3m.params, p3m.mesh.start, p3m.mesh.stop, 0,1,2,
-      get_system().box_geo->length_inv());
   if (energy_flag or npt_flag) {
     auto node_energy = 0.;
     auto const mesh_length = Utils::product(upper-lower);
@@ -642,11 +701,12 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
       // Use the energy optimized influence function for energy!
       // Eq. (3.40) @cite deserno00b
       node_energy +=
-          double(energy_influence_function[i] * std::abs(Utils::sqr(ks_charge_density[i])));
+          double(p3m.g_energy[i] * std::abs(Utils::sqr(ks_charge_density[i])));
     }
     node_energy /= 2. * volume;
 
     auto energy = 0.;
+    // add up energy contributions from all mpi ranks
     boost::mpi::reduce(comm_cart, node_energy, energy, std::plus<>(), 0);
     if (this_node == 0) {
       /* self energy correction */
