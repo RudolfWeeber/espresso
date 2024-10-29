@@ -30,8 +30,9 @@
 #include "p3m/common.hpp"
 #include "p3m/data_struct.hpp"
 #include "p3m/interpolation.hpp"
-
+#include "p3m/send_mesh.hpp"
 #include "ParticleRange.hpp"
+#include "P3MFFT.hpp" 
 
 #include <utils/Vector.hpp>
 
@@ -39,11 +40,11 @@
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
+#include <complex>
 
 template <typename FloatType>
-struct p3m_data_struct_coulomb : public p3m_data_struct<FloatType> {
-  using p3m_data_struct<FloatType>::p3m_data_struct;
-
+struct CoulombP3MState : public P3MStateCommon<FloatType> {
+  using P3MStateCommon<FloatType>::P3MStateCommon; 
   /** number of charged particles (only on head node). */
   int sum_qpart = 0;
   /** Sum of square of charges (only on head node). */
@@ -52,6 +53,13 @@ struct p3m_data_struct_coulomb : public p3m_data_struct<FloatType> {
   double square_sum_q = 0.;
 
   p3m_interpolation_cache inter_weights;
+  
+  /* fields */
+  std::vector<FloatType> rs_charge_density;
+  std::vector<std::complex<FloatType>> ks_charge_density;
+  std::array<std::vector<FloatType>,3> rs_E_fields;
+  p3m_send_mesh<FloatType> halo_comm;
+  std::shared_ptr<P3MFFT<FloatType>> fft;
 };
 
 #ifdef CUDA
@@ -63,14 +71,14 @@ struct CoulombP3MImpl : public CoulombP3M {
   ~CoulombP3MImpl() override = default;
 
   /** @brief Coulomb P3M parameters. */
-  p3m_data_struct_coulomb<FloatType> &p3m;
+  CoulombP3MState<FloatType> &p3m;
+  /* Unique ptr to the P3M state to make sure, we own it */
+  std::unique_ptr<CoulombP3MState<FloatType>> p3m_state_ptr;
 
 private:
   constexpr const Utils::Vector3i mem_layout() const
       { return {2,1,0}; // column major 
   }
-  /** @brief Coulomb P3M meshes and FFT algorithm. */
-  std::unique_ptr<p3m_data_struct_coulomb<FloatType>> p3m_impl;
   int tune_timings;
   bool tune_verbose;
   bool check_complex_residuals;
@@ -79,11 +87,11 @@ private:
   // !! Influence functions
 public:
   CoulombP3MImpl(
-      std::unique_ptr<p3m_data_struct_coulomb<FloatType>> &&p3m_handle,
+      std::unique_ptr<CoulombP3MState<FloatType>> &&p3m_state,
       double prefactor, int tune_timings, bool tune_verbose,
       bool check_complex_residuals)
-      : CoulombP3M(p3m_handle->params), p3m{*p3m_handle},
-        p3m_impl{std::move(p3m_handle)}, tune_timings{tune_timings},
+      : CoulombP3M(p3m_state->params), p3m{*p3m_state},
+        p3m_state_ptr{std::move(p3m_state)}, tune_timings{tune_timings},
         tune_verbose{tune_verbose},
         check_complex_residuals{check_complex_residuals} {
 
@@ -162,13 +170,12 @@ public:
   void charge_assign(ParticleRange const &particles) override;
   void assign_charge(double q, Utils::Vector3d const &real_pos,
                      bool skip_cache) override;
-  void prepare_fft_mesh(bool reset_weights) override {
+  void prepare_fft_mesh(bool reset_weights)  override {
     if (reset_weights) {
       p3m.inter_weights.reset(p3m.params.cao);
     }
-    for (int i = 0; i < p3m.local_mesh.size; i++) {
-      p3m.mesh.rs_scalar[i] = FloatType(0);
-    }
+    p3m.rs_charge_density.resize(Utils::product(p3m.local_mesh.dim));
+    std::fill(p3m.rs_charge_density.begin(), p3m.rs_charge_density.end(), FloatType{});
   }
 
 protected:
@@ -187,17 +194,13 @@ protected:
 #endif
 };
 
-template <typename FloatType, Arch Architecture,
-          template <typename> class FFTBackendImpl,
-          template <typename> class P3MFFTMeshImpl, class... Args>
-std::shared_ptr<CoulombP3M> new_p3m_handle(P3MParameters &&p3m,
-                                           Args &&...args) {
+template <typename FloatType, Arch Architecture, typename... Args>
+std::shared_ptr<CoulombP3M> new_coulomb_p3m(P3MParameters &&p3m_params, Args&&...args) {
+  auto state_ptr = std::make_unique<CoulombP3MState<FloatType>>(std::move(p3m_params));
   auto obj = std::make_shared<CoulombP3MImpl<FloatType, Architecture>>(
-      std::make_unique<p3m_data_struct_coulomb<FloatType>>(std::move(p3m)),
-      std::forward<Args>(args)...);
-  obj->p3m.template make_mesh_instance<P3MFFTMeshImpl<FloatType>>();
-  obj->p3m.template make_fft_instance<FFTBackendImpl<FloatType>>();
+      std::move(state_ptr), std::forward<Args>(args)...);
   return obj;
 }
+
 
 #endif // P3M

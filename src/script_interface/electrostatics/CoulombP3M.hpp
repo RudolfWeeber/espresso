@@ -37,9 +37,9 @@
 #include <string>
 #include <utility>
 
-#ifdef FFTW3_H
-#error "The FFTW3 library shouldn't be visible in this translation unit"
-#endif
+//#ifdef FFTW3_H
+//#error "The FFTW3 library shouldn't be visible in this translation unit"
+//#endif
 
 namespace ScriptInterface {
 namespace Coulomb {
@@ -119,8 +119,9 @@ public:
                                get_value<int>(params, "cao"),
                                get_value<double>(params, "alpha"),
                                get_value<double>(params, "accuracy")};
+     double pre_factor = get_value<double>(params, "prefactor");
       make_handle(single_precision, std::move(p3m),
-                  get_value<double>(params, "prefactor"), m_tune_timings,
+                  pre_factor, m_tune_timings,
                   m_tune_verbose, m_check_complex_residuals);
     });
     set_charge_neutrality_tolerance(params);
@@ -129,8 +130,7 @@ public:
 private:
   template <typename FloatType, class... Args>
   void make_handle_impl(Args &&...args) {
-    m_actor = new_p3m_handle<FloatType, Architecture, FFTBackendLegacy,
-                             FFTBuffersLegacy>(std::forward<Args>(args)...);
+    m_actor = new_coulomb_p3m<FloatType, Architecture>(std::forward<Args>(args)...);
   }
   template <class... Args>
   void make_handle(bool single_precision, Args &&...args) {
