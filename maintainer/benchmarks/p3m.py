@@ -137,7 +137,7 @@ if args.gpu:
 # tuning and equilibration
 min_skin = 0.2
 max_skin = 1.6
-p3m_params = {"prefactor": args.prefactor, "accuracy": 1e-3} #,"mesh":64 }
+p3m_params = {"prefactor": args.prefactor, "accuracy": 1e-3} #,"mesh":32 }
 p3m = p3m_class(**p3m_params)
 print("Quick equilibration")
 system.integrator.run(min(3 * measurement_steps, 100))

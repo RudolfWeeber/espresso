@@ -36,7 +36,7 @@ auto extract_block(const Container &in_array,
     }
   }
 
-  return std::move(out_array);
+  return out_array;
 }
 
 // Function to pad the 3D cropped field with zeros to restore the halo regions
@@ -44,7 +44,7 @@ auto extract_block(const Container &in_array,
 #include <algorithm>
 
 template <typename T>
-std::vector<T> pad_with_zeros(const std::vector<T> &cropped_array,
+std::vector<typename T::value_type> pad_with_zeros_discard_imag(const std::span<T> &cropped_array,
                               Utils::Vector3i cropped_dim, Utils::Vector3i pad_left, Utils::Vector3i pad_right) {
 
   // Calculate dimensions and strides
@@ -53,7 +53,7 @@ std::vector<T> pad_with_zeros(const std::vector<T> &cropped_array,
   int padded_xy_stride = padded_dim[1] * padded_dim[2];
 
   // Output vector to hold the padded field (initialized with zeros)
-  std::vector<T> padded_array(padded_dim[0] * padded_dim[1] * padded_dim[2]);
+  std::vector<typename T::value_type> padded_array(padded_dim[0] * padded_dim[1] * padded_dim[2]);
 
   // Calculate the starting position in the padded array for the inner field
   int padded_start_x = pad_left[0] * padded_xy_stride;
@@ -69,13 +69,16 @@ std::vector<T> pad_with_zeros(const std::vector<T> &cropped_array,
       int padded_y_offset = padded_x_offset + y * padded_dim[2] + padded_start_y;
 
       // Copy a contiguous slice of the z-dimension at once
-      std::copy(cropped_array.begin() + cropped_y_offset,
-                cropped_array.begin() + cropped_y_offset + cropped_dim[2],
-                padded_array.begin() + padded_y_offset);
+      for (int i=0;i<cropped_dim[2];i++) {
+        padded_array[padded_y_offset+i] = cropped_array[cropped_y_offset+i].real();
+      }
+//      std::copy(cropped_array.begin() + cropped_y_offset,
+//                cropped_array.begin() + cropped_y_offset + cropped_dim[2],
+//                padded_array.begin() + padded_y_offset);
     }
   }
 
-  return std::move(padded_array);
+  return padded_array;
 }
 
 

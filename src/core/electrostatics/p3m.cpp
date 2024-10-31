@@ -167,19 +167,8 @@ void CoulombP3MImpl<FloatType, Architecture>::count_charged_particles() {
  */
 template <typename FloatType, Arch Architecture>
 void CoulombP3MImpl<FloatType, Architecture>::calc_influence_function_force() {
-  // expressed in global grid coordintes
-  const Utils::Vector3i halo_left = 
-    {p3m.local_mesh.margin[0],
-    p3m.local_mesh.margin[2],
-    p3m.local_mesh.margin[4]};
-  const Utils::Vector3i halo_right = 
-    {p3m.local_mesh.margin[1],
-    p3m.local_mesh.margin[3],
-    p3m.local_mesh.margin[5]};
-  Utils::Vector3i lower = Utils::Vector3i(p3m.local_mesh.ld_ind)+halo_left;
-  Utils::Vector3i upper = lower + Utils::Vector3i(p3m.local_mesh.dim)-halo_left-halo_right; 
   p3m.g_force = grid_influence_function<FloatType, 1>(
-      p3m.params, lower, upper, mem_layout()[0], mem_layout()[1], mem_layout()[2],
+      p3m.params, p3m.fft->ks_local_ld_index(), p3m.fft->ks_local_ur_index(), p3m.fft->mem_layout()[0], p3m.fft->mem_layout()[1], p3m.fft->mem_layout()[2],
       get_system().box_geo->length_inv());
 }
 
@@ -189,18 +178,8 @@ void CoulombP3MImpl<FloatType, Architecture>::calc_influence_function_force() {
 template <typename FloatType, Arch Architecture>
 void CoulombP3MImpl<FloatType, Architecture>::calc_influence_function_energy() {
   // expressed in global grid coordintes
-  const Utils::Vector3i halo_left = 
-    {p3m.local_mesh.margin[0],
-    p3m.local_mesh.margin[2],
-    p3m.local_mesh.margin[4]};
-  const Utils::Vector3i halo_right = 
-    {p3m.local_mesh.margin[1],
-    p3m.local_mesh.margin[3],
-    p3m.local_mesh.margin[5]};
-  Utils::Vector3i lower = Utils::Vector3i(p3m.local_mesh.ld_ind)+halo_left;
-  Utils::Vector3i upper = lower + Utils::Vector3i(p3m.local_mesh.dim)-halo_left-halo_right; 
   p3m.g_energy = grid_influence_function<FloatType, 0>(
-      p3m.params, lower, upper, mem_layout()[0], mem_layout()[1], mem_layout()[2],
+      p3m.params, p3m.fft->ks_local_ld_index(), p3m.fft->ks_local_ur_index(), p3m.fft->mem_layout()[0], p3m.fft->mem_layout()[1], p3m.fft->mem_layout()[2],
       get_system().box_geo->length_inv());
 }
 
@@ -326,6 +305,7 @@ void CoulombP3MImpl<FloatType, Architecture>::init_cpu_kernels() {
 
   p3m.local_mesh.calc_local_ca_mesh(p3m.params, local_geo, skin, elc_layer);
   p3m.fft = std::make_shared<P3MFFT<FloatType>>(comm_cart,p3m.params.mesh,p3m.local_mesh.ld_no_halo, p3m.local_mesh.ur_no_halo, mem_layout());
+  p3m.fft->set_preferred_kspace_decomposition();
   int rs_array_length = Utils::product(p3m.local_mesh.dim);
   p3m.rs_charge_density.resize(rs_array_length);
   for (int d: {0,1,2}) {
@@ -581,7 +561,7 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
     // Start and end points for 3d loops over the
     // k-space. These are in node-local coordinates
     auto constexpr mesh_start = Utils::Vector3i::broadcast(0);
-    auto const mesh_stop = p3m.local_mesh.dim_no_halo;
+    auto const mesh_stop = p3m.fft->ks_local_size();
 
 
     // 2*pi/l prefactor
@@ -597,7 +577,7 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
     auto index = std::size_t(0u);
 
     // in k-space.
-    auto const fft_mesh_length = Utils::product(p3m.local_mesh.dim_no_halo);
+    auto const fft_mesh_length = Utils::product(p3m.fft->ks_local_size());
     // Holds the electric field in k-space
     std::array<std::vector<std::complex<FloatType>>,3> ks_E_fields;
     for (int d: {0,1,2}) { 
@@ -615,7 +595,7 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
     for_each_3d(mesh_start, mesh_stop, indices, [&]() {
       auto const& rho_hat = p3m.ks_charge_density[index];
       auto const phi_hat = multiply_complex_by_real(rho_hat, p3m.g_force[index]); 
-      auto const global_index = indices+p3m.local_mesh.ld_no_halo;
+      auto const global_index = indices+p3m.fft->ks_local_ld_index();
       for (int d = 0; d < 3; d++) {
         // Wave vector of the current mesh point
         auto const k = FloatType(p3m.d_op[d][global_index[d]]) *
@@ -631,17 +611,21 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
 
     // Back-transform the k-space electric field to real space
 
-    for (int d: {0,1,2}) {
-    auto rs_E_field_no_halo=p3m.fft->backward(ks_E_fields[d]);
-
-    // add zeros around the E-field in real space to make room for the ghost lauers
-    auto tmp = pad_with_zeros(rs_E_field_no_halo,p3m.local_mesh.dim_no_halo,p3m.local_mesh.n_halo_ld,p3m.local_mesh.n_halo_ur);
-     // Imaginary part should be zero. Discard it.
-    p3m.rs_E_fields[d] = discard_imaginary_part(tmp);
-
+  int rs_mesh_length = 3*Utils::product(p3m.local_mesh.dim_no_halo);
+  std::vector<std::complex<FloatType>> rs_E_fields_no_halo(3*rs_mesh_length);
+  auto field_span =std::span<std::complex<FloatType>>{ks_E_fields[0].begin(), ks_E_fields[2].end()};
+  p3m.fft->backward_batch(3,field_span.data(),rs_E_fields_no_halo.data());
+ 
+  // add zeros around the E-field in real space to make room for the ghost lauers
+  for (int d:{0,1,2}) {
+    p3m.rs_E_fields[d] = pad_with_zeros_discard_imag(
+        std::span<std::complex<FloatType>>(rs_E_fields_no_halo.begin()+d*rs_mesh_length,
+                       rs_E_fields_no_halo.begin() +(d+1) *rs_mesh_length),
+                       p3m.local_mesh.dim_no_halo,p3m.local_mesh.n_halo_ld,p3m.local_mesh.n_halo_ur);
+    }
     // Ghost communicate the boundary layers of the E-field in real space
-    p3m.halo_comm.spread_grid(comm_cart,p3m.rs_E_fields[d].data(),p3m.local_mesh.dim); 
-  }
+    auto field_pointers = std::vector<FloatType*>{p3m.rs_E_fields[0].data(), p3m.rs_E_fields[1].data(), p3m.rs_E_fields[2].data()};
+    p3m.halo_comm.spread_grid(comm_cart,field_pointers,p3m.local_mesh.dim); 
 
 
     // Assign particle forces
@@ -661,11 +645,12 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
       }
     }
   }
+  
 
   /* === k-space energy calculation  === */
   if (energy_flag or npt_flag) {
     auto node_energy = 0.;
-    int fft_mesh_length = Utils::product(p3m.local_mesh.dim_no_halo);
+    int fft_mesh_length = Utils::product(p3m.fft->ks_local_size());
     for (int i = 0; i < fft_mesh_length; i++) {
       // Use the energy optimized influence function for energy!
       // Eq. (3.40) @cite deserno00b
@@ -827,18 +812,22 @@ public:
     auto tuned_params = TuningAlgorithm::Parameters{};
     auto time_best = time_sentinel;
     auto mesh_density = m_mesh_density_min;
-    while (mesh_density <= m_mesh_density_max) {
-      auto trial_params = TuningAlgorithm::Parameters{};
-      if (m_tune_mesh) {
+    Utils::Vector3i current_mesh;
+    if (m_tune_mesh) {
         for (auto i : {0, 1, 2}) {
-          trial_params.mesh[i] =
+          current_mesh[i] =
               static_cast<int>(std::round(box_geo.length()[i] * mesh_density));
           // make the mesh even in all directions
-          trial_params.mesh[i] += trial_params.mesh[i] % 2;
+          current_mesh[i] += current_mesh[i] % 2;
         }
       } else {
-        trial_params.mesh = p3m.params.mesh;
+        current_mesh = p3m.params.mesh;
       }
+    
+    while (mesh_density <= m_mesh_density_max) {
+      auto trial_params = TuningAlgorithm::Parameters{};
+      trial_params.mesh = current_mesh;
+      trial_params.cao = cao_best;
       trial_params.cao = cao_best;
 
       auto const trial_time =
@@ -863,7 +852,9 @@ public:
           break;
         }
       }
-      mesh_density += 0.1;
+      if (m_tune_mesh) {
+        current_mesh+=Utils::Vector3i::broadcast(2);
+      } 
     }
     return tuned_params;
   }
