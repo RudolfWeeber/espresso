@@ -47,6 +47,10 @@
 #include <variant>
 #include <vector>
 
+#ifdef CALIPER
+#include <caliper/cali.h>
+#endif
+
 namespace LB {
 
 Solver::Solver() { impl = std::make_unique<Implementation>(); }
@@ -69,8 +73,14 @@ void Solver::reset() {
 }
 
 void Solver::propagate() {
+#ifdef CALIPER
+  CALI_MARK_BEGIN("SOLVER.PROPAGATE");
+#endif
   check_solver(impl);
   std::visit([](auto &ptr) { ptr->propagate(); }, *impl->solver);
+#ifdef CALIPER
+  CALI_MARK_END("SOLVER.PROPAGATE");
+#endif
 }
 
 void Solver::ghost_communication() {

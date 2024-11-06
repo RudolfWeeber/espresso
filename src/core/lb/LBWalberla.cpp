@@ -40,6 +40,10 @@
 #include <optional>
 #include <variant>
 
+#ifdef CALIPER
+#include <caliper/cali.h>
+#endif
+
 namespace LB {
 
 bool LBWalberla::is_gpu() const { return lb_fluid->is_gpu(); }
@@ -50,7 +54,16 @@ Utils::VectorXd<9> LBWalberla::get_pressure_tensor() const {
   return lb_fluid->get_pressure_tensor();
 }
 
-void LBWalberla::propagate() { lb_fluid->integrate(); }
+//void LBWalberla::propagate() { lb_fluid->integrate(); }
+void LBWalberla::propagate() {
+#ifdef CALIPER
+  CALI_MARK_BEGIN("LBWalberla.PROPAGATE");
+#endif
+  lb_fluid->integrate();
+#ifdef CALIPER
+  CALI_MARK_END("LBWalberla.PROPAGATE");
+#endif
+}
 
 void LBWalberla::ghost_communication() { lb_fluid->ghost_communication(); }
 
