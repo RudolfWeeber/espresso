@@ -633,12 +633,18 @@ int System::System::integrate(int n_steps, int reuse_forces) {
           ek.propagate();
         }
       } else if (lb_active) {
+#ifdef CALIPER
+	CALI_MARK_BEGIN("LB.PROPAGATE");
+#endif
         auto const md_steps_per_lb_step = calc_md_steps_per_tau(lb.get_tau());
         propagation.lb_skipped_md_steps += 1;
         if (propagation.lb_skipped_md_steps >= md_steps_per_lb_step) {
           propagation.lb_skipped_md_steps = 0;
           lb.propagate();
         }
+#ifdef CALIPER
+	CALI_MARK_END("LB.PROPAGATE");
+#endif
       } else if (ek_active) {
         auto const md_steps_per_ek_step = calc_md_steps_per_tau(ek.get_tau());
         propagation.ek_skipped_md_steps += 1;

@@ -82,6 +82,10 @@
 #include <variant>
 #include <vector>
 
+#ifdef CALIPER
+#include <caliper/cali.h>
+#endif
+
 namespace walberla {
 
 /** @brief Class that runs and controls the LB on waLBerla. */
@@ -573,6 +577,12 @@ private:
   }
 
   void integrate_push_scheme() {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
+#ifdef CALIPER
+    CALI_MARK_BEGIN("push scheme");
+#endif
     auto const &blocks = get_lattice().get_blocks();
     // Reset force fields
     integrate_reset_force(blocks);
@@ -591,9 +601,18 @@ private:
     m_pending_ghost_comm.set(GhostComm::LAF);
     // Refresh ghost layers
     ghost_communication_push_scheme();
+#ifdef CALIPER
+    CALI_MARK_END("push scheme");
+#endif
   }
 
   void integrate_pull_scheme() {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
+#ifdef CALIPER
+    CALI_MARK_BEGIN("pull scheme");
+#endif
     auto const &blocks = get_lattice().get_blocks();
     // Handle boundaries
     if (m_has_boundaries) {
@@ -611,6 +630,9 @@ private:
     m_pending_ghost_comm.set(GhostComm::LAF);
     // Refresh ghost layers
     ghost_communication_pdfs();
+#ifdef CALIPER
+    CALI_MARK_END("pull scheme");
+#endif
   }
 
 protected:
@@ -626,6 +648,9 @@ protected:
 
 public:
   void integrate() override {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
     if (has_lees_edwards_bc()) {
       integrate_pull_scheme();
     } else {
