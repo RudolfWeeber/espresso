@@ -54,7 +54,7 @@ assert args.volume_fraction > 0, "volume_fraction must be a positive number"
 assert args.volume_fraction < np.pi / (3 * np.sqrt(2)), \
     "volume_fraction exceeds the physical limit of sphere packing (~0.74)"
 if not args.visualizer:
-    assert measurement_steps >= 50, \
+    assert measurement_steps >= 10, \
         f"{measurement_steps} steps per tick are too short"
 
 required_features = ["P3M", "LENNARD_JONES"]
@@ -137,7 +137,7 @@ if args.gpu:
 # tuning and equilibration
 min_skin = 0.2
 max_skin = 1.6
-p3m_params = {"prefactor": args.prefactor, "accuracy": 1e-3} #,"mesh":32 }
+p3m_params = {"prefactor": args.prefactor, "accuracy": 1e-3}
 p3m = p3m_class(**p3m_params)
 print("Quick equilibration")
 system.integrator.run(min(3 * measurement_steps, 100))

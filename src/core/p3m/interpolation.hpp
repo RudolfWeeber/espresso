@@ -107,17 +107,12 @@ public:
     InterpolationWeights<cao> ret;
     ret.ind = ca_fmp[i];
 
-//    auto const view = std::span(std::as_const(ca_frac));
+    auto const view = std::span(std::as_const(ca_frac));
     auto const offset = 3ul * i * static_cast<std::size_t>(cao);
 
-//    std::ranges::copy(view.subspan(offset + 0ul * cao, cao), ret.w_x.begin());
-//    std::ranges::copy(view.subspan(offset + 1ul * cao, cao), ret.w_y.begin());
-//    std::ranges::copy(view.subspan(offset + 2ul * cao, cao), ret.w_z.begin());
-    auto beg = std::as_const(ca_frac).begin() +offset; 
-    std::copy(beg,beg+cao, ret.w_x.begin());
-    std::copy(beg+cao,beg+2*cao, ret.w_y.begin());
-    std::copy(beg+2*cao,beg+3*cao, ret.w_y.begin());
-    std::copy(beg,beg+cao, ret.w_z.begin());
+    std::ranges::copy(view.subspan(offset + 0ul * cao, cao), ret.w_x.begin());
+    std::ranges::copy(view.subspan(offset + 1ul * cao, cao), ret.w_y.begin());
+    std::ranges::copy(view.subspan(offset + 2ul * cao, cao), ret.w_z.begin());
 
     return ret;
   }

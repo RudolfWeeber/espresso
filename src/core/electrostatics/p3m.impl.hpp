@@ -58,6 +58,8 @@ struct CoulombP3MState : public P3MStateCommon<FloatType> {
   std::vector<FloatType> rs_charge_density;
   std::vector<std::complex<FloatType>> ks_charge_density;
   std::array<std::vector<FloatType>,3> rs_E_fields;
+  std::vector<std::complex<FloatType>> ks_E_fields_storage;
+  std::vector<std::complex<FloatType>> rs_E_fields_no_halo;
   p3m_send_mesh<FloatType> halo_comm;
   std::shared_ptr<P3MFFT<FloatType>> fft;
 };

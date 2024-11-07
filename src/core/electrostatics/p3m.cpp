@@ -133,6 +133,11 @@ std::complex<FloatType> multiply_complex_by_real(const std::complex<FloatType>& 
     return std::complex<FloatType>(z.real()*k,  z.imag() *k);
 }
 
+template <typename FloatType>
+FloatType complex_norm2(const std::complex<FloatType>& z) {
+   return Utils::sqr(z.real())+Utils::sqr(z.imag());
+}
+
 
 
 
@@ -307,10 +312,16 @@ void CoulombP3MImpl<FloatType, Architecture>::init_cpu_kernels() {
   p3m.fft = std::make_shared<P3MFFT<FloatType>>(comm_cart,p3m.params.mesh,p3m.local_mesh.ld_no_halo, p3m.local_mesh.ur_no_halo, mem_layout());
   p3m.fft->set_preferred_kspace_decomposition();
   int rs_array_length = Utils::product(p3m.local_mesh.dim);
+  int rs_array_length_no_halo = Utils::product(p3m.local_mesh.dim_no_halo);
+  int fft_mesh_length = Utils::product(p3m.fft->ks_local_size());
   p3m.rs_charge_density.resize(rs_array_length);
+  p3m.ks_charge_density.resize(fft_mesh_length);
   for (int d: {0,1,2}) {
     p3m.rs_E_fields[d].resize(rs_array_length);
   }
+  p3m.ks_E_fields_storage.resize(3*fft_mesh_length);
+  p3m.rs_E_fields_no_halo.resize(3*rs_array_length_no_halo);
+  
   p3m.calc_differential_operator();
 
   /* fix box length dependent constants */
@@ -537,7 +548,8 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
    // This is in global mesh coordinates without any ghost layers
    // The memory layout has to be specified, so the parts of 
    // the mesh held by each MPI rank are assembled correctly
-   p3m.ks_charge_density = p3m.fft->forward(charge_density_no_halos);
+   p3m.fft->forward(charge_density_no_halos.data(),p3m.ks_charge_density.data());
+
 
   // Calculate the dipole term
   auto p_q_range = ParticlePropertyRange::charge_range(particles);
@@ -553,6 +565,44 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
   auto const volume = box_geo.volume();
   auto const pref =
       4. * std::numbers::pi / volume / (2. * p3m.params.epsilon + 1.);
+  double energy =0.0;
+  if (energy_flag or npt_flag) {
+    auto node_energy = 0.;
+    int fft_mesh_length = Utils::product(p3m.fft->ks_local_size());
+    for (int i = 0; i < fft_mesh_length; i++) {
+      // Use the energy optimized influence function for energy!
+      // Eq. (3.40) @cite deserno00b
+      node_energy +=
+          p3m.g_energy[i] * complex_norm2(p3m.ks_charge_density[i]);
+    }
+    node_energy /= 2. * volume;
+
+    // add up energy contributions from all mpi ranks
+    boost::mpi::reduce(comm_cart, node_energy, energy, std::plus<>(), 0);
+    if (this_node == 0) {
+      /* self energy correction */
+      // Eq. (3.8) @cite deserno00b
+      energy -= p3m.sum_q2 * p3m.params.alpha * std::numbers::inv_sqrtpi;
+      /* net charge correction */
+      // Eq. (3.11) @cite deserno00b
+      energy -= p3m.square_sum_q * std::numbers::pi /
+                (2. * volume * Utils::sqr(p3m.params.alpha));
+      /* dipole correction */
+      // Eq. (3.9) @cite deserno00b
+      if (box_dipole) {
+        energy += pref * box_dipole.value().norm2();
+      }
+    }
+    energy *= prefactor;
+#ifdef NPT
+    if (npt_flag) {
+      npt_add_virial_contribution(energy);
+    }
+#endif
+    if (not energy_flag) {
+      energy = 0.;
+    }
+  }
 
 
   /* === k-space force calculation  === */
@@ -579,9 +629,9 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
     // in k-space.
     auto const fft_mesh_length = Utils::product(p3m.fft->ks_local_size());
     // Holds the electric field in k-space
-    std::array<std::vector<std::complex<FloatType>>,3> ks_E_fields;
+    std::array<std::span<std::complex<FloatType>>,3> ks_E_fields;
     for (int d: {0,1,2}) { 
-     ks_E_fields[d].reserve(fft_mesh_length);
+        ks_E_fields[d] = {p3m.ks_E_fields_storage.begin()+d*fft_mesh_length, p3m.ks_E_fields_storage.begin() +(d+1)*fft_mesh_length};
     }
 
     // holds the linear size (n_x*n_y*n_z) of the local mesh
@@ -592,9 +642,13 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
 
     /* compute electric field */
     // Eq. (3.49) @cite deserno00b
+    for (int i=0;i<p3m.ks_charge_density.size();i++) {
+      p3m.ks_charge_density[i] = multiply_complex_by_real(p3m.ks_charge_density[index], p3m.g_force[i]); 
+    }
     for_each_3d(mesh_start, mesh_stop, indices, [&]() {
-      auto const& rho_hat = p3m.ks_charge_density[index];
-      auto const phi_hat = multiply_complex_by_real(rho_hat, p3m.g_force[index]); 
+//      auto const& rho_hat = p3m.ks_charge_density[index];
+//      auto const phi_hat = multiply_complex_by_real(rho_hat, p3m.g_force[index]); 
+      auto const phi_hat = p3m.ks_charge_density[index];
       auto const global_index = indices+p3m.fft->ks_local_ld_index();
       for (int d = 0; d < 3; d++) {
         // Wave vector of the current mesh point
@@ -603,7 +657,7 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
 
         // E field in k-space
 //          std::cout << indices << " | "<<rho_hat<<" | " << phi_hat << " | " << force_influence_function[index] << std::endl;
-        ks_E_fields[d].emplace_back(multiply_complex_by_imaginary(phi_hat,k));
+        ks_E_fields[d][index] = multiply_complex_by_imaginary(phi_hat,k);
       }
 
       ++index;
@@ -611,16 +665,18 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
 
     // Back-transform the k-space electric field to real space
 
-  int rs_mesh_length = 3*Utils::product(p3m.local_mesh.dim_no_halo);
-  std::vector<std::complex<FloatType>> rs_E_fields_no_halo(3*rs_mesh_length);
-  auto field_span =std::span<std::complex<FloatType>>{ks_E_fields[0].begin(), ks_E_fields[2].end()};
-  p3m.fft->backward_batch(3,field_span.data(),rs_E_fields_no_halo.data());
+  int rs_mesh_length = 3*Utils::product(p3m.local_mesh.dim);
+  int rs_mesh_length_no_halo = Utils::product(p3m.local_mesh.dim_no_halo);
+  p3m.fft->backward_batch(3,p3m.ks_E_fields_storage.data(),p3m.rs_E_fields_no_halo.data());
  
   // add zeros around the E-field in real space to make room for the ghost lauers
   for (int d:{0,1,2}) {
-    p3m.rs_E_fields[d] = pad_with_zeros_discard_imag(
-        std::span<std::complex<FloatType>>(rs_E_fields_no_halo.begin()+d*rs_mesh_length,
-                       rs_E_fields_no_halo.begin() +(d+1) *rs_mesh_length),
+    int start = d*rs_mesh_length_no_halo;
+    int stop = (d+1)*rs_mesh_length_no_halo;
+    auto f = 
+        std::span<std::complex<FloatType>>(p3m.rs_E_fields_no_halo.begin()+start,
+                       p3m.rs_E_fields_no_halo.begin() +stop);
+    p3m.rs_E_fields[d] = pad_with_zeros_discard_imag(f,
                        p3m.local_mesh.dim_no_halo,p3m.local_mesh.n_halo_ld,p3m.local_mesh.n_halo_ur);
     }
     // Ghost communicate the boundary layers of the E-field in real space
@@ -648,45 +704,6 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
   
 
   /* === k-space energy calculation  === */
-  if (energy_flag or npt_flag) {
-    auto node_energy = 0.;
-    int fft_mesh_length = Utils::product(p3m.fft->ks_local_size());
-    for (int i = 0; i < fft_mesh_length; i++) {
-      // Use the energy optimized influence function for energy!
-      // Eq. (3.40) @cite deserno00b
-      node_energy +=
-          p3m.g_energy[i] * Utils::sqr(std::abs(p3m.ks_charge_density[i]));
-    }
-    node_energy /= 2. * volume;
-
-    auto energy = 0.;
-    // add up energy contributions from all mpi ranks
-    boost::mpi::reduce(comm_cart, node_energy, energy, std::plus<>(), 0);
-    if (this_node == 0) {
-      /* self energy correction */
-      // Eq. (3.8) @cite deserno00b
-      energy -= p3m.sum_q2 * p3m.params.alpha * std::numbers::inv_sqrtpi;
-      /* net charge correction */
-      // Eq. (3.11) @cite deserno00b
-      energy -= p3m.square_sum_q * std::numbers::pi /
-                (2. * volume * Utils::sqr(p3m.params.alpha));
-      /* dipole correction */
-      // Eq. (3.9) @cite deserno00b
-      if (box_dipole) {
-        energy += pref * box_dipole.value().norm2();
-      }
-    }
-    energy *= prefactor;
-#ifdef NPT
-    if (npt_flag) {
-      npt_add_virial_contribution(energy);
-    }
-#endif
-    if (not energy_flag) {
-      energy = 0.;
-    }
-    return energy;
-  }
 
   return 0.;
 }
@@ -854,6 +871,8 @@ public:
       }
       if (m_tune_mesh) {
         current_mesh+=Utils::Vector3i::broadcast(2);
+      } else { 
+        return tuned_params;
       } 
     }
     return tuned_params;
