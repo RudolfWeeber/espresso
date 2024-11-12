@@ -84,8 +84,6 @@ target_link_libraries(
 
 target_include_directories(espresso_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_link_libraries(espresso_core PUBLIC Heffte::Heffte)
-
 if(ESPRESSO_BUILD_WITH_WALBERLA)
   target_link_libraries(
     espresso_core
@@ -95,6 +93,7 @@ endif()
 
 if(ESPRESSO_BUILD_WITH_FFTW)
   add_subdirectory(fft)
+  target_link_libraries(espresso_core PUBLIC Heffte::Heffte)
 endif()
 
 add_subdirectory(accumulators)

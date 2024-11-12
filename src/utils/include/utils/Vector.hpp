@@ -32,6 +32,7 @@
 #include "utils/Array.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
@@ -122,11 +123,6 @@ public:
   constexpr std::span<T, N> as_span() const {
     return std::span<T, N>(const_cast<T *>(begin()), size());
   }
-  std::array<T,N> as_array() const {
-    std::array<T,N> res;
-    std::copy(begin(),end(),res.begin());
-    return res;
-  };
 
   constexpr operator std::span<T, N>() const { return as_span(); }
 

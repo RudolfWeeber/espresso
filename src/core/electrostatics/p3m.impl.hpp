@@ -32,7 +32,7 @@
 #include "p3m/interpolation.hpp"
 #include "p3m/send_mesh.hpp"
 #include "ParticleRange.hpp"
-#include "P3MFFT.hpp" 
+#include "P3MFFT.hpp"
 
 #include <utils/Vector.hpp>
 
@@ -44,7 +44,7 @@
 
 template <typename FloatType>
 struct CoulombP3MState : public P3MStateCommon<FloatType> {
-  using P3MStateCommon<FloatType>::P3MStateCommon; 
+  using P3MStateCommon<FloatType>::P3MStateCommon;
   /** number of charged particles (only on head node). */
   int sum_qpart = 0;
   /** Sum of square of charges (only on head node). */
@@ -53,7 +53,7 @@ struct CoulombP3MState : public P3MStateCommon<FloatType> {
   double square_sum_q = 0.;
 
   p3m_interpolation_cache inter_weights;
-  
+
   /* fields */
   std::vector<FloatType> rs_charge_density;
   std::vector<std::complex<FloatType>> ks_charge_density;
@@ -79,7 +79,7 @@ struct CoulombP3MImpl : public CoulombP3M {
 
 private:
   constexpr const Utils::Vector3i mem_layout() const
-      { return {2,1,0}; // column major 
+      { return {2,1,0}; // column major
   }
   int tune_timings;
   bool tune_verbose;
@@ -203,6 +203,5 @@ std::shared_ptr<CoulombP3M> new_coulomb_p3m(P3MParameters &&p3m_params, Args&&..
       std::move(state_ptr), std::forward<Args>(args)...);
   return obj;
 }
-
 
 #endif // P3M

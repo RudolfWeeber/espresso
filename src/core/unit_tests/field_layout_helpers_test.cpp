@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2024 The ESPResSo project
+ * Copyright (C) 2024 The ESPResSo project
  *
  * ESPResSo is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,13 +15,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define BOOST_TEST_MODULE "Special mathematical functions"
 #define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
 
 #include "p3m/field_layout_helpers.hpp"
-#include "utils/Vector.hpp"
-#include "utils/index.hpp"
+
+#include <utils/Vector.hpp>
+#include <utils/index.hpp>
 
 BOOST_AUTO_TEST_CASE(add_remove_halo) {
 
@@ -45,7 +45,6 @@ BOOST_AUTO_TEST_CASE(add_remove_halo) {
   }
 
   // add halo
-
   std::vector<double> with_halo =
       pad_with_zeros(without_halo_orig, shape, halo_left,halo_right);
   Utils::Vector3i shape_with_halo =
@@ -69,7 +68,7 @@ BOOST_AUTO_TEST_CASE(add_remove_halo) {
     }
   }
 
-  // verify, added halso are 0
+  // verify, added also are 0
   for (int i = 0; i < shape_with_halo[0]; i++) {
     for (int j = 0; j < shape_with_halo[1]; j++) {
       for (int k = 0; k < shape_with_halo[2]; k++) {
@@ -79,16 +78,15 @@ BOOST_AUTO_TEST_CASE(add_remove_halo) {
           // this is a halo cell, must be zero
           int ind = Utils::get_linear_index(i, j, k, shape_with_halo,
                                             Utils::MemoryOrder::ROW_MAJOR);
-          BOOST_CHECK_EQUAL(with_halo[ind], 0);
+          BOOST_CHECK_EQUAL(with_halo[ind], 0.);
         }
       }
     }
   }
 
   // Remove halo again
-
   std::vector<double> without_halo_new =
-      extract_block(with_halo, shape_with_halo, halo_left,shape_with_halo-halo_right);
+      extract_block(with_halo, shape_with_halo, halo_left, shape_with_halo - halo_right);
   for (int i = 0; i < without_halo_orig.size(); i++) {
     BOOST_CHECK_EQUAL(without_halo_new[i], without_halo_orig[i]);
   }
