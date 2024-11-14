@@ -15,6 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define BOOST_TEST_MODULE "P3M field layout functions"
 #define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
 
@@ -29,7 +30,7 @@ BOOST_AUTO_TEST_CASE(add_remove_halo) {
   int n_y = 7;
   int n_z = 11;
   Utils::Vector3i shape = {n_x, n_y, n_z};
-  std::vector<double> without_halo_orig(n_x * n_y * n_z);
+  std::vector<std::complex<double>> without_halo_orig(n_x * n_y * n_z);
   Utils::Vector3i halo_left ={1,2,3};
   Utils::Vector3i halo_right = {3,1,2};
 
@@ -39,14 +40,14 @@ BOOST_AUTO_TEST_CASE(add_remove_halo) {
       for (int k = 0; k < n_z; k++) {
         int ind = Utils::get_linear_index(i, j, k, shape,
                                           Utils::MemoryOrder::ROW_MAJOR);
-        without_halo_orig[ind] = ind;
+        without_halo_orig[ind] = {static_cast<double>(ind), 0.};
       }
     }
   }
 
   // add halo
   std::vector<double> with_halo =
-      pad_with_zeros(without_halo_orig, shape, halo_left,halo_right);
+      pad_with_zeros_discard_imag(std::span{without_halo_orig.data(), without_halo_orig.size()}, shape, halo_left, halo_right);
   Utils::Vector3i shape_with_halo =
       shape + halo_left +halo_right;
 

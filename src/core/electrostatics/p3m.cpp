@@ -167,10 +167,10 @@ void CoulombP3MImpl<FloatType, Architecture>::count_charged_particles() {
  */
 template <typename FloatType, Arch Architecture>
 void CoulombP3MImpl<FloatType, Architecture>::calc_influence_function_force() {
-  auto const [KX, KY, KZ] = p3m.fft->mem_layout();
+  auto const &kxyz = p3m.fft->mem_layout();
   p3m.g_force = grid_influence_function<FloatType, 1>(
       p3m.params, p3m.fft->ks_local_ld_index(), p3m.fft->ks_local_ur_index(),
-      KX, KY, KZ, get_system().box_geo->length_inv());
+      kxyz[0], kxyz[1], kxyz[2], get_system().box_geo->length_inv());
 }
 
 /** Calculate the influence function optimized for the energy and the
@@ -179,10 +179,10 @@ void CoulombP3MImpl<FloatType, Architecture>::calc_influence_function_force() {
 template <typename FloatType, Arch Architecture>
 void CoulombP3MImpl<FloatType, Architecture>::calc_influence_function_energy() {
   // expressed in global grid coordinates
-  auto const [KX, KY, KZ] = p3m.fft->mem_layout();
+  auto const &kxyz = p3m.fft->mem_layout();
   p3m.g_energy = grid_influence_function<FloatType, 0>(
       p3m.params, p3m.fft->ks_local_ld_index(), p3m.fft->ks_local_ur_index(),
-      KX, KY, KZ, get_system().box_geo->length_inv());
+      kxyz[0], kxyz[1], kxyz[2], get_system().box_geo->length_inv());
 }
 
 /** Aliasing sum used by @ref p3m_k_space_error. */
@@ -658,7 +658,7 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
 
     // Back-transform the k-space electric field to real space
 
-  int rs_mesh_length = 3*Utils::product(p3m.local_mesh.dim);
+  // int rs_mesh_length = 3*Utils::product(p3m.local_mesh.dim);
   int rs_mesh_length_no_halo = Utils::product(p3m.local_mesh.dim_no_halo);
   p3m.fft->backward_batch(3,p3m.ks_E_fields_storage.data(),p3m.rs_E_fields_no_halo.data());
 

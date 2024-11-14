@@ -88,6 +88,8 @@ double G_opt(int cao, double alpha, Utils::Vector3d const &k,
         fnm[dim] = math::sinc(km[dim] * wavevector_i[dim]);
       });
 
+  // TODO: remove this branch (avoids dividing 0 by subnormal numbers squared)
+  if (numerator == 0. and k2 != 0. and denominator != 0.) { return 0.; }
   return numerator / (Utils::int_pow<S>(k2) * Utils::sqr(denominator));
 }
 

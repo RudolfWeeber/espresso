@@ -44,7 +44,7 @@ auto extract_block(const Container &in_array,
 #include <algorithm>
 
 template <typename T>
-std::vector<typename T::value_type> pad_with_zeros_discard_imag(const std::span<T> &cropped_array,
+auto pad_with_zeros_discard_imag(std::span<T> cropped_array,
                               Utils::Vector3i cropped_dim, Utils::Vector3i pad_left, Utils::Vector3i pad_right) {
 
   // Calculate dimensions and strides

@@ -237,7 +237,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
                              0.615,
                              1e-3};
     auto solver =
-        new_p3m_handle<double, Arch::CPU, FFTBackendLegacy, FFTBuffersLegacy>(
+        new_coulomb_p3m<double, Arch::CPU>(
             std::move(p3m), prefactor, 1, false, true);
     add_actor(comm, espresso::system, system.coulomb.impl->solver, solver,
               [&system]() { system.on_coulomb_change(); });
