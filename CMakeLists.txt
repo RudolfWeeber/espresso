@@ -98,6 +98,11 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/LLNL/Caliper.git
   GIT_TAG        v2.10.0
 )
+FetchContent_Declare(
+  heffte
+  GIT_REPOSITORY https://github.com/icl-utk-edu/heffte.git
+  GIT_TAG        v2.4.1
+)
 # cmake-format: on
 
 # ##############################################################################
@@ -288,7 +293,14 @@ endif()
 
 if(ESPRESSO_BUILD_WITH_FFTW)
   find_package(FFTW3 REQUIRED)
-  find_package(Heffte REQUIRED)
+  FetchContent_GetProperties(heffte)
+  set(Heffte_ENABLE_FFTW on CACHE BOOL "")
+  if(ESPRESSO_BUILD_WITH_CUDA)
+    set(Heffte_ENABLE_CUDA "on" CACHE BOOL "")
+  endif()
+  if(NOT heffte_POPULATED)
+    FetchContent_MakeAvailable(heffte)
+  endif()
 endif()
 
 # We need the parallel hdf5 version!

@@ -93,7 +93,7 @@ endif()
 
 if(ESPRESSO_BUILD_WITH_FFTW)
   add_subdirectory(fft)
-  target_link_libraries(espresso_core PUBLIC Heffte::Heffte)
+  target_link_libraries(espresso_core PUBLIC Heffte)
 endif()
 
 add_subdirectory(accumulators)
