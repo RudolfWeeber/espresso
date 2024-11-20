@@ -40,6 +40,14 @@
  *
  * This implements Eq. 30 of @cite cerda08d, which can be used
  * for monopole and dipole P3M by choosing the appropriate S factor.
+ * @f[
+ * \tilde{G}_{\text{opt}} ( k ) = \frac{\sum_{m \in \mathbb{Z}^{3}} [ [ \tilde{ \left ( D \right ) } ( k ) \cdot i k_{m} ]^{S} ( \hat{U} ( k_{m} ) )^{2} \hat{\phi} ( k_{m} ) ]}{[ \tilde{ \left ( D \right ) } ( k ) ]^{2 S} [ \sum_{m \in \mathbb{Z}^{3}} ( \hat{U} ( k_{m} ) )^{2} ]^{2}}
+ * @f]
+ *
+ * Eq 8.29 in Hockney:
+ * @f[
+ * G_{\text{opt}}(\mathbf{k}) = \frac{\hat{\mathbf{D}}\sum_n \hat{\mathbf{R}}^\ast \hat{U}^2}{|\hat{\mathbf{D}}|^2\sum_n \hat{U}^2\sum_{n'}^{'} \hat{U}^2}
+ * @f]
  *
  * @tparam S Order of the differential operator, e.g. 0 for potential,
  *          1 for electric field, ...
