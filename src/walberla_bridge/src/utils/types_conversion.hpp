@@ -68,6 +68,11 @@ inline Utils::VectorXd<9> to_vector9d(Matrix3<float> const &m) {
           double_c(m[3]), double_c(m[4]), double_c(m[5]),
           double_c(m[6]), double_c(m[7]), double_c(m[8])};
 }
+inline Utils::Vector3i to_vector3i(Vector3<float> const &v) {
+  return Utils::Vector3i{{static_cast<int>(v[0]),
+	  		  static_cast<int>(v[1]),
+			  static_cast<int>(v[2])}}; // Added hidekb 11/20/2024
+}
 
 template <typename Function>
 void interpolate_bspline_at_pos(Utils::Vector3d const &pos, Function const &f) {

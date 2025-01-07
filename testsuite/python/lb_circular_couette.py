@@ -126,7 +126,9 @@ class LBCouetteTest:
 
         # check velocity is zero for the radial and axial components
         np.testing.assert_allclose(v_r, 0., atol=1e-4)
+        #np.testing.assert_allclose(v_r, 0., atol=1e-3)
         np.testing.assert_allclose(v_z, 0., atol=1e-6)
+        #np.testing.assert_allclose(v_z, 0., atol=1e-4)
 
         # check azimuthal velocity is zero inside boundary
         np.testing.assert_allclose(v_phi[:7], 0., atol=1e-7)
@@ -143,7 +145,9 @@ class LBCouetteTest:
         v_phi_ref = a_ref * r + b_ref / r
         v_phi_drift = np.mean(v_phi) - np.mean(v_phi_ref)
         np.testing.assert_allclose(v_phi_drift, 0., atol=4e-4)
+        #np.testing.assert_allclose(v_phi_drift, 0., atol=8e-4)
         np.testing.assert_allclose(v_phi - v_phi_drift, v_phi_ref, atol=4e-4)
+        #np.testing.assert_allclose(v_phi - v_phi_drift, v_phi_ref, atol=8e-4)
 
 
 @utx.skipIfMissingFeatures(["WALBERLA"])
@@ -170,6 +174,18 @@ class LBCircularCouetteWalberlaDoublePrecisionGPU(LBCouetteTest, ut.TestCase):
 class LBCircularCouetteWalberlaSinglePrecisionGPU(LBCouetteTest, ut.TestCase):
     lb_class = espressomd.lb.LBFluidWalberlaGPU
     lb_params = {"single_precision": True}
+
+
+@utx.skipIfMissingFeatures(["WALBERLA"])
+class LBCircularCouetteWalberlaDoublePRecisionBlocksCPU(LBCouetteTest, ut.TestCase):
+    lb_class = espressomd.lb.LBFluidWalberla
+    lb_params = {"single_precision": False, "blocks_per_mpi_rank": [2,2,2]}
+
+
+@utx.skipIfMissingFeatures(["WALBERLA"])
+class LBCircularCouetteWalberlaSinglePRecisionBlocksCPU(LBCouetteTest, ut.TestCase):
+    lb_class = espressomd.lb.LBFluidWalberla
+    lb_params = {"single_precision": True, "blocks_per_mpi_rank": [2,2,2]}
 
 
 if __name__ == "__main__":

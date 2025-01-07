@@ -52,6 +52,7 @@ private:
 public:
   LatticeWalberla(Utils::Vector3i const &grid_dimensions,
                   Utils::Vector3i const &node_grid,
+                  Utils::Vector3i const &block_grid,
                   unsigned int n_ghost_layers);
 
   // Grid, domain, halo

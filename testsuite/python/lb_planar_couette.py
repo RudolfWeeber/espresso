@@ -24,6 +24,7 @@ import unittest as ut
 import unittest_decorators as utx
 import numpy as np
 
+import time
 
 def analytical(x, t, nu, v, h, k_max):
     """
@@ -116,6 +117,8 @@ class LBCouetteFlowCommon:
 
     @ut.skipIf(n_nodes > 1, "Skipping test: only runs for n_nodes == 1")
     def test_profile_zy(self):
+        if hasattr(self, 'blocks_per_mpi_rank'):
+            self.skipTest("Skipping test: only runs for blocks_per_mpi_rank=[1,1,1]")
         self.check_profile(lambda lbf: lbf[0, :, 5].velocity[:, 0],
                            shear_direction="z", shear_plane_normal="y")
 
@@ -140,6 +143,18 @@ class LBCouetteFlowWalberlaSinglePrecision(LBCouetteFlowCommon, ut.TestCase):
 
     lb_class = espressomd.lb.LBFluidWalberla
     lb_params = {"single_precision": True}
+
+
+@utx.skipIfMissingFeatures(["WALBERLA"])
+@ut.skipIf(LBCouetteFlowCommon.n_nodes > 2,
+           "Skipping test: only runs for n_nodes <= 2")
+class LBCouetteFlowWalberlaBlocks(LBCouetteFlowCommon, ut.TestCase):
+
+    """Test for the Walberla implementation of the LB in double-precision."""
+
+    lb_class = espressomd.lb.LBFluidWalberla
+    blocks_per_mpi_rank = [2,1,1]
+    lb_params = {"single_precision": False, "blocks_per_mpi_rank": blocks_per_mpi_rank}
 
 
 if __name__ == '__main__':

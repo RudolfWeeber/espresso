@@ -25,6 +25,7 @@ import espressomd.lb
 import benchmarks
 import numpy as np
 import argparse
+import time
 
 parser = argparse.ArgumentParser(description="Benchmark LB simulations. "
                                  "Save the results to a CSV file.")
@@ -48,6 +49,18 @@ parser.add_argument("--gpu", action=argparse.BooleanOptionalAction,
 parser.add_argument("--output", metavar="FILEPATH", action="store",
                     type=str, required=False, default="benchmarks.csv",
                     help="Output file (default: benchmarks.csv)")
+parser.add_argument("--divided_block", action="store",
+                    type=int, default=1, required=False,
+                    help="blocks^(1/3) per mpi rank")
+parser.add_argument("--divided_block_x", action="store",
+                    type=int, default=0, required=False,
+                    help="The number of divided blocks for x direction")
+parser.add_argument("--divided_block_y", action="store",
+                    type=int, default=0, required=False,
+                    help="The number of divided blocks for x direction")
+parser.add_argument("--divided_block_z", action="store",
+                    type=int, default=0, required=False,
+                    help="The number of divided blocks for x direction")
 
 args = parser.parse_args()
 
@@ -87,6 +100,14 @@ if n_part == 0:
     agrid = 1.
     lb_grid = args.box_l
     measurement_steps = 80
+    divided_block_x = args.divided_block_x
+    divided_block_y = args.divided_block_y
+    divided_block_z = args.divided_block_z
+    if divided_block_x != 0 and divided_block_y != 0 and divided_block_z != 0:
+        blocks_per_mpi_rank = [divided_block_x, divided_block_y, divided_block_z]
+    else:
+        divided_block = args.divided_block
+        blocks_per_mpi_rank = [divided_block] * 3
 else:
     # volume of N spheres with radius r: N * (4/3*pi*r^3)
     box_l = (n_part * 4. / 3. * np.pi * (lj_sig / 2.)**3
@@ -97,12 +118,17 @@ else:
     measurement_steps = max(50, int(120**3 / lb_grid**3))
     measurement_steps = 40
 
-print(f"LB shape: [{lb_grid}, {lb_grid}, {lb_grid}]")
+#print(f"LB shape: [{lb_grid}, {lb_grid}, {lb_grid}]")
 print(f"LB agrid: {agrid:.3f}")
+#time.sleep(10)
 
 # System
 #############################################################
-system.box_l = 3 * (box_l,)
+#system.box_l = 3 * (box_l,)
+#if n_proc == 4:
+#   system.cell_system.node_grid = [1,2,2] 
+system.box_l = (box_l, box_l, box_l)*system.cell_system.node_grid
+print("LB shape", system.box_l)
 
 # Integration parameters
 #############################################################
@@ -138,7 +164,7 @@ lb_class = espressomd.lb.LBFluidWalberla
 if args.gpu:
     lb_class = espressomd.lb.LBFluidWalberlaGPU
 lbf = lb_class(agrid=agrid, tau=system.time_step, kinematic_viscosity=1.,
-               density=1., single_precision=args.single_precision)
+               density=1., single_precision=args.single_precision, blocks_per_mpi_rank=blocks_per_mpi_rank)
 system.lb = lbf
 if n_part:
     system.thermostat.set_lb(LB_fluid=lbf, gamma=1., seed=42)

@@ -139,6 +139,10 @@ void LBFluidGPU::make_instance(VariantMap const &params) {
   auto const visc = get_value<double>(params, "kinematic_viscosity");
   auto const dens = get_value<double>(params, "density");
   auto const precision = get_value<bool>(params, "single_precision");
+  auto const blocks_per_mpi_rank = get_value_or<Utils::Vector3i>(params, "blocks_per_mpi_rank", Utils::Vector3i{{1,1,1}});
+  if (blocks_per_mpi_rank != Utils::Vector3i{{1,1,1}}) {
+    throw std::runtime_error("GPU architecture PROHIBITED allocating many blocks to 1 CPU.");
+  } 
   auto const lb_lattice = m_lattice->lattice();
   auto const lb_visc = m_conv_visc * visc;
   auto const lb_dens = m_conv_dens * dens;

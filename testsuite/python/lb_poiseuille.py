@@ -117,6 +117,7 @@ class LBPoiseuilleCommon:
                                      EXT_FORCE,
                                      KINEMATIC_VISC * DENS)
         np.testing.assert_allclose(v_measured, v_expected, rtol=5E-5)
+        #np.testing.assert_allclose(v_measured, v_expected, rtol=5E-5, atol=8E-4)
 
 
 @utx.skipIfMissingFeatures(["WALBERLA"])
@@ -143,6 +144,18 @@ class LBPoiseuilleWalberlaDoublePrecisionGPU(LBPoiseuilleCommon, ut.TestCase):
 class LBPoiseuilleWalberlaSinglePrecisionGPU(LBPoiseuilleCommon, ut.TestCase):
     lb_class = espressomd.lb.LBFluidWalberlaGPU
     lb_params = {"single_precision": True}
+
+
+@utx.skipIfMissingFeatures(["WALBERLA"])
+class LBPoiseuilleWalberlaDoublePrecisionBlocksCPU(LBPoiseuilleCommon, ut.TestCase):
+    lb_class = espressomd.lb.LBFluidWalberla
+    lb_params = {"single_precision": False, "blocks_per_mpi_rank": [2,2,2]}
+
+
+@utx.skipIfMissingFeatures(["WALBERLA"])
+class LBPoiseuilleWalberlaSinglePrecisionBlocksCPU(LBPoiseuilleCommon, ut.TestCase):
+    lb_class = espressomd.lb.LBFluidWalberla
+    lb_params = {"single_precision": True, "blocks_per_mpi_rank": [2,2,2]}
 
 
 if __name__ == '__main__':

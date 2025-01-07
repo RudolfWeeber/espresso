@@ -40,6 +40,7 @@
 
 LatticeWalberla::LatticeWalberla(Utils::Vector3i const &grid_dimensions,
                                  Utils::Vector3i const &node_grid,
+                                 Utils::Vector3i const &block_grid,
                                  unsigned int n_ghost_layers)
     : m_grid_dimensions{grid_dimensions}, m_n_ghost_layers{n_ghost_layers} {
   using walberla::real_t;
@@ -50,21 +51,27 @@ LatticeWalberla::LatticeWalberla(Utils::Vector3i const &grid_dimensions,
       throw std::runtime_error(
           "Lattice grid dimensions and MPI node grid are not compatible.");
     }
+    if (m_grid_dimensions[i] % block_grid[i] != 0) {
+      throw std::runtime_error(
+          "Lattice grid dimensions and block grid are not compatible.");
+    }
   }
 
   auto constexpr lattice_constant = real_t{1};
-  auto const cells_block = Utils::hadamard_division(grid_dimensions, node_grid);
+  auto const cells_block = Utils::hadamard_division(grid_dimensions, block_grid);
 
   m_blocks = walberla::blockforest::createUniformBlockGrid(
       // number of blocks in each direction
-      uint_c(node_grid[0]), uint_c(node_grid[1]), uint_c(node_grid[2]),
+      uint_c(block_grid[0]), uint_c(block_grid[1]), uint_c(block_grid[2]),
       // number of cells per block in each direction
       uint_c(cells_block[0]), uint_c(cells_block[1]), uint_c(cells_block[2]),
       lattice_constant,
       // number of cpus per direction
       uint_c(node_grid[0]), uint_c(node_grid[1]), uint_c(node_grid[2]),
       // periodicity
-      true, true, true);
+      true, true, true,
+      // keep global block information
+      false);
   for (IBlock &block : *m_blocks) {
     m_cached_blocks.push_back(&block);
   }
@@ -73,11 +80,32 @@ LatticeWalberla::LatticeWalberla(Utils::Vector3i const &grid_dimensions,
 [[nodiscard]] std::pair<Utils::Vector3d, Utils::Vector3d>
 LatticeWalberla::get_local_domain() const {
   using walberla::to_vector3d;
-  // We only have one block per mpi rank
-  assert(++(m_blocks->begin()) == m_blocks->end());
-
-  auto const ab = m_blocks->begin()->getAABB();
-  return {to_vector3d(ab.min()), to_vector3d(ab.max())};
+  // We allocate some blocks per mpi rank
+  int64_t const stride_y = m_grid_dimensions[2];
+  int64_t const stride_x = m_grid_dimensions[1]*stride_y;
+  auto aa = m_blocks->begin()->getAABB();
+  auto bb = m_blocks->begin()->getAABB();
+  int64_t aa_index = stride_x*static_cast<int>(aa.min()[0]) + stride_y*static_cast<int>(aa.min()[1]) + static_cast<int>(aa.min()[2]);
+  int64_t bb_index = stride_x*static_cast<int>(bb.max()[0]) + stride_y*static_cast<int>(bb.max()[1]) + static_cast<int>(bb.max()[2]);
+  for (auto b = m_blocks->begin(); b != m_blocks->end(); ++b) {
+    auto cc = b->getAABB();
+    for (auto const i : {0u, 1u, 2u}) {
+      if ((cc.max()[i] - cc.min()[i]) != 0) {
+        assert(m_grid_dimensions[i] % static_cast<int>(cc.max()[i] - cc.min()[i]) == 0);
+      }
+    }
+    int64_t min_index = stride_x*static_cast<int>(cc.min()[0]) + stride_y*static_cast<int>(cc.min()[1]) + static_cast<int>(cc.min()[2]);
+    int64_t max_index = stride_x*static_cast<int>(cc.max()[0]) + stride_y*static_cast<int>(cc.max()[1]) + static_cast<int>(cc.max()[2]);
+    if (min_index < aa_index) {
+      aa = cc;
+      aa_index = min_index;
+    }
+    if (max_index > bb_index) {
+      bb = cc;
+      bb_index = max_index;
+    }
+  }
+  return {to_vector3d(aa.min()), to_vector3d(bb.max())};
 }
 
 [[nodiscard]] bool

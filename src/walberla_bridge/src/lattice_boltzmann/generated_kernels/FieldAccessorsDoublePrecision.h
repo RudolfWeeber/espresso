@@ -55,6 +55,9 @@
 #pragma clang diagnostic ignored "-Wunused-variable"
 #endif
 
+#include <config/config.hpp>
+#include <caliper/cali.h>
+
 namespace walberla {
 namespace lbm {
 namespace accessor {
@@ -335,6 +338,9 @@ inline void add(GhostLayerField<double, uint_t{3u}> *vec_field,
 
 inline void initialize(GhostLayerField<double, uint_t{3u}> *vec_field,
                        Vector3<double> const &vec) {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
   WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ(vec_field, {
     double &xyz0 = vec_field->get(x, y, z, uint_t{0u});
     vec_field->getF(&xyz0, uint_t{0u}) = vec[0u];
@@ -345,6 +351,9 @@ inline void initialize(GhostLayerField<double, uint_t{3u}> *vec_field,
 
 inline void add_to_all(GhostLayerField<double, uint_t{3u}> *vec_field,
                        Vector3<double> const &vec) {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
   WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ(vec_field, {
     double &xyz0 = vec_field->get(x, y, z, uint_t{0u});
     vec_field->getF(&xyz0, uint_t{0u}) += vec[0u];

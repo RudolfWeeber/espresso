@@ -31,7 +31,7 @@ TIME_STEP = 0.02
 # Box size will be H +2 AGRID to make room for walls.
 # The number of grid cells should be divisible by four and 3 in all directions
 # for testing on multiple mpi nodes.
-H = 12 * AGRID
+H = 10 * AGRID
 W = 6 * AGRID
 SHEAR_VELOCITY = 0.3
 
@@ -85,7 +85,7 @@ class LBShearCommon:
     system.cell_system.skin = 0.4 * AGRID
 
     def setUp(self):
-        self.lbf = self.lb_class(**LB_PARAMS, **self.lb_params)
+        self.system.lb = None
 
     def tearDown(self):
         self.system.lb = None
@@ -96,9 +96,14 @@ class LBShearCommon:
         the exact solution.
         """
         self.tearDown()
-        self.system.box_l = np.max(
-            ((W, W, W), shear_plane_normal * (H + 2 * AGRID)), 0)
-        self.setUp()
+        if hasattr(self, 'blocks_per_mpi_rank'):
+          self.system.box_l = np.max(
+              ((W, W, W) * np.array(self.blocks_per_mpi_rank),
+               shear_plane_normal * (H + 2 * AGRID) * np.array(self.blocks_per_mpi_rank)), 0)
+        else:
+          self.system.box_l = np.max(
+              ((W, W, W), shear_plane_normal * (H + 2 * AGRID)), 0)
+        self.lbf = self.lb_class(**LB_PARAMS, **self.lb_params)
         self.system.lb = self.lbf
         self.lbf.clear_boundaries()
 
@@ -202,6 +207,18 @@ class LBShearWalberlaSinglePrecision(LBShearCommon, ut.TestCase):
     lb_params = {"single_precision": True}
     atol = 5e-5
     rtol = 5e-3
+
+
+@utx.skipIfMissingFeatures(["WALBERLA"])
+class LBShearWalberlaBlocks(LBShearCommon, ut.TestCase):
+
+    """Test for the Walberla implementation of the LB in double-precision."""
+
+    lb_class = espressomd.lb.LBFluidWalberla
+    blocks_per_mpi_rank = [2,2,2]
+    lb_params = {"single_precision": False, "blocks_per_mpi_rank": blocks_per_mpi_rank}
+    atol = 5e-5
+    rtol = 5e-4
 
 
 if __name__ == '__main__':

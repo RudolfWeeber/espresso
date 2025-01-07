@@ -40,6 +40,9 @@
 #pragma warning(disable : 1599)
 #endif
 
+#include <config/config.hpp>
+#include <caliper/cali.h>
+
 using namespace std;
 
 namespace walberla {
@@ -47,6 +50,9 @@ namespace pystencils {
 
 namespace internal_streamsweepdoubleprecision_streamsweepdoubleprecision {
 static FUNC_PREFIX void streamsweepdoubleprecision_streamsweepdoubleprecision(double *RESTRICT const _data_force, double *RESTRICT const _data_pdfs, double *RESTRICT _data_pdfs_tmp, double *RESTRICT _data_velocity, int64_t const _size_force_0, int64_t const _size_force_1, int64_t const _size_force_2, int64_t const _stride_force_0, int64_t const _stride_force_1, int64_t const _stride_force_2, int64_t const _stride_force_3, int64_t const _stride_pdfs_0, int64_t const _stride_pdfs_1, int64_t const _stride_pdfs_2, int64_t const _stride_pdfs_3, int64_t const _stride_pdfs_tmp_0, int64_t const _stride_pdfs_tmp_1, int64_t const _stride_pdfs_tmp_2, int64_t const _stride_pdfs_tmp_3, int64_t const _stride_velocity_0, int64_t const _stride_velocity_1, int64_t const _stride_velocity_2, int64_t const _stride_velocity_3) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   for (int64_t ctr_2 = 1; ctr_2 < _size_force_2 - 1; ctr_2 += 1) {
     for (int64_t ctr_1 = 1; ctr_1 < _size_force_1 - 1; ctr_1 += 1) {
       for (int64_t ctr_0 = 1; ctr_0 < _size_force_0 - 1; ctr_0 += 1) {
@@ -108,6 +114,9 @@ static FUNC_PREFIX void streamsweepdoubleprecision_streamsweepdoubleprecision(do
 } // namespace internal_streamsweepdoubleprecision_streamsweepdoubleprecision
 
 void StreamSweepDoublePrecision::run(IBlock *block) {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
 
   auto force = block->getData<field::GhostLayerField<double, 3>>(forceID);
   auto pdfs = block->getData<field::GhostLayerField<double, 19>>(pdfsID);
@@ -166,6 +175,9 @@ void StreamSweepDoublePrecision::run(IBlock *block) {
 }
 
 void StreamSweepDoublePrecision::runOnCellInterval(const shared_ptr<StructuredBlockStorage> &blocks, const CellInterval &globalCellInterval, cell_idx_t ghostLayers, IBlock *block) {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
 
   CellInterval ci = globalCellInterval;
   CellInterval blockBB = blocks->getBlockCellBB(*block);

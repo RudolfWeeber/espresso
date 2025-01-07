@@ -520,7 +520,10 @@ class LBTest:
         phi = 0.05
         lj_sig = 1.0
         l = (n_part * 4. / 3. * np.pi * (lj_sig / 2.)**3 / phi)**(1. / 3.)
-        system.box_l = [l] * 3 * np.array(system.cell_system.node_grid)
+        if hasattr(self, 'blocks_per_mpi_rank'):
+          system.box_l = [l] * 3 * np.array(system.cell_system.node_grid) * np.array(self.blocks_per_mpi_rank)
+        else:
+          system.box_l = [l] * 3 * np.array(system.cell_system.node_grid)
         lbf = self.lb_class(agrid=l / 31, density=1, kinematic_viscosity=1, kT=0,
                             tau=system.time_step, **self.lb_params)
         system.lb = lbf
@@ -863,6 +866,26 @@ class LBTestWalberlaSinglePrecisionGPU(LBTest, ut.TestCase):
     lb_class = espressomd.lb.LBFluidWalberlaGPU
     lb_lattice_class = espressomd.lb.LatticeWalberla
     lb_params = {"single_precision": True}
+    atol = 1e-6
+    rtol = 2e-4
+
+
+@utx.skipIfMissingFeatures("WALBERLA")
+class LBTestWalberlaDoublePrecisionBlocksCPU(LBTest, ut.TestCase):
+    lb_class = espressomd.lb.LBFluidWalberla
+    lb_lattice_class = espressomd.lb.LatticeWalberla
+    blocks_per_mpi_rank = [2,2,2]
+    lb_params = {"single_precision": False, "blocks_per_mpi_rank": blocks_per_mpi_rank}
+    atol = 1e-10
+    rtol = 1e-7
+
+
+@utx.skipIfMissingFeatures("WALBERLA")
+class LBTestWalberlaSinglePrecisionBlocksCPU(LBTest, ut.TestCase):
+    lb_class = espressomd.lb.LBFluidWalberla
+    lb_lattice_class = espressomd.lb.LatticeWalberla
+    blocks_per_mpi_rank = [2,2,2]
+    lb_params = {"single_precision": True, "blocks_per_mpi_rank": blocks_per_mpi_rank}
     atol = 1e-6
     rtol = 2e-4
 

@@ -44,6 +44,9 @@
 #pragma warning(disable : 1599)
 #endif
 
+#include <config/config.hpp>
+#include <caliper/cali.h>
+
 using namespace std;
 
 namespace walberla {
@@ -51,6 +54,9 @@ namespace pystencils {
 
 namespace internal_25bc51f30ec2c20f3ee9796f7dcb65c6 {
 static FUNC_PREFIX void collidesweepdoubleprecisionthermalizedavx_collidesweepdoubleprecisionthermalizedavx(double *RESTRICT const _data_force, double *RESTRICT _data_pdfs, int64_t const _size_force_0, int64_t const _size_force_1, int64_t const _size_force_2, int64_t const _stride_force_1, int64_t const _stride_force_2, int64_t const _stride_force_3, int64_t const _stride_pdfs_1, int64_t const _stride_pdfs_2, int64_t const _stride_pdfs_3, uint32_t block_offset_0, uint32_t block_offset_1, uint32_t block_offset_2, double kT, double omega_bulk, double omega_even, double omega_odd, double omega_shear, uint32_t seed, uint32_t time_step) {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
   const double xi_28 = omega_bulk * 0.5;
   const double xi_55 = omega_shear * 0.041666666666666664;
   const double xi_60 = omega_bulk * 0.041666666666666664;
@@ -771,6 +777,9 @@ static FUNC_PREFIX void collidesweepdoubleprecisionthermalizedavx_collidesweepdo
 } // namespace internal_25bc51f30ec2c20f3ee9796f7dcb65c6
 
 void CollideSweepDoublePrecisionThermalizedAVX::run(IBlock *block) {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
   if (!this->configured_)
     WALBERLA_ABORT("This Sweep contains a configure function that needs to be called manually")
 

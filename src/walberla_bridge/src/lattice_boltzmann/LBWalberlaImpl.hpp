@@ -82,9 +82,8 @@
 #include <variant>
 #include <vector>
 
-#ifdef CALIPER
+#include <config/config.hpp>
 #include <caliper/cali.h>
-#endif
 
 namespace walberla {
 
@@ -357,6 +356,7 @@ protected:
   // lattice
   std::shared_ptr<LatticeWalberla> m_lattice;
 
+  // Interval within not global but mpi rank
   [[nodiscard]] std::optional<CellInterval>
   get_interval(Utils::Vector3i const &lower_corner,
                Utils::Vector3i const &upper_corner) const {
@@ -368,8 +368,45 @@ protected:
     if (not lower_bc or not upper_bc) {
       return std::nullopt;
     }
-    assert(&(*(lower_bc->block)) == &(*(upper_bc->block)));
-    return {CellInterval(lower_bc->cell, upper_bc->cell)};
+    Cell const global_lower_cell = lower_bc->cell;
+    Cell const global_upper_cell = Cell(static_cast<int>(upper_bc->cell[0] + upper_bc->block->getAABB().min()[0] - lower_bc->block->getAABB().min()[0]),
+					static_cast<int>(upper_bc->cell[1] + upper_bc->block->getAABB().min()[1] - lower_bc->block->getAABB().min()[1]),
+					static_cast<int>(upper_bc->cell[2] + upper_bc->block->getAABB().min()[2] - lower_bc->block->getAABB().min()[2]));
+    return {CellInterval(global_lower_cell, global_upper_cell)};
+  }
+
+  // Interval within local block
+  [[nodiscard]] std::optional<CellInterval>
+  get_block_interval(Utils::Vector3i const &lower_corner,
+		     Utils::Vector3i const &upper_corner,
+		     Utils::Vector3i const &local_offset,
+		     IBlock const *block) const {
+    auto block_lower_corner = to_vector3i(block->getAABB().min());
+    if (upper_corner[0] < block_lower_corner[0] or upper_corner[1] < block_lower_corner[1] or upper_corner[2] < block_lower_corner[2]) {
+      return std::nullopt;
+    }
+    for (uint_t f = 0u; f < 3u; ++f) {
+      if (block_lower_corner[f] < lower_corner[f]) {
+	block_lower_corner[f] = lower_corner[f];
+      }
+    }
+    auto block_upper_corner = to_vector3i(block->getAABB().max());
+    if (lower_corner[0] > block_upper_corner[0] or lower_corner[1] > block_upper_corner[1] or lower_corner[2] > block_upper_corner[2]) {
+      return std::nullopt;
+    }
+    for (uint_t f = 0u; f < 3u; ++f) {
+      if (block_upper_corner[f] > upper_corner[f]) {
+	block_upper_corner[f] = upper_corner[f];
+      }
+    }
+    block_upper_corner -= Utils::Vector3i::broadcast(1);
+    Cell const block_lower_cell = Cell(static_cast<int>(block_lower_corner[0] - local_offset[0]),
+		    		       static_cast<int>(block_lower_corner[1] - local_offset[1]),
+				       static_cast<int>(block_lower_corner[2] - local_offset[2]));
+    Cell const block_upper_cell = Cell(static_cast<int>(block_upper_corner[0] - local_offset[0]),
+		    		       static_cast<int>(block_upper_corner[1] - local_offset[1]),
+				       static_cast<int>(block_upper_corner[2] - local_offset[2]));
+    return {CellInterval(block_lower_cell, block_upper_cell)};
   }
 
   /**
@@ -530,11 +567,17 @@ public:
 
 private:
   void integrate_stream(std::shared_ptr<Lattice_T> const &blocks) {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
     for (auto b = blocks->begin(); b != blocks->end(); ++b)
       (*m_stream)(&*b);
   }
 
   void integrate_collide(std::shared_ptr<Lattice_T> const &blocks) {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
     auto &cm_variant = *m_collision_model;
     for (auto b = blocks->begin(); b != blocks->end(); ++b)
       std::visit(m_run_collide_sweep, cm_variant, std::variant<IBlock *>(&*b));
@@ -567,11 +610,17 @@ private:
   }
 
   void integrate_reset_force(std::shared_ptr<Lattice_T> const &blocks) {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
     for (auto b = blocks->begin(); b != blocks->end(); ++b)
       (*m_reset_force)(&*b);
   }
 
   void integrate_boundaries(std::shared_ptr<Lattice_T> const &blocks) {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
     for (auto b = blocks->begin(); b != blocks->end(); ++b)
       (*m_boundary)(&*b);
   }
@@ -580,19 +629,23 @@ private:
 #ifdef CALIPER
     CALI_CXX_MARK_FUNCTION;
 #endif
-#ifdef CALIPER
-    CALI_MARK_BEGIN("push scheme");
-#endif
     auto const &blocks = get_lattice().get_blocks();
     // Reset force fields
     integrate_reset_force(blocks);
     // LB collide
     integrate_collide(blocks);
+#ifdef CALIPER
+    CALI_MARK_BEGIN("m_pdf_streaming_communicator");
+#endif
     m_pdf_streaming_communicator->communicate();
+#ifdef CALIPER
+    CALI_MARK_END("m_pdf_streaming_communicator");
+#endif
     // Handle boundaries
     if (m_has_boundaries) {
       integrate_boundaries(blocks);
     }
+
     // LB stream
     integrate_stream(blocks);
     // Mark pending ghost layer updates
@@ -601,17 +654,11 @@ private:
     m_pending_ghost_comm.set(GhostComm::LAF);
     // Refresh ghost layers
     ghost_communication_push_scheme();
-#ifdef CALIPER
-    CALI_MARK_END("push scheme");
-#endif
   }
 
   void integrate_pull_scheme() {
 #ifdef CALIPER
     CALI_CXX_MARK_FUNCTION;
-#endif
-#ifdef CALIPER
-    CALI_MARK_BEGIN("pull scheme");
 #endif
     auto const &blocks = get_lattice().get_blocks();
     // Handle boundaries
@@ -624,6 +671,9 @@ private:
     integrate_collide(blocks);
     // Reset force fields
     integrate_reset_force(blocks);
+#ifdef CALIPER
+    CALI_MARK_BEGIN("ghost_comm");
+#endif
     // Mark pending ghost layer updates
     m_pending_ghost_comm.set(GhostComm::PDF);
     m_pending_ghost_comm.set(GhostComm::VEL);
@@ -631,7 +681,7 @@ private:
     // Refresh ghost layers
     ghost_communication_pdfs();
 #ifdef CALIPER
-    CALI_MARK_END("pull scheme");
+    CALI_MARK_END("ghost_comm");
 #endif
   }
 
@@ -721,6 +771,9 @@ public:
   }
 
   void ghost_communication_push_scheme() {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
     if (has_lees_edwards_bc()) {
       m_full_communicator->communicate();
       auto const &blocks = get_lattice().get_blocks();
@@ -862,40 +915,47 @@ public:
   get_slice_velocity(Utils::Vector3i const &lower_corner,
                      Utils::Vector3i const &upper_corner) const override {
     std::vector<double> out;
+    uint_t values_size = 0;
     if (auto const ci = get_interval(lower_corner, upper_corner)) {
+      out = std::vector<double>(int(3u * ci->numCells()));
+      int64_t const stride_y = (ci->max().z() - ci->min().z() + 1u);
+      int64_t const stride_x = (ci->max().y() - ci->min().y() + 1u)*stride_y;
       auto const &lattice = get_lattice();
-      auto const &block = *(lattice.get_blocks()->begin());
-      auto const field =
-          block.template getData<VectorField>(m_velocity_field_id);
-      auto const values = lbm::accessor::Vector::get(field, *ci);
-      assert(++(lattice.get_blocks()->begin()) == lattice.get_blocks()->end());
-      assert(values.size() == 3u * ci->numCells());
-      if constexpr (std::is_same_v<typename decltype(values)::value_type,
-                                   double>) {
-        out = std::move(values);
-      } else {
-        out = std::vector<double>(values.begin(), values.end());
-      }
-      auto const local_offset = std::get<0>(lattice.get_local_grid_range());
-      auto const lower_cell = ci->min();
-      auto const upper_cell = ci->max();
-      auto it = out.begin();
-      for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
-        for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
-          for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
-            auto const node = local_offset + Utils::Vector3i{{x, y, z}};
-            if (m_boundary->node_is_boundary(node)) {
-              auto const &vec = m_boundary->get_node_value_at_boundary(node);
-              for (uint_t f = 0u; f < 3u; ++f) {
-                (*it) = double_c(vec[f]);
-                std::advance(it, 1l);
-              }
-            } else {
-              std::advance(it, 3l);
-            }
+      for (auto b = lattice.get_blocks()->begin(); b != lattice.get_blocks()->end(); ++b) {
+        auto const &block = *b;
+        auto const local_offset = to_vector3i(block.getAABB().min());
+	if (auto const bci = get_block_interval(lower_corner, upper_corner, local_offset, &block)) {
+	  auto const field =
+	      block.template getData<VectorField>(m_velocity_field_id);
+	  auto const values = lbm::accessor::Vector::get(field, *bci);
+	  assert(values.size() == 3u * bci->numCells());
+	  values_size += 3u * bci->numCells();
+	  int64_t const stride_ly = (bci->max().z() - bci->min().z() + 1u);
+	  int64_t const stride_lx = (bci->max().y() - bci->min().y() + 1u)*stride_ly;
+	  auto const lower_cell = bci->min();
+	  auto const upper_cell = bci->max();
+	  for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
+	    for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
+	      for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
+		auto const node = local_offset + Utils::Vector3i{{x, y, z}};
+		auto const index = stride_x*(node[0] - lower_corner[0]) + stride_y*(node[1] - lower_corner[1]) + node[2] - lower_corner[2];
+		auto const local_index = stride_lx*(x - lower_cell.x()) + stride_ly*(y - lower_cell.y()) + z - lower_cell.z();
+		if (m_boundary->node_is_boundary(node)) {
+		  auto const &vec = m_boundary->get_node_value_at_boundary(node);
+		  for (uint_t f = 0u; f < 3u; ++f) {
+		    out[int(3*index + f)] = double_c(vec[f]);
+		  }
+		} else {
+		  for (uint_t f = 0u; f < 3u; ++f) {
+		    out[int(3*index + f)] = double_c(values[int(3*local_index + f)]);
+		  }
+		}
+	      }
+	    }
           }
         }
       }
+      assert(values_size == 3u * ci->numCells());
     }
     return out;
   }
@@ -906,17 +966,38 @@ public:
     m_pending_ghost_comm.set(GhostComm::PDF);
     m_pending_ghost_comm.set(GhostComm::VEL);
     if (auto const ci = get_interval(lower_corner, upper_corner)) {
-      auto const &lattice = get_lattice();
-      auto &block = *(lattice.get_blocks()->begin());
-      auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
-      auto force_field =
-          block.template getData<VectorField>(m_last_applied_force_field_id);
-      auto vel_field = block.template getData<VectorField>(m_velocity_field_id);
-      assert(++(lattice.get_blocks()->begin()) == lattice.get_blocks()->end());
       assert(velocity.size() == 3u * ci->numCells());
-      std::vector<FloatType> const values(velocity.begin(), velocity.end());
-      lbm::accessor::Velocity::set(pdf_field, vel_field, force_field, values,
-                                   *ci);
+      int64_t const stride_y = (ci->max().z() - ci->min().z() + 1u);
+      int64_t const stride_x = (ci->max().y() - ci->min().y() + 1u)*stride_y;
+      auto const &lattice = get_lattice();
+      for (auto b = lattice.get_blocks()->begin(); b != lattice.get_blocks()->end(); ++b) {
+        auto &block = *b;
+        auto const local_offset = to_vector3i(block.getAABB().min());
+	if (auto const bci = get_block_interval(lower_corner, upper_corner, local_offset, &block)) {
+	  auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+	  auto force_field =
+	      block.template getData<VectorField>(m_last_applied_force_field_id);
+	  auto vel_field = block.template getData<VectorField>(m_velocity_field_id);
+	  std::vector<FloatType> values = std::vector<FloatType>(int(3u * bci->numCells()));
+	  int64_t const stride_ly = (bci->max().z() - bci->min().z() + 1u);
+	  int64_t const stride_lx = (bci->max().y() - bci->min().y() + 1u)*stride_ly;
+	  auto const lower_cell = bci->min();
+	  auto const upper_cell = bci->max();
+	  for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
+	    for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
+	      for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
+		auto const node = local_offset + Utils::Vector3i{{x, y, z}};
+		auto const index = stride_x*(node[0] - lower_corner[0]) + stride_y*(node[1] - lower_corner[1]) + node[2] - lower_corner[2];
+		auto const local_index = stride_lx*(x - lower_cell.x()) + stride_ly*(y - lower_cell.y()) + z - lower_cell.z();
+		for (uint_t f = 0u; f < 3u; ++f) {
+		  values[int(3u*local_index + f)] = numeric_cast<FloatType>(velocity[int(3u*index + f)]);
+		}
+	      }
+	    }
+	  }
+	  lbm::accessor::Velocity::set(pdf_field, vel_field, force_field, values, *bci);
+	}
+      }
     }
   }
 
@@ -1068,7 +1149,7 @@ public:
     auto const force_at_node = [this, &force](std::array<int, 3> const node,
                                               double weight) {
       auto const bc =
-          get_block_and_cell(get_lattice(), Utils::Vector3i(node), true);
+          get_block_and_cell(get_lattice(), Utils::Vector3i(node), false);
       if (bc) {
         auto const weighted_force = to_vector3<FloatType>(weight * force);
         auto force_field =
@@ -1131,18 +1212,35 @@ public:
       Utils::Vector3i const &upper_corner) const override {
     std::vector<double> out;
     if (auto const ci = get_interval(lower_corner, upper_corner)) {
+      out = std::vector<double>(int(3u * ci->numCells()));
+      int64_t const stride_y = (ci->max().z() - ci->min().z() + 1u);
+      int64_t const stride_x = (ci->max().y() - ci->min().y() + 1u)*stride_y;
       auto const &lattice = get_lattice();
-      auto const &block = *(lattice.get_blocks()->begin());
-      auto const field =
-          block.template getData<VectorField>(m_last_applied_force_field_id);
-      auto const values = lbm::accessor::Vector::get(field, *ci);
-      assert(++(lattice.get_blocks()->begin()) == lattice.get_blocks()->end());
-      assert(values.size() == 3u * ci->numCells());
-      if constexpr (std::is_same_v<typename decltype(values)::value_type,
-                                   double>) {
-        out = std::move(values);
-      } else {
-        out = std::vector<double>(values.begin(), values.end());
+      for (auto b = lattice.get_blocks()->begin(); b != lattice.get_blocks()->end(); ++b) {
+        auto const &block = *b;
+        auto const local_offset = to_vector3i(block.getAABB().min());
+	if (auto const bci = get_block_interval(lower_corner, upper_corner, local_offset, &block)) {
+	  auto const field =
+	    block.template getData<VectorField>(m_last_applied_force_field_id);
+	  auto const values = lbm::accessor::Vector::get(field, *bci);
+	  assert(values.size() == 3u * bci->numCells());
+	  int64_t const stride_ly = (bci->max().z() - bci->min().z() + 1u);
+	  int64_t const stride_lx = (bci->max().y() - bci->min().y() + 1u)*stride_ly;
+	  auto const lower_cell = bci->min();
+	  auto const upper_cell = bci->max();
+	  for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
+	    for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
+	      for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
+		auto const node = local_offset + Utils::Vector3i{{x, y, z}};
+		auto const index = stride_x*(node[0] - lower_corner[0]) + stride_y*(node[1] - lower_corner[1]) + node[2] - lower_corner[2];
+		auto const local_index = stride_lx*(x - lower_cell.x()) + stride_ly*(y - lower_cell.y()) + z - lower_cell.z();
+		for (uint_t f = 0u; f < 3u; ++f) {
+		  out[int(3*index + f)] = values[int(3*local_index + f)];
+		}
+	      }
+	    }
+	  }
+	}
       }
     }
     return out;
@@ -1154,16 +1252,38 @@ public:
     m_pending_ghost_comm.set(GhostComm::VEL);
     m_pending_ghost_comm.set(GhostComm::LAF);
     if (auto const ci = get_interval(lower_corner, upper_corner)) {
-      auto const &lattice = get_lattice();
-      auto &block = *(lattice.get_blocks()->begin());
-      auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
-      auto force_field =
-          block.template getData<VectorField>(m_last_applied_force_field_id);
-      auto vel_field = block.template getData<VectorField>(m_velocity_field_id);
-      assert(++(lattice.get_blocks()->begin()) == lattice.get_blocks()->end());
       assert(force.size() == 3u * ci->numCells());
-      std::vector<FloatType> const values(force.begin(), force.end());
-      lbm::accessor::Force::set(pdf_field, vel_field, force_field, values, *ci);
+      int64_t const stride_y = (ci->max().z() - ci->min().z() + 1u);
+      int64_t const stride_x = (ci->max().y() - ci->min().y() + 1u)*stride_y;
+      auto const &lattice = get_lattice();
+      for (auto b = lattice.get_blocks()->begin(); b != lattice.get_blocks()->end(); ++b) {
+        auto &block = *b;
+        auto const local_offset = to_vector3i(block.getAABB().min());
+	if (auto const bci = get_block_interval(lower_corner, upper_corner, local_offset, &block)) {
+	  auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+	  auto force_field =
+	      block.template getData<VectorField>(m_last_applied_force_field_id);
+	  auto vel_field = block.template getData<VectorField>(m_velocity_field_id);
+	  std::vector<FloatType> values = std::vector<FloatType>(int(3u * bci->numCells()));
+	  int64_t const stride_ly = (bci->max().z() - bci->min().z() + 1u);
+	  int64_t const stride_lx = (bci->max().y() - bci->min().y() + 1u)*stride_ly;
+	  auto const lower_cell = bci->min();
+	  auto const upper_cell = bci->max();
+	  for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
+	    for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
+	      for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
+		auto const node = local_offset + Utils::Vector3i{{x, y, z}};
+		auto const index = stride_x*(node[0] - lower_corner[0]) + stride_y*(node[1] - lower_corner[1]) + node[2] - lower_corner[2];
+		auto const local_index = stride_lx*(x - lower_cell.x()) + stride_ly*(y - lower_cell.y()) + z - lower_cell.z();
+		for (uint_t f = 0u; f < 3u; ++f) {
+		  values[int(3u*local_index + f)] = numeric_cast<FloatType>(force[int(3u*index + f)]);
+		}
+	      }
+	    }
+	  }
+	  lbm::accessor::Force::set(pdf_field, vel_field, force_field, values, *bci);
+	}
+      }
     }
   }
 
@@ -1214,17 +1334,34 @@ public:
                        Utils::Vector3i const &upper_corner) const override {
     std::vector<double> out;
     if (auto const ci = get_interval(lower_corner, upper_corner)) {
+      out = std::vector<double>(int(stencil_size() * ci->numCells()));
+      int64_t const stride_y = (ci->max().z() - ci->min().z() + 1u);
+      int64_t const stride_x = (ci->max().y() - ci->min().y() + 1u)*stride_y;
       auto const &lattice = get_lattice();
-      auto const &block = *(lattice.get_blocks()->begin());
-      auto const pdf_field = block.template getData<PdfField>(m_pdf_field_id);
-      auto const values = lbm::accessor::Population::get(pdf_field, *ci);
-      assert(++(lattice.get_blocks()->begin()) == lattice.get_blocks()->end());
-      assert(values.size() == stencil_size() * ci->numCells());
-      if constexpr (std::is_same_v<typename decltype(values)::value_type,
-                                   double>) {
-        out = std::move(values);
-      } else {
-        out = std::vector<double>(values.begin(), values.end());
+      for (auto b = lattice.get_blocks()->begin(); b != lattice.get_blocks()->end(); ++b) {
+        auto const &block = *b;
+        auto const local_offset = to_vector3i(block.getAABB().min());
+	if (auto const bci = get_block_interval(lower_corner, upper_corner, local_offset, &block)) {
+	  auto const pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+	  auto const values = lbm::accessor::Population::get(pdf_field, *bci);
+	  assert(values.size() == stencil_size() * bci->numCells());
+	  int64_t const stride_ly = (bci->max().z() - bci->min().z() + 1u);
+	  int64_t const stride_lx = (bci->max().y() - bci->min().y() + 1u)*stride_ly;
+	  auto const lower_cell = bci->min();
+	  auto const upper_cell = bci->max();
+	  for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
+	    for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
+	      for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
+		auto const node = local_offset + Utils::Vector3i{{x, y, z}};
+		auto const index = stride_x*(node[0] - lower_corner[0]) + stride_y*(node[1] - lower_corner[1]) + node[2] - lower_corner[2];
+		auto const local_index = stride_lx*(x - lower_cell.x()) + stride_ly*(y - lower_cell.y()) + z - lower_cell.z();
+		for (uint_t f = 0u; f < stencil_size(); ++f) {
+		  out[int(stencil_size()*index + f)] = values[int(stencil_size()*local_index + f)];
+		}
+	      }
+	    }
+	  }
+	}
       }
     }
     return out;
@@ -1234,17 +1371,39 @@ public:
                             Utils::Vector3i const &upper_corner,
                             std::vector<double> const &population) override {
     if (auto const ci = get_interval(lower_corner, upper_corner)) {
+      assert(population.size() == stencil_size()*ci->numCells());
+      int64_t const stride_y = (ci->max().z() - ci->min().z() + 1u);
+      int64_t const stride_x = (ci->max().y() - ci->min().y() + 1u)*stride_y;
       auto const &lattice = get_lattice();
-      auto &block = *(lattice.get_blocks()->begin());
-      auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
-      auto force_field =
-          block.template getData<VectorField>(m_last_applied_force_field_id);
-      auto vel_field = block.template getData<VectorField>(m_velocity_field_id);
-      assert(population.size() == stencil_size() * ci->numCells());
-      assert(++(lattice.get_blocks()->begin()) == lattice.get_blocks()->end());
-      std::vector<FloatType> const values(population.begin(), population.end());
-      lbm::accessor::Population::set(pdf_field, vel_field, force_field, values,
-                                     *ci);
+      for (auto b = lattice.get_blocks()->begin(); b != lattice.get_blocks()->end(); ++b) {
+        auto &block = *b;
+        auto const local_offset = to_vector3i(block.getAABB().min());
+	if (auto const bci = get_block_interval(lower_corner, upper_corner, local_offset, &block)) {
+	  auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+	  auto force_field =
+	      block.template getData<VectorField>(m_last_applied_force_field_id);
+	  auto vel_field = block.template getData<VectorField>(m_velocity_field_id);
+	  std::vector<FloatType> values = std::vector<FloatType>(int(stencil_size()*bci->numCells()));
+	  int64_t const stride_ly = (bci->max().z() - bci->min().z() + 1u);
+	  int64_t const stride_lx = (bci->max().y() - bci->min().y() + 1u)*stride_ly;
+	  auto const lower_cell = bci->min();
+	  auto const upper_cell = bci->max();
+	  for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
+	    for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
+	      for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
+		auto const node = local_offset + Utils::Vector3i{{x, y, z}};
+		auto const index = stride_x*(node[0] - lower_corner[0]) + stride_y*(node[1] - lower_corner[1]) + node[2] - lower_corner[2];
+		auto const local_index = stride_lx*(x - lower_cell.x()) + stride_ly*(y - lower_cell.y()) + z - lower_cell.z();
+		for (uint_t f = 0u; f < stencil_size(); ++f) {
+		  values[int(stencil_size()*local_index + f)] = numeric_cast<FloatType>(population[int(stencil_size()*index + f)]);
+		}
+	      }
+	    }
+	  }
+	  lbm::accessor::Population::set(pdf_field, vel_field, force_field, values,
+					 *bci);
+	}
+      }
     }
   }
 
@@ -1280,17 +1439,32 @@ public:
                     Utils::Vector3i const &upper_corner) const override {
     std::vector<double> out;
     if (auto const ci = get_interval(lower_corner, upper_corner)) {
+      out = std::vector<double>(ci->numCells());
+      int64_t const stride_y = (ci->max().z() - ci->min().z() + 1u);
+      int64_t const stride_x = (ci->max().y() - ci->min().y() + 1u)*stride_y;
       auto const &lattice = get_lattice();
-      auto const &block = *(lattice.get_blocks()->begin());
-      auto const pdf_field = block.template getData<PdfField>(m_pdf_field_id);
-      auto const values = lbm::accessor::Density::get(pdf_field, *ci);
-      assert(++(lattice.get_blocks()->begin()) == lattice.get_blocks()->end());
-      assert(values.size() == ci->numCells());
-      if constexpr (std::is_same_v<typename decltype(values)::value_type,
-                                   double>) {
-        out = std::move(values);
-      } else {
-        out = std::vector<double>(values.begin(), values.end());
+      for (auto b = lattice.get_blocks()->begin(); b != lattice.get_blocks()->end(); ++b) {
+        auto const &block = *b;
+        auto const local_offset = to_vector3i(block.getAABB().min());
+	if (auto const bci = get_block_interval(lower_corner, upper_corner, local_offset, &block)) {
+          auto const pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+          auto const values = lbm::accessor::Density::get(pdf_field, *bci);
+          assert(values.size() == bci->numCells());
+          int64_t const stride_ly = (bci->max().z() - bci->min().z() + 1u);
+          int64_t const stride_lx = (bci->max().y() - bci->min().y() + 1u)*stride_ly;
+          auto const lower_cell = bci->min();
+          auto const upper_cell = bci->max();
+          for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
+            for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
+              for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
+                auto const node = local_offset + Utils::Vector3i{{x, y, z}};
+	        auto const index = stride_x*(node[0] - lower_corner[0]) + stride_y*(node[1] - lower_corner[1]) + node[2] - lower_corner[2];
+	        auto const local_index = stride_lx*(x - lower_cell.x()) + stride_ly*(y - lower_cell.y()) + z - lower_cell.z();
+                out[index] = values[local_index];
+	      }
+	    }
+	  }
+        }
       }
     }
     return out;
@@ -1301,13 +1475,33 @@ public:
                          std::vector<double> const &density) override {
     m_pending_ghost_comm.set(GhostComm::PDF);
     if (auto const ci = get_interval(lower_corner, upper_corner)) {
-      auto const &lattice = get_lattice();
-      auto &block = *(lattice.get_blocks()->begin());
-      auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
       assert(density.size() == ci->numCells());
-      assert(++(lattice.get_blocks()->begin()) == lattice.get_blocks()->end());
-      std::vector<FloatType> const values(density.begin(), density.end());
-      lbm::accessor::Density::set(pdf_field, values, *ci);
+      int64_t const stride_y = (ci->max().z() - ci->min().z() + 1u);
+      int64_t const stride_x = (ci->max().y() - ci->min().y() + 1u)*stride_y;
+      auto const &lattice = get_lattice();
+      for (auto b = lattice.get_blocks()->begin(); b != lattice.get_blocks()->end(); ++b) {
+        auto &block = *b;
+        auto const local_offset = to_vector3i(block.getAABB().min());
+	if (auto const bci = get_block_interval(lower_corner, upper_corner, local_offset, &block)) {
+          auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+          std::vector<FloatType> values = std::vector<FloatType>(bci->numCells());
+          int64_t const stride_ly = (bci->max().z() - bci->min().z() + 1u);
+          int64_t const stride_lx = (bci->max().y() - bci->min().y() + 1u)*stride_ly;
+          auto const lower_cell = bci->min();
+          auto const upper_cell = bci->max();
+          for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
+            for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
+              for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
+                auto const node = local_offset + Utils::Vector3i{{x, y, z}};
+	        auto const index = stride_x*(node[0] - lower_corner[0]) + stride_y*(node[1] - lower_corner[1]) + node[2] - lower_corner[2];
+	        auto const local_index = stride_lx*(x - lower_cell.x()) + stride_ly*(y - lower_cell.y()) + z - lower_cell.z();
+                values[local_index] = numeric_cast<FloatType>(density[index]);
+	      }
+	    }
+	  }
+          lbm::accessor::Density::set(pdf_field, values, *bci);
+        }
+      }
     }
   }
 
@@ -1326,7 +1520,7 @@ public:
                                      Utils::Vector3d const &velocity) override {
     on_boundary_add();
     m_pending_ghost_comm.set(GhostComm::UBB);
-    auto bc = get_block_and_cell(get_lattice(), node, true);
+    auto bc = get_block_and_cell(get_lattice(), node, false);
     if (bc) {
       m_boundary->set_node_value_at_boundary(
           node, to_vector3<FloatType>(velocity), *bc);
@@ -1339,26 +1533,32 @@ public:
       Utils::Vector3i const &upper_corner) const override {
     std::vector<std::optional<Utils::Vector3d>> out;
     if (auto const ci = get_interval(lower_corner, upper_corner)) {
+      out = std::vector<std::optional<Utils::Vector3d>>(ci->numCells());
+      int64_t const stride_y = (ci->max().z() - ci->min().z() + 1u);
+      int64_t const stride_x = (ci->max().y() - ci->min().y() + 1u)*stride_y;
       auto const &lattice = get_lattice();
-      auto const local_offset = std::get<0>(lattice.get_local_grid_range());
-      auto const lower_cell = ci->min();
-      auto const upper_cell = ci->max();
-      auto const n_values = ci->numCells();
-      out.reserve(n_values);
-      for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
-        for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
-          for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
-            auto const node = local_offset + Utils::Vector3i{{x, y, z}};
-            if (m_boundary->node_is_boundary(node)) {
-              out.emplace_back(
-                  to_vector3d(m_boundary->get_node_value_at_boundary(node)));
-            } else {
-              out.emplace_back(std::nullopt);
-            }
-          }
-        }
+      for (auto b = lattice.get_blocks()->begin(); b != lattice.get_blocks()->end(); ++b) {
+        auto const &block = *b;
+        auto const local_offset = to_vector3i(block.getAABB().min());
+	if (auto const bci = get_block_interval(lower_corner, upper_corner, local_offset, &block)) {
+	  auto const lower_cell = bci->min();
+	  auto const upper_cell = bci->max();
+	  for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
+	    for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
+	      for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
+		auto const node = local_offset + Utils::Vector3i{{x, y, z}};
+		auto const index = stride_x*(node[0] - lower_corner[0]) + stride_y*(node[1] - lower_corner[1]) + node[2] - lower_corner[2];
+		if (m_boundary->node_is_boundary(node)) {
+		  out[index] = to_vector3d(m_boundary->get_node_value_at_boundary(node));
+		} else {
+		  out[index]= std::nullopt;
+		}
+	      }
+	    }
+	  }
+	}
       }
-      assert(out.size() == n_values);
+      assert(out.size() == ci->numCells());
     }
     return out;
   }
@@ -1369,26 +1569,33 @@ public:
     on_boundary_add();
     m_pending_ghost_comm.set(GhostComm::UBB);
     if (auto const ci = get_interval(lower_corner, upper_corner)) {
-      auto const &lattice = get_lattice();
-      auto const local_offset = std::get<0>(lattice.get_local_grid_range());
-      auto const lower_cell = ci->min();
-      auto const upper_cell = ci->max();
-      auto it = velocity.begin();
       assert(velocity.size() == ci->numCells());
-      for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
-        for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
-          for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
-            auto const node = local_offset + Utils::Vector3i{{x, y, z}};
-            auto const bc = get_block_and_cell(lattice, node, false);
-            auto const &opt = *it;
-            if (opt) {
-              m_boundary->set_node_value_at_boundary(
-                  node, to_vector3<FloatType>(*opt), *bc);
-            } else {
-              m_boundary->remove_node_from_boundary(node, *bc);
-            }
-            ++it;
-          }
+      int64_t const stride_y = (ci->max().z() - ci->min().z() + 1u);
+      int64_t const stride_x = (ci->max().y() - ci->min().y() + 1u)*stride_y;
+      auto const &lattice = get_lattice();
+      for (auto b = lattice.get_blocks()->begin(); b != lattice.get_blocks()->end(); ++b) {
+        auto &block = *b;
+        auto const local_offset = to_vector3i(block.getAABB().min());
+	if (auto const bci = get_block_interval(lower_corner, upper_corner, local_offset, &block)) {
+	  auto const lower_cell = bci->min();
+	  auto const upper_cell = bci->max();
+	  for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
+	    for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
+	      for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
+		auto const node = local_offset + Utils::Vector3i{{x, y, z}};
+		auto const index = stride_x*(node[0] - lower_corner[0]) + stride_y*(node[1] - lower_corner[1]) + node[2] - lower_corner[2];
+		auto const bc = get_block_and_cell(lattice, node, false);
+		assert(bc->block->getAABB() == block.getAABB());
+		auto const &opt = velocity[index];
+		if (opt) {
+		  m_boundary->set_node_value_at_boundary(
+		      node, to_vector3<FloatType>(*opt), *bc);
+		} else {
+		  m_boundary->remove_node_from_boundary(node, *bc);
+		}
+	      }
+	    }
+	  }
         }
       }
     }
@@ -1404,7 +1611,7 @@ public:
   }
 
   bool remove_node_from_boundary(Utils::Vector3i const &node) override {
-    auto bc = get_block_and_cell(get_lattice(), node, true);
+    auto bc = get_block_and_cell(get_lattice(), node, false);
     if (bc) {
       m_boundary->remove_node_from_boundary(node, *bc);
     }
@@ -1427,21 +1634,28 @@ public:
                         Utils::Vector3i const &upper_corner) const override {
     std::vector<bool> out;
     if (auto const ci = get_interval(lower_corner, upper_corner)) {
+      out = std::vector<bool>(ci->numCells());
+      int64_t const stride_y = (ci->max().z() - ci->min().z() + 1u);
+      int64_t const stride_x = (ci->max().y() - ci->min().y() + 1u)*stride_y;
       auto const &lattice = get_lattice();
-      auto const local_offset = std::get<0>(lattice.get_local_grid_range());
-      auto const lower_cell = ci->min();
-      auto const upper_cell = ci->max();
-      auto const n_values = ci->numCells();
-      out.reserve(n_values);
-      for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
-        for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
-          for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
-            auto const node = local_offset + Utils::Vector3i{x, y, z};
-            out.emplace_back(m_boundary->node_is_boundary(node));
-          }
-        }
+      for (auto b = lattice.get_blocks()->begin(); b != lattice.get_blocks()->end(); ++b) {
+        auto const &block = *b;
+        auto const local_offset = to_vector3i(block.getAABB().min());
+	if (auto const bci = get_block_interval(lower_corner, upper_corner, local_offset, &block)) {
+	  auto const lower_cell = bci->min();
+	  auto const upper_cell = bci->max();
+	  for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
+	    for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
+	      for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
+		auto const node = local_offset + Utils::Vector3i{{x, y, z}};
+		auto const index = stride_x*(node[0] - lower_corner[0]) + stride_y*(node[1] - lower_corner[1]) + node[2] - lower_corner[2];
+		out[index] = m_boundary->node_is_boundary(node);
+	      }
+	    }
+	  }
+	}
       }
-      assert(out.size() == n_values);
+      assert(out.size() == ci->numCells());
     }
     return out;
   }
@@ -1495,20 +1709,35 @@ public:
       Utils::Vector3i const &upper_corner) const override {
     std::vector<double> out;
     if (auto const ci = get_interval(lower_corner, upper_corner)) {
+      out = std::vector<double>(int(9u * ci->numCells()));
+      int64_t const stride_y = (ci->max().z() - ci->min().z() + 1u);
+      int64_t const stride_x = (ci->max().y() - ci->min().y() + 1u)*stride_y;
       auto const &lattice = get_lattice();
-      auto const &block = *(lattice.get_blocks()->begin());
-      auto const pdf_field = block.template getData<PdfField>(m_pdf_field_id);
-      auto values = lbm::accessor::PressureTensor::get(pdf_field, *ci);
-      assert(++(lattice.get_blocks()->begin()) == lattice.get_blocks()->end());
-      assert(values.size() == 9u * ci->numCells());
-      for (auto it = values.begin(); it != values.end(); std::advance(it, 9l)) {
-        pressure_tensor_correction(std::span<FloatType, 9ul>(it, 9ul));
-      }
-      if constexpr (std::is_same_v<typename decltype(values)::value_type,
-                                   double>) {
-        out = std::move(values);
-      } else {
-        out = std::vector<double>(values.begin(), values.end());
+      for (auto b = lattice.get_blocks()->begin(); b != lattice.get_blocks()->end(); ++b) {
+        auto const &block = *b;
+        auto const local_offset = to_vector3i(block.getAABB().min());
+	if (auto const bci = get_block_interval(lower_corner, upper_corner, local_offset, &block)) {
+	  auto const pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+	  auto values = lbm::accessor::PressureTensor::get(pdf_field, *bci);
+	  assert(values.size() == 9u * bci->numCells());
+	  int64_t const stride_ly = (bci->max().z() - bci->min().z() + 1u);
+	  int64_t const stride_lx = (bci->max().y() - bci->min().y() + 1u)*stride_ly;
+	  auto const lower_cell = bci->min();
+	  auto const upper_cell = bci->max();
+	  for (auto x = lower_cell.x(); x <= upper_cell.x(); ++x) {
+	    for (auto y = lower_cell.y(); y <= upper_cell.y(); ++y) {
+	      for (auto z = lower_cell.z(); z <= upper_cell.z(); ++z) {
+		auto const node = local_offset + Utils::Vector3i{{x, y, z}};
+		auto const index = stride_x*(node[0] - lower_corner[0]) + stride_y*(node[1] - lower_corner[1]) + node[2] - lower_corner[2];
+		auto const local_index = stride_lx*(x - lower_cell.x()) + stride_ly*(y - lower_cell.y()) + z - lower_cell.z();
+		pressure_tensor_correction(std::span<FloatType, 9ul>(&values[int(9u*local_index)], 9ul));
+		for (uint_t f = 0u; f < 9u; ++f) {
+		  out[int(9u*index + f)] = values[int(9u*local_index + f)];
+		}
+	      }
+	    }
+	  }
+	}
       }
     }
     return out;

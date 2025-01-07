@@ -96,7 +96,7 @@ public:
     WALBERLA_ASSERT_EQUAL(bSize, buf_size);
 #endif
 
-    auto const offset = std::get<0>(m_lattice->get_local_grid_range());
+    auto const offset = to_vector3i(receiver->getAABB().min());
     typename Boundary_T::value_type value;
     for (auto it = begin(flag_field); it != flag_field->end(); ++it) {
       if (isFlagSet(it, boundary_flag)) {
@@ -133,7 +133,7 @@ protected:
            << buf_size;
 #endif
 
-    auto const offset = std::get<0>(m_lattice->get_local_grid_range());
+    auto const offset = to_vector3i(sender->getAABB().min());
     for (auto it = begin(flag_field); it != flag_field->end(); ++it) {
       if (isFlagSet(it, boundary_flag)) {
         auto const node = offset + Utils::Vector3i{{it.x(), it.y(), it.z()}};

@@ -58,14 +58,14 @@ class HydrodynamicInteraction(ScriptInterfaceHelper):
 
     def valid_keys(self):
         return {"agrid", "tau", "density", "ext_force_density",
-                "kinematic_viscosity", "lattice", "kT", "seed"}
+                "kinematic_viscosity", "lattice", "kT", "seed", "blocks_per_mpi_rank"}
 
     def required_keys(self):
         return {"lattice", "density", "kinematic_viscosity", "tau"}
 
     def default_params(self):
         return {"lattice": None, "seed": 0, "kT": 0.,
-                "ext_force_density": [0.0, 0.0, 0.0]}
+                "ext_force_density": [0.0, 0.0, 0.0], "blocks_per_mpi_rank": [1, 1, 1]}
 
     def mach_limit(self):
         """
@@ -141,6 +141,8 @@ class LBFluidWalberla(HydrodynamicInteraction,
         Required for a thermalized fluid. Must be positive.
     single_precision : :obj:`bool`, optional
         Use single-precision floating-point arithmetic.
+    blocks_per_mpi_rank : (3,) array_like of :obj:`int`, optional
+        Ditribute more than one block to each CPU.
 
     Methods
     -------
@@ -240,7 +242,7 @@ class LBFluidWalberla(HydrodynamicInteraction,
             if "agrid" not in params:
                 raise ValueError("missing argument 'lattice' or 'agrid'")
             params["lattice"] = LatticeWalberla(
-                agrid=params.pop("agrid"), n_ghost_layers=1)
+                agrid=params.pop("agrid"), n_ghost_layers=1, blocks_per_mpi_rank=params.get("blocks_per_mpi_rank"))
         elif "agrid" in params:
             raise ValueError("cannot provide both 'lattice' and 'agrid'")
 

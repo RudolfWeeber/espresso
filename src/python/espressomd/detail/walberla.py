@@ -47,7 +47,7 @@ class LatticeWalberla(ScriptInterfaceHelper):
             super().__init__(**kwargs)
 
     def valid_keys(self):
-        return {"agrid", "n_ghost_layers"}
+        return {"agrid", "n_ghost_layers", "blocks_per_mpi_rank"}
 
     def required_keys(self):
         return self.valid_keys()

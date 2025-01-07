@@ -34,6 +34,9 @@
 
 #include <utils/Vector.hpp>
 
+#include <config/config.hpp>
+#include <caliper/cali.h>
+
 namespace walberla {
 
 /** Sweep that swaps @c force_to_be_applied and @c last_applied_force
@@ -56,10 +59,19 @@ public:
   Utils::Vector3d get_ext_force() const { return to_vector3d(m_ext_force); }
 
   void operator()(IBlock *block) {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
+#ifdef CALIPER
+    CALI_MARK_BEGIN("getData");
+#endif
     auto force_field =
         block->template getData<ForceField>(m_last_applied_force_field_id);
     auto force_to_be_applied =
         block->template getData<ForceField>(m_force_to_be_applied_id);
+#ifdef CALIPER
+    CALI_MARK_END("getData");
+#endif
 
     force_field->swapDataPointers(force_to_be_applied);
 
