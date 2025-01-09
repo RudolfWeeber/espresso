@@ -127,7 +127,7 @@ std::complex<FloatType> multiply_complex_by_imaginary(const std::complex<FloatTy
 
 template <typename FloatType>
 std::complex<FloatType> multiply_complex_by_real(const std::complex<FloatType>& z, FloatType k) {
-    // Perform the multiplication manually: (re + i*imag) * (i*k)
+    // Perform the multiplication manually: (re + i*imag) * k
     return std::complex<FloatType>(z.real()*k,  z.imag() *k);
 }
 
@@ -328,8 +328,7 @@ void CoulombP3MImpl<FloatType, Architecture>::init_cpu_kernels() {
 
 namespace {
 template <int cao> struct AssignCharge {
-  void operator()(auto &p3m, double q, Utils::Vector3d const &real_pos,
-                  InterpolationWeights<cao> const &w) {
+  void operator()(auto &p3m, double q, InterpolationWeights<cao> const &w) {
     using value_type =
         typename std::remove_reference_t<decltype(p3m)>::value_type;
     p3m_interpolate(p3m.local_mesh, w, [q, &p3m](int ind, double w) {
@@ -342,13 +341,13 @@ template <int cao> struct AssignCharge {
     auto const w = p3m_calculate_interpolation_weights<cao>(
         real_pos, p3m.params.ai, p3m.local_mesh);
     inter_weights.store(w);
-    this->operator()(p3m, q, real_pos, w);
+    this->operator()(p3m, q, w);
   }
 
   void operator()(auto &p3m, double q, Utils::Vector3d const &real_pos) {
     auto const w = p3m_calculate_interpolation_weights<cao>(
         real_pos, p3m.params.ai, p3m.local_mesh);
-    this->operator()(p3m, q, real_pos, w);
+    this->operator()(p3m, q, w);
   }
 
   template <typename combined_ranges>
@@ -545,7 +544,6 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
    // the mesh held by each MPI rank are assembled correctly
    p3m.fft->forward(charge_density_no_halos.data(),p3m.ks_charge_density.data());
 
-
   // Calculate the dipole term
   auto p_q_range = ParticlePropertyRange::charge_range(particles);
   auto p_force_range = ParticlePropertyRange::force_range(particles);
@@ -636,7 +634,7 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
     /* compute electric field */
     // Eq. (3.49) @cite deserno00b
     for (int i=0;i<p3m.ks_charge_density.size();i++) {
-      p3m.ks_charge_density[i] = multiply_complex_by_real(p3m.ks_charge_density[index], p3m.g_force[i]);
+      p3m.ks_charge_density[i] = multiply_complex_by_real(p3m.ks_charge_density[i], p3m.g_force[i]);
     }
     for_each_3d(mesh_start, mesh_stop, indices, [&]() {
 //      auto const& rho_hat = p3m.ks_charge_density[index];
