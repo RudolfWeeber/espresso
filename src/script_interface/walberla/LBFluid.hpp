@@ -44,14 +44,19 @@
 
 namespace ScriptInterface::walberla {
 
-class LBVTKHandle;
+class LBVTKHandle : public VTKHandleBase<::LBWalberlaBase> {
+  static std::unordered_map<std::string, int> const obs_map;
+
+  std::unordered_map<std::string, int> const &get_obs_map() const override {
+    return obs_map;
+  }
+};
 
 class LBFluid : public LatticeModel<::LBWalberlaBase, LBVTKHandle> {
 protected:
   using Base = LatticeModel<::LBWalberlaBase, LBVTKHandle>;
   std::shared_ptr<::LB::LBWalberlaParams> m_lb_params;
   bool m_is_active;
-  int m_seed;
   double m_conv_dist;
   double m_conv_visc;
   double m_conv_dens;
@@ -77,7 +82,8 @@ public:
          [this]() { return m_instance->get_lattice().get_grid_dimensions(); }},
         {"kT", AutoParameter::read_only,
          [this]() { return m_instance->get_kT() / m_conv_energy; }},
-        {"seed", AutoParameter::read_only, [this]() { return m_seed; }},
+        {"seed", AutoParameter::read_only,
+         [this]() { return static_cast<int>(m_instance->get_seed()); }},
         {"rng_state",
          [this](Variant const &v) {
            auto const rng_state = get_value<int>(v);
@@ -147,14 +153,6 @@ protected:
   void make_instance(VariantMap const &params) override;
 };
 #endif // CUDA
-
-class LBVTKHandle : public VTKHandleBase<::LBWalberlaBase> {
-  static std::unordered_map<std::string, int> const obs_map;
-
-  std::unordered_map<std::string, int> const &get_obs_map() const override {
-    return obs_map;
-  }
-};
 
 } // namespace ScriptInterface::walberla
 

@@ -77,7 +77,7 @@ BOOST_AUTO_TEST_CASE(stencil_size) {
   auto constexpr stencil_size = std::size_t{9u};
   auto ek = std::make_shared<walberla::EKinWalberlaImpl<stencil_size, float>>(
       params.lattice, params.diffusion, 0., params.valency, params.ext_efield,
-      params.density, params.advection, params.friction_coupling);
+      params.density, params.advection, params.friction_coupling, false, 0u);
   BOOST_CHECK_EQUAL(ek->stencil_size(), stencil_size);
 }
 
@@ -543,7 +543,7 @@ BOOST_DATA_TEST_CASE(vtk_exceptions,
 BOOST_AUTO_TEST_CASE(ek_exceptions) {
   auto ek = std::make_shared<walberla::EKinWalberlaImpl<>>(
       params.lattice, params.diffusion, 0., params.valency, params.ext_efield,
-      params.density, params.advection, params.friction_coupling);
+      params.density, params.advection, params.friction_coupling, false, 0u);
   BOOST_CHECK_THROW(ek->integrate(std::size_t{}, std::size_t{}, std::size_t{}),
                     std::runtime_error);
   // no diffusion leads to early exit
@@ -570,8 +570,8 @@ int main(int argc, char **argv) {
   params.ext_efield = Vector3d{0.01, 0.02, 0.03};
   params.grid_dimensions = Vector3i{12, 12, 18};
   params.box_dimensions = Vector3d{12, 12, 18};
-  params.lattice =
-      std::make_shared<LatticeWalberla>(params.grid_dimensions, mpi_shape, 1u);
+  params.lattice = std::make_shared<LatticeWalberla>(params.grid_dimensions,
+                                                     mpi_shape, mpi_shape, 1u);
 
   auto const res = boost::unit_test::unit_test_main(init_unit_test, argc, argv);
   MPI_Finalize();

@@ -42,11 +42,25 @@ class LBWalberlaBase : public LatticeModel {
 public:
   ~LBWalberlaBase() override = default;
 
-  /** @brief Integrate LB for one time step. */
+  /**
+   * @brief Integrate LB for one time step.
+   * The ghost layer may be out-of-date after integration.
+   * Call @ref ghost_communication() to refresh them before
+   * calling any getter function that reads from the halo region.
+   */
   virtual void integrate() = 0;
 
-  /** @brief Perform ghost communication of PDF and applied forces. */
+  /** @brief Perform a full ghost communication. */
   virtual void ghost_communication() = 0;
+
+  /** @brief Perform a ghost communication of the PDF field. */
+  virtual void ghost_communication_pdf() = 0;
+
+  /** @brief Perform a ghost communication of the velocity field. */
+  virtual void ghost_communication_vel() = 0;
+
+  /** @brief Perform a ghost communication of the last applied forces field. */
+  virtual void ghost_communication_laf() = 0;
 
   /** @brief Number of discretized velocities in the PDF. */
   virtual std::size_t stencil_size() const noexcept = 0;
@@ -257,17 +271,21 @@ public:
   /** @brief Get the fluid temperature (if thermalized). */
   virtual double get_kT() const noexcept = 0;
 
+  /** @brief Get the RNG seed (if thermalized). */
+  virtual unsigned int get_seed() const noexcept = 0;
+
   /** @brief Set the RNG counter (if thermalized). */
   [[nodiscard]] virtual std::optional<uint64_t> get_rng_state() const = 0;
 
-  /** @brief Set the rng state of thermalized LBs */
+  /** @brief Set the RNG counter (if thermalized). */
   virtual void set_rng_state(uint64_t counter) = 0;
 
-  /** @brief get the velocity field id */
+  /** @brief Get the velocity field id */
   [[nodiscard]] virtual std::size_t get_velocity_field_id() const noexcept = 0;
 
-  /** @brief get the force field id */
+  /** @brief Get the force field id */
   [[nodiscard]] virtual std::size_t get_force_field_id() const noexcept = 0;
 
+  /** @brief Get whether the kernels run on GPUs. */
   [[nodiscard]] virtual bool is_gpu() const noexcept = 0;
 };

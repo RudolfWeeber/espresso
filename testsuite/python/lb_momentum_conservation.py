@@ -66,7 +66,7 @@ class TestLBMomentumConservation:
         self.system.lb = self.lbf
         self.system.thermostat.set_lb(LB_fluid=self.lbf, gamma=GAMMA, seed=1)
         np.testing.assert_allclose(
-            self.lbf.ext_force_density,
+            np.copy(self.lbf.ext_force_density),
             LB_PARAMS["ext_force_density"])
 
         # Initial momentum before integration = 0
@@ -216,6 +216,20 @@ class TestLBMomentumConservationNSquareWalberlaSinglePrecision(
 
     def set_cellsystem(self):
         self.system.cell_system.set_n_square()
+
+
+@ut.skipIf(TestLBMomentumConservation.n_nodes != 1,
+           "LB with regular decomposition already tested with 2 MPI ranks")
+@utx.skipIfMissingFeatures(["WALBERLA", "EXTERNAL_FORCES"])
+class TestLBMomentumConservationRegularDoublePrecisionWalberlaBlocksCPU(
+        TestLBMomentumConservation, ut.TestCase):
+
+    lb_class = espressomd.lb.LBFluidWalberla
+    lb_params = {"single_precision": False, "blocks_per_mpi_rank": [2, 2, 2]}
+    atol = 1.2e-4
+
+    def set_cellsystem(self):
+        self.system.cell_system.set_regular_decomposition()
 
 
 if __name__ == "__main__":

@@ -74,7 +74,12 @@
 #include <sstream>
 #include <stdexcept>
 #include <tuple>
+#include <utility>
 #include <vector>
+
+#ifdef FFTW3_H
+#error "The FFTW3 library shouldn't be visible in this translation unit"
+#endif
 
 template <typename FloatType, Arch Architecture>
 void DipolarP3MImpl<FloatType, Architecture>::count_magnetic_particles() {
@@ -111,8 +116,9 @@ double
 DipolarP3MImpl<FloatType, Architecture>::calc_average_self_energy_k_space()
     const {
   auto const &box_geo = *get_system().box_geo;
-  auto const node_phi = grid_influence_function_self_energy(
-      dp3m.params, dp3m.mesh.start, dp3m.mesh.stop, dp3m.g_energy);
+  auto const node_phi =
+      grid_influence_function_self_energy<FloatType, P3M_BRILLOUIN>(
+          dp3m.params, dp3m.mesh.start, dp3m.mesh.stop, dp3m.g_energy);
 
   double phi = 0.;
   boost::mpi::reduce(comm_cart, node_phi, phi, std::plus<>(), 0);
@@ -136,8 +142,11 @@ void DipolarP3MImpl<FloatType, Architecture>::init_cpu_kernels() {
 
   assert(dp3m.fft);
   dp3m.local_mesh.calc_local_ca_mesh(dp3m.params, local_geo, verlet_skin, 0.);
-  dp3m.fft->init_halo();
-  dp3m.fft->init_fft();
+  dp3m.fft_buffers->init_halo();
+  dp3m.fft->init(dp3m.params);
+  dp3m.mesh.ks_pnum = dp3m.fft->get_ks_pnum();
+  dp3m.fft_buffers->init_meshes(dp3m.fft->get_ca_mesh_size());
+  dp3m.update_mesh_views();
   dp3m.calc_differential_operator();
 
   /* fix box length dependent constants */
@@ -253,8 +262,11 @@ double DipolarP3MImpl<FloatType, Architecture>::long_range_kernel(
 
   if (dp3m.sum_mu2 > 0.) {
     dipole_assign(particles);
-    dp3m.fft->perform_vector_halo_gather();
-    dp3m.fft->perform_vector_fwd_fft();
+    dp3m.fft_buffers->perform_vector_halo_gather();
+    for (auto &rs_mesh : dp3m.fft_buffers->get_vector_mesh()) {
+      dp3m.fft->forward_fft(rs_mesh);
+    }
+    dp3m.update_mesh_views();
   }
 
   /* === k-space energy calculation  === */
@@ -323,8 +335,9 @@ double DipolarP3MImpl<FloatType, Architecture>::long_range_kernel(
       auto &mesh_dip = dp3m.mesh.rs_fields;
       auto indices = Utils::Vector3i{};
       auto index = std::size_t(0u);
+      dp3m.ks_scalar.resize(dp3m.mesh.rs_scalar.size());
 
-      /* fill in mesh.ks_scalar array for torque calculation */
+      /* fill in ks_scalar array for torque calculation */
       auto it_energy = dp3m.g_energy.begin();
       index = 0u;
       for_each_3d(mesh_start, mesh_stop, indices, [&]() {
@@ -333,13 +346,13 @@ double DipolarP3MImpl<FloatType, Architecture>::long_range_kernel(
         auto const re = mesh_dip[0u][index] * FloatType(d_op[shift[KX]]) +
                         mesh_dip[1u][index] * FloatType(d_op[shift[KY]]) +
                         mesh_dip[2u][index] * FloatType(d_op[shift[KZ]]);
-        dp3m.mesh.ks_scalar[index] = *it_energy * re;
+        dp3m.ks_scalar[index] = *it_energy * re;
         ++index;
         // Im(mu)*k
         auto const im = mesh_dip[0u][index] * FloatType(d_op[shift[KX]]) +
                         mesh_dip[1u][index] * FloatType(d_op[shift[KY]]) +
                         mesh_dip[2u][index] * FloatType(d_op[shift[KZ]]);
-        dp3m.mesh.ks_scalar[index] = *it_energy * im;
+        dp3m.ks_scalar[index] = *it_energy * im;
         ++index;
         std::advance(it_energy, 1);
       });
@@ -349,13 +362,13 @@ double DipolarP3MImpl<FloatType, Architecture>::long_range_kernel(
         index = 0u;
         for_each_3d(mesh_start, mesh_stop, indices, [&]() {
           auto const d_op_val = FloatType(d_op[indices[d] + offset[d]]);
-          dp3m.mesh.rs_scalar[index] = d_op_val * dp3m.mesh.ks_scalar[index];
+          dp3m.mesh.rs_scalar[index] = d_op_val * dp3m.ks_scalar[index];
           ++index;
-          dp3m.mesh.rs_scalar[index] = d_op_val * dp3m.mesh.ks_scalar[index];
+          dp3m.mesh.rs_scalar[index] = d_op_val * dp3m.ks_scalar[index];
           ++index;
         });
-        dp3m.fft->perform_scalar_back_fft();
-        dp3m.fft->perform_scalar_halo_spread();
+        dp3m.fft->backward_fft(dp3m.fft_buffers->get_scalar_mesh());
+        dp3m.fft_buffers->perform_scalar_halo_spread();
         /* Assign force component from mesh to particle */
         auto const d_rs = (d + dp3m.mesh.ks_pnum) % 3;
         Utils::integral_parameter<int, AssignTorques, 1, 7>(
@@ -369,7 +382,7 @@ double DipolarP3MImpl<FloatType, Architecture>::long_range_kernel(
       // grids dp3m.mesh.rs_fields !
       // Note: I'll do here 9 inverse FFTs. By symmetry, we can reduce this
       // number to 6 !
-      /* fill in mesh.ks_scalar array for force calculation */
+      /* fill in ks_scalar array for force calculation */
       auto it_force = dp3m.g_force.begin();
       index = 0u;
       for_each_3d(mesh_start, mesh_stop, indices, [&]() {
@@ -384,8 +397,8 @@ double DipolarP3MImpl<FloatType, Architecture>::long_range_kernel(
                         mesh_dip[1u][index] * FloatType(d_op[shift[KY]]) +
                         mesh_dip[2u][index] * FloatType(d_op[shift[KZ]]);
         ++index;
-        dp3m.mesh.ks_scalar[index - 2] = *it_force * im;
-        dp3m.mesh.ks_scalar[index - 1] = *it_force * (-re);
+        dp3m.ks_scalar[index - 2] = *it_force * im;
+        dp3m.ks_scalar[index - 1] = *it_force * (-re);
         std::advance(it_force, 1);
       });
 
@@ -395,19 +408,21 @@ double DipolarP3MImpl<FloatType, Architecture>::long_range_kernel(
         for_each_3d(mesh_start, mesh_stop, indices, [&]() {
           auto const d_op_val = FloatType(d_op[indices[d] + offset[d]]);
           auto const shift = indices + offset;
-          auto const f1 = d_op_val * dp3m.mesh.ks_scalar[index];
+          auto const f1 = d_op_val * dp3m.ks_scalar[index];
           mesh_dip[0u][index] = FloatType(d_op[shift[KX]]) * f1;
           mesh_dip[1u][index] = FloatType(d_op[shift[KY]]) * f1;
           mesh_dip[2u][index] = FloatType(d_op[shift[KZ]]) * f1;
           ++index;
-          auto const f2 = d_op_val * dp3m.mesh.ks_scalar[index];
+          auto const f2 = d_op_val * dp3m.ks_scalar[index];
           mesh_dip[0u][index] = FloatType(d_op[shift[KX]]) * f2;
           mesh_dip[1u][index] = FloatType(d_op[shift[KY]]) * f2;
           mesh_dip[2u][index] = FloatType(d_op[shift[KZ]]) * f2;
           ++index;
         });
-        dp3m.fft->perform_vector_back_fft();
-        dp3m.fft->perform_vector_halo_spread();
+        for (auto &rs_mesh : dp3m.fft_buffers->get_vector_mesh()) {
+          dp3m.fft->backward_fft(rs_mesh);
+        }
+        dp3m.fft_buffers->perform_vector_halo_spread();
         /* Assign force component from mesh to particle */
         auto const d_rs = (d + dp3m.mesh.ks_pnum) % 3;
         Utils::integral_parameter<int, AssignForces, 1, 7>(
@@ -435,8 +450,9 @@ double DipolarP3MImpl<FloatType, Architecture>::long_range_kernel(
   return energy;
 }
 
-double DipolarP3M::calc_surface_term(bool force_flag, bool energy_flag,
-                                     ParticleRange const &particles) {
+template <typename FloatType, Arch Architecture>
+double DipolarP3MImpl<FloatType, Architecture>::calc_surface_term(
+    bool force_flag, bool energy_flag, ParticleRange const &particles) {
   auto const &box_geo = *get_system().box_geo;
   auto const pref = prefactor * 4. * std::numbers::pi / box_geo.volume() /
                     (2. * dp3m.params.epsilon + 1.);
@@ -504,14 +520,14 @@ double DipolarP3M::calc_surface_term(bool force_flag, bool energy_flag,
 
 template <typename FloatType, Arch Architecture>
 void DipolarP3MImpl<FloatType, Architecture>::calc_influence_function_force() {
-  dp3m.g_force = grid_influence_function<FloatType, 3>(
+  dp3m.g_force = grid_influence_function<FloatType, 3, P3M_BRILLOUIN>(
       dp3m.params, dp3m.mesh.start, dp3m.mesh.stop,
       get_system().box_geo->length_inv());
 }
 
 template <typename FloatType, Arch Architecture>
 void DipolarP3MImpl<FloatType, Architecture>::calc_influence_function_energy() {
-  dp3m.g_energy = grid_influence_function<FloatType, 2>(
+  dp3m.g_energy = grid_influence_function<FloatType, 2, P3M_BRILLOUIN>(
       dp3m.params, dp3m.mesh.start, dp3m.mesh.stop,
       get_system().box_geo->length_inv());
 }
@@ -520,11 +536,14 @@ template <typename FloatType, Arch Architecture>
 class DipolarTuningAlgorithm : public TuningAlgorithm {
   p3m_data_struct_dipoles<FloatType> &dp3m;
   int m_mesh_max = -1, m_mesh_min = -1;
+  std::pair<std::optional<int>, std::optional<int>> m_tune_limits;
 
 public:
   DipolarTuningAlgorithm(System::System &system, decltype(dp3m) &input_dp3m,
-                         double prefactor, int timings)
-      : TuningAlgorithm(system, prefactor, timings), dp3m{input_dp3m} {}
+                         double prefactor, int timings,
+                         decltype(m_tune_limits) tune_limits)
+      : TuningAlgorithm(system, prefactor, timings), dp3m{input_dp3m},
+        m_tune_limits{std::move(tune_limits)} {}
 
   P3MParameters &get_params() override { return dp3m.params; }
 
@@ -589,6 +608,12 @@ public:
       m_mesh_min = static_cast<int>(std::round(std::pow(2., std::floor(expo))));
       /* avoid using more than 1 GB of FFT arrays */
       m_mesh_max = 128;
+      if (m_tune_limits.first) {
+        m_mesh_min = *m_tune_limits.first;
+      }
+      if (m_tune_limits.second) {
+        m_mesh_max = *m_tune_limits.second;
+      }
     } else {
       m_mesh_min = m_mesh_max = dp3m.params.mesh[0];
       m_logger->report_fixed_mesh(dp3m.params.mesh);
@@ -648,7 +673,7 @@ void DipolarP3MImpl<FloatType, Architecture>::tune() {
     }
     try {
       DipolarTuningAlgorithm<FloatType, Architecture> parameters(
-          system, dp3m, prefactor, tune_timings);
+          system, dp3m, prefactor, tune_timings, tune_limits);
       parameters.setup_logger(tune_verbose);
       // parameter ranges
       parameters.determine_mesh_limits();
@@ -743,6 +768,7 @@ static double dp3m_k_space_error(double box_size, int mesh, int cao,
 static double dp3m_real_space_error(double box_size, double r_cut_iL,
                                     int n_c_part, double sum_q2,
                                     double alpha_L) {
+  auto constexpr exp_min = -708.4; // for IEEE-compatible double
   double d_error_f, d_cc, d_dc, d_con;
 
   auto const d_rcut = r_cut_iL * box_size;
@@ -750,8 +776,9 @@ static double dp3m_real_space_error(double box_size, double r_cut_iL,
   auto const d_rcut4 = Utils::sqr(d_rcut2);
 
   auto const d_a2 = Utils::sqr(alpha_L) / Utils::sqr(box_size);
-
-  auto const d_c = sum_q2 * exp(-d_a2 * d_rcut2);
+  auto const exponent = -d_a2 * d_rcut2;
+  auto const exp_term = (exponent < exp_min) ? 0. : std::exp(exponent);
+  auto const d_c = sum_q2 * exp_term;
 
   d_cc = 4. * Utils::sqr(d_a2) * Utils::sqr(d_rcut2) + 6. * d_a2 * d_rcut2 + 3.;
 
@@ -811,15 +838,15 @@ void DipolarP3M::sanity_checks_boxl() const {
   auto const &local_geo = *system.local_geo;
   for (auto i = 0u; i < 3u; i++) {
     /* check k-space cutoff */
-    if (dp3m.params.cao_cut[i] >= box_geo.length_half()[i]) {
+    if (dp3m_params.cao_cut[i] >= box_geo.length_half()[i]) {
       std::stringstream msg;
-      msg << "dipolar P3M_init: k-space cutoff " << dp3m.params.cao_cut[i]
+      msg << "dipolar P3M_init: k-space cutoff " << dp3m_params.cao_cut[i]
           << " is larger than half of box dimension " << box_geo.length()[i];
       throw std::runtime_error(msg.str());
     }
-    if (dp3m.params.cao_cut[i] >= local_geo.length()[i]) {
+    if (dp3m_params.cao_cut[i] >= local_geo.length()[i]) {
       std::stringstream msg;
-      msg << "dipolar P3M_init: k-space cutoff " << dp3m.params.cao_cut[i]
+      msg << "dipolar P3M_init: k-space cutoff " << dp3m_params.cao_cut[i]
           << " is larger than local box dimension " << local_geo.length()[i];
       throw std::runtime_error(msg.str());
     }
@@ -862,7 +889,8 @@ void DipolarP3M::sanity_checks_node_grid() const {
   }
 }
 
-void DipolarP3M::scaleby_box_l() {
+template <typename FloatType, Arch Architecture>
+void DipolarP3MImpl<FloatType, Architecture>::scaleby_box_l() {
   auto const &box_geo = *get_system().box_geo;
   dp3m.params.r_cut = dp3m.params.r_cut_iL * box_geo.length()[0];
   dp3m.params.alpha = dp3m.params.alpha_L * box_geo.length_inv()[0];
@@ -871,6 +899,7 @@ void DipolarP3M::scaleby_box_l() {
   sanity_checks_boxl();
   calc_influence_function_force();
   calc_influence_function_energy();
+  dp3m.energy_correction = 0.;
 }
 
 template <typename FloatType, Arch Architecture>

@@ -50,6 +50,9 @@ physical systems.
 * **Raspberry electrophoresis**  
   Extended objects in a Lattice-Boltzmann fluid, raspberry particles.  
   [Guide](raspberry_electrophoresis/raspberry_electrophoresis.ipynb)
+* **Machine-learned interatomic potential**  
+  Atomistic simulations using the MACE-MP-0 model.  
+  [Guide](mlip/mlip.ipynb)
 
 ### Advanced tutorials
 
@@ -70,7 +73,7 @@ physical systems.
   Measuring the excess chemical potential of a salt solution using the Widom particle insertion method.  
   [Guide](widom_insertion/widom_insertion.ipynb)
 * **Grand-Canonical Monte Carlo**
-  Simulating a polyelectrolyte solution coupled to a reservoir of salt.
+  Simulating a polyelectrolyte solution coupled to a reservoir of salt.  
   [Guide](grand_canonical_monte_carlo/grand_canonical_monte_carlo.ipynb)
 
 [comment]: # (End of tutorials landing page)

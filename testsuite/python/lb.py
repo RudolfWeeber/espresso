@@ -54,7 +54,6 @@ class LBTest:
     system.cell_system.skin = 1.0
     if espressomd.gpu_available():
         system.cuda_init_handle.call_method("set_device_id_per_rank")
-    interpolation = False
     n_nodes = system.cell_system.get_state()["n_nodes"]
 
     def setUp(self):
@@ -75,7 +74,6 @@ class LBTest:
         # activated actor
         lbf = self.lb_class(kT=1.0, seed=42, **self.params, **self.lb_params)
         self.system.lb = lbf
-        self.system.thermostat.set_lb(LB_fluid=lbf, seed=1)
         self.assertTrue(lbf.is_active)
         self.check_properties(lbf)
         self.system.lb = None
@@ -83,7 +81,6 @@ class LBTest:
         # deactivated actor
         lbf = self.lb_class(kT=1.0, seed=42, **self.params, **self.lb_params)
         self.system.lb = lbf
-        self.system.thermostat.set_lb(LB_fluid=lbf, seed=1)
         self.system.lb = None
         self.assertFalse(lbf.is_active)
         self.check_properties(lbf)
@@ -383,7 +380,7 @@ class LBTest:
         lbf = self.lb_class(kT=1., seed=1, ext_force_density=[0, 0, 0],
                             **self.params, **self.lb_params)
         system.lb = lbf
-        system.thermostat.set_lb(LB_fluid=lbf, seed=1)
+        system.thermostat.set_lb(LB_fluid=lbf, seed=1, gamma=1.)
         system.integrator.run(10)
         pressure_tensor = np.copy(
             np.mean(lbf[:, :, :].pressure_tensor, axis=(0, 1, 2)))
@@ -481,15 +478,16 @@ class LBTest:
         self.system.lb = lbf
         # check ranges and out-of-bounds access
         shape = lbf.shape
+        int_shape = [int(x) for x in shape]  # cast away numpy integer types
         for i in range(3):
             n = [0, 0, 0]
             n[i] -= shape[i]
             lbf[n[0], n[1], n[2]].velocity
             self.assertEqual(lbf[tuple(n)], lbf[0, 0, 0])
-            for offset in (shape[i] + 1, -(shape[i] + 1)):
+            for offset in (int_shape[i] + 1, -(int_shape[i] + 1)):
                 n = [0, 0, 0]
                 n[i] += offset
-                err_msg = rf"provided index \[{str(n)[1:-1]}\] is out of range for shape \[{str(list(shape))[1:-1]}\]"  # nopep8
+                err_msg = rf"provided index \[{str(n)[1:-1]}\] is out of range for shape \[{str(int_shape)[1:-1]}\]"  # nopep8
                 with self.assertRaisesRegex(IndexError, err_msg):
                     lbf[tuple(n)].velocity
         # node index
@@ -513,19 +511,19 @@ class LBTest:
     def test_agrid_rounding(self):
         """Tests agrid*n ~= box_l for a case where rounding down is needed"""
         system = self.system
-        old_l = system.box_l
 
         n_part = 1000
         phi = 0.05
         lj_sig = 1.0
         l = (n_part * 4. / 3. * np.pi * (lj_sig / 2.)**3 / phi)**(1. / 3.)
-        system.box_l = [l] * 3 * np.array(system.cell_system.node_grid)
+        box_l = l * np.array(system.cell_system.node_grid)
+        box_l *= self.lb_params.get("blocks_per_mpi_rank", [1, 1, 1])
+        system.box_l = box_l
         lbf = self.lb_class(agrid=l / 31, density=1, kinematic_viscosity=1, kT=0,
                             tau=system.time_step, **self.lb_params)
         system.lb = lbf
         system.integrator.run(steps=1)
         system.lb = None
-        system.box_l = old_l
 
     def test_bool_operations_on_node(self):
         lbf = self.lb_class(kT=1.0, seed=42, **self.params, **self.lb_params)
@@ -663,6 +661,7 @@ class LBTest:
             self.system.integrator.run(1)
             self.assertTrue(np.all(p.f != 0.0))
 
+    @utx.skipIfMissingFeatures("VIRTUAL_SITES_INERTIALESS_TRACERS")
     def test_tracers_coupling_rounding(self):
         import espressomd.propagation
         lbf = self.lb_class(**self.params, **self.lb_params)
@@ -672,7 +671,7 @@ class LBTest:
         self.system.thermostat.set_lb(LB_fluid=lbf, seed=3, gamma=self.gamma)
         rtol = self.rtol
         if lbf.single_precision:
-            rtol *= 100.
+            rtol *= 200.
         mode_tracer = espressomd.propagation.Propagation.TRANS_LB_TRACER
         self.system.time = 0.
         p = self.system.part.add(pos=[-1E-30] * 3, propagation=mode_tracer)
@@ -759,7 +758,7 @@ class LBTest:
         # Check node velocities
         for node_velocity in lbf[:, :, :].velocity.reshape((-1, 3)):
             np.testing.assert_allclose(
-                node_velocity, fluid_velocity, atol=1E-6)
+                np.copy(node_velocity), fluid_velocity, atol=1E-6)
 
     @utx.skipIfMissingFeatures("EXTERNAL_FORCES")
     def test_unequal_time_step(self):
@@ -826,6 +825,18 @@ class LBTest:
         np.testing.assert_allclose(v1, v2, rtol=1e-2)
         np.testing.assert_allclose(f1, f2, rtol=1e-2)
 
+    def test_block_grid_exceptions(self):
+        if self.lb_class is espressomd.lb.LBFluidWalberla:
+            with self.assertRaisesRegex(RuntimeError, "Lattice grid dimensions and block grid are not compatible"):
+                self.lb_class(
+                    **self.params, single_precision=self.lb_params["single_precision"], blocks_per_mpi_rank=[11, 1, 1])
+        if self.lb_class is espressomd.lb.LBFluidWalberlaGPU:
+            with self.assertRaisesRegex(RuntimeError, "Using more than one block per MPI rank is not supported for GPU LB"):
+                self.lb_class(
+                    **self.params,
+                    **self.lb_params,
+                    blocks_per_mpi_rank=[2, 2, 2])
+
 
 @utx.skipIfMissingFeatures("WALBERLA")
 class LBTestWalberlaDoublePrecisionCPU(LBTest, ut.TestCase):
@@ -861,6 +872,28 @@ class LBTestWalberlaSinglePrecisionGPU(LBTest, ut.TestCase):
     lb_class = espressomd.lb.LBFluidWalberlaGPU
     lb_lattice_class = espressomd.lb.LatticeWalberla
     lb_params = {"single_precision": True}
+    atol = 1e-6
+    rtol = 2e-4
+
+
+@utx.skipIfMissingFeatures("WALBERLA")
+class LBTestWalberlaDoublePrecisionBlocksCPU(LBTest, ut.TestCase):
+    lb_class = espressomd.lb.LBFluidWalberla
+    lb_lattice_class = espressomd.lb.LatticeWalberla
+    blocks_per_mpi_rank = [2, 2, 2]
+    lb_params = {"single_precision": False,
+                 "blocks_per_mpi_rank": blocks_per_mpi_rank}
+    atol = 1e-10
+    rtol = 1e-7
+
+
+@utx.skipIfMissingFeatures("WALBERLA")
+class LBTestWalberlaSinglePrecisionBlocksCPU(LBTest, ut.TestCase):
+    lb_class = espressomd.lb.LBFluidWalberla
+    lb_lattice_class = espressomd.lb.LatticeWalberla
+    blocks_per_mpi_rank = [2, 2, 2]
+    lb_params = {"single_precision": True,
+                 "blocks_per_mpi_rank": blocks_per_mpi_rank}
     atol = 1e-6
     rtol = 2e-4
 

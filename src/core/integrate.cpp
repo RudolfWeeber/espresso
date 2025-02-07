@@ -42,7 +42,7 @@
 #include "bonded_interactions/bonded_interaction_data.hpp"
 #include "cell_system/CellStructure.hpp"
 #include "cells.hpp"
-#include "collision.hpp"
+#include "collision_detection/CollisionDetection.hpp"
 #include "communication.hpp"
 #include "errorhandling.hpp"
 #include "forces.hpp"
@@ -620,6 +620,7 @@ int System::System::integrate(int n_steps, int reuse_forces) {
               << "LB and EK are active but with different time steps.";
         }
 
+        assert(not lb.is_gpu());
         assert(propagation.lb_skipped_md_steps ==
                propagation.ek_skipped_md_steps);
 
@@ -629,6 +630,7 @@ int System::System::integrate(int n_steps, int reuse_forces) {
           propagation.lb_skipped_md_steps = 0;
           propagation.ek_skipped_md_steps = 0;
           lb.propagate();
+          lb.ghost_communication_vel();
           ek.propagate();
         }
       } else if (lb_active) {
@@ -654,12 +656,15 @@ int System::System::integrate(int n_steps, int reuse_forces) {
 #ifdef VIRTUAL_SITES_INERTIALESS_TRACERS
       if (thermostat->lb and
           (propagation.used_propagations & PropagationMode::TRANS_LB_TRACER)) {
+        if (lb_active) {
+          lb.ghost_communication_vel();
+        }
         lb_tracers_propagate(*cell_structure, lb, time_step);
       }
 #endif
 
 #ifdef COLLISION_DETECTION
-      collision_detection->handle_collisions(*cell_structure);
+      collision_detection->handle_collisions();
 #endif
       bond_breakage->process_queue(*this);
     }
@@ -678,6 +683,9 @@ int System::System::integrate(int n_steps, int reuse_forces) {
     }
 
   } // for-loop over integration steps
+  if (lb_active) {
+    lb.ghost_communication();
+  }
   lees_edwards->update_box_params(*box_geo, sim_time);
 #ifdef CALIPER
   CALI_CXX_MARK_LOOP_END(integration_loop);

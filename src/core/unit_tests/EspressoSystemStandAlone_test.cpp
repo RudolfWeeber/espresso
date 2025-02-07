@@ -37,6 +37,7 @@ namespace utf = boost::unit_test;
 #include "bonded_interactions/harmonic.hpp"
 #include "cell_system/CellStructure.hpp"
 #include "cell_system/CellStructureType.hpp"
+#include "collision_detection/utils.hpp"
 #include "communication.hpp"
 #include "cuda/utils.hpp"
 #include "electrostatics/coulomb.hpp"
@@ -53,8 +54,11 @@ namespace utf = boost::unit_test;
 #include "observables/ParticleVelocities.hpp"
 #include "observables/PidObservable.hpp"
 #include "p3m/FFTBackendLegacy.hpp"
+#include "p3m/FFTBuffersLegacy.hpp"
 #include "particle_node.hpp"
 #include "system/System.hpp"
+
+#include <instrumentation/fe_trap.hpp>
 
 #include <utils/Vector.hpp>
 #include <utils/index.hpp>
@@ -73,6 +77,7 @@ namespace utf = boost::unit_test;
 #include <initializer_list>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
@@ -92,6 +97,9 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
   auto const comm = boost::mpi::communicator();
   auto const rank = comm.rank();
   auto const n_nodes = comm.size();
+#if defined(FPE)
+  auto const trap = fe_trap::make_unique_scoped();
+#endif
 
   auto const box_l = 12.;
   auto const box_center = box_l / 2.;
@@ -226,6 +234,8 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
 
     // set up P3M
     auto const prefactor = 2.;
+    auto const mesh_range = std::pair<std::optional<int>, std::optional<int>>{
+        std::nullopt, std::nullopt};
     auto p3m = P3MParameters{false,
                              0.0,
                              3.5,
@@ -234,8 +244,9 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
                              5,
                              0.615,
                              1e-3};
-    auto solver = new_p3m_handle<double, Arch::CPU, FFTBackendLegacy>(
-        std::move(p3m), prefactor, 1, false, true);
+    auto solver =
+        new_p3m_handle<double, Arch::CPU, FFTBackendLegacy, FFTBuffersLegacy>(
+            std::move(p3m), prefactor, 1, false, mesh_range, true);
     add_actor(comm, espresso::system, system.coulomb.impl->solver, solver,
               [&system]() { system.on_coulomb_change(); });
     BOOST_CHECK(not solver->is_gpu());
@@ -294,6 +305,8 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
 
     // set up P3M
     auto const prefactor = 2.;
+    auto const mesh_range = std::pair<std::optional<int>, std::optional<int>>{
+        std::nullopt, std::nullopt};
     auto p3m = P3MParameters{false,
                              0.0,
                              3.5,
@@ -302,8 +315,9 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
                              5,
                              0.615,
                              1e-3};
-    auto solver = new_dp3m_handle<double, Arch::CPU, FFTBackendLegacy>(
-        std::move(p3m), prefactor, 1, false);
+    auto solver =
+        new_dp3m_handle<double, Arch::CPU, FFTBackendLegacy, FFTBuffersLegacy>(
+            std::move(p3m), prefactor, 1, false, mesh_range);
     add_actor(comm, espresso::system, system.dipoles.impl->solver, solver,
               [&system]() { system.on_dipoles_change(); });
     BOOST_CHECK(not solver->is_gpu());
@@ -556,6 +570,10 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
     BOOST_CHECK_THROW(throw BondUnknownTypeError(), std::exception);
     BOOST_CHECK_THROW(throw BondInvalidSizeError(2), std::exception);
     BOOST_CHECK_EQUAL(BondInvalidSizeError(2).size, 2);
+#ifdef COLLISION_DETECTION
+    BOOST_CHECK_THROW(CollisionDetection::get_part(*system.cell_structure, 777),
+                      std::runtime_error);
+#endif
   }
 
   // check exceptions

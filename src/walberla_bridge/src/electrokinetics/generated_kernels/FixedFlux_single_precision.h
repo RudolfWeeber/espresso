@@ -17,12 +17,13 @@
 //! \\author pystencils
 //======================================================================================================================
 
-// kernel generated with pystencils v1.2, lbmpy v1.2,
-// lbmpy_walberla/pystencils_walberla from waLBerla commit ref:
-// a839fac6ef7d0c58e7710e4d50490e9dd7146b4a
+// kernel generated with pystencils v1.3.7, lbmpy v1.3.7, sympy v1.12.1,
+// lbmpy_walberla/pystencils_walberla from waLBerla commit
+// f36fa0a68bae59f0b516f6587ea8fa7c24a41141
 
 #pragma once
 #include "core/DataTypes.h"
+#include "core/logging/Logging.h"
 
 #include "blockforest/StructuredBlockForest.h"
 #include "core/debug/Debug.h"
@@ -40,6 +41,10 @@
 #define RESTRICT __restrict
 #else
 #define RESTRICT
+#endif
+
+#ifdef WALBERLA_BUILD_WITH_HALF_PRECISION_SUPPORT
+using walberla::half;
 #endif
 
 namespace walberla {
@@ -95,7 +100,7 @@ public:
     };
     indexVectorID = blocks->addStructuredBlockData<IndexVectors>(
         createIdxVector, "IndexField_FixedFlux_single_precision");
-  };
+  }
 
   void run(IBlock *block);
 
@@ -104,6 +109,13 @@ public:
   void inner(IBlock *block);
 
   void outer(IBlock *block);
+
+  Vector3<double> getForce(IBlock * /*block*/) {
+
+    WALBERLA_ABORT(
+        "Boundary condition was not generated including force calculation.")
+    return Vector3<double>(double_c(0.0));
+  }
 
   std::function<void(IBlock *)> getSweep() {
     return [this](IBlock *b) { this->run(b); };
@@ -725,6 +737,7 @@ private:
   void run_impl(IBlock *block, IndexVectors::Type type);
 
   BlockDataID indexVectorID;
+
   std::function<Vector3<float>(
       const Cell &, const shared_ptr<StructuredBlockForest> &, IBlock &)>
       elementInitaliser;

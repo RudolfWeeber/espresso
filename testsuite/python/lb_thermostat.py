@@ -111,7 +111,7 @@ class LBThermostatCommon(thermostats_common.ThermostatsCommon):
             partcl_vel.reshape((-1, 3)), vel_range, n_bins, 0.02, KT,
             mass=self.partcl_mass)
 
-    @utx.skipIfMissingFeatures(["MASS"])
+    @utx.skipIfMissingFeatures(["MASS", "THERMOSTAT_PER_PARTICLE"])
     def test_temperature_with_particles(self):
         n_partcls_per_type = 50
         partcls_global_gamma = self.system.part.add(
@@ -140,7 +140,8 @@ class LBThermostatCommon(thermostats_common.ThermostatsCommon):
 
         np.testing.assert_allclose(fluid_kT, KT, rtol=0.03)
 
-    @utx.skipIfMissingFeatures(["EXTERNAL_FORCES"])
+    @utx.skipIfMissingFeatures(["EXTERNAL_FORCES", "THERMOSTAT_PER_PARTICLE",
+                                "MASS"])
     def test_friction(self):
         """apply force and measure if the average velocity matches expectation"""
 
@@ -207,6 +208,8 @@ class LBThermostatCommon(thermostats_common.ThermostatsCommon):
         with self.assertRaisesRegex(RuntimeError, r"set_lb\(\) got an unexpected keyword argument 'act_on_virtual'"):
             self.system.thermostat.set_lb(
                 LB_fluid=self.lbf, act_on_virtual=False)
+        with self.assertRaisesRegex(RuntimeError, "Parameter 'gamma' is missing"):
+            self.system.thermostat.set_lb(LB_fluid=self.lbf)
         self.system.part.add(pos=[0., 0., 0.], gamma=[1., 2., 3.], id=2)
         with self.assertRaisesRegex(Exception, r"ERROR: anisotropic particle \(id 2\) coupled to LB"):
             self.system.integrator.run(1)
@@ -240,6 +243,13 @@ class LBThermostatWalberlaDoublePrecisionGPU(LBThermostatCommon, ut.TestCase):
 class LBThermostatWalberlaSinglePrecisionGPU(LBThermostatCommon, ut.TestCase):
     lb_class = espressomd.lb.LBFluidWalberlaGPU
     lb_params = {"single_precision": True}
+
+
+@utx.skipIfMissingFeatures(["WALBERLA"])
+class LBThermostatWalberlaDoublePrecisionBlocksCPU(
+        LBThermostatCommon, ut.TestCase):
+    lb_class = espressomd.lb.LBFluidWalberla
+    lb_params = {"single_precision": False, "blocks_per_mpi_rank": [2, 2, 2]}
 
 
 if __name__ == '__main__':

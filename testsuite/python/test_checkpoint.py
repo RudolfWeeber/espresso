@@ -55,7 +55,7 @@ has_lb_mode = ('LB.WALBERLA' in modes and espressomd.has_features('WALBERLA')
                and ('LB.CPU' in modes or 'LB.GPU' in modes and is_gpu_available))
 has_p3m_mode = 'P3M.CPU' in modes or 'P3M.GPU' in modes and is_gpu_available
 has_thermalized_bonds = 'THERM.LB' in modes or 'THERM.LANGEVIN' in modes
-has_drude = (espressomd.has_features(['ELECTROSTATICS' and 'MASS', 'ROTATION'])
+has_drude = (espressomd.has_features(['ELECTROSTATICS', 'MASS', 'ROTATION'])
              and has_thermalized_bonds)
 has_ase = 'ASE' in modes
 
@@ -65,7 +65,9 @@ class CheckpointTest(ut.TestCase):
     checkpoint = espressomd.checkpointing.Checkpoint(
         **config.get_checkpoint_params())
     checkpoint.load(0)
+    checkpoint.save(1)
     path_cpt_root = pathlib.Path(checkpoint.checkpoint_dir)
+    n_nodes = system.cell_system.get_state()["n_nodes"]
 
     @classmethod
     def setUpClass(cls):
@@ -78,7 +80,7 @@ class CheckpointTest(ut.TestCase):
             cls.ref_periodicity = np.array([False, False, False])
 
     @utx.skipIfMissingFeatures(["WALBERLA"])
-    @ut.skipIf(not has_lb_mode, "Skipping test due to missing LB feature.")
+    @ut.skipIf(not has_lb_mode, "Skipping test due to missing LB mode.")
     def test_lb_fluid(self):
         lbf = system.lb
         cpt_mode = 0 if 'LB.ASCII' in modes else 1
@@ -137,6 +139,22 @@ class CheckpointTest(ut.TestCase):
             self.assertIn(key, state)
             np.testing.assert_allclose(np.copy(state[key]), reference[key],
                                        atol=1E-7, err_msg=f"{key} differs")
+
+        state = lbf.lattice.get_params()
+        reference = {"agrid": 2.0, "n_ghost_layers": 1,
+                     "blocks_per_mpi_rank": [1, 1, 1]}
+        for key in reference:
+            self.assertIn(key, state)
+            np.testing.assert_allclose(np.copy(state[key]), reference[key],
+                                       atol=1E-7, err_msg=f"{key} differs")
+
+        state = lb_lattice_blocks_per_mpi.get_params()
+        reference["blocks_per_mpi_rank"] = [1, 1, 2]
+        for key in reference:
+            self.assertIn(key, state)
+            np.testing.assert_allclose(np.copy(state[key]), reference[key],
+                                       atol=1E-7, err_msg=f"{key} differs")
+
         self.assertTrue(lbf.is_active)
         if "LB.CPU" in modes:
             self.assertFalse(lbf.single_precision)
@@ -164,7 +182,7 @@ class CheckpointTest(ut.TestCase):
             np.copy(lbf[:, :, :].is_boundary.astype(int)), 0)
 
     @utx.skipIfMissingFeatures(["WALBERLA"])
-    @ut.skipIf(not has_lb_mode, "Skipping test due to missing EK feature.")
+    @ut.skipIf(not has_lb_mode, "Skipping test due to missing EK mode.")
     def test_ek_species(self):
         cpt_mode = 0 if 'LB.ASCII' in modes else 1
         cpt_root = pathlib.Path(self.checkpoint.checkpoint_dir)
@@ -268,8 +286,7 @@ class CheckpointTest(ut.TestCase):
             np.copy(ek_species[:, :, :].is_boundary), False)
 
     @utx.skipIfMissingFeatures(["WALBERLA"])
-    @ut.skipIf('LB.GPU' in modes, 'VTK not implemented for LB GPU')
-    @ut.skipIf(not has_lb_mode, "Skipping test due to missing LB feature.")
+    @ut.skipIf(not has_lb_mode, "Skipping test due to missing LB mode.")
     def test_lb_vtk(self):
         lbf = system.lb
         self.assertEqual(len(lbf.vtk_writers), 2)
@@ -316,7 +333,7 @@ class CheckpointTest(ut.TestCase):
         (vtk_root / filename.format(2)).unlink(missing_ok=True)
 
     @utx.skipIfMissingFeatures(["WALBERLA"])
-    @ut.skipIf(not has_lb_mode, "Skipping test due to missing EK feature.")
+    @ut.skipIf(not has_lb_mode, "Skipping test due to missing EK mode.")
     def test_ek_vtk(self):
         ek_species = system.ekcontainer[0]
         vtk_suffix = config.test_name
@@ -375,10 +392,12 @@ class CheckpointTest(ut.TestCase):
 
     @ut.skipIf('LB.GPU' in modes, 'Lees-Edwards not implemented for LB GPU')
     @ut.skipIf('INT.NPT' in modes, 'Lees-Edwards not compatible with NPT')
+    @ut.skipIf('LB' in modes and n_nodes not in (1, 2, 3),
+               'Lees-Edwards not implemented for certain decompositions')
     def test_lees_edwards(self):
         lebc = system.lees_edwards
         protocol = lebc.protocol
-        self.assertEqual(lebc.shear_direction, "x")
+        self.assertEqual(lebc.shear_direction, "z")
         self.assertEqual(lebc.shear_plane_normal, "y")
         self.assertIsInstance(protocol, espressomd.lees_edwards.LinearShear)
         self.assertAlmostEqual(protocol.initial_pos_offset, 0.1, delta=1e-10)
@@ -439,7 +458,7 @@ class CheckpointTest(ut.TestCase):
         if espressomd.has_features(['EXTERNAL_FORCES', 'ROTATION']):
             np.testing.assert_allclose(np.copy(p3.ext_torque), [0.3, 0.5, 0.7])
         if espressomd.has_features('ROTATIONAL_INERTIA'):
-            np.testing.assert_allclose(p3.rinertia, [2., 3., 4.])
+            np.testing.assert_allclose(np.copy(p3.rinertia), [2., 3., 4.])
         if espressomd.has_features('THERMOSTAT_PER_PARTICLE'):
             gamma = 2.
             if espressomd.has_features('PARTICLE_ANISOTROPY'):
@@ -447,9 +466,9 @@ class CheckpointTest(ut.TestCase):
                     gamma = np.array([2., 2., 2.])
                 else:
                     gamma = np.array([2., 3., 4.])
-            np.testing.assert_allclose(p4.gamma, gamma)
+            np.testing.assert_allclose(np.copy(p4.gamma), gamma)
             if espressomd.has_features('ROTATION'):
-                np.testing.assert_allclose(p3.gamma_rot, 2. * gamma)
+                np.testing.assert_allclose(np.copy(p3.gamma_rot), 2. * gamma)
         if espressomd.has_features('ENGINE'):
             self.assertEqual(
                 p3.swimming,
@@ -465,11 +484,13 @@ class CheckpointTest(ut.TestCase):
             from scipy.spatial.transform import Rotation as R
             q_ind = ([1, 2, 3, 0],)  # convert from scalar-first to scalar-last
             vs_id, vs_dist, vs_quat = p2.vs_relative
-            d = p2.pos - p1.pos
+            d = np.copy(p2.pos - p1.pos)
+            vs_quat = np.copy(vs_quat)
+            p_quat = np.copy(p1.quat)
             theta = np.arccos(d[2] / np.linalg.norm(d))
             assert abs(theta - 3. * np.pi / 4.) < 1e-8
             q = np.array([0., 0., np.sin(theta / 2.), -np.cos(theta / 2.)])
-            r = R.from_quat(p1.quat[q_ind]) * R.from_quat(vs_quat[q_ind])
+            r = R.from_quat(p_quat[q_ind]) * R.from_quat(vs_quat[q_ind])
             self.assertEqual(vs_id, p1.id)
             np.testing.assert_allclose(vs_dist, np.sqrt(2.))
             np.testing.assert_allclose(q[q_ind], r.as_quat(), atol=1e-10)
@@ -507,7 +528,7 @@ class CheckpointTest(ut.TestCase):
         self.assertGreater(np.linalg.norm(np.copy(p3.f) - old_force), 1e6)
 
     @utx.skipIfMissingFeatures(["WALBERLA"])
-    @ut.skipIf(not has_lb_mode, "Skipping test due to missing LB feature.")
+    @ut.skipIf(not has_lb_mode, "Skipping test due to missing LB mode.")
     @ut.skipIf('THERM.LB' not in modes, 'LB thermostat not in modes')
     def test_thermostat_LB(self):
         thmst = system.thermostat.lb
@@ -681,15 +702,21 @@ class CheckpointTest(ut.TestCase):
         bond_ids = system.bonded_inter.call_method('get_bond_ids')
         self.assertEqual(len(bond_ids), len(system.bonded_inter))
         # check bonded interactions
-        partcl_1 = system.part.by_id(1)
+        p1 = system.part.by_id(1)
+        p4 = system.part.by_id(4)
         reference = {'r_0': 0.0, 'k': 1.0, 'r_cut': 0.0}
-        self.assertEqual(partcl_1.bonds[0][0].params, reference)
-        self.assertEqual(system.bonded_inter[0].params, reference)
+        self.assertEqual(p1.bonds[0][0].params, reference)
+        self.assertAlmostEqual(
+            system.bonded_inter[0].params, reference, delta=1e-6)
+        reference = {'r_0': 0.0, 'k': 5e5, 'r_cut': 0.0}
+        self.assertEqual(p4.bonds[0][0].params, reference)
+        self.assertAlmostEqual(
+            system.bonded_inter[1].params, reference, delta=1e-1)
         # all thermalized bonds should be identical
         if has_drude:
             reference = therm_params
-            self.assertEqual(partcl_1.bonds[1][0].params, reference)
-            self.assertEqual(system.bonded_inter[1].params, reference)
+            self.assertEqual(p1.bonds[1][0].params, reference)
+            self.assertEqual(system.bonded_inter[2].params, reference)
             self.assertEqual(therm_bond2.params, reference)
         # immersed boundary bonds
         self.assertEqual(
@@ -754,7 +781,7 @@ class CheckpointTest(ut.TestCase):
         self.assertEqual(p_real.vs_relative[1], 0.)
         self.assertEqual(p_virt.vs_relative[1], np.sqrt(2.))
         np.testing.assert_allclose(
-            p_real.vs_relative[2], [1., 0., 0., 0.], atol=1e-10)
+            np.copy(p_real.vs_relative[2]), [1., 0., 0., 0.], atol=1e-10)
 
     def test_mean_variance_calculator(self):
         acc_mean_variance = system.auto_update_accumulators[0]
@@ -827,8 +854,8 @@ class CheckpointTest(ut.TestCase):
         state = actor.get_params()
         reference = {'prefactor': 1.0, 'accuracy': 0.01, 'mesh': 3 * [8],
                      'cao': 1, 'alpha': 12.0, 'r_cut': 2.4, 'tune': False,
-                     'mesh_off': [0.5, 0.5, 0.5], 'epsilon': 2.0,
-                     'timings': 15, 'single_precision': True}
+                     'mesh_off': [0.5, 0.5, 0.5], 'epsilon': 2.0, 'timings': 15,
+                     'tune_limits': [11, 15], 'single_precision': True}
         for key in reference:
             self.assertIn(key, state)
             np.testing.assert_almost_equal(state[key], reference[key],
@@ -844,6 +871,7 @@ class CheckpointTest(ut.TestCase):
         reference = {'prefactor': 1.0, 'accuracy': 0.1, 'mesh': 3 * [10],
                      'cao': 1, 'alpha': 1.0, 'r_cut': 1.0, 'tune': False,
                      'timings': 15, 'check_neutrality': True,
+                     'tune_limits': [8, 12],
                      'single_precision': single_precision,
                      'check_complex_residuals': False,
                      'charge_neutrality_tolerance': 1e-12}
@@ -862,6 +890,7 @@ class CheckpointTest(ut.TestCase):
         p3m_reference = {'prefactor': 1.0, 'accuracy': 0.1, 'mesh': 3 * [10],
                          'cao': 1, 'alpha': 1.0, 'r_cut': 1.0, 'tune': False,
                          'timings': 15, 'check_neutrality': True,
+                         'tune_limits': [8, 12],
                          'check_complex_residuals': False,
                          'charge_neutrality_tolerance': 7e-12}
         elc_reference = {'gap_size': 6.0, 'maxPWerror': 0.1,
@@ -916,14 +945,24 @@ class CheckpointTest(ut.TestCase):
             self.assertEqual(state[key], reference[key], msg=f'for {key}')
 
     def test_comfixed(self):
-        self.assertEqual(list(system.comfixed.types), [0, 2])
+        self.assertEqual(set(system.comfixed.types), {0, 2})
 
     @utx.skipIfMissingFeatures('COLLISION_DETECTION')
     def test_collision_detection(self):
-        coldet = system.collision_detection
-        self.assertEqual(coldet.mode, "bind_centers")
-        self.assertAlmostEqual(coldet.distance, 0.11, delta=1E-9)
-        self.assertEqual(coldet.bond_centers, system.bonded_inter[0])
+        protocol = system.collision_detection.protocol
+        if espressomd.has_features("VIRTUAL_SITES_RELATIVE"):
+            self.assertIsInstance(
+                protocol, espressomd.collision_detection.BindAtPointOfCollision)
+            self.assertAlmostEqual(protocol.distance, 0.12, delta=1E-9)
+            self.assertEqual(protocol.bond_centers, system.bonded_inter[0])
+            self.assertEqual(protocol.bond_vs, system.bonded_inter[1])
+            self.assertEqual(protocol.part_type_vs, 2)
+            self.assertAlmostEqual(protocol.vs_placement, 1. / 3., delta=1e-6)
+        else:
+            self.assertIsInstance(
+                protocol, espressomd.collision_detection.BindCenters)
+            self.assertAlmostEqual(protocol.distance, 0.11, delta=1E-9)
+            self.assertEqual(protocol.bond_centers, system.bonded_inter[0])
 
     @utx.skipIfMissingFeatures('EXCLUSIONS')
     def test_exclusions(self):
@@ -1017,8 +1056,8 @@ class CheckpointTest(ut.TestCase):
         p1 = system.part.add(pos=[1., 1.6, 0.], type=6)
         p2 = system.part.add(pos=[system.box_l[0] - 1., 1.6, 0.], type=6)
         system.integrator.run(0, recalc_forces=True)
-        np.testing.assert_allclose(p1.f, [0., 1e8, 0.], atol=1e-3)
-        np.testing.assert_allclose(p2.f, [0., 1e8, 0.], atol=1e-3)
+        np.testing.assert_allclose(np.copy(p1.f), [0., 1e8, 0.], atol=1e-3)
+        np.testing.assert_allclose(np.copy(p2.f), [0., 1e8, 0.], atol=1e-3)
         p1.remove()
         p2.remove()
         system.non_bonded_inter[2, 6].reset()

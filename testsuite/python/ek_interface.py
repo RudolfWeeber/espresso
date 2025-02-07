@@ -65,9 +65,9 @@ class EKTest:
         self.system.thermostat.turn_off()
         self.system.time_step = self.params["tau"]
 
-    def make_default_ek_species(self):
+    def make_default_ek_species(self, **kwargs):
         return self.ek_species_class(
-            lattice=self.lattice, **self.ek_params, **self.ek_species_params)
+            lattice=self.lattice, **self.ek_params, **self.ek_species_params, **kwargs)
 
     def test_ek_species(self):
         # inactive species
@@ -95,6 +95,14 @@ class EKTest:
         espressomd.electrokinetics.EKReactant(
             ekspecies=ek_species, stoech_coeff=-2.0, order=2.0)
         self.check_ek_species_properties(ek_species)
+
+        # thermalized species
+        ek_species = self.make_default_ek_species(thermalized=True, seed=42)
+        self.assertTrue(ek_species.thermalized)
+        self.assertEqual(ek_species.seed, 42)
+        self.assertEqual(ek_species.rng_state, 0)
+        ek_species.rng_state = 5
+        self.assertEqual(ek_species.rng_state, 5)
 
     def check_ek_species_properties(self, species):
         agrid = self.params["agrid"]
@@ -194,6 +202,23 @@ class EKTest:
         self.assertIsInstance(self.system.ekcontainer.solver,
                               espressomd.electrokinetics.EKNone)
 
+    def test_ek_species_exceptions(self):
+        ek_species = self.make_default_ek_species()
+        with self.assertRaisesRegex(ValueError, "Parameter 'kT' must be >= 0"):
+            ek_species.kT = -0.4
+        with self.assertRaisesRegex(ValueError, "Parameter 'rng_state' must be >= 0"):
+            ek_species.rng_state = -2
+        with self.assertRaisesRegex(RuntimeError, "This EK instance is unthermalized"):
+            ek_species.rng_state = 5
+        incompatible_lattice = self.ek_lattice_class(
+            n_ghost_layers=1, agrid=self.params["agrid"],
+            blocks_per_mpi_rank=[2, 1, 1])
+        with self.assertRaisesRegex(NotImplementedError, "Using more than one block per MPI rank is not supported for EKSpecies"):
+            self.ek_species_class(
+                lattice=incompatible_lattice,
+                **self.ek_params,
+                **self.ek_species_params)
+
     def test_ek_solver_exceptions(self):
         ek_solver = self.system.ekcontainer.solver
         ek_species = self.make_default_ek_species()
@@ -212,6 +237,11 @@ class EKTest:
             self.system.ekcontainer.solver = incompatible_ek_solver
             self.system.ekcontainer.add(incompatible_ek_species)
             self.system.ekcontainer.solver = ek_solver
+        incompatible_lattice = self.ek_lattice_class(
+            n_ghost_layers=1, agrid=self.params["agrid"],
+            blocks_per_mpi_rank=[2, 1, 1])
+        with self.assertRaisesRegex(NotImplementedError, "Using more than one block per MPI rank is not supported for EKNone"):
+            espressomd.electrokinetics.EKNone(lattice=incompatible_lattice)
 
     def test_parameter_change_exceptions(self):
         ek_solver = self.system.ekcontainer.solver
@@ -271,6 +301,7 @@ class EKTest:
             reactants=[ek_reactant], coefficient=1.5, lattice=self.lattice, tau=self.params["tau"])
         # check ranges and out-of-bounds access
         shape = np.around(self.system.box_l / self.params["agrid"]).astype(int)
+        int_shape = [int(x) for x in shape]  # cast away numpy integer types
         for i in range(3):
             n = [0, 0, 0]
             n[i] -= shape[i]
@@ -278,10 +309,10 @@ class EKTest:
             self.assertTrue(ek_reaction[0, 0, 0])
             self.assertEqual(ek_reaction[tuple(n)], ek_reaction[0, 0, 0])
             self.assertEqual(ek_species[tuple(n)], ek_species[0, 0, 0])
-            for offset in (shape[i] + 1, -(shape[i] + 1)):
+            for offset in (int_shape[i] + 1, -(int_shape[i] + 1)):
                 n = [0, 0, 0]
                 n[i] += offset
-                err_msg = rf"provided index \[{str(n)[1:-1]}\] is out of range for shape \[{str(list(shape))[1:-1]}\]"  # nopep8
+                err_msg = rf"provided index \[{str(n)[1:-1]}\] is out of range for shape \[{str(int_shape)[1:-1]}\]"  # nopep8
                 with self.assertRaisesRegex(IndexError, err_msg):
                     ek_reaction[tuple(n)]
                 with self.assertRaisesRegex(IndexError, err_msg):
@@ -354,7 +385,7 @@ class EKTest:
 
     def test_raise_if_read_only(self):
         ek_species = self.make_default_ek_species()
-        for key in {"lattice", "shape", "single_precision"}:
+        for key in {"lattice", "shape", "single_precision", "seed", "thermalized"}:
             with self.assertRaisesRegex(RuntimeError, f"(Parameter|Property) '{key}' is read-only"):
                 setattr(ek_species, key, 0)
 
@@ -375,6 +406,12 @@ class EKTest:
         with self.assertRaisesRegex(ValueError, "Parameter 'tau' must be > 0"):
             espressomd.electrokinetics.EKContainer(
                 tau=0., solver=self.system.ekcontainer.solver)
+        for thermalized in (True, False):
+            with self.assertRaisesRegex(ValueError, "Parameter 'seed' must be >= 0"):
+                self.ek_species_class(
+                    **make_kwargs(thermalized=thermalized, seed=-1))
+        with self.assertRaisesRegex(ValueError, "Parameter 'seed' is required for thermalized EKSpecies"):
+            self.ek_species_class(**make_kwargs(thermalized=True))
 
     def test_bool_operations_on_node(self):
         ekspecies = self.make_default_ek_species()

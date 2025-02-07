@@ -58,10 +58,10 @@ inline EkGeneratorVector unthermalized_eks() {
   using EKImplementation = walberla::EKinWalberlaImpl<>;
   EkGeneratorVector eks;
 
-  eks.push_back([](EKTestParameters const &params) {
+  eks.emplace_back([](EKTestParameters const &params) {
     auto ptr = std::make_shared<EKImplementation>(
         params.lattice, params.diffusion, 0., params.valency, params.ext_efield,
-        params.density, params.advection, params.friction_coupling);
+        params.density, params.advection, params.friction_coupling, false, 0u);
     ptr->ghost_communication();
     return ptr;
   });
@@ -72,11 +72,11 @@ inline EkGeneratorVector thermalized_eks() {
   using EKImplementation = walberla::EKinWalberlaImpl<>;
   EkGeneratorVector eks;
 
-  eks.push_back([](EKTestParameters const &params) {
+  eks.emplace_back([](EKTestParameters const &params) {
     auto ptr = std::make_shared<EKImplementation>(
         params.lattice, params.diffusion, params.kT, params.valency,
         params.ext_efield, params.density, params.advection,
-        params.friction_coupling);
+        params.friction_coupling, true, 42u);
     ptr->ghost_communication();
     return ptr;
   });

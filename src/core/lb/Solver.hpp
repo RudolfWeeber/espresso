@@ -69,6 +69,21 @@ struct Solver : public System::Leaf<Solver> {
   void propagate();
 
   /**
+   * @brief Perform a full ghost communication.
+   */
+  void ghost_communication();
+
+  /**
+   * @brief Perform a ghost communication of the PDF field.
+   */
+  void ghost_communication_pdf();
+
+  /**
+   * @brief Perform a ghost communication of the velocity field.
+   */
+  void ghost_communication_vel();
+
+  /**
    * @brief Perform a full initialization of the lattice-Boltzmann system.
    * All derived parameters and the fluid are reset to their default values.
    */
@@ -168,6 +183,8 @@ struct Solver : public System::Leaf<Solver> {
   void on_cell_structure_change();
   void on_timestep_change();
   void on_temperature_change();
+  void on_lees_edwards_change();
+  void update_collision_model();
   void veto_boxl_change() const;
 
 private:

@@ -62,6 +62,7 @@ BOOST_DATA_TEST_CASE(integrate_with_point_force_thermalized,
   // Check that momentum stays zero after initial integration
   lb->integrate();
   lb->integrate();
+  lb->ghost_communication();
   auto mom_local = lb->get_momentum();
   auto mom = boost::mpi::all_reduce(world, mom_local, std::plus<Vector3d>());
   BOOST_CHECK_SMALL(mom.norm(), 1E-10);
@@ -74,7 +75,9 @@ BOOST_DATA_TEST_CASE(integrate_with_point_force_thermalized,
   lb->set_external_force(f1);
   auto const force_node = Vector3i{{1, 1, 1}};
   lb->add_force_at_pos(force_node + Vector3d::broadcast(.5), f2);
+  lb->ghost_communication();
   lb->integrate();
+  lb->ghost_communication();
   for (auto const &n : all_nodes_incl_ghosts(lb->get_lattice())) {
     if (lb->get_lattice().node_in_local_halo(n)) {
       auto const laf = *(lb->get_node_last_applied_force(n, true));
@@ -101,6 +104,7 @@ BOOST_DATA_TEST_CASE(integrate_with_point_force_thermalized,
   // No f/2 correction, since no force was applied in last time step
   mom_exp = 1.0 * f1 * Utils::product(params.grid_dimensions) + 1.0 * f2;
   lb->integrate();
+  lb->ghost_communication();
   mom_local = lb->get_momentum();
   mom = boost::mpi::all_reduce(world, mom_local, std::plus<Vector3d>());
   BOOST_CHECK_SMALL((mom - mom_exp).norm(), 1E-10);
@@ -114,6 +118,7 @@ BOOST_DATA_TEST_CASE(integrate_with_point_force_unthermalized,
 
   // Check that momentum stays zero after initial integration
   lb->integrate();
+  lb->ghost_communication();
   BOOST_CHECK_SMALL(lb->get_momentum().norm(), 1E-10);
 
   // Check that momentum changes as expected when applying forces
@@ -123,6 +128,7 @@ BOOST_DATA_TEST_CASE(integrate_with_point_force_unthermalized,
   lb->set_external_force(f1);
   lb->add_force_at_pos(Utils::Vector3d{2, 2, 2}, f2);
   lb->integrate();
+  lb->ghost_communication();
 
   auto mom_local = lb->get_momentum();
   auto mom = boost::mpi::all_reduce(world, mom_local, std::plus<Vector3d>());
@@ -137,6 +143,7 @@ BOOST_DATA_TEST_CASE(integrate_with_point_force_unthermalized,
   // check that momentum doesn't drift when no force is applied again
   lb->set_external_force(Vector3d{});
   lb->integrate();
+  lb->ghost_communication();
   // The expected moment is just that applied during a single time step
   // No f/2 correction, since no force was applied in last time step
   mom_exp = 1.0 * f1 * Utils::product(params.grid_dimensions) + 1.0 * f2;
@@ -160,8 +167,8 @@ int main(int argc, char **argv) {
   params.density = 1.4;
   params.grid_dimensions = Vector3i{12, 12, 18};
   params.box_dimensions = Vector3d{6, 6, 9};
-  params.lattice =
-      std::make_shared<LatticeWalberla>(params.grid_dimensions, mpi_shape, 1u);
+  params.lattice = std::make_shared<LatticeWalberla>(params.grid_dimensions,
+                                                     mpi_shape, mpi_shape, 1u);
 
   auto const res = boost::unit_test::unit_test_main(init_unit_test, argc, argv);
   MPI_Finalize();

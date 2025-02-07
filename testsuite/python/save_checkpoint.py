@@ -59,6 +59,7 @@ system.time = 1.5
 system.force_cap = 1e8
 system.min_global_cut = 2.0
 system.max_oif_objects = 5
+n_nodes = system.cell_system.get_state()["n_nodes"]
 
 # create checkpoint folder
 config.cleanup_old_checkpoint()
@@ -71,11 +72,12 @@ for filepath in path_cpt_root.iterdir():
     filepath.unlink(missing_ok=True)
 
 # Lees-Edwards boundary conditions
-if 'INT.NPT' not in modes and 'LB.GPU' not in modes:
+if 'INT.NPT' not in modes and 'LB.GPU' not in modes and (
+        'LB' not in modes or n_nodes in (1, 2, 3)):
     protocol = espressomd.lees_edwards.LinearShear(
         initial_pos_offset=0.1, time_0=0.2, shear_velocity=1.2)
     system.lees_edwards.set_boundary_conditions(
-        shear_direction="x", shear_plane_normal="y", protocol=protocol)
+        shear_direction="z", shear_plane_normal="y", protocol=protocol)
 
 has_ase = "ASE" in modes
 
@@ -86,7 +88,11 @@ if espressomd.has_features('WALBERLA') and 'LB.WALBERLA' in modes:
         lbf_class = espressomd.lb.LBFluidWalberlaGPU
     elif 'LB.CPU' in modes:
         lbf_class = espressomd.lb.LBFluidWalberla
-    lb_lattice = espressomd.lb.LatticeWalberla(agrid=2.0, n_ghost_layers=1)
+    lb_lattice_kwargs = {'agrid': 2.0, 'n_ghost_layers': 1}
+    lb_lattice = espressomd.lb.LatticeWalberla(**lb_lattice_kwargs)
+    lb_lattice_kwargs['blocks_per_mpi_rank'] = [1, 1, 2]
+    lb_lattice_blocks_per_mpi = espressomd.lb.LatticeWalberla(
+        **lb_lattice_kwargs)
 if lbf_class:
     lbf_cpt_mode = 0 if 'LB.ASCII' in modes else 1
     lbf = lbf_class(
@@ -154,6 +160,7 @@ if espressomd.has_features('P3M') and ('P3M' in modes or 'ELC' in modes):
         r_cut=1.0,
         check_complex_residuals=False,
         timings=15,
+        tune_limits=[8, 12],
         tune=False)
     if 'ELC' in modes:
         elc = espressomd.electrostatics.ELC(
@@ -168,7 +175,7 @@ if espressomd.has_features('P3M') and ('P3M' in modes or 'ELC' in modes):
         system.electrostatics.solver = p3m
         p3m.charge_neutrality_tolerance = 5e-12
 
-if "ase" in sys.modules:
+if has_ase and "ase" in sys.modules:
     system.ase = espressomd.plugins.ase.ASEInterface(
         type_mapping={0: "H", 1: "O", 10: "Cl"},
     )
@@ -277,6 +284,8 @@ if espressomd.has_features(['DPD']):
 # bonded interactions
 harmonic_bond = espressomd.interactions.HarmonicBond(r_0=0.0, k=1.0)
 system.bonded_inter.add(harmonic_bond)
+strong_harmonic_bond = espressomd.interactions.HarmonicBond(r_0=0.0, k=5e5)
+system.bonded_inter.add(strong_harmonic_bond)
 p2.add_bond((harmonic_bond, p1))
 if 'THERM.LB' in modes or 'THERM.LANGEVIN' in modes:
     # create Drude particles
@@ -298,8 +307,6 @@ if 'THERM.LB' in modes or 'THERM.LANGEVIN' in modes:
             thermalized_bond=therm_bond1, p_core=p2, type_drude=10,
             alpha=1., mass_drude=0.6, coulomb_prefactor=0.8, thole_damping=2.)
         checkpoint.register("dh")
-strong_harmonic_bond = espressomd.interactions.HarmonicBond(r_0=0.0, k=5e5)
-system.bonded_inter.add(strong_harmonic_bond)
 p4.add_bond((strong_harmonic_bond, p3))
 ibm_volcons_bond = espressomd.interactions.IBM_VolCons(softID=15, kappaV=0.01)
 ibm_tribend_bond = espressomd.interactions.IBM_Tribend(
@@ -317,6 +324,8 @@ checkpoint.register("ibm_volcons_bond")
 checkpoint.register("ibm_tribend_bond")
 checkpoint.register("ibm_triel_bond")
 checkpoint.register("break_spec")
+if espressomd.has_features('WALBERLA') and 'LB.WALBERLA' in modes:
+    checkpoint.register("lb_lattice_blocks_per_mpi")
 
 # calculate forces
 system.integrator.run(0)
@@ -325,8 +334,14 @@ particle_force1 = np.copy(p2.f)
 checkpoint.register("particle_force0")
 checkpoint.register("particle_force1")
 if espressomd.has_features("COLLISION_DETECTION"):
-    system.collision_detection.set_params(
-        mode="bind_centers", distance=0.11, bond_centers=harmonic_bond)
+    if espressomd.has_features("VIRTUAL_SITES_RELATIVE"):
+        protocol = espressomd.collision_detection.BindAtPointOfCollision(
+            distance=0.12, bond_centers=harmonic_bond,
+            bond_vs=strong_harmonic_bond, part_type_vs=2, vs_placement=1. / 3.)
+    else:
+        protocol = espressomd.collision_detection.BindCenters(
+            distance=0.11, bond_centers=harmonic_bond)
+    system.collision_detection.protocol = protocol
 
 particle_propagation0 = p1.propagation
 particle_propagation1 = p2.propagation
@@ -344,6 +359,7 @@ if espressomd.has_features('DP3M') and 'DP3M' in modes:
         accuracy=0.01,
         single_precision=True,
         timings=15,
+        tune_limits=[11, 15],
         tune=False)
     system.magnetostatics.solver = dp3m
 
@@ -399,21 +415,20 @@ if lbf_class:
     vtk_suffix = config.test_name
     vtk_root = pathlib.Path("vtk_out")
     # create LB VTK callbacks
-    if 'LB.GPU' not in modes:  # TODO WALBERLA
-        lb_vtk_auto_id = f"auto_lb_{vtk_suffix}"
-        lb_vtk_manual_id = f"manual_lb_{vtk_suffix}"
-        config.recursive_unlink(vtk_root / lb_vtk_auto_id)
-        config.recursive_unlink(vtk_root / lb_vtk_manual_id)
-        lb_vtk_auto = espressomd.lb.VTKOutput(
-            identifier=lb_vtk_auto_id, delta_N=1,
-            observables=('density', 'velocity_vector'), base_folder=str(vtk_root))
-        lbf.add_vtk_writer(vtk=lb_vtk_auto)
-        lb_vtk_auto.disable()
-        lb_vtk_manual = espressomd.lb.VTKOutput(
-            identifier=lb_vtk_manual_id, delta_N=0,
-            observables=('density',), base_folder=str(vtk_root))
-        lbf.add_vtk_writer(vtk=lb_vtk_manual)
-        lb_vtk_manual.write()
+    lb_vtk_auto_id = f"auto_lb_{vtk_suffix}"
+    lb_vtk_manual_id = f"manual_lb_{vtk_suffix}"
+    config.recursive_unlink(vtk_root / lb_vtk_auto_id)
+    config.recursive_unlink(vtk_root / lb_vtk_manual_id)
+    lb_vtk_auto = espressomd.lb.VTKOutput(
+        identifier=lb_vtk_auto_id, delta_N=1,
+        observables=('density', 'velocity_vector'), base_folder=str(vtk_root))
+    lbf.add_vtk_writer(vtk=lb_vtk_auto)
+    lb_vtk_auto.disable()
+    lb_vtk_manual = espressomd.lb.VTKOutput(
+        identifier=lb_vtk_manual_id, delta_N=0,
+        observables=('density',), base_folder=str(vtk_root))
+    lbf.add_vtk_writer(vtk=lb_vtk_manual)
+    lb_vtk_manual.write()
     # create EK VTK callbacks
     ek_vtk_auto_id = f"auto_ek_{vtk_suffix}"
     ek_vtk_manual_id = f"manual_ek_{vtk_suffix}"

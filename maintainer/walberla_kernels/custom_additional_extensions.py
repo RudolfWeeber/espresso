@@ -24,6 +24,7 @@ import numpy as np
 import pystencils as ps
 import pystencils_walberla
 import sympy as sp
+import pystencils_walberla.utility
 
 
 class Dirichlet_Custom(ps.boundaries.Dirichlet):
@@ -221,7 +222,7 @@ def generate_boundary(
 ):
     struct_name = "IndexInfo"
 
-    config = pystencils_walberla.codegen.config_from_context(
+    config = pystencils_walberla.utility.config_from_context(
         generation_context,
         target=target,
         data_type=data_type,
@@ -231,6 +232,8 @@ def generate_boundary(
     create_kernel_params = config.__dict__
     del create_kernel_params["target"]
     del create_kernel_params["index_fields"]
+    del create_kernel_params["default_number_int"]
+    del create_kernel_params["skip_independence_check"]
 
     coordinate_names = ("x", "y", "z")[:dim]
 
@@ -244,8 +247,7 @@ def generate_boundary(
         index_struct_dtype,
         layout=[0],
         shape=(
-            ps.typing.TypedSymbol("indexVectorSize",
-                                  ps.typing.BasicType(np.int32)),
+            ps.TypedSymbol("indexVectorSize", ps.typing.BasicType(np.int32)),
             1,
         ),
         strides=(1, 1),
@@ -255,7 +257,13 @@ def generate_boundary(
         index_fields=[index_field], target=target, **create_kernel_params
     )
 
-    kernel = ps.kernelcreation.create_kernel(assignment, config=kernel_config)
+    elements = [ps.boundaries.boundaryhandling.BoundaryOffsetInfo(stencil)]
+    # dummy read, such that it recognizes the field....
+    elements += [ps.astnodes.SympyAssignment(
+        ps.TypedSymbol("dummy", np.int32), index_field[0]("x"))]
+    elements += assignment
+
+    kernel = ps.kernelcreation.create_kernel(elements, config=kernel_config)
 
     if isinstance(kernel, ps.astnodes.KernelFunction):
         kernel.function_name = f"boundary_{class_name}"
@@ -289,6 +297,7 @@ def generate_boundary(
         "namespace": namespace,
         "inner_or_boundary": False,
         "single_link": False,
+        "calculate_force": False,
         "additional_data_handler": additional_data_handler,
     }
 
@@ -340,3 +349,48 @@ def generate_kernel_selector(
         "templates/ReactionKernelSelector.tmpl.h").render(**context)
 
     generation_context.write_file(f"{class_name}_all.h", header)
+
+
+def generate_device_preprocessor(kernel, defines=()):
+    """
+    Generate device preprocessor directives.
+    """
+    pragmas = {
+        "packinfo": {
+            "nvcc": ["diag_suppress 177 // unused variable"],
+            "clang_host": ["-Wunused-variable"],
+            "clang_dev": ["-Wunused-variable"],
+            "gcc": ["-Wunused-variable"],
+        },
+        "ubb_boundary": {
+            "nvcc": ["diag_suppress 177 // unused variable"],
+            "clang_host": ["-Wstrict-aliasing", "-Wunused-variable", "-Wconversion", "-Wsign-compare"],  # nopep8
+            "clang_dev": ["-Wstrict-aliasing", "-Wunused-variable", "-Wconversion", "-Wsign-compare"],  # nopep8
+            "gcc": ["-Wstrict-aliasing", "-Wunused-variable", "-Wconversion"],
+        },
+    }
+
+    defines_table = {
+        "nvcc": {"RESTRICT": "__restrict__", "FUNC_PREFIX": "__global__"},
+        "msvc": {"RESTRICT": "__restrict", "FUNC_PREFIX": ""},
+        "clang_host": {"RESTRICT": "__restrict__", "FUNC_PREFIX": ""},
+        "clang_dev": {"RESTRICT": "__restrict__", "FUNC_PREFIX": "__global__"},
+        "gcc": {"RESTRICT": "__restrict__", "FUNC_PREFIX": ""},
+        "other": {"RESTRICT": "", "FUNC_PREFIX": ""},
+    }
+
+    context = {
+        "pragmas": pragmas[kernel],
+        "defines_table": defines_table,
+        "defines": defines,
+    }
+
+    custom_env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(pathlib.Path(__file__).parent),
+        undefined=jinja2.StrictUndefined
+    )
+
+    content = custom_env.get_template(
+        "templates/preprocessor.tmpl.cuh").render(**context)
+
+    return content.split("\n/* section */\n")[1:]

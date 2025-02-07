@@ -72,6 +72,9 @@ struct LBWalberla {
   std::vector<Utils::Vector3d>
   get_velocities_at_pos(std::vector<Utils::Vector3d> const &pos);
   void propagate();
+  void ghost_communication();
+  void ghost_communication_pdf();
+  void ghost_communication_vel();
   void veto_time_step(double time_step) const;
   void veto_kT(double kT) const;
   void sanity_checks(System::System const &system) const;
@@ -88,6 +91,11 @@ struct LBWalberla {
   }
   void on_timestep_change() const {}
   void on_temperature_change() const {}
+  void on_lees_edwards_change();
+  void update_collision_model();
+  static void update_collision_model(LBWalberlaBase &instance,
+                                     LBWalberlaParams &params, double kT,
+                                     unsigned int seed);
 };
 
 } // namespace LB

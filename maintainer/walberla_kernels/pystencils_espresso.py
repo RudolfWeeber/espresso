@@ -17,6 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+import numpy as np
 import sympy as sp
 import lbmpy.fieldaccess
 import lbmpy.macroscopic_value_kernels
@@ -24,6 +25,20 @@ import lbmpy.updatekernels
 import pystencils as ps
 import pystencils_walberla
 import pystencils_walberla.utility
+from pystencils import TypedSymbol
+
+try:
+    # pystencils < 2.0
+    from pystencils.backends.cbackend import CustomCodeNode
+    from pystencils.astnodes import LoopOverCoordinate
+    get_loop_counter_symbol = LoopOverCoordinate.get_loop_counter_symbol
+except ImportError:
+    # pystencils >= 2.0
+    CustomCodeNode = None
+    from pystencils.defaults import DEFAULTS
+
+    def get_loop_counter_symbol(i):
+        return TypedSymbol(DEFAULTS.spatial_counters[i], np.uint32)
 
 
 def skip_philox_unthermalized(code, result_symbols, rng_name):
@@ -45,10 +60,99 @@ class PhiloxTwoDoubles(ps.rng.PhiloxTwoDoubles):
         return skip_philox_unthermalized(code, self.result_symbols, self._name)
 
 
+class PhiloxTwoDoublesModulo(ps.rng.PhiloxTwoDoubles):
+    def __init__(self, dim, time_step=TypedSymbol(
+            "time_step", np.uint32), *args, **kwargs):
+        super().__init__(dim, time_step=time_step, *args, **kwargs)
+
+        if kwargs.get("keys") is None:
+            keys = (0,) * self._num_keys
+        else:
+            keys = kwargs.get("keys")
+
+        if kwargs.get("offsets") is None:
+            offsets = (0,) * dim
+        else:
+            offsets = kwargs.get("offsets")
+
+        coordinates = [
+            get_loop_counter_symbol(i) + offsets[i] for i in range(dim)]
+        if dim < 3:
+            coordinates.append(0)
+
+        # add folding to coordinates with symbols
+        field_sizes = [
+            TypedSymbol(f"field_size_{i}", np.uint32) for i in range(dim)]
+
+        new_coordinates = [
+            (coord) %
+            field_size for coord,
+            field_size in zip(
+                coordinates,
+                field_sizes)]
+        self._args = sp.sympify([time_step, *new_coordinates, *keys])
+        symbols_read = set.union(*[s.atoms(sp.Symbol) for s in self.args])
+
+        headers = self.headers
+        # set headers again, since the constructor of CustomCodeNode resets the
+        # header-list
+        if CustomCodeNode is not None:
+            CustomCodeNode.__init__(
+                self,
+                "",
+                symbols_read=symbols_read,
+                symbols_defined=self.result_symbols)
+        self.headers = headers
+
+
 class PhiloxFourFloats(ps.rng.PhiloxFourFloats):
     def get_code(self, *args, **kwargs):
         code = super().get_code(*args, **kwargs)
         return skip_philox_unthermalized(code, self.result_symbols, self._name)
+
+
+class PhiloxFourFloatsModulo(ps.rng.PhiloxFourFloats):
+    def __init__(self, dim, time_step=TypedSymbol(
+            "time_step", np.uint32), *args, **kwargs):
+        super().__init__(dim, time_step=time_step, *args, **kwargs)
+
+        if kwargs.get("keys") is None:
+            keys = (0,) * self._num_keys
+        else:
+            keys = kwargs.get("keys")
+
+        if kwargs.get("offsets") is None:
+            offsets = (0,) * dim
+        else:
+            offsets = kwargs.get("offsets")
+
+        coordinates = [
+            get_loop_counter_symbol(i) + offsets[i] for i in range(dim)]
+        if dim < 3:
+            coordinates.append(0)
+
+        # add folding to coordinates with symbols
+        field_sizes = [
+            TypedSymbol(f"field_size_{i}", np.uint32) for i in range(dim)]
+
+        new_coordinates = [
+            (coord) %
+            field_size for coord,
+            field_size in zip(
+                coordinates,
+                field_sizes)]
+        self._args = sp.sympify([time_step, *new_coordinates, *keys])
+        symbols_read = set.union(*[s.atoms(sp.Symbol) for s in self.args])
+
+        headers = self.headers
+        # set headers again, since the constructor of CustomCodeNode resets the
+        # header-list
+        CustomCodeNode.__init__(
+            self,
+            "",
+            symbols_read=symbols_read,
+            symbols_defined=self.result_symbols)
+        self.headers = headers
 
 
 precision_prefix = {
@@ -60,12 +164,12 @@ precision_suffix = {
 precision_rng = {
     True: PhiloxTwoDoubles,
     False: PhiloxFourFloats}
-data_type_np = {'double': 'float64', 'float': 'float32'}
+precision_rng_modulo = {
+    True: PhiloxTwoDoublesModulo,
+    False: PhiloxFourFloatsModulo}
 
 
-def generate_fields(config, stencil):
-    dtype = data_type_np[config.data_type.default_factory().c_name]
-    field_layout = 'fzyx'
+def generate_fields(stencil, data_type, field_layout='fzyx'):
     q = len(stencil)
     dim = len(stencil[0])
 
@@ -74,7 +178,7 @@ def generate_fields(config, stencil):
     fields['pdfs'] = ps.Field.create_generic(
         'pdfs',
         dim,
-        dtype,
+        data_type,
         index_dimensions=1,
         layout=field_layout,
         index_shape=(q,)
@@ -82,7 +186,7 @@ def generate_fields(config, stencil):
     fields['pdfs_tmp'] = ps.Field.create_generic(
         'pdfs_tmp',
         dim,
-        dtype,
+        data_type,
         index_dimensions=1,
         layout=field_layout,
         index_shape=(q,)
@@ -90,7 +194,7 @@ def generate_fields(config, stencil):
     fields['velocity'] = ps.Field.create_generic(
         'velocity',
         dim,
-        dtype,
+        data_type,
         index_dimensions=1,
         layout=field_layout,
         index_shape=(dim,)
@@ -98,7 +202,7 @@ def generate_fields(config, stencil):
     fields['force'] = ps.Field.create_generic(
         'force',
         dim,
-        dtype,
+        data_type,
         index_dimensions=1,
         layout=field_layout,
         index_shape=(dim,)
@@ -107,16 +211,71 @@ def generate_fields(config, stencil):
     return fields
 
 
+def generate_pack_info_pdfs_field_assignments(fields, streaming_pattern):
+    """
+    Visualize the stencil directions with::
+
+       import lbmpy
+       import matplotlib.pyplot as plt
+       stencil = lbmpy.LBStencil(lbmpy.Stencil.D3Q19)
+       stencil.plot(data=[i for i in range(19)])
+       plt.show()
+
+    """
+    stencil = lbmpy.enums.Stencil.D3Q19
+    lbm_config = lbmpy.LBMConfig(stencil=stencil,
+                                 method=lbmpy.Method.CUMULANT,
+                                 compressible=True,
+                                 zero_centered=False,
+                                 weighted=True,
+                                 streaming_pattern=streaming_pattern,
+                                 relaxation_rate=sp.Symbol("omega_shear"),
+                                 )
+    lbm_opt = lbmpy.LBMOptimisation(
+        symbolic_field=fields["pdfs" if streaming_pattern ==
+                              "pull" else "pdfs_tmp"],
+        symbolic_temporary_field=fields["pdfs" if streaming_pattern ==
+                                        "push" else "pdfs_tmp"],
+        field_layout=fields['pdfs'].layout)
+    lbm_update_rule = lbmpy.create_lb_update_rule(
+        lbm_config=lbm_config,
+        lbm_optimisation=lbm_opt)
+    return lbm_update_rule.all_assignments
+
+
+def generate_pack_info_field_specifications(
+        stencil, data_type, layout, vec_len=3):
+    import collections
+    import itertools
+    field = ps.Field.create_generic(
+        "field",
+        3,
+        data_type,
+        index_dimensions=1,
+        layout=layout,
+        index_shape=(vec_len,)
+    )
+    q = len(stencil)
+    coord = itertools.product(*[(-1, 0, 1)] * 3)
+    if q == 19:
+        dirs = tuple((i, j, k) for i, j, k in coord if i**2 + j**2 + k**2 != 3)
+    else:
+        dirs = tuple((i, j, k) for i, j, k in coord)
+    spec = collections.defaultdict(set)
+    spec[dirs] = {field[0, 0, 0](i) for i in range(vec_len)}
+    return spec
+
+
 def generate_config(ctx, params):
     return pystencils_walberla.utility.config_from_context(ctx, **params)
 
 
 def generate_collision_sweep(
-        ctx, lb_method, collision_rule, class_name, params, **kwargs):
+        ctx, lb_method, data_type, collision_rule, class_name, params, **kwargs):
     config = generate_config(ctx, params)
 
     # Symbols for PDF (twice, due to double buffering)
-    fields = generate_fields(config, lb_method.stencil)
+    fields = generate_fields(lb_method.stencil, data_type)
 
     # Generate collision kernel
     collide_update_rule = lbmpy.updatekernels.create_lbm_kernel(
@@ -132,11 +291,11 @@ def generate_collision_sweep(
         ctx, class_name, collide_ast, **params, **kwargs)
 
 
-def generate_stream_sweep(ctx, lb_method, class_name, params):
+def generate_stream_sweep(ctx, lb_method, data_type, class_name, params):
     config = generate_config(ctx, params)
 
     # Symbols for PDF (twice, due to double buffering)
-    fields = generate_fields(config, lb_method.stencil)
+    fields = generate_fields(lb_method.stencil, data_type)
 
     # Generate stream kernel
     stream_update_rule = lbmpy.updatekernels.create_stream_pull_with_output_kernel(
@@ -150,9 +309,8 @@ def generate_stream_sweep(ctx, lb_method, class_name, params):
         field_swaps=[(fields['pdfs'], fields['pdfs_tmp'])], **params)
 
 
-def generate_setters(ctx, lb_method, params):
-    config = generate_config(ctx, params)
-    fields = generate_fields(config, lb_method.stencil)
+def generate_setters(lb_method, data_type):
+    fields = generate_fields(lb_method.stencil, data_type)
 
     initial_rho = sp.Symbol('rho_0')
     pdfs_setter = lbmpy.macroscopic_value_kernels.macroscopic_values_setter(

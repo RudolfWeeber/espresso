@@ -17,19 +17,22 @@
 //! \\author pystencils
 //======================================================================================================================
 
-// kernel generated with pystencils v1.2, lbmpy v1.2,
-// lbmpy_walberla/pystencils_walberla from waLBerla commit ref:
-// a839fac6ef7d0c58e7710e4d50490e9dd7146b4a
+// kernel generated with pystencils v1.3.7, lbmpy v1.3.7, sympy v1.12.1,
+// lbmpy_walberla/pystencils_walberla from waLBerla commit
+// f36fa0a68bae59f0b516f6587ea8fa7c24a41141
 
 #pragma once
 #include "core/DataTypes.h"
+#include "core/logging/Logging.h"
 
 #include "domain_decomposition/BlockDataID.h"
 #include "domain_decomposition/IBlock.h"
 #include "domain_decomposition/StructuredBlockStorage.h"
 #include "field/GhostLayerField.h"
 #include "field/SwapableCompare.h"
-#include <set>
+
+#include <functional>
+#include <unordered_map>
 
 #ifdef __GNUC__
 #define RESTRICT __restrict__
@@ -53,7 +56,7 @@ class AdvectiveFluxKernel_double_precision {
 public:
   AdvectiveFluxKernel_double_precision(BlockDataID jID_, BlockDataID rhoID_,
                                        BlockDataID uID_)
-      : jID(jID_), rhoID(rhoID_), uID(uID_){};
+      : jID(jID_), rhoID(rhoID_), uID(uID_) {}
 
   void run(IBlock *block);
 
@@ -90,6 +93,10 @@ public:
     };
   }
 
+  void configure(const shared_ptr<StructuredBlockStorage> & /*blocks*/,
+                 IBlock * /*block*/) {}
+
+private:
   BlockDataID jID;
   BlockDataID rhoID;
   BlockDataID uID;

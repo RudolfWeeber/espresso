@@ -92,7 +92,7 @@ function(python_test)
     add_test(
       NAME ${TEST_NAME}
       COMMAND
-        ${MPIEXEC} ${ESPRESSO_MPIEXEC_OVERSUBSCRIBE} ${MPIEXEC_NUMPROC_FLAG}
+        ${MPIEXEC} ${ESPRESSO_MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG}
         ${TEST_NUM_PROC} ${MPIEXEC_PREFLAGS} ${ESPRESSO_MPIEXEC_TMPDIR}
         ${CMAKE_BINARY_DIR}/pypresso ${PYPRESSO_OPTIONS}
         ${TEST_FILE_CONFIGURED} ${TEST_ARGUMENTS} ${MPIEXEC_POSTFLAGS})
@@ -260,7 +260,7 @@ python_test(FILE canonical_ensemble.py MAX_NUM_PROC 2)
 python_test(FILE writevtf.py MAX_NUM_PROC 4)
 # python_test(FILE lb_stokes_sphere.py MAX_NUM_PROC 4 GPU_SLOTS 1 LABELS long)
 python_test(FILE lb_pressure_tensor.py MAX_NUM_PROC 1 GPU_SLOTS 3 LABELS long)
-# python_test(FILE ek_fluctuations.py MAX_NUM_PROC 1) # TODO
+python_test(FILE ek_fluctuations.py MAX_NUM_PROC 2)
 python_test(FILE exclusions.py MAX_NUM_PROC 2)
 python_test(FILE integrator_langevin_stats.py MAX_NUM_PROC 1 LABELS long)
 python_test(FILE integrator_brownian_stats.py MAX_NUM_PROC 1 LABELS long)
@@ -388,9 +388,9 @@ python_test(FILE utils.py MAX_NUM_PROC 1)
 python_test(FILE npt_thermostat.py MAX_NUM_PROC 4)
 python_test(FILE box_geometry.py MAX_NUM_PROC 1)
 python_test(FILE lattice.py MAX_NUM_PROC 4)
-python_test(FILE lattice_vtk.py MAX_NUM_PROC 4)
+python_test(FILE lattice_vtk.py MAX_NUM_PROC 4 GPU_SLOTS 1)
 if(${ESPRESSO_TEST_NP} GREATER_EQUAL 6)
-  python_test(FILE lattice_vtk.py MAX_NUM_PROC 6 SUFFIX 6_cores)
+  python_test(FILE lattice_vtk.py MAX_NUM_PROC 6 SUFFIX 6_cores GPU_SLOTS 1)
 endif()
 python_test(FILE ek_interface.py MAX_NUM_PROC 2)
 python_test(FILE ek_diffusion.py MAX_NUM_PROC 1)

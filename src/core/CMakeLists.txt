@@ -23,7 +23,6 @@ add_library(
   espresso_core SHARED
   bond_error.cpp
   cells.cpp
-  collision.cpp
   communication.cpp
   dpd.cpp
   energy.cpp
@@ -81,7 +80,7 @@ target_link_libraries(
   espresso_core PRIVATE espresso::config espresso::utils::mpi espresso::shapes
                         espresso::cpp_flags
   PUBLIC espresso::utils MPI::MPI_CXX Random123 espresso::particle_observables
-         Boost::serialization Boost::mpi espresso::profiler)
+         Boost::serialization Boost::mpi espresso::instrumentation)
 
 target_include_directories(espresso_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -102,6 +101,7 @@ add_subdirectory(bond_breakage)
 add_subdirectory(bonded_interactions)
 add_subdirectory(cell_system)
 add_subdirectory(cluster_analysis)
+add_subdirectory(collision_detection)
 add_subdirectory(constraints)
 add_subdirectory(ek)
 add_subdirectory(electrostatics)

@@ -135,6 +135,7 @@ BOOST_DATA_TEST_CASE(per_node_boundary, bdata::make(all_lbs()), lb_generator) {
       }
       {
         BOOST_CHECK(lb->set_node_velocity_at_boundary(node, vel));
+        lb->ghost_communication();
         auto const res = lb->get_node_is_boundary(node, true);
         // Did we get a value?
         BOOST_REQUIRE(res);
@@ -159,6 +160,7 @@ BOOST_DATA_TEST_CASE(per_node_boundary, bdata::make(all_lbs()), lb_generator) {
     } else {
       // Not in the local halo.
       BOOST_CHECK(!lb->set_node_velocity_at_boundary(node, vel));
+      lb->ghost_communication();
       BOOST_CHECK(!lb->get_node_velocity_at_boundary(node));
       BOOST_CHECK(!lb->remove_node_from_boundary(node));
       BOOST_CHECK(!lb->get_node_is_boundary(node));
@@ -313,7 +315,8 @@ BOOST_DATA_TEST_CASE(velocity_at_node_and_pos, bdata::make(all_lbs()),
     }
   }
 
-  lb->ghost_communication();
+  lb->ghost_communication_pdf();
+  lb->ghost_communication_vel();
 
   // check velocities
   for (auto const &node : all_nodes_incl_ghosts(lb->get_lattice())) {
@@ -369,7 +372,7 @@ BOOST_DATA_TEST_CASE(density_at_pos, bdata::make(all_lbs()), lb_generator) {
     }
   }
 
-  lb->ghost_communication();
+  lb->ghost_communication_pdf();
 
   // check densities
   for (auto const &node : all_nodes_incl_ghosts(lb->get_lattice())) {
@@ -420,6 +423,7 @@ BOOST_DATA_TEST_CASE(total_momentum, bdata::make(all_lbs()), lb_generator) {
   if (lb->get_lattice().node_in_local_domain(n2)) {
     lb->set_node_velocity(n2, v2);
   }
+  lb->ghost_communication();
 
   boost::mpi::communicator world;
   auto const mom_local = lb->get_momentum();
@@ -433,26 +437,45 @@ BOOST_DATA_TEST_CASE(forces_interpolation, bdata::make(all_lbs()),
                      lb_generator) {
   auto lb = lb_generator(params);
 
-  // todo: check a less symmetrical situation, where the force is applied not
-  // in the middle between the nodes
-
   for (auto const &n : all_nodes_incl_ghosts(lb->get_lattice())) {
     if (lb->get_lattice().node_in_local_halo(n)) {
-      auto const pos = 1. * n; // Mid point between nodes
-      auto const f = Vector3d{{1., 2., -3.5}};
-      lb->add_force_at_pos(pos, f);
-      // Check neighboring nodes for force to be applied
-      for (int x : {0, 1})
-        for (int y : {0, 1})
-          for (int z : {0, 1}) {
-            auto const check_node = Vector3i{{n[0] - x, n[1] - y, n[2] - z}};
-            if (lb->get_lattice().node_in_local_halo(check_node)) {
-              auto const res = lb->get_node_force_to_be_applied(check_node);
-              BOOST_CHECK_SMALL(((*res) - f / 8.).norm(), 1E-10);
+      for (auto dir : {0u, 1u, 2u}) {
+        auto pos = 1. * n; // Mid point between nodes
+        pos[dir] += 0.25;
+        auto const f = Vector3d{{1., 2., -3.5}};
+        lb->add_force_at_pos(pos, f);
+        // Check neighboring nodes for force to be applied
+        for (int x : {0, 1}) {
+          for (int y : {0, 1}) {
+            for (int z : {0, 1}) {
+              auto const check_node = Vector3i{{n[0] - x, n[1] - y, n[2] - z}};
+              auto const weight = (check_node[dir] == n[dir]) ? 16. / 3. : 16.;
+              if (lb->get_lattice().node_in_local_halo(check_node)) {
+                auto const res = lb->get_node_force_to_be_applied(check_node);
+                BOOST_CHECK_SMALL(((*res) - f / weight).norm(), 1E-10);
+              }
             }
           }
-      // Apply counter force to clear force field
-      lb->add_force_at_pos(pos, -f);
+        }
+        // Apply counter force to clear force field
+        lb->add_force_at_pos(pos, -f);
+      }
+    }
+  }
+}
+
+BOOST_DATA_TEST_CASE(last_applied_forces_setters, bdata::make(all_lbs()),
+                     lb_generator) {
+  auto lb = lb_generator(params);
+
+  for (auto const &n : all_nodes_incl_ghosts(lb->get_lattice(), false)) {
+    auto const f = Vector3d{{static_cast<double>(n[0] + 2), 2., -3.5}};
+    lb->set_node_last_applied_force(n, f);
+    lb->ghost_communication_laf();
+    lb->ghost_communication_vel();
+    if (lb->get_lattice().node_in_local_halo(n)) {
+      auto const res = lb->get_node_last_applied_force(n, true);
+      BOOST_CHECK_SMALL(((*res) - f).norm(), 1E-10);
     }
   }
 }
@@ -474,10 +497,14 @@ BOOST_DATA_TEST_CASE(forces_book_keeping, bdata::make(all_lbs()),
     // Add force to node position
     if (lb->get_lattice().node_in_local_domain(n)) {
       lb->add_force_at_pos(n + Vector3d::broadcast(.5), f);
+      lb->ghost_communication();
       BOOST_CHECK_SMALL((*(lb->get_node_force_to_be_applied(n)) - f).norm(),
                         1E-10);
+    } else {
+      lb->ghost_communication();
     }
     lb->integrate();
+    lb->ghost_communication();
     // Check nodes incl some of the ghosts
     for (auto cn : {n, n + params.grid_dimensions, n - params.grid_dimensions,
                     n + Vector3i{{params.grid_dimensions[0], 0, 0}}}) {
@@ -489,6 +516,7 @@ BOOST_DATA_TEST_CASE(forces_book_keeping, bdata::make(all_lbs()),
       }
     }
     lb->integrate();
+    lb->ghost_communication();
     for (auto cn : {n, n + params.grid_dimensions, n - params.grid_dimensions,
                     n + Vector3i{{params.grid_dimensions[0], 0, 0}}}) {
       if (lb->get_lattice().node_in_local_halo(cn)) {
@@ -518,6 +546,7 @@ BOOST_DATA_TEST_CASE(force_in_corner, bdata::make(all_lbs()), lb_generator) {
       }
     }
   }
+  lb->ghost_communication();
 
   // check forces to be applied
   // Each corner node should have 1/8 of the force
@@ -535,6 +564,7 @@ BOOST_DATA_TEST_CASE(force_in_corner, bdata::make(all_lbs()), lb_generator) {
   BOOST_CHECK_EQUAL(count, 8);
 
   lb->integrate();
+  lb->ghost_communication();
 
   // check applied forces from last integration step
   count_local = 0;
@@ -574,8 +604,8 @@ BOOST_DATA_TEST_CASE(vtk_exceptions,
 
 BOOST_AUTO_TEST_CASE(lb_exceptions) {
   using LB = walberla::LBWalberlaImpl<double, lbmpy::Arch::CPU>;
-  auto lb_lattice_without_ghosts =
-      std::make_shared<LatticeWalberla>(params.grid_dimensions, mpi_shape, 0u);
+  auto lb_lattice_without_ghosts = std::make_shared<LatticeWalberla>(
+      params.grid_dimensions, mpi_shape, mpi_shape, 0u);
   BOOST_CHECK_THROW(LB(lb_lattice_without_ghosts, 1., 1.), std::runtime_error);
 }
 
@@ -617,8 +647,8 @@ int main(int argc, char **argv) {
   params.density = 1.4;
   params.grid_dimensions = Vector3i{12, 12, 18};
   params.box_dimensions = Vector3d{12, 12, 18};
-  params.lattice =
-      std::make_shared<LatticeWalberla>(params.grid_dimensions, mpi_shape, 1u);
+  params.lattice = std::make_shared<LatticeWalberla>(params.grid_dimensions,
+                                                     mpi_shape, mpi_shape, 1u);
 
   auto const res = boost::unit_test::unit_test_main(init_unit_test, argc, argv);
   MPI_Finalize();

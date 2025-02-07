@@ -73,6 +73,21 @@ void Solver::propagate() {
   std::visit([](auto &ptr) { ptr->propagate(); }, *impl->solver);
 }
 
+void Solver::ghost_communication() {
+  check_solver(impl);
+  std::visit([](auto &ptr) { ptr->ghost_communication(); }, *impl->solver);
+}
+
+void Solver::ghost_communication_pdf() {
+  check_solver(impl);
+  std::visit([](auto &ptr) { ptr->ghost_communication_pdf(); }, *impl->solver);
+}
+
+void Solver::ghost_communication_vel() {
+  check_solver(impl);
+  std::visit([](auto &ptr) { ptr->ghost_communication_vel(); }, *impl->solver);
+}
+
 void Solver::sanity_checks() const {
   if (impl->solver) {
     auto const &system = get_system();
@@ -137,6 +152,18 @@ void Solver::on_timestep_change() {
 void Solver::on_temperature_change() {
   if (impl->solver) {
     std::visit([](auto &ptr) { ptr->on_temperature_change(); }, *impl->solver);
+  }
+}
+
+void Solver::on_lees_edwards_change() {
+  if (impl->solver) {
+    std::visit([](auto &ptr) { ptr->on_lees_edwards_change(); }, *impl->solver);
+  }
+}
+
+void Solver::update_collision_model() {
+  if (impl->solver) {
+    std::visit([](auto &ptr) { ptr->update_collision_model(); }, *impl->solver);
   }
 }
 

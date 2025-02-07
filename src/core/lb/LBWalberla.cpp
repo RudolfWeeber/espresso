@@ -30,12 +30,15 @@
 #include "system/System.hpp"
 #include "thermostat.hpp"
 
+#include "lees_edwards/lees_edwards.hpp"
+
 #include <walberla_bridge/lattice_boltzmann/LBWalberlaBase.hpp>
 
 #include <utils/Vector.hpp>
 #include <utils/math/int_pow.hpp>
 
 #include <optional>
+#include <variant>
 
 namespace LB {
 
@@ -48,6 +51,16 @@ Utils::VectorXd<9> LBWalberla::get_pressure_tensor() const {
 }
 
 void LBWalberla::propagate() { lb_fluid->integrate(); }
+
+void LBWalberla::ghost_communication() { lb_fluid->ghost_communication(); }
+
+void LBWalberla::ghost_communication_pdf() {
+  lb_fluid->ghost_communication_vel();
+}
+
+void LBWalberla::ghost_communication_vel() {
+  lb_fluid->ghost_communication_vel();
+}
 
 void LBWalberla::lebc_sanity_checks(unsigned int shear_direction,
                                     unsigned int shear_plane_normal) const {
@@ -110,6 +123,45 @@ void LBWalberla::sanity_checks(System::System const &system) const {
   // LB time step and MD time step must agree
   walberla_tau_sanity_checks("LB", lb_params->get_tau(),
                              system.get_time_step());
+}
+
+void LBWalberla::on_lees_edwards_change() { update_collision_model(); }
+
+void LBWalberla::update_collision_model() {
+  auto const energy_conversion =
+      Utils::int_pow<2>(lb_params->get_agrid() / lb_params->get_tau());
+  auto const kT = lb_fluid->get_kT() * energy_conversion;
+  auto const seed = lb_fluid->get_seed();
+  update_collision_model(*lb_fluid, *lb_params, kT, seed);
+}
+
+void LBWalberla::update_collision_model(LBWalberlaBase &lb,
+                                        LBWalberlaParams &params, double kT,
+                                        unsigned int seed) {
+  auto const &system = ::System::get_system();
+  auto le_protocol = system.lees_edwards->get_protocol();
+  if (le_protocol and
+      not std::holds_alternative<LeesEdwards::Off>(*le_protocol)) {
+    if (kT != 0.) {
+      throw std::runtime_error(
+          "Lees-Edwards LB doesn't support thermalization");
+    }
+    auto const &le_bc = system.box_geo->lees_edwards_bc();
+    auto lees_edwards_object = std::make_unique<LeesEdwardsPack>(
+        le_bc.shear_direction, le_bc.shear_plane_normal,
+        [&params, le_protocol, &system]() {
+          return get_pos_offset(system.get_sim_time(), *le_protocol) /
+                 params.get_agrid();
+        },
+        [&params, le_protocol, &system]() {
+          return get_shear_velocity(system.get_sim_time(), *le_protocol) *
+                 (params.get_tau() / params.get_agrid());
+        });
+    lb.set_collision_model(std::move(lees_edwards_object));
+  } else {
+    lb.set_collision_model(kT, seed);
+  }
+  lb.ghost_communication();
 }
 
 } // namespace LB
