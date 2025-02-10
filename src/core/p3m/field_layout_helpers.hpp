@@ -6,17 +6,19 @@
 
 // Function to extract a 3D block from the halo field
 template <typename Container>
-auto extract_block(const Container &in_array,
-                             Utils::Vector3i dimensions, Utils::Vector3i start, Utils::Vector3i stop) {
+auto extract_block(Container const &in_array,
+                   Utils::Vector3i const &dimensions,
+                   Utils::Vector3i const &start,
+                   Utils::Vector3i const &stop) {
   // Extract the dimensions
 
   // Validate input
 
   // Calculate the size of the block excluding halo regions
-  Utils::Vector3i block_dim = stop-start;
+  auto const block_dim = stop - start;
 
   // Output vector to hold the block
-  std::vector<typename Container::value_type> out_array(block_dim[0] * block_dim[1] * block_dim[2]);
+  std::vector<typename Container::value_type> out_array(Utils::product(block_dim));
 
   // Extract the block
       for (int x = 0; x < block_dim[0]; ++x) {
@@ -25,10 +27,10 @@ auto extract_block(const Container &in_array,
         // Compute indices for input and output arrays
         int in_index =
             Utils::get_linear_index(x + start[0], y + start[1], z + start[2],
-                                    dimensions, Utils::MemoryOrder::ROW_MAJOR);
+                                    dimensions, Utils::MemoryOrder::COLUMN_MAJOR);
 
         int out_index = Utils::get_linear_index(x, y, z, block_dim,
-                                                Utils::MemoryOrder::ROW_MAJOR);
+                                                Utils::MemoryOrder::COLUMN_MAJOR);
 
         // Copy the value
         out_array[out_index] = in_array[in_index];

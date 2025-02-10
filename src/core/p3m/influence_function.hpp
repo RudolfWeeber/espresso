@@ -148,9 +148,9 @@ std::vector<FloatType> grid_influence_function(
         (indices[KY] % half_mesh[1u] != 0) or
         (indices[KZ] % half_mesh[2u] != 0)) {
       auto const k =
-          Utils::Vector3d{{shifts[0u][indices[KX]] * wavevector[0u],
-                           shifts[1u][indices[KY]] * wavevector[1u],
-                           shifts[2u][indices[KZ]] * wavevector[2u]}};
+          Utils::Vector3d{{shifts[0u][indices[0u]] * wavevector[0u],
+                           shifts[1u][indices[1u]] * wavevector[1u],
+                           shifts[2u][indices[2u]] * wavevector[2u]}};
       g[index] = FloatType(G_opt<S, m>(params.cao, params.alpha, k, params.a));
     }
     ++index;
