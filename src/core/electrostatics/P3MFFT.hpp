@@ -42,9 +42,9 @@ private:
   using Box = heffte::box3d<>;
   boost::mpi::communicator comm;
   Utils::Vector3i memory_layout;
+  Utils::Vector3i global_mesh;
   std::shared_ptr<Box> in_box;
   std::shared_ptr<Box> out_box;
-  Utils::Vector3i global_mesh;
   heffte::fft3d<backend_tag> fft3d;
 
 public:
@@ -55,9 +55,9 @@ public:
      Utils::Vector3i _mem_layout) :
      comm(comm),
      memory_layout(_mem_layout),
+     global_mesh(global_mesh_size),
      in_box(std::make_shared<Box>(to_array(rs_local_ld_index), to_array(rs_local_ur_index - Utils::Vector3i::broadcast(1)), to_array(memory_layout))),
      out_box(std::make_shared<Box>(to_array(rs_local_ld_index), to_array(rs_local_ur_index - Utils::Vector3i::broadcast(1)), to_array(memory_layout))),
-     global_mesh(global_mesh_size),
      fft3d(*in_box,*out_box, comm) {
      init_fft();
    }

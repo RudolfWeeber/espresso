@@ -338,14 +338,16 @@ template <int cao> struct AssignCharge {
 
   void operator()(auto &p3m, double q, Utils::Vector3d const &real_pos,
                   p3m_interpolation_cache &inter_weights) {
-    auto const w = p3m_calculate_interpolation_weights<cao>(
+    auto constexpr memory_order = std::remove_reference<decltype(p3m)>::type::memory_order;
+    auto const w = p3m_calculate_interpolation_weights<cao, memory_order>(
         real_pos, p3m.params.ai, p3m.local_mesh);
     inter_weights.store(w);
     this->operator()(p3m, q, w);
   }
 
   void operator()(auto &p3m, double q, Utils::Vector3d const &real_pos) {
-    auto const w = p3m_calculate_interpolation_weights<cao>(
+    auto constexpr memory_order = std::remove_reference<decltype(p3m)>::type::memory_order;
+    auto const w = p3m_calculate_interpolation_weights<cao, memory_order>(
         real_pos, p3m.params.ai, p3m.local_mesh);
     this->operator()(p3m, q, w);
   }
@@ -514,20 +516,19 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
   auto constexpr npt_flag = false;
 #endif
 
+  auto constexpr memory_order = std::remove_reference<decltype(p3m)>::type::memory_order;
+
 //  if (p3m.sum_q2 > 0.) {
     if (not has_actor_of_type<ElectrostaticLayerCorrection>(
             system.coulomb.impl->solver)) {
       charge_assign(particles);
     }
-    for (int i=0;i<6;i++) {
-  }
-
 
   // halo communication of real space charge density
   p3m.halo_comm.gather_grid(comm_cart, p3m.rs_charge_density.data(),p3m.local_mesh.dim);
 
   // !!! Get real space charge density without ghost layers
-  auto charge_density_no_halos = extract_block(p3m.rs_charge_density, p3m.local_mesh.dim, p3m.local_mesh.n_halo_ld, p3m.local_mesh.dim-p3m.local_mesh.n_halo_ur);
+  auto charge_density_no_halos = extract_block(p3m.rs_charge_density, p3m.local_mesh.dim, p3m.local_mesh.n_halo_ld, p3m.local_mesh.dim-p3m.local_mesh.n_halo_ur, memory_order);
 //  std::cout << p3m.local_mesh.dim <<std::endl;
 //  std::cout << p3m.local_mesh.dim_no_halo<<std::endl;
 //  std::cout << p3m.local_mesh.ld_no_halo<<std::endl;

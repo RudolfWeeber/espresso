@@ -484,8 +484,9 @@ target_compile_options(
     # add extra warnings
     $<$<CXX_COMPILER_ID:Clang>:-Wextern-initializer>
     $<$<CXX_COMPILER_ID:Clang>:-Wrange-loop-analysis>
-    -Wfloat-conversion
-    $<$<CXX_COMPILER_ID:Clang,AppleClang,IntelLLVM>:-Wimplicit-float-conversion>
+#    -Wfloat-conversion
+#    $<$<CXX_COMPILER_ID:Clang,AppleClang,IntelLLVM>:-Wimplicit-float-conversion>
+    -Wno-unused-variable
     $<$<CXX_COMPILER_ID:Clang,AppleClang,IntelLLVM>:-Wunused-exception-parameter>
     $<$<CXX_COMPILER_ID:Clang,AppleClang,IntelLLVM>:-Wmissing-variable-declarations>
     $<$<AND:$<CXX_COMPILER_ID:Clang>,$<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,11.0.0>>:-Wnon-c-typedef-for-linkage>
@@ -678,6 +679,14 @@ if(ESPRESSO_BUILD_WITH_WALBERLA)
     endfunction()
     espresso_enable_avx2_support(espresso_avx_flags_callback)
   endif()
+  target_compile_options(
+    core
+    PRIVATE
+    $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-missing-template-arg-list-after-template-kw>)
+  target_compile_options(
+    lbm
+    PRIVATE
+    $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-missing-template-arg-list-after-template-kw>)
 endif()
 
 if(ESPRESSO_BUILD_WITH_CALIPER)

@@ -9,7 +9,8 @@ template <typename Container>
 auto extract_block(Container const &in_array,
                    Utils::Vector3i const &dimensions,
                    Utils::Vector3i const &start,
-                   Utils::Vector3i const &stop) {
+                   Utils::Vector3i const &stop,
+                   Utils::MemoryOrder memory_order) {
   // Extract the dimensions
 
   // Validate input
@@ -27,10 +28,10 @@ auto extract_block(Container const &in_array,
         // Compute indices for input and output arrays
         int in_index =
             Utils::get_linear_index(x + start[0], y + start[1], z + start[2],
-                                    dimensions, Utils::MemoryOrder::COLUMN_MAJOR);
+                                    dimensions, memory_order);
 
         int out_index = Utils::get_linear_index(x, y, z, block_dim,
-                                                Utils::MemoryOrder::COLUMN_MAJOR);
+                                                memory_order);
 
         // Copy the value
         out_array[out_index] = in_array[in_index];

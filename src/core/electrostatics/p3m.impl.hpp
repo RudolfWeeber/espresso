@@ -35,6 +35,7 @@
 #include "P3MFFT.hpp"
 
 #include <utils/Vector.hpp>
+#include <utils/index.hpp>
 
 #include <memory>
 #include <stdexcept>
@@ -45,6 +46,9 @@
 template <typename FloatType>
 struct CoulombP3MState : public P3MStateCommon<FloatType> {
   using P3MStateCommon<FloatType>::P3MStateCommon;
+
+  constexpr static auto memory_order = Utils::MemoryOrder::ROW_MAJOR;
+
   /** number of charged particles (only on head node). */
   int sum_qpart = 0;
   /** Sum of square of charges (only on head node). */
@@ -74,19 +78,21 @@ struct CoulombP3MImpl : public CoulombP3M {
 
   /** @brief Coulomb P3M parameters. */
   CoulombP3MState<FloatType> &p3m;
-  /* Unique ptr to the P3M state to make sure, we own it */
-  std::unique_ptr<CoulombP3MState<FloatType>> p3m_state_ptr;
 
 private:
-  constexpr const Utils::Vector3i mem_layout() const
-      { return {2,1,0}; // column major
-  }
+  std::unique_ptr<CoulombP3MState<FloatType>> p3m_state_ptr;
   int tune_timings;
   bool tune_verbose;
   bool check_complex_residuals;
   bool m_is_tuned;
 
-  // !! Influence functions
+  constexpr const Utils::Vector3i mem_layout() const {
+    auto constexpr memory_order = std::remove_reference<decltype(p3m)>::type::memory_order;
+    if constexpr (memory_order == Utils::MemoryOrder::COLUMN_MAJOR) {
+      return {2, 1, 0};
+    }
+    return {0, 1, 2};
+  }
 public:
   CoulombP3MImpl(
       std::unique_ptr<CoulombP3MState<FloatType>> &&p3m_state,

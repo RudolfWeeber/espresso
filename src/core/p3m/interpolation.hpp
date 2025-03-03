@@ -135,7 +135,7 @@ public:
  * As described in from @cite hockney88a 5-189 (or 8-61).
  * The weights are also tabulated in @cite deserno98a @cite deserno98b.
  */
-template <int cao>
+template <int cao, Utils::MemoryOrder memory_order>
 InterpolationWeights<cao>
 p3m_calculate_interpolation_weights(const Utils::Vector3d &position,
                                     const Utils::Vector3d &ai,
@@ -162,8 +162,7 @@ p3m_calculate_interpolation_weights(const Utils::Vector3d &position,
   InterpolationWeights<cao> ret;
 
   /* 3d-array index of nearest mesh point */
-  ret.ind = Utils::get_linear_index(nmp, local_mesh.dim,
-                                    Utils::MemoryOrder::COLUMN_MAJOR);
+  ret.ind = Utils::get_linear_index(nmp, local_mesh.dim, memory_order);
 
   assert((nmp + Utils::Vector3i::broadcast(cao)) <= local_mesh.dim);
   for (int i = 0; i < cao; i++) {
