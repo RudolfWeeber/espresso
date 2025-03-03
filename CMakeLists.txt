@@ -500,6 +500,7 @@ if(ESPRESSO_BUILD_WITH_FFTW)
     FetchContent_MakeAvailable(heffte)
     set(BUILD_SHARED_LIBS ${ESPRESSO_BUILD_SHARED_LIBS_DEFAULT})
   endif()
+  install(TARGETS Heffte LIBRARY DESTINATION "${ESPRESSO_INSTALL_LIBDIR}")
 endif()
 
 # We need the parallel hdf5 version!
