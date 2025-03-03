@@ -93,7 +93,7 @@ function(python_test)
     add_test(
       NAME ${TEST_NAME}
       COMMAND
-        ${MPIEXEC} ${ESPRESSO_MPIEXEC_OVERSUBSCRIBE} ${MPIEXEC_NUMPROC_FLAG}
+        ${MPIEXEC} ${ESPRESSO_MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG}
         ${TEST_NUM_PROC} ${MPIEXEC_PREFLAGS} ${ESPRESSO_MPIEXEC_TMPDIR}
         ${CMAKE_BINARY_DIR}/pypresso ${PYPRESSO_OPTIONS}
         ${TEST_FILE_CONFIGURED} ${TEST_ARGUMENTS} ${MPIEXEC_POSTFLAGS})
@@ -210,6 +210,7 @@ python_test(FILE cell_system.py MAX_NUM_PROC 4)
 python_test(FILE get_neighbors.py MAX_NUM_PROC 4)
 python_test(FILE get_neighbors.py MAX_NUM_PROC 3 SUFFIX 3_cores)
 python_test(FILE tune_skin.py MAX_NUM_PROC 1)
+python_test(FILE contact_time.py MAX_NUM_PROC 4)
 python_test(FILE code_info.py MAX_NUM_PROC 1)
 python_test(FILE constraint_homogeneous_magnetic_field.py MAX_NUM_PROC 4)
 python_test(FILE cutoffs.py MAX_NUM_PROC 4)
@@ -229,6 +230,7 @@ python_test(FILE engine_lb.py MAX_NUM_PROC 1 GPU_SLOTS 1 SUFFIX 1_core)
 # python_test(FILE icc_interface.py MAX_NUM_PROC 1 GPU_SLOTS 1) # TODO heffte
 python_test(FILE mass-and-rinertia_per_particle.py MAX_NUM_PROC 2 LABELS long)
 python_test(FILE interactions_bond_angle.py MAX_NUM_PROC 4)
+python_test(FILE interactions_bond_energy.py MAX_NUM_PROC 4)
 python_test(FILE interactions_bonded_interface.py MAX_NUM_PROC 4)
 python_test(FILE interactions_bonded_interface.py MAX_NUM_PROC 1 SUFFIX 1_core)
 python_test(FILE interactions_bonded.py MAX_NUM_PROC 2)
@@ -358,7 +360,7 @@ python_test(FILE lb_mass_conservation.py MAX_NUM_PROC 2 GPU_SLOTS 0)
 python_test(FILE lb_mass_conservation.py MAX_NUM_PROC 1 GPU_SLOTS 1 SUFFIX
             1_core)
 # python_test(FILE p3m_electrostatic_pressure.py MAX_NUM_PROC 2 GPU_SLOTS 1) # TODO heffte
-python_test(FILE p3m_madelung.py MAX_NUM_PROC 2 GPU_SLOTS 2 LABELS long)
+# python_test(FILE p3m_madelung.py MAX_NUM_PROC 2 GPU_SLOTS 2 LABELS long) # TODO heffte
 python_test(FILE sigint.py DEPENDENCIES sigint_child.py NO_MPI)
 python_test(FILE caliper.py DEPENDENCIES caliper_child.py NO_MPI)
 python_test(FILE observable_chain.py MAX_NUM_PROC 4)
@@ -389,9 +391,9 @@ python_test(FILE utils.py MAX_NUM_PROC 1)
 python_test(FILE npt_thermostat.py MAX_NUM_PROC 4)
 python_test(FILE box_geometry.py MAX_NUM_PROC 1)
 python_test(FILE lattice.py MAX_NUM_PROC 4)
-python_test(FILE lattice_vtk.py MAX_NUM_PROC 4)
+python_test(FILE lattice_vtk.py MAX_NUM_PROC 4 GPU_SLOTS 1)
 if(${ESPRESSO_TEST_NP} GREATER_EQUAL 6)
-  python_test(FILE lattice_vtk.py MAX_NUM_PROC 6 SUFFIX 6_cores)
+  python_test(FILE lattice_vtk.py MAX_NUM_PROC 6 SUFFIX 6_cores GPU_SLOTS 1)
 endif()
 python_test(FILE ek_interface.py MAX_NUM_PROC 2)
 python_test(FILE ek_diffusion.py MAX_NUM_PROC 1)

@@ -47,16 +47,19 @@ Observable_stat::Observable_stat(std::size_t chunk_size, std::size_t n_bonded,
   constexpr std::size_t n_vs = 0;
 #endif
   auto const n_non_bonded = get_non_bonded_offset(max_type, max_type) + 1ul;
-  constexpr std::size_t n_ext_fields = 1; // reduction over all fields
-  constexpr std::size_t n_kinetic = 1; // linear+angular kinetic contributions
+  constexpr std::size_t n_ext_fields = 1;  // reduction over all fields
+  constexpr std::size_t n_kinetic_lin = 1; // linear kinetic contribution
+  constexpr std::size_t n_kinetic_rot = 1; // angular kinetic contribution
 
-  auto const n_elements = n_kinetic + n_bonded + 2ul * n_non_bonded +
-                          n_coulomb + n_dipolar + n_vs + n_ext_fields;
+  auto const n_elements = n_kinetic_lin + n_kinetic_rot + n_bonded +
+                          2ul * n_non_bonded + n_coulomb + n_dipolar + n_vs +
+                          n_ext_fields;
   m_data = std::vector<double>(m_chunk_size * n_elements);
 
   // spans for the different contributions
-  kinetic = std::span<double>(m_data.data(), m_chunk_size);
-  bonded = std::span<double>(kinetic.end(), n_bonded * m_chunk_size);
+  kinetic_lin = std::span<double>(m_data.data(), m_chunk_size);
+  kinetic_rot = std::span<double>(kinetic_lin.end(), m_chunk_size);
+  bonded = std::span<double>(kinetic_rot.end(), n_bonded * m_chunk_size);
   coulomb = std::span<double>(bonded.end(), n_coulomb * m_chunk_size);
   dipolar = std::span<double>(coulomb.end(), n_dipolar * m_chunk_size);
   virtual_sites = std::span<double>(dipolar.end(), n_vs * m_chunk_size);

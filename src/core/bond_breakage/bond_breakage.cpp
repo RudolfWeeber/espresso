@@ -204,4 +204,42 @@ void BondBreakage::process_queue_impl(System::System &system) {
   }
 }
 
+static bool bond_handler(BondBreakage &bond_breakage, Particle &p,
+                         std::span<Particle *> partners, int bond_id,
+                         BoxGeometry const &box_geo) {
+  auto retval = false;
+  if (partners.size() == 1u) { // pair bonds
+    auto d = box_geo.get_mi_vector(p.pos(), partners[0]->pos()).norm();
+    retval = bond_breakage.check_and_handle_breakage(
+        p.id(), {{partners[0]->id(), std::nullopt}}, bond_id, d);
+  } else if (partners.size() == 2u) { // angle bond
+    auto d =
+        box_geo.get_mi_vector(partners[0]->pos(), partners[1]->pos()).norm();
+    retval = bond_breakage.check_and_handle_breakage(
+        p.id(), {{partners[0]->id(), partners[1]->id()}}, bond_id, d);
+  }
+  return retval;
+}
+
+void BondBreakage::execute_bond_breakage(System::System &system) {
+  system.cell_structure->update_ghosts_and_resort_particle(
+      system.get_global_ghost_flags());
+
+  // Clear the bond breakage queue
+  clear_queue();
+
+  // Create the bond kernel function (the bond handler)
+  auto bond_kernel = [&](Particle &p, int bond_id,
+                         std::span<Particle *> partners) {
+    bond_handler(*this, p, partners, bond_id, *system.box_geo);
+    return false;
+  };
+
+  // Use the CellStructure::bond_loop to process bonds
+  system.cell_structure->bond_loop(bond_kernel);
+
+  // Process the bond breakage queue
+  process_queue(system);
+}
+
 } // namespace BondBreakage

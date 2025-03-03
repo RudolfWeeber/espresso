@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2022 The ESPResSo project
+ * Copyright (C) 2025 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -17,22 +17,16 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define BOOST_TEST_MODULE Utils::keys test
-#define BOOST_TEST_DYN_LINK
-#include <boost/test/unit_test.hpp>
+#pragma once
 
-#include "utils/keys.hpp"
+// guard for hdf5.h
+#if not defined(_H5public_H)
+#ifdef OMPI_SKIP_MPICXX
+#undef OMPI_SKIP_MPICXX
+#endif
+#ifdef MPICH_SKIP_MPICXX
+#undef MPICH_SKIP_MPICXX
+#endif
+#endif // not defined(_H5public_H)
 
-#include <algorithm>
-#include <map>
-
-BOOST_AUTO_TEST_CASE(values) {
-  using pair_type = std::map<int, int>::value_type;
-
-  auto pairs = std::map<int, int>{{31, 2}, {2, 63}, {23, 9}, {4, 9}};
-  auto keys = Utils::keys(pairs);
-
-  BOOST_CHECK(
-      std::equal(keys.begin(), keys.end(), pairs.begin(),
-                 [](int k, pair_type const &kv) { return k == kv.first; }));
-}
+#include <H5public.h>

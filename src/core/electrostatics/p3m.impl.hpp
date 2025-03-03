@@ -37,7 +37,9 @@
 #include <utils/Vector.hpp>
 #include <utils/index.hpp>
 
+#include <cstddef>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -49,11 +51,11 @@ struct CoulombP3MState : public P3MStateCommon<FloatType> {
 
   constexpr static auto memory_order = Utils::MemoryOrder::ROW_MAJOR;
 
-  /** number of charged particles (only on head node). */
-  int sum_qpart = 0;
-  /** Sum of square of charges (only on head node). */
+  /** number of charged particles. */
+  std::size_t sum_qpart = 0;
+  /** Sum of square of charges. */
   double sum_q2 = 0.;
-  /** square of sum of charges (only on head node). */
+  /** square of sum of charges. */
   double square_sum_q = 0.;
 
   p3m_interpolation_cache inter_weights;
@@ -82,6 +84,7 @@ struct CoulombP3MImpl : public CoulombP3M {
 private:
   std::unique_ptr<CoulombP3MState<FloatType>> p3m_state_ptr;
   int tune_timings;
+  std::pair<std::optional<int>, std::optional<int>> tune_limits;
   bool tune_verbose;
   bool check_complex_residuals;
   bool m_is_tuned;
@@ -97,10 +100,10 @@ public:
   CoulombP3MImpl(
       std::unique_ptr<CoulombP3MState<FloatType>> &&p3m_state,
       double prefactor, int tune_timings, bool tune_verbose,
-      bool check_complex_residuals)
+      decltype(tune_limits) tune_limits, bool check_complex_residuals)
       : CoulombP3M(p3m_state->params), p3m{*p3m_state},
         p3m_state_ptr{std::move(p3m_state)}, tune_timings{tune_timings},
-        tune_verbose{tune_verbose},
+        tune_limits{std::move(tune_limits)}, tune_verbose{tune_verbose},
         check_complex_residuals{check_complex_residuals} {
 
     if (tune_timings <= 0) {
@@ -123,7 +126,7 @@ public:
   }
   void tune() override;
   void count_charged_particles() override;
-  void count_charged_particles_elc(int n, double sum_q2,
+  void count_charged_particles_elc(std::size_t n, double sum_q2,
                                    double square_sum_q) override {
     p3m.sum_qpart = n;
     p3m.sum_q2 = sum_q2;

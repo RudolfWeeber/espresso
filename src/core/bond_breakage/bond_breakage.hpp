@@ -79,7 +79,7 @@ public:
   bool check_and_handle_breakage(int particle_id,
                                  BondPartners const &bond_partners,
                                  int bond_type, double distance) {
-    if (breakage_specs.count(bond_type) == 0) {
+    if (not breakage_specs.contains(bond_type)) {
       return false; // No breakage rule for this bond type
     }
 
@@ -95,6 +95,8 @@ public:
   }
 
   void clear_queue() { m_queue.clear(); }
+
+  void execute_bond_breakage(System::System &system);
 
   void process_queue(System::System &system) {
     if (not breakage_specs.empty()) {

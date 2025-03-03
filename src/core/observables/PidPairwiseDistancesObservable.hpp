@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2022 The ESPResSo project
+ * Copyright (C) 2025 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -16,32 +16,26 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#ifndef OBSERVABLES_PIDPAIRWISEDISTANCESOBSERVABLE_HPP
+#define OBSERVABLES_PIDPAIRWISEDISTANCESOBSERVABLE_HPP
 
-#ifndef UTILS_KEYS_HPP
-#define UTILS_KEYS_HPP
+#include "PidObservable.hpp"
 
-#include <algorithm>
+#include <stdexcept>
 #include <vector>
 
-namespace Utils {
-/**
- * @brief Return the keys of a map type.
- *
- * Returns a vector of copies of the keys
- * of a map, unordered_map, ...
- */
-template <typename Map>
-auto keys(Map const &m) -> std::vector<typename Map::key_type> {
-  using value_type = typename Map::value_type;
-  using std::begin;
-  using std::end;
+namespace Observables {
 
-  std::vector<typename Map::key_type> ret(m.size());
+/** @brief Calculate pairwise distances between two sets of particles. */
+class PidPairwiseDistancesObservable : public PidObservable {
+  std::vector<int> const m_target_ids;
 
-  std::transform(begin(m), end(m), ret.begin(),
-                 [](value_type const &kv) { return kv.first; });
-  return ret;
-}
-} // namespace Utils
+public:
+  PidPairwiseDistancesObservable(std::vector<int> const &ids,
+                                 std::vector<int> const &target_ids)
+      : PidObservable(ids), m_target_ids(target_ids) {}
+  std::vector<int> const &target_ids() const { return m_target_ids; }
+};
 
+} // Namespace Observables
 #endif

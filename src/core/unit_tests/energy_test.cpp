@@ -89,20 +89,3 @@ BOOST_AUTO_TEST_CASE(rotational_kinetic_energy_) {
   }
 #endif
 }
-
-BOOST_AUTO_TEST_CASE(kinetic_energy_) {
-  Particle p;
-#ifdef MASS
-  p.mass() = 2.;
-#endif
-  p.v() = {3., 4., 5.};
-
-#ifdef ROTATION
-  p.omega() = {1., 2., 3.};
-  p.set_can_rotate_all_axes();
-#endif
-
-  auto const expected =
-      translational_kinetic_energy(p) + rotational_kinetic_energy(p);
-  BOOST_CHECK_EQUAL(calc_kinetic_energy(p), expected);
-}

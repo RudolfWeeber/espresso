@@ -32,7 +32,6 @@ import os
 import sys
 import uuid
 sys.path.append('@CMAKE_SOURCE_DIR@/testsuite/scripts')
-import importlib_wrapper as iw
 
 
 SOLUTION_CELL_TOKEN = "# SOLUTION CELL"
@@ -75,7 +74,7 @@ def add_cell_from_script(nb, filepath):
 
 
 def remove_empty_cells(nb):
-    for i in range(len(nb['cells']) - 1, 0, -1):
+    for i in range(len(nb["cells"]))[::-1]:
         cell = nb['cells'][i]
         if cell['source'].strip() == '':
             nb['cells'].pop(i)
@@ -90,11 +89,19 @@ def parse_solution_cell(cell):
 
 
 def convert_exercise2_to_code(nb):
-    for i in range(len(nb["cells"]) - 1, 0, -1):
+    for i in range(len(nb["cells"]))[::-1]:
         cell = nb["cells"][i]
-        solution = parse_solution_cell(cell)
-        if solution is not None:
-            cell["source"] = solution
+        if cell["cell_type"] != "markdown":
+            continue
+        source = cell["source"]
+        if source.startswith("<details") and source.endswith("</details>"):
+            m = re.search("```python\n(.+)\n```", source, flags=re.DOTALL)
+            solution = "# SOLUTION CELL\n" + m.group(1)
+            nb["cells"][i] = nbformat.v4.new_code_cell(source=solution)
+            if (i + 1) != len(nb["cells"]) and \
+                    nb["cells"][i + 1]["cell_type"] == "code" and \
+                    not nb["cells"][i + 1]["source"]:
+                del nb["cells"][i + 1]
 
 
 def disable_plot_interactivity(nb):
@@ -178,6 +185,7 @@ def execute_notebook(nb, src, cell_separator, notebook_filepath):
     the notebook in a CI environment.
     """
     import nbconvert.preprocessors
+    import importlib_wrapper as iw
     notebook_dirname = os.path.dirname(notebook_filepath)
     # disable OpenGL GUI
     src_no_gui = iw.mock_es_visualization(src)
@@ -216,6 +224,7 @@ def handle_ci_case(args):
     disable_plot_interactivity(nb)
 
     if args.substitutions or args.execute:
+        import importlib_wrapper as iw
         # substitute global variables
         cell_separator = f'\n##{uuid.uuid4().hex}\n'
         src = cell_separator.join(get_code_cells(nb))

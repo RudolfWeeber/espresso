@@ -79,20 +79,14 @@ ci_procs=2
 if [ "${GITLAB_CI}" = "true" ]; then
     if [[ "${OSTYPE}" == "linux-gnu"* ]]; then
         # Linux runner
-        if grep -q "i7-3820" /proc/cpuinfo; then
-            # communication bottleneck for more than 2 cores on Intel i7-3820
-            ci_procs=2
-        else
-            ci_procs=4
-        fi
+        ci_procs=4
     elif [[ "${OSTYPE}" == "darwin"* ]]; then
         # macOS runner
-        ci_procs=2
+        ci_procs=4
     fi
 elif [ "${GITHUB_ACTIONS}" = "true" ]; then
-    # GitHub Actions only provide 1 core; request 2 cores to run tests
-    # in parallel (OpenMPI allows oversubscription)
-    ci_procs=2
+    # GitHub Actions provide 4 cores
+    ci_procs=4
 else
     ci_procs=$(nproc)
 fi
@@ -106,6 +100,7 @@ set_default_value with_ubsan false
 set_default_value with_asan false
 set_default_value with_static_analysis false
 set_default_value with_caliper false
+set_default_value with_fpe false
 set_default_value myconfig "default"
 set_default_value build_procs ${ci_procs}
 set_default_value check_procs ${build_procs}
@@ -131,7 +126,6 @@ set_default_value with_walberla_avx false
 set_default_value with_stokesian_dynamics false
 set_default_value test_timeout 500
 set_default_value hide_gpu false
-set_default_value mpiexec_preflags ""
 
 if [ "${make_check_unit_tests}" = true ] || [ "${make_check_python}" = true ] || [ "${make_check_tutorials}" = true ] || [ "${make_check_samples}" = true ] || [ "${make_check_benchmarks}" = true ]; then
     run_checks=true
@@ -154,6 +148,7 @@ cmake_params="${cmake_params} -D ESPRESSO_CTEST_ARGS:STRING=-j${check_procs} -D 
 cmake_params="${cmake_params} -D ESPRESSO_BUILD_BENCHMARKS=${make_check_benchmarks}"
 cmake_params="${cmake_params} -D ESPRESSO_BUILD_WITH_CCACHE=${with_ccache}"
 cmake_params="${cmake_params} -D ESPRESSO_BUILD_WITH_CALIPER=${with_caliper}"
+cmake_params="${cmake_params} -D ESPRESSO_BUILD_WITH_FPE=${with_fpe}"
 cmake_params="${cmake_params} -D ESPRESSO_BUILD_WITH_HDF5=${with_hdf5}"
 cmake_params="${cmake_params} -D ESPRESSO_BUILD_WITH_FFTW=${with_fftw}"
 cmake_params="${cmake_params} -D ESPRESSO_BUILD_WITH_GSL=${with_gsl}"
@@ -166,9 +161,6 @@ if [ "${with_walberla}" = true ]; then
   if [ "${with_walberla_avx}" = true ]; then
     cmake_params="${cmake_params} -D ESPRESSO_BUILD_WITH_WALBERLA_AVX=ON"
   fi
-  # disable default OpenMPI CPU binding mechanism to avoid stale references to
-  # waLBerla objects when multiple LB python tests run in parallel on NUMA archs
-  mpiexec_preflags="${mpiexec_preflags:+$mpiexec_preflags;}--bind-to;none"
 fi
 
 cmake_params="${cmake_params} -D ESPRESSO_BUILD_WITH_COVERAGE=${with_coverage}"
@@ -186,7 +178,7 @@ if [ "${with_cuda}" = true ]; then
 fi
 
 command -v nvidia-smi && nvidia-smi || true
-nvidia-smi -L || true
+command -v nvidia-smi && nvidia-smi -L || true
 if [ "${hide_gpu}" = true ]; then
     echo "Hiding gpu from Cuda via CUDA_VISIBLE_DEVICES"
     export CUDA_VISIBLE_DEVICES=""
@@ -208,20 +200,24 @@ echo "Creating ${builddir}..."
 mkdir -p "${builddir}"
 cd "${builddir}"
 
-# load MPI module if necessary
+# load modules
 if [ -f "/etc/os-release" ]; then
-    grep -q "suse" /etc/os-release && . /etc/profile.d/modules.sh && module load gnu-openmpi
-    grep -q "rhel\|fedora" /etc/os-release && for f in /etc/profile.d/*module*.sh; do . "${f}"; done && module load mpi
-fi
-
-# setup environment
-if grep -q "Ubuntu" /etc/os-release; then
-    default_gcov="$(which "gcov")"
-    custom_gcov="$(which "${GCOV:-gcov}")"
-    if [ ! "${custom_gcov}" = "${default_gcov}" ] && [ -d "${HOME}/.local/var/lib/alternatives" ]; then
-        update-alternatives --altdir "${HOME}/.local/etc/alternatives" \
-                            --admindir "${HOME}/.local/var/lib/alternatives" \
-                            --install "${HOME}/.local/bin/gcov" "gcov" "${custom_gcov}" 10
+    if grep -qP 'NAME="(openSUSE|SLES|SLED)' /etc/os-release; then
+        . /etc/profile.d/modules.sh
+        module load gnu-openmpi
+    elif grep -qP 'NAME="(Fedora|Red Hat Enterprise) Linux"' /etc/os-release; then
+        for f in /etc/profile.d/*module*.sh; do
+            . "${f}"
+        done
+        module load mpi
+    elif grep -q 'NAME="Ubuntu"' /etc/os-release; then
+        default_gcov="$(which "gcov")"
+        custom_gcov="$(which "${GCOV:-gcov}")"
+        if [ ! "${custom_gcov}" = "${default_gcov}" ] && [ -d "${HOME}/.local/var/lib/alternatives" ]; then
+            update-alternatives --altdir "${HOME}/.local/etc/alternatives" \
+                                --admindir "${HOME}/.local/var/lib/alternatives" \
+                                --install "${HOME}/.local/bin/gcov" "gcov" "${custom_gcov}" 10
+        fi
     fi
 fi
 
@@ -328,7 +324,7 @@ else
     if [ "${check_proc_particle_test}" -gt 4 ]; then
       check_proc_particle_test=4
     fi
-    mpiexec -n ${check_proc_particle_test} ./pypresso "${srcdir}/testsuite/python/particle.py" || exit 1
+    mpiexec -n ${check_proc_particle_test} $(mpiexec --version | grep -Pq "\\(Open(RTE| MPI)\\)" && echo "--oversubscribe --bind-to none") ./pypresso "${srcdir}/testsuite/python/particle.py" || exit 1
 
     end "TEST"
 fi

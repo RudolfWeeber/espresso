@@ -70,8 +70,10 @@ public:
                            std::bind_front(std::multiplies{}, 1. / volume));
   }
 
-  /** Contribution from linear and angular kinetic energy (accumulated). */
-  std::span<double> kinetic;
+  /** Contribution from linear kinetic energy. */
+  std::span<double> kinetic_lin;
+  /** Contribution from angular kinetic energy. */
+  std::span<double> kinetic_rot;
   /** Contribution(s) from bonded interactions. */
   std::span<double> bonded;
   /** Contribution(s) from Coulomb interactions. */

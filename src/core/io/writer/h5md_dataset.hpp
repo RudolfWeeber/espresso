@@ -1,5 +1,7 @@
 /*
- * Copyright (C) 2018-2022 The ESPResSo project
+ * Copyright (C) 2010-2025 The ESPResSo project
+ * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
+ *   Max-Planck-Institute for Polymer Research, Theory Group
  *
  * This file is part of ESPResSo.
  *
@@ -17,18 +19,27 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* Unit test for Utils Type Traits. */
+#pragma once
 
-#define BOOST_TEST_MODULE type traits tests
-#define BOOST_TEST_DYN_LINK
-#include <boost/test/unit_test.hpp>
+#include "hdf5_patches.hpp"
 
-#include <utils/type_traits.hpp>
+#include <hdf5.h>
 
-#include <climits>
+#include <string>
 
-BOOST_AUTO_TEST_CASE(size_in_bits) {
-  static_assert(CHAR_BIT == Utils::size_in_bits<char>::value);
-  static_assert(CHAR_BIT * sizeof(int) == Utils::size_in_bits<int>::value);
-  BOOST_TEST_PASSPOINT();
-}
+namespace Writer {
+namespace H5md {
+
+struct Dataset {
+  std::string path() const { return group + "/" + name; }
+
+  std::string group;
+  std::string name;
+  hsize_t rank;
+  hid_t type;
+  hsize_t data_dim;
+  bool is_link;
+};
+
+} // namespace H5md
+} // namespace Writer

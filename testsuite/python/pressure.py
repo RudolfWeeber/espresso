@@ -138,6 +138,10 @@ class PressureLJ(ut.TestCase):
 
         sim_pressure_tensor = system.analysis.pressure_tensor()
         sim_pressure_tensor_kinetic = np.copy(sim_pressure_tensor['kinetic'])
+        sim_pressure_tensor_kinetic_lin = np.copy(
+            sim_pressure_tensor['kinetic_lin'])
+        sim_pressure_tensor_kinetic_rot = np.copy(
+            sim_pressure_tensor['kinetic_rot'])
         sim_pressure_tensor_bonded = np.copy(sim_pressure_tensor['bonded'])
         sim_pressure_tensor_bonded_harmonic = np.copy(
             sim_pressure_tensor['bonded', len(system.bonded_inter) - 1])
@@ -155,6 +159,8 @@ class PressureLJ(ut.TestCase):
 
         sim_pressure = system.analysis.pressure()
         sim_pressure_kinetic = sim_pressure['kinetic']
+        sim_pressure_kinetic_lin = sim_pressure['kinetic_lin']
+        sim_pressure_kinetic_rot = sim_pressure['kinetic_rot']
         sim_pressure_bonded = sim_pressure['bonded']
         sim_pressure_bonded_harmonic = sim_pressure[
             'bonded', len(system.bonded_inter) - 1]
@@ -192,6 +198,12 @@ class PressureLJ(ut.TestCase):
             sim_pressure_tensor_kinetic, anal_pressure_tensor_kinetic, rtol=0, atol=tol,
             err_msg='kinetic pressure tensor does not match analytical result')
         np.testing.assert_allclose(
+            sim_pressure_tensor_kinetic_lin, anal_pressure_tensor_kinetic, rtol=0, atol=tol,
+            err_msg='kinetic pressure tensor does not match analytical result')
+        np.testing.assert_allclose(
+            sim_pressure_tensor_kinetic_rot, np.zeros((3, 3)), rtol=0, atol=tol,
+            err_msg='kinetic pressure tensor does not match analytical result')
+        np.testing.assert_allclose(
             sim_pressure_tensor_bonded, anal_pressure_tensor_bonded, rtol=0, atol=tol,
             err_msg='bonded pressure tensor does not match analytical result')
         np.testing.assert_allclose(
@@ -220,6 +232,12 @@ class PressureLJ(ut.TestCase):
             err_msg='total pressure tensor is not given as the sum of all major pressure components')
         self.assertAlmostEqual(
             sim_pressure_kinetic, anal_pressure_kinetic, delta=tol,
+            msg='kinetic pressure does not match analytical result')
+        self.assertAlmostEqual(
+            sim_pressure_kinetic_lin, anal_pressure_kinetic, delta=tol,
+            msg='kinetic pressure does not match analytical result')
+        self.assertAlmostEqual(
+            sim_pressure_kinetic_rot, 0., delta=tol,
             msg='kinetic pressure does not match analytical result')
         self.assertAlmostEqual(
             sim_pressure_bonded, anal_pressure_bonded, delta=tol,

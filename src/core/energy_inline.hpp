@@ -319,10 +319,3 @@ inline double rotational_kinetic_energy(Particle const &p) {
   return 0.0;
 #endif
 }
-
-/** Calculate kinetic energies for one particle.
- *  @param p   particle for which to calculate energies
- */
-inline double calc_kinetic_energy(Particle const &p) {
-  return translational_kinetic_energy(p) + rotational_kinetic_energy(p);
-}

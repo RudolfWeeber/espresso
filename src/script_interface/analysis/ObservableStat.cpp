@@ -71,8 +71,21 @@ static auto get_summary(::System::System const &system,
   };
 
   std::unordered_map<std::string, Variant> dict;
-  dict["kinetic"] = get_obs_contrib(obs.kinetic);
+  dict["kinetic_lin"] = get_obs_contrib(obs.kinetic_lin);
+  dict["kinetic_rot"] = get_obs_contrib(obs.kinetic_rot);
   dict["external_fields"] = get_obs_contrib(obs.external_fields);
+  if (is_type<double>(dict["kinetic_lin"])) {
+    dict["kinetic"] = get_value<double>(dict["kinetic_lin"]) +
+                      get_value<double>(dict["kinetic_rot"]);
+  } else {
+    auto const v1 = get_value<std::vector<double>>(dict["kinetic_lin"]);
+    auto const v2 = get_value<std::vector<double>>(dict["kinetic_rot"]);
+    std::vector<double> value{};
+    for (auto i = 0u; i < 9u; ++i) {
+      value.emplace_back(v1[i] + v2[i]);
+    }
+    dict["kinetic"] = value;
+  }
 
   {
     auto values = std::vector<double>(obs_dim);
