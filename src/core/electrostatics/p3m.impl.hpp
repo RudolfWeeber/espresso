@@ -27,23 +27,24 @@
 
 #include "electrostatics/p3m.hpp"
 
+#include "P3MFFT.hpp"
+#include "ParticleRange.hpp"
 #include "p3m/common.hpp"
 #include "p3m/data_struct.hpp"
 #include "p3m/interpolation.hpp"
 #include "p3m/send_mesh.hpp"
-#include "ParticleRange.hpp"
-#include "P3MFFT.hpp"
 
 #include <utils/Vector.hpp>
 #include <utils/index.hpp>
 
+#include <algorithm>
+#include <complex>
 #include <cstddef>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
-#include <complex>
 
 template <typename FloatType>
 struct CoulombP3MState : public P3MStateCommon<FloatType> {
@@ -63,7 +64,7 @@ struct CoulombP3MState : public P3MStateCommon<FloatType> {
   /* fields */
   std::vector<FloatType> rs_charge_density;
   std::vector<std::complex<FloatType>> ks_charge_density;
-  std::array<std::vector<FloatType>,3> rs_E_fields;
+  std::array<std::vector<FloatType>, 3> rs_E_fields;
   std::vector<std::complex<FloatType>> ks_E_fields_storage;
   std::vector<std::complex<FloatType>> rs_E_fields_no_halo;
   p3m_send_mesh<FloatType> halo_comm;
@@ -90,17 +91,19 @@ private:
   bool m_is_tuned;
 
   constexpr const Utils::Vector3i mem_layout() const {
-    auto constexpr memory_order = std::remove_reference<decltype(p3m)>::type::memory_order;
+    auto constexpr memory_order =
+        std::remove_reference<decltype(p3m)>::type::memory_order;
     if constexpr (memory_order == Utils::MemoryOrder::COLUMN_MAJOR) {
       return {2, 1, 0};
     }
     return {0, 1, 2};
   }
+
 public:
-  CoulombP3MImpl(
-      std::unique_ptr<CoulombP3MState<FloatType>> &&p3m_state,
-      double prefactor, int tune_timings, bool tune_verbose,
-      decltype(tune_limits) tune_limits, bool check_complex_residuals)
+  CoulombP3MImpl(std::unique_ptr<CoulombP3MState<FloatType>> &&p3m_state,
+                 double prefactor, int tune_timings, bool tune_verbose,
+                 decltype(tune_limits) tune_limits,
+                 bool check_complex_residuals)
       : CoulombP3M(p3m_state->params), p3m{*p3m_state},
         p3m_state_ptr{std::move(p3m_state)}, tune_timings{tune_timings},
         tune_limits{std::move(tune_limits)}, tune_verbose{tune_verbose},
@@ -181,12 +184,12 @@ public:
   void charge_assign(ParticleRange const &particles) override;
   void assign_charge(double q, Utils::Vector3d const &real_pos,
                      bool skip_cache) override;
-  void prepare_fft_mesh(bool reset_weights)  override {
+  void prepare_fft_mesh(bool reset_weights) override {
     if (reset_weights) {
       p3m.inter_weights.reset(p3m.params.cao);
     }
     p3m.rs_charge_density.resize(Utils::product(p3m.local_mesh.dim));
-    std::fill(p3m.rs_charge_density.begin(), p3m.rs_charge_density.end(), FloatType{});
+    std::ranges::fill(p3m.rs_charge_density, FloatType{});
   }
 
 protected:
@@ -206,8 +209,10 @@ protected:
 };
 
 template <typename FloatType, Arch Architecture, typename... Args>
-std::shared_ptr<CoulombP3M> new_coulomb_p3m(P3MParameters &&p3m_params, Args&&...args) {
-  auto state_ptr = std::make_unique<CoulombP3MState<FloatType>>(std::move(p3m_params));
+std::shared_ptr<CoulombP3M> new_coulomb_p3m(P3MParameters &&p3m_params,
+                                            Args &&...args) {
+  auto state_ptr =
+      std::make_unique<CoulombP3MState<FloatType>>(std::move(p3m_params));
   auto obj = std::make_shared<CoulombP3MImpl<FloatType, Architecture>>(
       std::move(state_ptr), std::forward<Args>(args)...);
   return obj;

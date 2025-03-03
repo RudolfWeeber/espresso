@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 The ESPResSo project
+ * Copyright (C) 2024-2025 The ESPResSo project
  *
  * ESPResSo is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,61 +24,65 @@
 #include <utils/Vector.hpp>
 #include <utils/index.hpp>
 
-BOOST_AUTO_TEST_CASE(add_remove_halo) {
+#include <complex>
+#include <cstddef>
+#include <span>
+#include <vector>
 
+BOOST_AUTO_TEST_CASE(add_remove_halo) {
   int n_x = 3;
   int n_y = 7;
   int n_z = 11;
-  Utils::Vector3i shape = {n_x, n_y, n_z};
   std::vector<std::complex<double>> without_halo_orig(n_x * n_y * n_z);
-  Utils::Vector3i halo_left ={1,2,3};
-  Utils::Vector3i halo_right = {3,1,2};
+  Utils::Vector3i const shape = {n_x, n_y, n_z};
+  Utils::Vector3i const halo_left = {1, 2, 3};
+  Utils::Vector3i const halo_right = {3, 1, 2};
 
   // Fill
-  for (int i = 0; i < n_x; i++) {
-    for (int j = 0; j < n_y; j++) {
-      for (int k = 0; k < n_z; k++) {
-        int ind = Utils::get_linear_index(i, j, k, shape,
-                                          Utils::MemoryOrder::ROW_MAJOR);
+  for (int i = 0; i < n_x; ++i) {
+    for (int j = 0; j < n_y; ++j) {
+      for (int k = 0; k < n_z; ++k) {
+        auto const ind = Utils::get_linear_index(i, j, k, shape,
+                                                 Utils::MemoryOrder::ROW_MAJOR);
         without_halo_orig[ind] = {static_cast<double>(ind), 0.};
       }
     }
   }
 
   // add halo
-  std::vector<double> with_halo =
-      pad_with_zeros_discard_imag(std::span{without_halo_orig.data(), without_halo_orig.size()}, shape, halo_left, halo_right);
-  Utils::Vector3i shape_with_halo =
-      shape + halo_left +halo_right;
+  auto const shape_with_halo = shape + halo_left + halo_right;
+  auto const with_halo = pad_with_zeros_discard_imag(
+      std::span{without_halo_orig.data(), without_halo_orig.size()}, shape,
+      halo_left, halo_right);
 
   BOOST_CHECK_EQUAL(with_halo.size(), shape_with_halo[0] * shape_with_halo[1] *
                                           shape_with_halo[2]);
 
   // verify inner region
-  for (int i = 0; i < n_x; i++) {
-    for (int j = 0; j < n_y; j++) {
-      for (int k = 0; k < n_z; k++) {
-        int ind_without_halo = Utils::get_linear_index(
+  for (int i = 0; i < n_x; ++i) {
+    for (int j = 0; j < n_y; ++j) {
+      for (int k = 0; k < n_z; ++k) {
+        auto const ind_without_halo = Utils::get_linear_index(
             i, j, k, shape, Utils::MemoryOrder::ROW_MAJOR);
-        int ind_with_halo = Utils::get_linear_index(
-            i + halo_left[0], j + halo_left[1], k + halo_left[2], shape_with_halo,
-            Utils::MemoryOrder::ROW_MAJOR);
+        auto const ind_with_halo = Utils::get_linear_index(
+            i + halo_left[0], j + halo_left[1], k + halo_left[2],
+            shape_with_halo, Utils::MemoryOrder::ROW_MAJOR);
         BOOST_CHECK_EQUAL(with_halo[ind_with_halo],
                           without_halo_orig[ind_without_halo]);
       }
     }
   }
 
-  // verify, added also are 0
-  for (int i = 0; i < shape_with_halo[0]; i++) {
-    for (int j = 0; j < shape_with_halo[1]; j++) {
-      for (int k = 0; k < shape_with_halo[2]; k++) {
+  // verify zero padding
+  for (int i = 0; i < shape_with_halo[0]; ++i) {
+    for (int j = 0; j < shape_with_halo[1]; ++j) {
+      for (int k = 0; k < shape_with_halo[2]; ++k) {
         if ((i < halo_left[0] or i >= shape_with_halo[1] - halo_right[0]) or
             (j < halo_left[1] or j >= shape_with_halo[1] - halo_right[1]) or
             (k < halo_left[2] or k >= shape_with_halo[2] - halo_right[2])) {
           // this is a halo cell, must be zero
-          int ind = Utils::get_linear_index(i, j, k, shape_with_halo,
-                                            Utils::MemoryOrder::ROW_MAJOR);
+          auto const ind = Utils::get_linear_index(
+              i, j, k, shape_with_halo, Utils::MemoryOrder::ROW_MAJOR);
           BOOST_CHECK_EQUAL(with_halo[ind], 0.);
         }
       }
@@ -86,9 +90,10 @@ BOOST_AUTO_TEST_CASE(add_remove_halo) {
   }
 
   // Remove halo again
-  std::vector<double> without_halo_new =
-      extract_block(with_halo, shape_with_halo, halo_left, shape_with_halo - halo_right, Utils::MemoryOrder::ROW_MAJOR);
-  for (int i = 0; i < without_halo_orig.size(); i++) {
+  auto without_halo_new = extract_block(with_halo, shape_with_halo, halo_left,
+                                        shape_with_halo - halo_right,
+                                        Utils::MemoryOrder::ROW_MAJOR);
+  for (auto i = std::size_t{0u}; i < without_halo_orig.size(); ++i) {
     BOOST_CHECK_EQUAL(without_halo_new[i], without_halo_orig[i]);
   }
   BOOST_CHECK_EQUAL(without_halo_new.size(), without_halo_orig.size());

@@ -34,7 +34,6 @@
 #include <utility>
 #include <vector>
 
-
 /** @brief State of the p3m methods, the part which applies to  both,
   electrostatic and dipolar p3m */
 
@@ -52,9 +51,9 @@ template <typename FloatType> struct P3MStateCommon {
   /**
    * @brief Spatial differential operator in k-space.
    * We use an i*k differentiation.
-   * !! RW: I think this is not the differentila operator but the mapping
+   * !! RW: I think this is not the differential operator but the mapping
    * between index in the GLOBAL mesh and the corresponding
-   * k-vector with a fiew pre-factors missing.
+   * k-vector with a few pre-factors missing.
    */
   std::array<std::vector<int>, 3> d_op;
 
@@ -76,11 +75,12 @@ template <typename FloatType> class FFTBackend;
 template <typename FloatType> class FFTBuffers;
 
 /**
- * @brief !! LEGACY Base class for the electrostatics and magnetostatics P3M algorithms.
- * Contains a handle to the FFT backend, information about the local mesh,
- * the differential operator, and various buffers.
+ * @brief LEGACY Base class for the electrostatics and magnetostatics P3M
+ * algorithms. Contains a handle to the FFT backend, information about the local
+ * mesh, the differential operator, and various buffers.
  */
-template <typename FloatType> struct p3m_data_struct : public P3MStateCommon<FloatType> {
+template <typename FloatType>
+struct p3m_data_struct : public P3MStateCommon<FloatType> {
   using value_type = FloatType;
   using P3MStateCommon<FloatType>::P3MStateCommon;
   using P3MStateCommon<FloatType>::local_mesh;

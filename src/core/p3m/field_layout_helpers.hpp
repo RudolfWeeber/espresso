@@ -1,37 +1,52 @@
-#include "utils/Vector.hpp"
-#include "utils/index.hpp"
-#include <stdexcept>
+/*
+ * Copyright (C) 2024-2025 The ESPResSo project
+ *
+ * This file is part of ESPResSo.
+ *
+ * ESPResSo is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * ESPResSo is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#pragma once
+
+#include <utils/Vector.hpp>
+#include <utils/index.hpp>
+
+#include <span>
 #include <vector>
-#include <complex>
 
 // Function to extract a 3D block from the halo field
 template <typename Container>
-auto extract_block(Container const &in_array,
-                   Utils::Vector3i const &dimensions,
-                   Utils::Vector3i const &start,
-                   Utils::Vector3i const &stop,
+auto extract_block(Container const &in_array, Utils::Vector3i const &dimensions,
+                   Utils::Vector3i const &start, Utils::Vector3i const &stop,
                    Utils::MemoryOrder memory_order) {
-  // Extract the dimensions
-
-  // Validate input
-
   // Calculate the size of the block excluding halo regions
   auto const block_dim = stop - start;
+  auto const size = Utils::product(block_dim);
 
   // Output vector to hold the block
-  std::vector<typename Container::value_type> out_array(Utils::product(block_dim));
+  std::vector<typename Container::value_type> out_array(size);
 
   // Extract the block
-      for (int x = 0; x < block_dim[0]; ++x) {
+  for (int x = 0; x < block_dim[0]; ++x) {
     for (int y = 0; y < block_dim[1]; ++y) {
-  for (int z = 0; z < block_dim[2]; ++z) {
+      for (int z = 0; z < block_dim[2]; ++z) {
         // Compute indices for input and output arrays
-        int in_index =
-            Utils::get_linear_index(x + start[0], y + start[1], z + start[2],
-                                    dimensions, memory_order);
+        auto const in_index = Utils::get_linear_index(
+            x + start[0], y + start[1], z + start[2], dimensions, memory_order);
 
-        int out_index = Utils::get_linear_index(x, y, z, block_dim,
-                                                memory_order);
+        auto const out_index =
+            Utils::get_linear_index(x, y, z, block_dim, memory_order);
 
         // Copy the value
         out_array[out_index] = in_array[in_index];
@@ -43,56 +58,42 @@ auto extract_block(Container const &in_array,
 }
 
 // Function to pad the 3D cropped field with zeros to restore the halo regions
-#include <vector>
-#include <algorithm>
-
 template <typename T>
 auto pad_with_zeros_discard_imag(std::span<T> cropped_array,
-                              Utils::Vector3i cropped_dim, Utils::Vector3i pad_left, Utils::Vector3i pad_right) {
+                                 Utils::Vector3i cropped_dim,
+                                 Utils::Vector3i pad_left,
+                                 Utils::Vector3i pad_right) {
 
   // Calculate dimensions and strides
   Utils::Vector3i padded_dim = cropped_dim + pad_left + pad_right;
-  int cropped_xy_stride = cropped_dim[1] * cropped_dim[2];
-  int padded_xy_stride = padded_dim[1] * padded_dim[2];
+  auto const cropped_xy_stride = cropped_dim[1] * cropped_dim[2];
+  auto const padded_xy_stride = padded_dim[1] * padded_dim[2];
 
   // Output vector to hold the padded field (initialized with zeros)
-  std::vector<typename T::value_type> padded_array(padded_dim[0] * padded_dim[1] * padded_dim[2]);
+  std::vector<typename T::value_type> padded_array(
+      padded_dim[0] * padded_dim[1] * padded_dim[2]);
 
   // Calculate the starting position in the padded array for the inner field
-  int padded_start_x = pad_left[0] * padded_xy_stride;
-  int padded_start_y = pad_left[1] * padded_dim[2] + pad_left[2];
+  auto const padded_start_x = pad_left[0] * padded_xy_stride;
+  auto const padded_start_y = pad_left[1] * padded_dim[2] + pad_left[2];
 
   // Fill in the original cropped field into the padded array by chunks
   for (int x = 0; x < cropped_dim[0]; ++x) {
-    int cropped_x_offset = x * cropped_xy_stride;
-    int padded_x_offset = padded_start_x + x * padded_xy_stride;
+    auto const cropped_x_offset = x * cropped_xy_stride;
+    auto const padded_x_offset = padded_start_x + x * padded_xy_stride;
 
     for (int y = 0; y < cropped_dim[1]; ++y) {
-      int cropped_y_offset = cropped_x_offset + y * cropped_dim[2];
-      int padded_y_offset = padded_x_offset + y * padded_dim[2] + padded_start_y;
+      auto const cropped_y_offset = cropped_x_offset + y * cropped_dim[2];
+      auto const padded_y_offset =
+          padded_x_offset + y * padded_dim[2] + padded_start_y;
 
       // Copy a contiguous slice of the z-dimension at once
-      for (int i=0;i<cropped_dim[2];i++) {
-        padded_array[padded_y_offset+i] = cropped_array[cropped_y_offset+i].real();
+      for (int i = 0; i < cropped_dim[2]; i++) {
+        padded_array[padded_y_offset + i] =
+            cropped_array[cropped_y_offset + i].real();
       }
-//      std::copy(cropped_array.begin() + cropped_y_offset,
-//                cropped_array.begin() + cropped_y_offset + cropped_dim[2],
-//                padded_array.begin() + padded_y_offset);
     }
   }
 
   return padded_array;
-}
-
-
-
-
-template <typename T>
-std::vector<T> discard_imaginary_part(std::vector<std::complex<T>>& v) {
-   std::vector<T> res;
-   res.reserve(v.size());
-   for (int i=0;i<v.size();i++) {
-    res.push_back(v[i].real());
-   }
-   return std::move(res);
 }

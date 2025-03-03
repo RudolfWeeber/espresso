@@ -216,13 +216,13 @@ python_test(FILE constraint_homogeneous_magnetic_field.py MAX_NUM_PROC 4)
 python_test(FILE cutoffs.py MAX_NUM_PROC 4)
 python_test(FILE cutoffs.py MAX_NUM_PROC 1 SUFFIX 1_core)
 python_test(FILE constraint_shape_based.py MAX_NUM_PROC 2)
-python_test(FILE coulomb_cloud_wall.py MAX_NUM_PROC 1 GPU_SLOTS 3) # TODO heffte
+python_test(FILE coulomb_cloud_wall.py MAX_NUM_PROC 4 GPU_SLOTS 3)
 python_test(FILE coulomb_tuning.py MAX_NUM_PROC 4 GPU_SLOTS 3 LABELS long)
 python_test(FILE accumulator_correlator.py MAX_NUM_PROC 4)
 python_test(FILE accumulator_mean_variance.py MAX_NUM_PROC 4)
 python_test(FILE accumulator_time_series.py MAX_NUM_PROC 1)
 python_test(FILE dawaanr-and-dds-gpu.py MAX_NUM_PROC 1 GPU_SLOTS 1)
-python_test(FILE electrostatic_interactions.py MAX_NUM_PROC 1) # TODO heffte
+python_test(FILE electrostatic_interactions.py MAX_NUM_PROC 2)
 python_test(FILE engine_langevin.py MAX_NUM_PROC 4)
 python_test(FILE engine_lb.py MAX_NUM_PROC 2 GPU_SLOTS 1)
 python_test(FILE engine_lb.py MAX_NUM_PROC 1 GPU_SLOTS 1 SUFFIX 1_core)
@@ -288,7 +288,7 @@ python_test(FILE dipolar_mdlc_p3m_scafacos_p2nfft.py MAX_NUM_PROC 1)
 python_test(FILE dipolar_direct_summation.py MAX_NUM_PROC 2 GPU_SLOTS 1)
 python_test(FILE dipolar_p3m.py MAX_NUM_PROC 2)
 python_test(FILE dipolar_interface.py MAX_NUM_PROC 2 GPU_SLOTS 1)
-python_test(FILE coulomb_interface.py MAX_NUM_PROC 1 GPU_SLOTS 1) # TODO heffte
+python_test(FILE coulomb_interface.py MAX_NUM_PROC 2 GPU_SLOTS 1)
 python_test(FILE lb.py MAX_NUM_PROC 2 GPU_SLOTS 1)
 python_test(FILE lb_stats.py MAX_NUM_PROC 2 GPU_SLOTS 2 LABELS long)
 python_test(FILE lb_stats.py MAX_NUM_PROC 1 GPU_SLOTS 2 LABELS long SUFFIX
@@ -302,7 +302,7 @@ python_test(FILE analyze_mass_related.py MAX_NUM_PROC 4)
 python_test(FILE rdf.py MAX_NUM_PROC 2)
 python_test(FILE sf_simple_lattice.py MAX_NUM_PROC 1)
 # python_test(FILE coulomb_mixed_periodicity.py MAX_NUM_PROC 4) # TODO heffte
-# python_test(FILE coulomb_cloud_wall_duplicated.py MAX_NUM_PROC 1 GPU_SLOTS 3) # TODO heffte
+# python_test(FILE coulomb_cloud_wall_duplicated.py MAX_NUM_PROC 4 GPU_SLOTS 3) # TODO heffte
 python_test(FILE collision_detection.py MAX_NUM_PROC 4)
 python_test(FILE collision_detection_interface.py MAX_NUM_PROC 2)
 python_test(FILE lj.py MAX_NUM_PROC 4)
@@ -381,7 +381,7 @@ python_test(FILE shapes.py MAX_NUM_PROC 1)
 python_test(FILE system.py MAX_NUM_PROC 2)
 python_test(FILE h5md.py MAX_NUM_PROC 2)
 python_test(FILE h5md.py MAX_NUM_PROC 1 SUFFIX 1_core)
-python_test(FILE p3m_fft.py MAX_NUM_PROC 1) # TODO heffte
+python_test(FILE p3m_fft.py MAX_NUM_PROC 6)
 #if(${ESPRESSO_TEST_NP} GREATER_EQUAL 8)
 #  python_test(FILE p3m_fft.py MAX_NUM_PROC 8 SUFFIX 8_cores)
 #endif()

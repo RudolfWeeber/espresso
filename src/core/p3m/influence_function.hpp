@@ -121,7 +121,9 @@ double G_opt(P3MParameters const &params, Utils::Vector3d const &k) {
       });
 
   // TODO: remove this branch (avoids dividing 0 by subnormal numbers squared)
-  if (numerator == 0. and k2 != 0. and denominator != 0.) { return 0.; }
+  if (numerator == 0. and k2 != 0. and denominator != 0.) {
+    return 0.;
+  }
   return numerator / (Utils::int_pow<S>(k2) * Utils::sqr(denominator));
 }
 
@@ -157,9 +159,9 @@ std::vector<FloatType> grid_influence_function(
 
   /* Skip influence function calculation in tuning mode,
      the results need not be correct for timing. */
-//  if (params.tuning) {
-//    return g;
-//  }
+  if (params.tuning) {
+    return g;
+  }
 
   auto const wavevector = (2. * std::numbers::pi) * inv_box_l;
   auto const half_mesh = params.mesh / 2;
