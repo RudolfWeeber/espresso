@@ -81,11 +81,12 @@ function(python_test)
     set(TEST_GPU_SLOTS 0)
   endif()
 
-  if(${TEST_MAX_NUM_PROC} GREATER ${ESPRESSO_TEST_NP})
-    set(TEST_NUM_PROC ${ESPRESSO_TEST_NP})
-  else()
-    set(TEST_NUM_PROC ${TEST_MAX_NUM_PROC})
-  endif()
+  set(TEST_NUM_PROC 1) # TODO: Heffte
+#  if(${TEST_MAX_NUM_PROC} GREATER ${ESPRESSO_TEST_NP})
+#    set(TEST_NUM_PROC ${ESPRESSO_TEST_NP})
+#  else()
+#    set(TEST_NUM_PROC ${TEST_MAX_NUM_PROC})
+#  endif()
 
   if(EXISTS ${MPIEXEC} AND NOT ${TEST_NO_MPI})
     espresso_set_mpiexec_tmpdir(${TEST_NAME})

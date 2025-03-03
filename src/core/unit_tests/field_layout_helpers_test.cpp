@@ -87,7 +87,7 @@ BOOST_AUTO_TEST_CASE(add_remove_halo) {
 
   // Remove halo again
   std::vector<double> without_halo_new =
-      extract_block(with_halo, shape_with_halo, halo_left, shape_with_halo - halo_right);
+      extract_block(with_halo, shape_with_halo, halo_left, shape_with_halo - halo_right, Utils::MemoryOrder::ROW_MAJOR);
   for (int i = 0; i < without_halo_orig.size(); i++) {
     BOOST_CHECK_EQUAL(without_halo_new[i], without_halo_orig[i]);
   }
