@@ -489,6 +489,23 @@ if(ESPRESSO_BUILD_WITH_FFTW)
     set(BUILD_SHARED_LIBS ${ESPRESSO_BUILD_SHARED_LIBS_DEFAULT})
   endif()
   install(TARGETS Heffte LIBRARY DESTINATION "${ESPRESSO_INSTALL_LIBDIR}")
+  if(ESPRESSO_BUILD_WITH_CLANG_TIDY)
+    set(HEFFTE_CXX_CLANG_TIDY "${ESPRESSO_CXX_CLANG_TIDY}")
+    set(SKIP_CLANG_TIDY_CHECKS "")
+    set(SKIP_CLANG_TIDY_CHECKS_CXX "")
+    # silence heFFTe diagnostics
+    list(APPEND SKIP_CLANG_TIDY_CHECKS "-bugprone-exception-escape")
+    list(APPEND SKIP_CLANG_TIDY_CHECKS "-bugprone-narrowing-conversions")
+    list(APPEND SKIP_CLANG_TIDY_CHECKS "-bugprone-branch-clone")
+    list(APPEND SKIP_CLANG_TIDY_CHECKS "-modernize-loop-convert")
+    list(APPEND SKIP_CLANG_TIDY_CHECKS "-modernize-use-override")
+    list(APPEND SKIP_CLANG_TIDY_CHECKS "-modernize-use-auto")
+    list(APPEND SKIP_CLANG_TIDY_CHECKS "-readability-else-after-return")
+    list(APPEND SKIP_CLANG_TIDY_CHECKS "-readability-avoid-const-params-in-decls")
+    espresso_override_clang_tidy_checks(
+      HEFFTE_CXX_CLANG_TIDY "${SKIP_CLANG_TIDY_CHECKS}"
+      "${SKIP_CLANG_TIDY_CHECKS_CXX}")
+  endif()
 endif()
 
 # We need the parallel hdf5 version!

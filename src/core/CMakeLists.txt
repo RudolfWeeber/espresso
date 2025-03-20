@@ -50,6 +50,10 @@ add_library(
 add_library(espresso::core ALIAS espresso_core)
 set_target_properties(espresso_core PROPERTIES CXX_CLANG_TIDY
                                                "${ESPRESSO_CXX_CLANG_TIDY}")
+if(ESPRESSO_BUILD_WITH_FFTW AND ESPRESSO_BUILD_WITH_CLANG_TIDY)
+  set_target_properties(espresso_core PROPERTIES CXX_CLANG_TIDY
+                                                 "${HEFFTE_CXX_CLANG_TIDY}")
+endif()
 
 if(ESPRESSO_BUILD_WITH_CUDA)
   target_sources(espresso_core PRIVATE cuda/init.cpp)

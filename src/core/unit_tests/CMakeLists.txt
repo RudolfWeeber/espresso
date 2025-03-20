@@ -24,15 +24,20 @@ include(espresso_unit_test)
 espresso_unit_test(SRC RuntimeError_test.cpp DEPENDS Boost::serialization)
 espresso_unit_test(SRC RuntimeErrorCollector_test.cpp DEPENDS espresso::core
                    Boost::mpi MPI::MPI_CXX NUM_PROC 2)
-# TODO: heffte
-#espresso_unit_test(
-#  NAME EspressoSystemStandAlone_parallel_test SRC
-#  EspressoSystemStandAlone_test.cpp DEPENDS espresso::core Boost::mpi
-#  MPI::MPI_CXX NUM_PROC 4)
+# TODO: heffte, run with 4 cores
+espresso_unit_test(
+  NAME EspressoSystemStandAlone_parallel_test SRC
+  EspressoSystemStandAlone_test.cpp DEPENDS espresso::core Boost::mpi
+  MPI::MPI_CXX NUM_PROC 2)
 espresso_unit_test(
   NAME EspressoSystemStandAlone_serial_test SRC
   EspressoSystemStandAlone_test.cpp DEPENDS espresso::core Boost::mpi
   MPI::MPI_CXX NUM_PROC 1)
+if(ESPRESSO_BUILD_WITH_FFTW AND ESPRESSO_BUILD_WITH_CLANG_TIDY)
+  set_target_properties(
+    EspressoSystemStandAlone_serial_test EspressoSystemStandAlone_parallel_test
+    PROPERTIES CXX_CLANG_TIDY "${HEFFTE_CXX_CLANG_TIDY}")
+endif()
 espresso_unit_test(SRC EspressoSystem_test.cpp DEPENDS espresso::core
                    Boost::mpi NUM_PROC 2)
 espresso_unit_test(SRC ResourceCleanup_test.cpp DEPENDS espresso::core

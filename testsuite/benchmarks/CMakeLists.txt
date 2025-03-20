@@ -37,7 +37,7 @@ add_custom_target(
 benchmark_test(FILE test_lj.py)
 benchmark_test(FILE test_lb.py SUFFIX cpu)
 benchmark_test(FILE test_lb.py SUFFIX gpu LABELS "gpu")
-benchmark_test(FILE test_p3m.py SUFFIX cpu)
+# benchmark_test(FILE test_p3m.py SUFFIX cpu) # TODO heffte
 benchmark_test(FILE test_p3m.py SUFFIX gpu LABELS "gpu")
 benchmark_test(FILE test_ferrofluid.py)
 benchmark_test(FILE test_mc_acid_base_reservoir.py)

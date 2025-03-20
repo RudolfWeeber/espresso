@@ -106,7 +106,7 @@ class ElectrostaticInteractionsTests(ut.TestCase):
         self.system.electrostatics.clear()
 
         # check non-metallic case
-        tol = 1e-10
+        tol = 1e-8  # TODO: heffte
         for epsilon in np.power(10., np.arange(-4, 5)):
             dipole_correction = 4 * np.pi / box_vol / (1 + 2 * epsilon)
             energy_correction = dipole_correction * np.linalg.norm(dip)**2

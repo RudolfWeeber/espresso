@@ -24,6 +24,10 @@ add_library(
 add_library(espresso::script_interface ALIAS espresso_script_interface)
 set_target_properties(espresso_script_interface
                       PROPERTIES CXX_CLANG_TIDY "${ESPRESSO_CXX_CLANG_TIDY}")
+if(ESPRESSO_BUILD_WITH_FFTW AND ESPRESSO_BUILD_WITH_CLANG_TIDY)
+  set_target_properties(espresso_script_interface PROPERTIES CXX_CLANG_TIDY
+                                                 "${HEFFTE_CXX_CLANG_TIDY}")
+endif()
 
 add_subdirectory(accumulators)
 add_subdirectory(analysis)

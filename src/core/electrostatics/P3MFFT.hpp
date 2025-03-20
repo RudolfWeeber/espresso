@@ -20,6 +20,7 @@
 #pragma once
 
 #include <utils/Vector.hpp>
+#include <utils/mpi/cart_comm.hpp>
 
 #include <boost/mpi/communicator.hpp>
 
@@ -27,10 +28,11 @@
 
 #include <algorithm>
 #include <array>
+#include <memory>
 
 template <typename T, std::size_t N>
 auto to_array(Utils::Vector<T, N> const &vec) {
-  std::array<T, N> res;
+  std::array<T, N> res{};
   std::copy(vec.begin(), vec.end(), res.begin());
   return res;
 };
@@ -45,6 +47,8 @@ private:
   std::shared_ptr<Box> in_box;
   std::shared_ptr<Box> out_box;
   heffte::fft3d<backend_tag> fft3d;
+  Utils::Vector3i m_comm_cart_dims;
+  Utils::Vector3i m_comm_cart_coords;
 
 public:
   P3MFFT(boost::mpi::communicator comm, Utils::Vector3i global_mesh_size,
@@ -60,6 +64,9 @@ public:
             to_array(rs_local_ur_index - Utils::Vector3i::broadcast(1)),
             to_array(memory_layout))),
         fft3d(*in_box, *out_box, comm) {
+    auto const comm_cart_info = Utils::Mpi::cart_get<3>(comm);
+    m_comm_cart_dims = comm_cart_info.dims;
+    m_comm_cart_coords = comm_cart_info.coords;
     init_fft();
   }
 
@@ -79,12 +86,11 @@ public:
       proc_grid[2] /= 2;
       proc_grid[1] *= 2;
     }
-    auto global_box = heffte::box3d<>(
+    auto const global_box = heffte::box3d<>(
         {0, 0, 0}, {global_mesh[0] - 1, global_mesh[1] - 1, global_mesh[2] - 1},
         to_array(mem_layout()));
     auto all_boxes = heffte::split_world(global_box, to_array(proc_grid));
-    auto new_box = all_boxes[comm.rank()];
-    out_box = std::make_shared<Box>(new_box);
+    out_box = std::make_shared<Box>(all_boxes[comm.rank()]);
     init_fft();
   }
 
@@ -130,5 +136,7 @@ public:
   auto backward_batch(int n, T1 in, T2 out) {
     return fft3d.backward(n, in, out);
   }
-  Utils::Vector3i mem_layout() const { return memory_layout; }
+  auto const &mem_layout() const { return memory_layout; }
+  auto const &comm_cart_dims() const { return m_comm_cart_dims; }
+  auto const &comm_cart_coords() const { return m_comm_cart_coords; }
 };

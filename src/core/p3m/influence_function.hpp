@@ -45,12 +45,17 @@
  * This implements Eq. 30 of @cite cerda08d, which can be used
  * for monopole and dipole P3M by choosing the appropriate S factor.
  * @f[
- * \tilde{G}_{\text{opt}} ( k ) = \frac{\sum_{m \in \mathbb{Z}^{3}} [ [ \tilde{ \left ( D \right ) } ( k ) \cdot i k_{m} ]^{S} ( \hat{U} ( k_{m} ) )^{2} \hat{\phi} ( k_{m} ) ]}{[ \tilde{ \left ( D \right ) } ( k ) ]^{2 S} [ \sum_{m \in \mathbb{Z}^{3}} ( \hat{U} ( k_{m} ) )^{2} ]^{2}}
+ * \tilde{G}_{\text{opt}} ( k ) = \frac{\sum_{m \in \mathbb{Z}^{3}} [ [ \tilde{
+ * \left ( D \right ) } ( k ) \cdot i k_{m} ]^{S} ( \hat{U} ( k_{m} ) )^{2}
+ * \hat{\phi} ( k_{m} ) ]}{[ \tilde{ \left ( D \right ) } ( k ) ]^{2 S} [
+ * \sum_{m \in \mathbb{Z}^{3}} ( \hat{U} ( k_{m} ) )^{2} ]^{2}}
  * @f]
  *
  * Eq 8.29 in Hockney:
  * @f[
- * G_{\text{opt}}(\mathbf{k}) = \frac{\hat{\mathbf{D}}\sum_n \hat{\mathbf{R}}^\ast \hat{U}^2}{|\hat{\mathbf{D}}|^2\sum_n \hat{U}^2\sum_{n'}^{'} \hat{U}^2}
+ * G_{\text{opt}}(\mathbf{k}) = \frac{\hat{\mathbf{D}}\sum_n
+ * \hat{\mathbf{R}}^\ast \hat{U}^2}{|\hat{\mathbf{D}}|^2\sum_n
+ * \hat{U}^2\sum_{n'}^{'} \hat{U}^2}
  * @f]
  *
  * The full equation is:
@@ -166,7 +171,6 @@ std::vector<FloatType> grid_influence_function(
   auto const wavevector = (2. * std::numbers::pi) * inv_box_l;
   auto const half_mesh = params.mesh / 2;
   auto indices = Utils::Vector3i{};
-  auto index = std::size_t(0u);
 
   for_each_3d(n_start, n_stop, indices, [&]() {
     if ((indices[KX] % half_mesh[0u] != 0) or
@@ -176,9 +180,10 @@ std::vector<FloatType> grid_influence_function(
           Utils::Vector3d{{shifts[0u][indices[0u]] * wavevector[0u],
                            shifts[1u][indices[1u]] * wavevector[1u],
                            shifts[2u][indices[2u]] * wavevector[2u]}};
+      auto const index = Utils::get_linear_index(indices - n_start, size,
+                                                 Utils::MemoryOrder::ROW_MAJOR);
       g[index] = FloatType(G_opt<S, m>(params, k));
     }
-    ++index;
   });
 
   return g;
