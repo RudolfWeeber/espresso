@@ -742,17 +742,6 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
               i, j, k, k_size, Utils::MemoryOrder::ROW_MAJOR);
           p3m.ks_charge_density[local_ind_col] = multiply_complex_by_real(
               p3m.ks_charge_density[local_ind_col], p3m.g_force[local_ind_row]);
-        }
-      }
-    }
-
-    for (int k = 0; k < k_size[2]; ++k) {
-      for (int j = 0; j < k_size[1]; ++j) {
-        for (int i = 0; i < k_size[0]; ++i) {
-          auto const global_index = Utils::Vector3i{
-              {i, j, k + k_size[2] * ::communicator.node_grid[0]}};
-          auto const local_ind_col = Utils::get_linear_index(
-              i, j, k, k_size, Utils::MemoryOrder::COLUMN_MAJOR);
           auto const phi_hat = p3m.ks_charge_density[local_ind_col];
           for (int d = 0; d < 3; d++) {
             // Wave vector of the current mesh point

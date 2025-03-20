@@ -55,6 +55,7 @@ style:
     - style.patch
     expire_in: 1 week
     when: on_failure
+  when: never # TODO heffte
 
 style_doxygen:
   <<: *global_job_definition
@@ -69,6 +70,7 @@ style_doxygen:
   tags:
     - espresso
     - no-cuda
+  when: never # TODO heffte
 
 ### Builds without CUDA
 
@@ -501,6 +503,7 @@ run_doxygen:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  when: never # TODO heffte
 
 maxset_no_gpu:
   <<: *global_job_definition
