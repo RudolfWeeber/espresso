@@ -48,6 +48,19 @@ class CoulombCloudWallTune(ut.TestCase):
         np.testing.assert_allclose(
             np.copy(self.system.part.all().f), self.ref_forces, atol=2e-3)
 
+    def test_p3m_with_printfs(self):
+        self.tearDown()
+        data = np.load(tests_common.data_path("coulomb_tuning_system.npz"))
+        N = 12  # len(data['charges']) // 2
+        data['charges'][N - 1] = - np.sum(data['charges'][:N])
+        self.ref_forces = data['forces'][:N]
+        self.system.part.add(pos=data['pos'][:N], q=data['charges'][:N])
+        actor = espressomd.electrostatics.P3M(
+            # prefactor=1., accuracy=5e-4, tune=True)
+            prefactor=1., accuracy=5e-2, mesh=[8, 10, 12], cao=6, r_cut=2.61, alpha=0.722379926519096,
+            tune=False)
+        self.compare(actor)
+
     def test_p3m_cpu(self):
         actor = espressomd.electrostatics.P3M(
             prefactor=1., accuracy=5e-4, tune=True)

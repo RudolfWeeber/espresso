@@ -570,6 +570,37 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
   auto const size = p3m.local_mesh.ur_no_halo - p3m.local_mesh.ld_no_halo;
   auto const k_size = Utils::Vector3i{{size[0] * comm_cart_dims[0], size[1], size[2] / comm_cart_dims[0]}};
 
+//  if (::this_node == 0) {
+//    std::cout << "node_grid=["<<::communicator.node_grid<<"]\n";
+//    std::cout << "size=["<<size<<"]\n";
+//    std::cout << "k_size=["<<k_size<<"]\n";
+//  }
+
+//{
+//  // overwrite with synthetic signal
+//  auto const box_size = p3m.local_mesh.ur_no_halo - p3m.local_mesh.ld_no_halo;
+//  auto const box_low = p3m.local_mesh.ld_no_halo;
+//  auto const box_high = p3m.local_mesh.ur_no_halo;
+//  for (int k = 0; k < p3m.params.mesh[2]; ++k)
+//  for (int j = 0; j < p3m.params.mesh[1]; ++j)
+//  for (int i = 0; i < p3m.params.mesh[0]; ++i) {
+//  if (i >= box_low[0] and i < box_high[0] and
+//      j >= box_low[1] and j < box_high[1] and
+//      k >= box_low[2] and k < box_high[2]) {
+//    int index_col_major = (i - box_low[0]) + box_size[0] * ((j - box_low[1]) + box_size[1] * (k - box_low[2]));
+//    int index_row_major = box_size[2] * (box_size[1] * (i - box_low[0]) + (j - box_low[1])) + (k - box_low[2]);
+//    charge_density_no_halos[index_row_major] =
+//        (0.5
+//         + 1 * std::cos(1 * 2. * 3.14159265 / p3m.params.mesh[0] * i)
+//         + 2 * std::cos(1 * 2. * 3.14159265 / p3m.params.mesh[1] * j)
+//         + 3 * std::cos(1 * 2. * 3.14159265 / p3m.params.mesh[2] * k)
+//         + 4 * std::cos(2 * 2. * 3.14159265 / p3m.params.mesh[0] * i)
+//         * 2 * std::cos(2 * 2. * 3.14159265 / p3m.params.mesh[2] * k)
+//        ) * 2. / Utils::product(::communicator.node_grid) / Utils::product(box_size);
+//  }
+//}
+//}
+
   // Set up the FFT using the Heffte library
   // This is in global mesh coordinates without any ghost layers
   // The memory layout has to be specified, so the parts of
@@ -578,6 +609,44 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
       charge_density_no_halos, size);
   p3m.fft->forward(charge_density_no_halos.data(),
                    p3m.ks_charge_density.data());
+
+//for (auto p = 0; p < ::comm_cart.size(); ++p) {
+//  if (p == ::comm_cart.rank()) {
+//  std::cout << "rank "<<p<<"\n";
+//  for (int k = 0; k < k_size[2]; ++k) {
+//  std::cout << "[\n";
+//  for (int j = 0; j < k_size[1]; ++j) {
+//  for (int i = 0; i < k_size[0]; ++i) {
+//    auto const ind = Utils::get_linear_index(i, j, k, k_size, Utils::MemoryOrder::COLUMN_MAJOR);
+//    std::cout << std::setw(9) << std::setprecision(3) << format(p3m.ks_charge_density[ind].real()) << " ";
+//  }
+//  std::cout << "\n" << std::flush;
+//  }
+//  std::cout << "]";
+//  }
+//  std::cout << "\n" << std::flush;
+//  }
+//  ::comm_cart.barrier();
+//  }
+//std::exit(0);
+
+//for (auto p = 0; p < ::comm_cart.size(); ++p) {
+//  if (p == ::comm_cart.rank()) {
+//  auto const &comm_cart_coords = p3m.fft->comm_cart_coords();
+//  for (int k = 0; k < k_size[2]; ++k) {
+//  for (int j = 0; j < k_size[1]; ++j) {
+//  for (int i = 0; i < k_size[0]; ++i) {
+//    auto const ind = Utils::get_linear_index(i, j, k, k_size, Utils::MemoryOrder::COLUMN_MAJOR);
+//    auto const global_index = Utils::Vector3i{{i,j + k_size[1] * comm_cart_coords[1],k + k_size[2] * comm_cart_coords[0]}};
+//    std::cout << global_index << " " << std::setw(9) << std::setprecision(3) << format(p3m.ks_charge_density[ind].real()) <<"\n";
+//  }
+//  }
+//  }
+//  std::cout << "\n" << std::flush;
+//  }
+//  ::comm_cart.barrier();
+//  }
+//std::exit(0);
 
   // Calculate the dipole term
   auto p_q_range = ParticlePropertyRange::charge_range(particles);
