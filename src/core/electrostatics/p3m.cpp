@@ -78,6 +78,7 @@
 #include <boost/range/combine.hpp>
 #include <boost/range/numeric.hpp>
 
+#include "boost/math/complex.hpp"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -94,6 +95,9 @@
 #include <tuple>
 #include <utility>
 #include <vector>
+
+#include "caliper/cali.h"
+#include "config/config.hpp"
 
 template <typename FloatType>
 std::complex<FloatType>
@@ -116,13 +120,18 @@ FloatType complex_norm2(std::complex<FloatType> const &z) {
 
 template <Utils::MemoryOrder order_in, Utils::MemoryOrder order_out, typename T>
 auto transpose(std::span<T> const &flat_array, Utils::Vector3i const &shape) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   auto constexpr mesh_start = Utils::Vector3i::broadcast(0);
+  std::size_t index_out;
   Utils::Vector3i indices{};
-  std::vector<T> flat_array_t(flat_array.size());
-  for_each_3d(mesh_start, shape, indices, [&]() {
-    auto const index_in = Utils::get_linear_index(indices, shape, order_in);
-    auto const index_out = Utils::get_linear_index(indices, shape, order_out);
-    flat_array_t[index_out] = flat_array[index_in];
+  std::vector<T> flat_array_t;
+  flat_array_t.reserve(flat_array.size());
+  for_each_3d<order_out>(mesh_start, shape, indices, index_out, [&]() {
+    auto const index_in = Utils::get_linear_index<order_in>(indices, shape);
+    assert(index_out == Utils::get_linear_index<order_out>(indices, shape));
+    flat_array_t.push_back(flat_array[index_in]);
   });
   return flat_array_t;
 }
@@ -379,6 +388,9 @@ template <int cao> struct AssignCharge {
 template <typename FloatType, Arch Architecture>
 void CoulombP3MImpl<FloatType, Architecture>::charge_assign(
     ParticleRange const &particles) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   prepare_fft_mesh(true);
 
   auto p_q_range = ParticlePropertyRange::charge_range(particles);
@@ -404,13 +416,16 @@ template <int cao> struct AssignForces {
   template <typename combined_ranges>
   void operator()(auto &p3m, double force_prefac,
                   combined_ranges const &p_q_force_range) const {
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
 
     assert(cao == p3m.inter_weights.cao());
 
     /* charged particle counter */
     auto p_index = std::size_t{0ul};
 
-    for (auto zipped : p_q_force_range) {
+    for (auto const &zipped : p_q_force_range) {
       auto p_q = boost::get<0>(zipped);
       auto &p_force = boost::get<1>(zipped);
       if (p_q != 0.0) {
@@ -446,15 +461,19 @@ static auto calc_dipole_moment(boost::mpi::communicator const &comm,
 
 template <typename FloatType, Arch Architecture>
 void CoulombP3MImpl<FloatType, Architecture>::kernel_ks_charge_density() {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   // halo communication of real space charge density
   p3m.halo_comm.gather_grid(comm_cart, p3m.rs_charge_density.data(),
                             p3m.local_mesh.dim);
 
   // get real space charge density without ghost layers
-  auto charge_density_no_halos = extract_block(
-      p3m.rs_charge_density, p3m.local_mesh.dim, p3m.local_mesh.n_halo_ld,
-      p3m.local_mesh.dim - p3m.local_mesh.n_halo_ur,
-      Utils::MemoryOrder::ROW_MAJOR, Utils::MemoryOrder::COLUMN_MAJOR);
+  auto charge_density_no_halos =
+      extract_block<Utils::MemoryOrder::ROW_MAJOR,
+                    Utils::MemoryOrder::COLUMN_MAJOR>(
+          p3m.rs_charge_density, p3m.local_mesh.dim, p3m.local_mesh.n_halo_ld,
+          p3m.local_mesh.dim - p3m.local_mesh.n_halo_ur);
 
   // Set up the FFT using the Heffte library.
   // This is in global mesh coordinates without any ghost layers
@@ -466,14 +485,17 @@ void CoulombP3MImpl<FloatType, Architecture>::kernel_ks_charge_density() {
 
 template <typename FloatType, Arch Architecture>
 void CoulombP3MImpl<FloatType, Architecture>::kernel_rs_electric_field() {
-  auto constexpr mesh_start = Utils::Vector3i::broadcast(0);
-  auto const &mesh_stop = p3m.fft->ks_local_size();
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
+  auto const mesh_start = p3m.fft->ks_local_ld_index();
+  auto const mesh_stop = mesh_start + p3m.fft->ks_local_size();
   auto const &box_geo = *get_system().box_geo;
-  auto indices = Utils::Vector3i{};
+  Utils::Vector3i indices{};
 
   // hold electric field in k-space
   std::array<std::span<std::complex<FloatType>>, 3> ks_E_fields;
-  auto const fft_mesh_length = get_size_from_shape(mesh_stop);
+  auto const fft_mesh_length = get_size_from_shape(mesh_stop - mesh_start);
   for (auto d : {0u, 1u, 2u}) {
     auto const offset = d * fft_mesh_length;
     auto const begin = p3m.ks_E_fields_storage.begin() + offset;
@@ -485,30 +507,35 @@ void CoulombP3MImpl<FloatType, Architecture>::kernel_rs_electric_field() {
       Utils::Vector3<FloatType>((2. * std::numbers::pi) * box_geo.length_inv());
 
   // compute electric field, Eq. (3.49) @cite deserno00b
-  for_each_3d(mesh_start, mesh_stop, indices, [&]() {
-    auto const global_index = indices + p3m.fft->ks_local_ld_index();
-    auto const local_index = Utils::get_linear_index(
-        indices, mesh_stop, Utils::MemoryOrder::COLUMN_MAJOR);
-    auto const phi_hat = multiply_complex_by_real(
-        p3m.ks_charge_density[local_index], p3m.g_force[local_index]);
+  std::size_t local_index = 0;
+  for_each_3d<Utils::MemoryOrder::COLUMN_MAJOR>(
+      mesh_start, mesh_stop, indices, local_index, [&]() {
+        //        auto const global_index = indices +
+        //        p3m.fft->ks_local_ld_index();
+        assert(local_index ==
+               Utils::get_linear_index<Utils::MemoryOrder::COLUMN_MAJOR>(
+                   indices - mesh_start, mesh_stop));
+        auto const phi_hat = multiply_complex_by_real(
+            p3m.ks_charge_density[local_index], p3m.g_force[local_index]);
 
-    for (auto d : {0u, 1u, 2u}) {
-      // wave vector of the current mesh point
-      auto const k = FloatType(p3m.d_op[d][global_index[d]]) * wavevector[d];
-      // electric field in k-space
-      ks_E_fields[d][local_index] = multiply_complex_by_imaginary(phi_hat, k);
-    }
-  });
+        for (auto d : {0u, 1u, 2u}) {
+          // wave vector of the current mesh point
+          auto const k = FloatType(p3m.d_op[d][indices[d]]) * wavevector[d];
+          // electric field in k-space
+          ks_E_fields[d][local_index] =
+              multiply_complex_by_imaginary(phi_hat, k);
+        }
+      });
 
   // back-transform the k-space electric field to real space
-  auto const rs_mesh_size_no_halo =
-      get_size_from_shape(p3m.local_mesh.dim_no_halo);
-  p3m.fft->backward_batch(3, p3m.ks_E_fields_storage.data(),
-                          p3m.rs_E_fields_no_halo.data());
-
-  // add zeros around the E-field in real space to make room for ghost layers
   auto const size = p3m.local_mesh.ur_no_halo - p3m.local_mesh.ld_no_halo;
+  auto const rs_mesh_size_no_halo = size[0] * size[1] * size[2];
   for (auto d : {0u, 1u, 2u}) {
+    auto k_space = ks_E_fields[d].data();
+    auto real_space = p3m.rs_E_fields_no_halo.data() + d * rs_mesh_size_no_halo;
+    p3m.fft->backward(k_space, real_space);
+
+    // add zeros around the E-field in real space to make room for ghost layers
     auto const offset = d * rs_mesh_size_no_halo;
     auto const begin = p3m.rs_E_fields_no_halo.begin() + offset;
     auto f = std::span<std::complex<FloatType>>(begin, rs_mesh_size_no_halo);
@@ -587,6 +614,9 @@ Utils::Vector9d CoulombP3MImpl<FloatType, Architecture>::long_range_pressure(
 template <typename FloatType, Arch Architecture>
 double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
     bool force_flag, bool energy_flag, ParticleRange const &particles) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
 
   auto const &system = get_system();
   auto const &box_geo = *system.box_geo;

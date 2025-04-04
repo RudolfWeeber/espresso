@@ -69,3 +69,34 @@ void for_each_3d(detail::IndexVectorConcept auto &&start,
     }
   }
 }
+
+template <Utils::MemoryOrder memory_order, class Kernel>
+  requires std::invocable<Kernel>
+void for_each_3d(detail::IndexVectorConcept auto &&start,
+                 detail::IndexVectorConcept auto &&stop,
+                 detail::IndexVectorConcept auto &&counters,
+                 std::size_t &linear_loop_index, Kernel &&kernel) {
+  auto &nx = counters[0u];
+  auto &ny = counters[1u];
+  auto &nz = counters[2u];
+  linear_loop_index = 0;
+  if (memory_order == Utils::MemoryOrder::ROW_MAJOR) {
+    for (nx = start[0u]; nx < stop[0u]; ++nx) {
+      for (ny = start[1u]; ny < stop[1u]; ++ny) {
+        for (nz = start[2u]; nz < stop[2u]; ++nz) {
+          kernel();
+          linear_loop_index++;
+        }
+      }
+    }
+  } else {
+    for (nz = start[2u]; nz < stop[2u]; ++nz) {
+      for (ny = start[1u]; ny < stop[1u]; ++ny) {
+        for (nx = start[0u]; nx < stop[0u]; ++nx) {
+          kernel();
+          linear_loop_index++;
+        }
+      }
+    }
+  }
+}

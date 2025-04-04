@@ -26,34 +26,32 @@
 #include <vector>
 
 // Function to extract a 3D block from the halo field
-template <typename Container>
+template <Utils::MemoryOrder memory_order,
+          Utils::MemoryOrder output_memory_order, typename Container>
 auto extract_block(Container const &in_array, Utils::Vector3i const &dimensions,
-                   Utils::Vector3i const &start, Utils::Vector3i const &stop,
-                   Utils::MemoryOrder memory_order,
-                   Utils::MemoryOrder output_memory_order) {
+                   Utils::Vector3i const &start, Utils::Vector3i const &stop) {
   // Calculate the size of the block excluding halo regions
   auto const block_dim = stop - start;
   auto const size = Utils::product(block_dim);
 
   // Output vector to hold the block
-  std::vector<typename Container::value_type> out_array(size);
+  std::vector<typename Container::value_type> out_array;
+  out_array.reserve(size);
 
   // Extract the block
-  for (int x = 0; x < block_dim[0]; ++x) {
-    for (int y = 0; y < block_dim[1]; ++y) {
-      for (int z = 0; z < block_dim[2]; ++z) {
-        // Compute indices for input and output arrays
-        auto const in_index = Utils::get_linear_index(
-            x + start[0], y + start[1], z + start[2], dimensions, memory_order);
+  std::size_t out_index = 0;
+  Utils::Vector3i indices;
+  for_each_3d<output_memory_order>(start, stop, indices, out_index, [&]() {
+    // Compute indices for input and output arrays
+    auto const in_index =
+        Utils::get_linear_index<memory_order>(indices, dimensions);
 
-        auto const out_index =
-            Utils::get_linear_index(x, y, z, block_dim, output_memory_order);
+    assert(out_index ==
+           Utils::get_linear_index<output_memory_order>(indices, block_dim));
 
-        // Copy the value
-        out_array[out_index] = in_array[in_index];
-      }
-    }
-  }
+    // Copy the value
+    out_array.push_back(in_array[in_index]);
+  });
 
   return out_array;
 }

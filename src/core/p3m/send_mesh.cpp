@@ -42,10 +42,15 @@
 #include <span>
 #include <utility>
 
+#include "caliper/cali.h"
+#include "config/config.hpp"
 template <typename T>
 static void mesh_sendrecv(T const *const sendbuf, int scount, int dest,
                           T *const recvbuf, int rcount, int source,
                           boost::mpi::communicator const &comm, int tag) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   auto const type = boost::mpi::get_mpi_datatype<T>(*sendbuf);
   MPI_Sendrecv(reinterpret_cast<void const *>(sendbuf), scount, type, dest, tag,
                reinterpret_cast<void *>(recvbuf), rcount, type, source, tag,
@@ -90,6 +95,9 @@ static void p3m_add_block(FloatType const *in, FloatType *out,
 template <typename FloatType>
 void p3m_send_mesh<FloatType>::resize(boost::mpi::communicator const &comm,
                                       P3MLocalMesh const &local_mesh) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   int done[3] = {0, 0, 0};
   /* send grids */
   for (int i = 0; i < 3; i++) {
@@ -165,6 +173,9 @@ template <typename FloatType>
 void p3m_send_mesh<FloatType>::gather_grid(boost::mpi::communicator const &comm,
                                            std::span<FloatType *> meshes,
                                            Utils::Vector3i const &dim) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   auto const node_neighbors = Utils::Mpi::cart_neighbors<3>(comm);
   send_grid.resize(max * meshes.size());
   recv_grid.resize(max * meshes.size());
@@ -205,6 +216,9 @@ template <typename FloatType>
 void p3m_send_mesh<FloatType>::spread_grid(boost::mpi::communicator const &comm,
                                            std::span<FloatType *> meshes,
                                            Utils::Vector3i const &dim) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   auto const node_neighbors = Utils::Mpi::cart_neighbors<3>(comm);
   send_grid.resize(max * meshes.size());
   recv_grid.resize(max * meshes.size());
