@@ -54,9 +54,7 @@ namespace pystencils {
 
 class StreamSweepDoublePrecisionAVX {
 public:
-  StreamSweepDoublePrecisionAVX(BlockDataID forceID_, BlockDataID pdfsID_,
-                                BlockDataID velocityID_)
-      : forceID(forceID_), pdfsID(pdfsID_), velocityID(velocityID_) {}
+  StreamSweepDoublePrecisionAVX(BlockDataID pdfsID_) : pdfsID(pdfsID_) {}
 
   ~StreamSweepDoublePrecisionAVX() {
     for (auto p : cache_pdfs_) {
@@ -103,9 +101,7 @@ public:
                  IBlock * /*block*/) {}
 
 private:
-  BlockDataID forceID;
   BlockDataID pdfsID;
-  BlockDataID velocityID;
   std::unordered_map<IBlock *, field::GhostLayerField<double, 19> *>
       cache_pdfs_;
 };

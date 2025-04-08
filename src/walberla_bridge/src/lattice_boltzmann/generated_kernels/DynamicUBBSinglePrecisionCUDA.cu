@@ -119,12 +119,12 @@ static FUNC_PREFIX __launch_bounds__(256) void dynamicubbsingleprecisioncuda_bou
     float *RESTRICT _data_pdfs_10_20_36 = _data_pdfs + _stride_pdfs_1 * y + _stride_pdfs_2 * z + 6 * _stride_pdfs_3;
     float *RESTRICT _data_pdfs_10_20_39 = _data_pdfs + _stride_pdfs_1 * y + _stride_pdfs_2 * z + 9 * _stride_pdfs_3;
     const float rho = vel0Term + vel1Term + vel2Term + _data_pdfs_10_20_30[_stride_pdfs_0 * x] + _data_pdfs_10_20_316[_stride_pdfs_0 * x] + _data_pdfs_10_20_317[_stride_pdfs_0 * x] + _data_pdfs_10_20_32[_stride_pdfs_0 * x] + _data_pdfs_10_20_33[_stride_pdfs_0 * x] + _data_pdfs_10_20_36[_stride_pdfs_0 * x] + _data_pdfs_10_20_39[_stride_pdfs_0 * x];
-    float *RESTRICT _data_pdfs7585f10e62de9631 = _data_pdfs + _stride_pdfs_1 * y + _stride_pdfs_1 * f_in_inv_offsets_y[dir] + _stride_pdfs_2 * z + _stride_pdfs_2 * f_in_inv_offsets_z[dir] + _stride_pdfs_3 * f_in_inv_dir_idx[dir];
+    float *RESTRICT _data_pdfse696678ca2938da6 = _data_pdfs + _stride_pdfs_1 * y + _stride_pdfs_1 * f_in_inv_offsets_y[dir] + _stride_pdfs_2 * z + _stride_pdfs_2 * f_in_inv_offsets_z[dir] + _stride_pdfs_3 * f_in_inv_dir_idx[dir];
     uint8_t *RESTRICT _data_indexVector_116 = _data_indexVector + 16;
     uint8_t *RESTRICT _data_indexVector_120 = _data_indexVector + 20;
     uint8_t *RESTRICT _data_indexVector_124 = _data_indexVector + 24;
-    float *RESTRICT _data_pdfs_10_206c90125f2ec824c7 = _data_pdfs + _stride_pdfs_1 * y + _stride_pdfs_2 * z + _stride_pdfs_3 * dir;
-    _data_pdfs7585f10e62de9631[_stride_pdfs_0 * x + _stride_pdfs_0 * f_in_inv_offsets_x[dir]] = -rho * (6.0f * ((float)(neighbour_offset_x[dir])) * *((float *)(&_data_indexVector_116[28 * blockDim.x * blockIdx.x + 28 * threadIdx.x])) + 6.0f * ((float)(neighbour_offset_y[dir])) * *((float *)(&_data_indexVector_120[28 * blockDim.x * blockIdx.x + 28 * threadIdx.x])) + 6.0f * ((float)(neighbour_offset_z[dir])) * *((float *)(&_data_indexVector_124[28 * blockDim.x * blockIdx.x + 28 * threadIdx.x]))) * weights[dir] + _data_pdfs_10_206c90125f2ec824c7[_stride_pdfs_0 * x];
+    float *RESTRICT _data_pdfs_10_2089109f27adad4a8a = _data_pdfs + _stride_pdfs_1 * y + _stride_pdfs_2 * z + _stride_pdfs_3 * dir;
+    _data_pdfse696678ca2938da6[_stride_pdfs_0 * x + _stride_pdfs_0 * f_in_inv_offsets_x[dir]] = -rho * (6.0f * ((float)(neighbour_offset_x[dir])) * *((float *)(&_data_indexVector_116[28 * blockDim.x * blockIdx.x + 28 * threadIdx.x])) + 6.0f * ((float)(neighbour_offset_y[dir])) * *((float *)(&_data_indexVector_120[28 * blockDim.x * blockIdx.x + 28 * threadIdx.x])) + 6.0f * ((float)(neighbour_offset_z[dir])) * *((float *)(&_data_indexVector_124[28 * blockDim.x * blockIdx.x + 28 * threadIdx.x]))) * weights[dir] + _data_pdfs_10_2089109f27adad4a8a[_stride_pdfs_0 * x];
   }
 }
 } // namespace internal_dynamicubbsingleprecisioncuda_boundary_DynamicUBBSinglePrecisionCUDA

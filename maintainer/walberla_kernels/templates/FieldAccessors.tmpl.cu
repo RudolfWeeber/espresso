@@ -956,7 +956,11 @@ namespace PressureTensor
         p_out += offset;
         if (pdf.isValidPosition()) {
             {% for i in range(Q) -%}
-                {{dtype}} const f_{{i}} = pdf.get({{i}}u);
+                {{dtype}} const f_{{i}} = pdf.getNeighbor(
+                {%- for j in range(D) -%}
+                    {{inv_neighbor_dir[i][j]}},
+                {%- endfor -%}
+                {{i}}u);
             {% endfor -%}
             {{second_momentum_getter | indent(12) }}
             {% for i in range(D**2) -%}

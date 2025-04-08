@@ -172,6 +172,9 @@ def generate_macroscopic_values_accessors(ctx, config, lb_method, templates):
     vel_symbols = cqc.velocity_symbols
     rho_sym = sp.Symbol("rho")
     pdfs_sym = sp.symbols(f"f_:{lb_method.stencil.Q}")
+    inv_neighbor_dir_offset = [
+        [f"{-c}" for i, c in enumerate(dir)] for dir in lb_method.stencil]
+
     vel_arr_symbols = [
         IndexedBase(TypedSymbol("u", dtype=default_dtype), shape=(1,))[i]
         for i in range(len(vel_symbols))]
@@ -206,6 +209,7 @@ def generate_macroscopic_values_accessors(ctx, config, lb_method, templates):
         "stencil_name": stencil_name,
         "D": lb_method.stencil.D,
         "Q": lb_method.stencil.Q,
+        "inv_neighbor_dir": inv_neighbor_dir_offset,
         "compressible": cqc.compressible,
         "zero_centered": cqc.zero_centered_pdfs,
         "dtype": default_dtype,

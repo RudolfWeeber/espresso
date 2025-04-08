@@ -93,11 +93,12 @@ protected:
   using CollisionModelLeesEdwards =
       typename detail::KernelTrait<FloatType,
                                    Architecture>::CollisionModelLeesEdwards;
-  using CollisionModelThermalized =
-      typename detail::KernelTrait<FloatType,
-                                   Architecture>::CollisionModelThermalized;
+  using StreamCollisionModelThermalized =
+      typename detail::KernelTrait<FloatType, Architecture>::StreamCollisionModelThermalized;
   using StreamSweep =
       typename detail::KernelTrait<FloatType, Architecture>::StreamSweep;
+  using UpdateVelFromPDF =
+      typename detail::KernelTrait<FloatType, Architecture>::UpdateVelFromPDF;
   using InitialPDFsSetter =
       typename detail::KernelTrait<FloatType, Architecture>::InitialPDFsSetter;
   using BoundaryModel =
@@ -105,7 +106,7 @@ protected:
                        typename detail::BoundaryHandlingTrait<
                            FloatType, Architecture>::DynamicUBB>;
   using CollisionModel =
-      std::variant<CollisionModelThermalized, CollisionModelLeesEdwards>;
+      std::variant<StreamCollisionModelThermalized, CollisionModelLeesEdwards>;
 
 public:
   /** @brief Stencil for collision and streaming operations. */
@@ -206,11 +207,11 @@ public:
   }
 
 private:
-  class CollideSweepVisitor {
+  class StreamCollideSweepVisitor {
   public:
     using StructuredBlockStorage = LatticeWalberla::Lattice_T;
 
-    void operator()(CollisionModelThermalized &cm, IBlock *b) {
+    void operator()(StreamCollisionModelThermalized &cm, IBlock *b) {
       cm.configure(m_storage, b);
       cm(b);
     }
@@ -221,11 +222,10 @@ private:
       cm(b);
     }
 
-    CollideSweepVisitor() = default;
-    CollideSweepVisitor(std::shared_ptr<StructuredBlockStorage> storage) {
+    StreamCollideSweepVisitor() = default;    StreamCollideSweepVisitor(std::shared_ptr<StructuredBlockStorage> storage) {
       m_storage = std::move(storage);
     }
-    CollideSweepVisitor(std::shared_ptr<StructuredBlockStorage> storage,
+    StreamCollideSweepVisitor(std::shared_ptr<StructuredBlockStorage> storage,
                         std::shared_ptr<LeesEdwardsPack> callbacks) {
       m_storage = std::move(storage);
       m_lees_edwards_callbacks = std::move(callbacks);
@@ -235,7 +235,7 @@ private:
     std::shared_ptr<StructuredBlockStorage> m_storage{};
     std::shared_ptr<LeesEdwardsPack> m_lees_edwards_callbacks{};
   };
-  CollideSweepVisitor m_run_collide_sweep{};
+  StreamCollideSweepVisitor m_run_stream_collide_sweep{};
 
   FloatType shear_mode_relaxation_rate() const {
     return FloatType{2} / (FloatType{6} * m_viscosity + FloatType{1});
@@ -367,6 +367,9 @@ protected:
 
   // Collision sweep
   std::shared_ptr<CollisionModel> m_collision_model;
+
+  // Velocity update sweep
+  std::shared_ptr<UpdateVelFromPDF> m_update_velocities_from_pdf;
 
   // boundaries
   std::shared_ptr<BoundaryModel> m_boundary;
@@ -575,12 +578,18 @@ public:
     m_reset_force = std::make_shared<ResetForce<PdfField, VectorField>>(
         m_last_applied_force_field_id, m_force_to_be_applied_id);
 
+    // Instantiate velocity update sweep
+    m_update_velocities_from_pdf = std::make_shared<UpdateVelFromPDF>(
+        m_last_applied_force_field_id, m_pdf_field_id, m_velocity_field_id);
+
     // Prepare LB sweeps
     // Note: For now, combined collide-stream sweeps cannot be used,
     // because the collide-push variant is not supported by lbmpy.
     // The following functors are individual in-place collide and stream steps
     m_stream = std::make_shared<StreamSweep>(
-        m_last_applied_force_field_id, m_pdf_field_id, m_velocity_field_id);
+        //        m_last_applied_force_field_id, m_pdf_field_id,
+        //        m_velocity_field_id);
+        m_pdf_field_id);
   }
 
 private:
@@ -589,13 +598,16 @@ private:
       (*m_stream)(&block);
   }
 
-  void integrate_collide(std::shared_ptr<BlockStorage> const &blocks) {
+  void integrate_stream_collide(std::shared_ptr<BlockStorage> const &blocks) {
+    if(has_lees_edwards_bc()){
+      integrate_stream(blocks);
+    }
     auto &cm_variant = *m_collision_model;
     for (auto &block : *blocks) {
       auto const block_variant = std::variant<IBlock *>(&block);
-      std::visit(m_run_collide_sweep, cm_variant, block_variant);
+      std::visit(m_run_stream_collide_sweep, cm_variant, block_variant);
     }
-    if (auto *cm = std::get_if<CollisionModelThermalized>(&cm_variant)) {
+    if (auto *cm = std::get_if<StreamCollisionModelThermalized>(&cm_variant)) {
       cm->setTime_step(cm->getTime_step() + 1u);
     }
   }
@@ -633,37 +645,16 @@ private:
       (*m_boundary)(&block);
   }
 
-  void integrate_push_scheme() {
-    auto const &blocks = get_lattice().get_blocks();
-    // Reset force fields
-    integrate_reset_force(blocks);
-    // LB collide
-    integrate_collide(blocks);
-    m_pdf_streaming_communicator->communicate();
-    // Handle boundaries
-    if (m_has_boundaries) {
-      integrate_boundaries(blocks);
-    }
-    // LB stream
-    integrate_stream(blocks);
-    // Mark pending ghost layer updates
-    m_pending_ghost_comm.set(GhostComm::PDF);
-    m_pending_ghost_comm.set(GhostComm::VEL);
-    m_pending_ghost_comm.set(GhostComm::LAF);
-    // Refresh ghost layers
-    ghost_communication_push_scheme();
+  void integrate_update_velocities_from_pdf(
+      std::shared_ptr<BlockStorage> const &blocks) {
+    for (auto b = blocks->begin(); b != blocks->end(); ++b)
+      (*m_update_velocities_from_pdf)(&*b);
   }
 
   void integrate_pull_scheme() {
     auto const &blocks = get_lattice().get_blocks();
-    // Handle boundaries
-    if (m_has_boundaries) {
-      integrate_boundaries(blocks);
-    }
-    // LB stream
-    integrate_stream(blocks);
-    // LB collide
-    integrate_collide(blocks);
+    // LB stream collide
+    integrate_stream_collide(blocks);
     // Reset force fields
     integrate_reset_force(blocks);
     // Mark pending ghost layer updates
@@ -671,7 +662,15 @@ private:
     m_pending_ghost_comm.set(GhostComm::VEL);
     m_pending_ghost_comm.set(GhostComm::LAF);
     // Refresh ghost layers
-    ghost_communication_full();
+    ghost_communication_pdf();
+    ghost_communication_laf();
+    // Handle boundaries
+    if (m_has_boundaries) {
+      integrate_boundaries(blocks);
+    }
+    // Update velocities from pdfs
+    integrate_update_velocities_from_pdf(blocks);
+    ghost_communication_vel();
   }
 
 protected:
@@ -687,11 +686,7 @@ protected:
 
 public:
   void integrate() override {
-    if (has_lees_edwards_bc()) {
-      integrate_pull_scheme();
-    } else {
-      integrate_push_scheme();
-    }
+    integrate_pull_scheme();
     // Handle VTK writers
     integrate_vtk_writers();
   }
@@ -746,27 +741,18 @@ public:
   void ghost_communication_full() {
     m_full_communicator->communicate();
     if (has_lees_edwards_bc()) {
-      auto const &blocks = get_lattice().get_blocks();
-      apply_lees_edwards_pdf_interpolation(blocks);
-      apply_lees_edwards_vel_interpolation_and_shift(blocks);
-      apply_lees_edwards_last_applied_force_interpolation(blocks);
+      apply_lees_edwards_interploation();
     }
     m_pending_ghost_comm.reset(GhostComm::PDF);
     m_pending_ghost_comm.reset(GhostComm::VEL);
     m_pending_ghost_comm.reset(GhostComm::LAF);
   }
 
-  void ghost_communication_push_scheme() {
-    if (has_lees_edwards_bc()) {
-      m_full_communicator->communicate();
-      auto const &blocks = get_lattice().get_blocks();
-      apply_lees_edwards_pdf_interpolation(blocks);
-      apply_lees_edwards_vel_interpolation_and_shift(blocks);
-      apply_lees_edwards_last_applied_force_interpolation(blocks);
-      m_pending_ghost_comm.reset(GhostComm::PDF);
-      m_pending_ghost_comm.reset(GhostComm::VEL);
-      m_pending_ghost_comm.reset(GhostComm::LAF);
-    }
+  void apply_lees_edwards_interploation() {
+    auto const &blocks = get_lattice().get_blocks();
+    apply_lees_edwards_pdf_interpolation(blocks);
+    apply_lees_edwards_vel_interpolation_and_shift(blocks);
+    apply_lees_edwards_last_applied_force_interpolation(blocks);
   }
 
   void set_collision_model(double kT, unsigned int seed) override {
@@ -775,11 +761,11 @@ public:
     auto const blocks = get_lattice().get_blocks();
     m_kT = FloatType_c(kT);
     m_seed = seed;
-    auto obj = CollisionModelThermalized(m_last_applied_force_field_id,
+    auto obj = StreamCollisionModelThermalized(m_last_applied_force_field_id,
                                          m_pdf_field_id, m_kT, omega, omega,
                                          omega_odd, omega, seed, uint32_t{0u});
     m_collision_model = std::make_shared<CollisionModel>(std::move(obj));
-    m_run_collide_sweep = CollideSweepVisitor(blocks);
+    m_run_stream_collide_sweep = StreamCollideSweepVisitor(blocks);
     setup_streaming_communicator();
   }
 
@@ -815,7 +801,7 @@ public:
         m_last_applied_force_field_id, m_pdf_field_id, agrid, omega, shear_vel);
     m_collision_model = std::make_shared<CollisionModel>(std::move(obj));
     m_lees_edwards_callbacks = std::move(lees_edwards_pack);
-    m_run_collide_sweep = CollideSweepVisitor(blocks, m_lees_edwards_callbacks);
+    m_run_stream_collide_sweep = StreamCollideSweepVisitor(blocks, m_lees_edwards_callbacks);
     m_lees_edwards_pdf_interpol_sweep =
         std::make_shared<InterpolateAndShiftAtBoundary<_PdfField, FloatType>>(
             blocks, m_pdf_field_id, m_pdf_tmp_field_id, n_ghost_layers,
@@ -1752,7 +1738,7 @@ public:
   }
 
   [[nodiscard]] std::optional<uint64_t> get_rng_state() const override {
-    auto const cm = std::get_if<CollisionModelThermalized>(&*m_collision_model);
+    auto const cm = std::get_if<StreamCollisionModelThermalized>(&*m_collision_model);
     if (!cm or m_kT == 0.) {
       return std::nullopt;
     }
@@ -1760,7 +1746,7 @@ public:
   }
 
   void set_rng_state(uint64_t counter) override {
-    auto const cm = std::get_if<CollisionModelThermalized>(&*m_collision_model);
+    auto const cm = std::get_if<StreamCollisionModelThermalized>(&*m_collision_model);
     if (!cm or m_kT == 0.) {
       throw std::runtime_error("This LB instance is unthermalized");
     }

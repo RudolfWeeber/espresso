@@ -93,7 +93,7 @@ BOOST_DATA_TEST_CASE(integrate_with_point_force_thermalized,
 
   // Expected momentum = momentum added in prev. time step
   // + f/2 from velocity shift due to last applied forces
-  auto mom_exp = 1.5 * f1 * Utils::product(params.grid_dimensions) + 1.5 * f2;
+  auto mom_exp = 0.5 * f1 * Utils::product(params.grid_dimensions) + 0.5 * f2;
   auto d = mom - mom_exp;
   BOOST_CHECK_SMALL((mom - mom_exp).norm(), 1E-10);
   std::cout << "thermalized: " << mom << " | " << mom_exp << " | " << d << "\n";
@@ -135,7 +135,7 @@ BOOST_DATA_TEST_CASE(integrate_with_point_force_unthermalized,
 
   // Expected momentum = momentum added in prev. time step
   // + f/2 from velocity shift due to last applied forces
-  auto mom_exp = 1.5 * f1 * Utils::product(params.grid_dimensions) + 1.5 * f2;
+  auto mom_exp = 0.5 * f1 * Utils::product(params.grid_dimensions) + 0.5 * f2;
   auto d = mom - mom_exp;
   std::cout << mom << " | " << mom_exp << " | " << d << "\n";
   BOOST_CHECK_SMALL((mom - mom_exp).norm(), 1E-10);

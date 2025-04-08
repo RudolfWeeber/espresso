@@ -163,11 +163,6 @@ class SwimmerTest:
         part_mom = np.sum([np.copy(s.v) * np.copy(s.mass)
                           for s in swimmers], axis=0)
 
-        # compensate for one timestep offset between force calculation and LB -
-        # update
-        for part in swimmers:
-            part_mom += np.copy(part.f) * self.system.time_step
-
         np.testing.assert_allclose(lb_mom, -part_mom, rtol=self.tol)
 
     def test_particle_forces(self):

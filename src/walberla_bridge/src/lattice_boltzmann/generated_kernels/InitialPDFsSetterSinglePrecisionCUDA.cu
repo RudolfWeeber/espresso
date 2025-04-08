@@ -80,9 +80,9 @@ static FUNC_PREFIX __launch_bounds__(256) void initialpdfssettersingleprecisionc
 
 void InitialPDFsSetterSinglePrecisionCUDA::run(IBlock *block, gpuStream_t stream) {
 
-  auto velocity = block->getData<gpu::GPUField<float>>(velocityID);
   auto pdfs = block->getData<gpu::GPUField<float>>(pdfsID);
   auto force = block->getData<gpu::GPUField<float>>(forceID);
+  auto velocity = block->getData<gpu::GPUField<float>>(velocityID);
 
   auto &rho_0 = this->rho_0_;
   WALBERLA_ASSERT_GREATER_EQUAL(0, -int_c(force->nrOfGhostLayers()))
@@ -130,9 +130,9 @@ void InitialPDFsSetterSinglePrecisionCUDA::runOnCellInterval(const shared_ptr<St
   if (ci.empty())
     return;
 
-  auto velocity = block->getData<gpu::GPUField<float>>(velocityID);
   auto pdfs = block->getData<gpu::GPUField<float>>(pdfsID);
   auto force = block->getData<gpu::GPUField<float>>(forceID);
+  auto velocity = block->getData<gpu::GPUField<float>>(velocityID);
 
   auto &rho_0 = this->rho_0_;
   WALBERLA_ASSERT_GREATER_EQUAL(ci.xMin(), -int_c(force->nrOfGhostLayers()))

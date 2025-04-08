@@ -21,28 +21,30 @@ foreach(precision DoublePrecision SinglePrecision)
   target_sources(
     espresso_walberla_codegen
     PRIVATE PackInfoPdf${precision}.cpp PackInfoVec${precision}.cpp
-            InitialPDFsSetter${precision}.cpp DynamicUBB${precision}.cpp)
+            InitialPDFsSetter${precision}.cpp DynamicUBB${precision}.cpp
+            UpdateVelFromPDF${precision}.cpp)
   if(ESPRESSO_BUILD_WITH_WALBERLA_AVX)
     target_sources(
       espresso_walberla_codegen
       PRIVATE CollideSweep${precision}LeesEdwardsAVX.cpp
-              CollideSweep${precision}ThermalizedAVX.cpp
+              StreamCollideSweep${precision}ThermalizedAVX.cpp
               StreamSweep${precision}AVX.cpp)
   else()
     target_sources(
       espresso_walberla_codegen
       PRIVATE CollideSweep${precision}LeesEdwards.cpp
-              CollideSweep${precision}Thermalized.cpp
+              StreamCollideSweep${precision}Thermalized.cpp
               StreamSweep${precision}.cpp)
   endif()
   if(WALBERLA_BUILD_WITH_CUDA)
     target_sources(
       espresso_walberla_codegen_cuda
       PRIVATE CollideSweep${precision}LeesEdwardsCUDA.cu
-              CollideSweep${precision}ThermalizedCUDA.cu
+              StreamCollideSweep${precision}ThermalizedCUDA.cu
               FieldAccessors${precision}CUDA.cu StreamSweep${precision}CUDA.cu
               InitialPDFsSetter${precision}CUDA.cu
               DynamicUBB${precision}CUDA.cu PackInfoPdf${precision}CUDA.cu
-              PackInfoVec${precision}CUDA.cu)
+              PackInfoVec${precision}CUDA.cu
+              UpdateVelFromPDF${precision}CUDA.cu)
   endif()
 endforeach()

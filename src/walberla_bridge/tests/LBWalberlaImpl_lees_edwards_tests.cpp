@@ -85,7 +85,7 @@ BOOST_AUTO_TEST_CASE(test_transient_shear) {
     for (double y :
          {0., 0.13 * grid_size_y, 0.7 * grid_size_y, 1. * grid_size_y}) {
       auto u = lb.get_velocity_at_pos(Vector3d{4, y, 4}, true);
-      auto expected = u_expected(y, i, viscosity, v0, grid_size_y);
+      auto expected = u_expected(y, i + 1.0, viscosity, v0, grid_size_y);
       BOOST_CHECK_SMALL((*u)[0] - expected, 3E-5);
     }
   }

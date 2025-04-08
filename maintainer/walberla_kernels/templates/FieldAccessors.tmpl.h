@@ -604,8 +604,14 @@ namespace PressureTensor
          Cell const & cell )
    {
         const {{dtype}} & xyz0 = pdf_field->get(cell, uint_t{ 0u });
+        const int x = cell[0];
+        const int y = cell[1];
+        const int z = cell[2];
         {% for i in range(Q) -%}
-            const {{dtype}} f_{{i}} = pdf_field->getF( &xyz0, uint_t{ {{i}}u });
+            const {{dtype}} f_{{i}} = pdf_field->get({{inv_neighbor_dir[i][0]}} + x,
+                                                     {{inv_neighbor_dir[i][1]}} + y,
+                                                     {{inv_neighbor_dir[i][2]}} + z,
+                                                     uint_t{ {{i}}u });
         {% endfor -%}
 
         {{second_momentum_getter | indent(8) }}
@@ -630,7 +636,10 @@ namespace PressureTensor
                 for (auto z = ci.zMin(); z <= ci.zMax(); ++z) {
                     const {{dtype}} & xyz0 = pdf_field->get(x, y, z, uint_t{ 0u });
                     {% for i in range(Q) -%}
-                        const {{dtype}} f_{{i}} = pdf_field->getF( &xyz0, uint_t{ {{i}}u });
+                        const {{dtype}} f_{{i}} = pdf_field->get({{inv_neighbor_dir[i][0]}} + x,
+                                                                 {{inv_neighbor_dir[i][1]}} + y,
+                                                                 {{inv_neighbor_dir[i][2]}} + z,
+                                                                 uint_t{ {{i}}u });
                     {% endfor -%}
 
                     {{second_momentum_getter | indent(12) }}
@@ -655,7 +664,10 @@ namespace PressureTensor
                 for(uint_t x = 0; x < pdf_field->xSize(); ++x) {
                     const {{dtype}} & xyz0 = pdf_field->get(x, y, z, uint_t{ 0u });
                     {% for i in range(Q) -%}
-                        const {{dtype}} f_{{i}} = pdf_field->getF( &xyz0, uint_t{ {{i}}u });
+                        const {{dtype}} f_{{i}} = pdf_field->get({{inv_neighbor_dir[i][0]}} + x,
+                                                                 {{inv_neighbor_dir[i][1]}} + y,
+                                                                 {{inv_neighbor_dir[i][2]}} + z,
+                                                                 uint_t{ {{i}}u });
                     {% endfor -%}
 
                     {{second_momentum_getter | indent(8) }}

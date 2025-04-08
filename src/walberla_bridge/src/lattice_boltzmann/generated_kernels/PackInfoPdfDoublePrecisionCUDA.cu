@@ -80,7 +80,7 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_SW(double *RESTRICT _data_bu
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3];
+    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_SW
@@ -91,7 +91,7 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_BW(double *RESTRICT _data_bu
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 17 * _stride_pdfs_3];
+    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 17 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_BW
@@ -102,11 +102,11 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_W(double *RESTRICT _data_buf
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 13 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 17 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 3 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1] = _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 17 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2] = _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 3 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3] = _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 13 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4] = _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_W
@@ -117,7 +117,7 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_TW(double *RESTRICT _data_bu
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 13 * _stride_pdfs_3];
+    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 13 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_TW
@@ -128,7 +128,7 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_NW(double *RESTRICT _data_bu
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3];
+    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_NW
@@ -139,7 +139,7 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_BS(double *RESTRICT _data_bu
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 16 * _stride_pdfs_3];
+    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 16 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_BS
@@ -150,11 +150,11 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_S(double *RESTRICT _data_buf
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 12 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 16 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 2 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 16 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 2 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 12 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_S
@@ -165,7 +165,7 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_TS(double *RESTRICT _data_bu
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 12 * _stride_pdfs_3];
+    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 12 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_TS
@@ -176,11 +176,11 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_B(double *RESTRICT _data_buf
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 15 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 16 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 17 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 18 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 6 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 17 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 16 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 6 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 15 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 18 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_B
@@ -191,11 +191,11 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_T(double *RESTRICT _data_buf
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 11 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 12 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 13 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 14 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 5 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 13 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 12 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 5 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 11 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 14 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_T
@@ -206,7 +206,7 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_BN(double *RESTRICT _data_bu
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 15 * _stride_pdfs_3];
+    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 15 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_BN
@@ -217,11 +217,11 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_N(double *RESTRICT _data_buf
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 11 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 15 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 15 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 11 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_N
@@ -232,7 +232,7 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_TN(double *RESTRICT _data_bu
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 11 * _stride_pdfs_3];
+    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 11 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_TN
@@ -243,7 +243,7 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_SE(double *RESTRICT _data_bu
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3];
+    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_SE
@@ -254,7 +254,7 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_BE(double *RESTRICT _data_bu
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 18 * _stride_pdfs_3];
+    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 18 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_BE
@@ -265,11 +265,11 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_E(double *RESTRICT _data_buf
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 14 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 18 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 4 * _stride_pdfs_3];
-    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 18 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 4 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 14 * _stride_pdfs_3];
+    _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_E
@@ -280,7 +280,7 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_TE(double *RESTRICT _data_bu
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 14 * _stride_pdfs_3];
+    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 14 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_TE
@@ -291,7 +291,7 @@ static FUNC_PREFIX __launch_bounds__(256) void pack_NE(double *RESTRICT _data_bu
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3];
+    _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0] = _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3];
   }
 }
 } // namespace internal_pack_NE
@@ -302,7 +302,7 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_SW(double *RESTRICT const 
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
   }
 }
 } // namespace internal_unpack_SW
@@ -313,7 +313,7 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_BW(double *RESTRICT const 
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 17 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 17 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
   }
 }
 } // namespace internal_unpack_BW
@@ -324,11 +324,11 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_W(double *RESTRICT const _
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 13 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 17 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 3 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 17 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 3 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 13 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4];
   }
 }
 } // namespace internal_unpack_W
@@ -339,7 +339,7 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_TW(double *RESTRICT const 
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 13 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 13 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
   }
 }
 } // namespace internal_unpack_TW
@@ -350,7 +350,7 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_NW(double *RESTRICT const 
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
   }
 }
 } // namespace internal_unpack_NW
@@ -361,7 +361,7 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_BS(double *RESTRICT const 
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 16 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 16 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
   }
 }
 } // namespace internal_unpack_BS
@@ -372,11 +372,11 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_S(double *RESTRICT const _
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 12 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 16 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 2 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 16 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 2 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 12 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4];
   }
 }
 } // namespace internal_unpack_S
@@ -387,7 +387,7 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_TS(double *RESTRICT const 
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 12 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 12 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
   }
 }
 } // namespace internal_unpack_TS
@@ -398,11 +398,11 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_B(double *RESTRICT const _
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 15 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 16 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 17 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 18 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 6 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 17 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 16 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 6 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 15 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 18 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4];
   }
 }
 } // namespace internal_unpack_B
@@ -413,11 +413,11 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_T(double *RESTRICT const _
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 11 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 12 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 13 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 14 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 5 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 13 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 12 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 5 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 11 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 14 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4];
   }
 }
 } // namespace internal_unpack_T
@@ -428,7 +428,7 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_BN(double *RESTRICT const 
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 15 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 15 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
   }
 }
 } // namespace internal_unpack_BN
@@ -439,11 +439,11 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_N(double *RESTRICT const _
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 11 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 15 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 15 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 11 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4];
   }
 }
 } // namespace internal_unpack_N
@@ -454,7 +454,7 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_TN(double *RESTRICT const 
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 11 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 11 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
   }
 }
 } // namespace internal_unpack_TN
@@ -465,7 +465,7 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_SE(double *RESTRICT const 
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
   }
 }
 } // namespace internal_unpack_SE
@@ -476,7 +476,7 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_BE(double *RESTRICT const 
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 18 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 18 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
   }
 }
 } // namespace internal_unpack_BE
@@ -487,11 +487,11 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_E(double *RESTRICT const _
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 14 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 18 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 4 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3];
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 - _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 18 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 1];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 4 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 2];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 14 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 3];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3] = _data_buffer[5 * _size_pdfs_0 * _size_pdfs_1 * ctr_2 + 5 * _size_pdfs_0 * ctr_1 + 5 * ctr_0 + 4];
   }
 }
 } // namespace internal_unpack_E
@@ -502,7 +502,7 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_TE(double *RESTRICT const 
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 14 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 14 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
   }
 }
 } // namespace internal_unpack_TE
@@ -513,7 +513,7 @@ static FUNC_PREFIX __launch_bounds__(256) void unpack_NE(double *RESTRICT const 
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
+    _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3] = _data_buffer[_size_pdfs_0 * _size_pdfs_1 * ctr_2 + _size_pdfs_0 * ctr_1 + ctr_0];
   }
 }
 } // namespace internal_unpack_NE

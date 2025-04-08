@@ -13,7 +13,7 @@
 //  You should have received a copy of the GNU General Public License along
 //  with waLBerla (see COPYING.txt). If not, see <http://www.gnu.org/licenses/>.
 //
-//! \\file StreamSweepSinglePrecisionAVX.h
+//! \\file UpdateVelFromPDFSinglePrecision.h
 //! \\author pystencils
 //======================================================================================================================
 
@@ -52,15 +52,11 @@
 namespace walberla {
 namespace pystencils {
 
-class StreamSweepSinglePrecisionAVX {
+class UpdateVelFromPDFSinglePrecision {
 public:
-  StreamSweepSinglePrecisionAVX(BlockDataID pdfsID_) : pdfsID(pdfsID_) {}
-
-  ~StreamSweepSinglePrecisionAVX() {
-    for (auto p : cache_pdfs_) {
-      delete p.second;
-    }
-  }
+  UpdateVelFromPDFSinglePrecision(BlockDataID forceID_, BlockDataID pdfsID_,
+                                  BlockDataID velocityID_)
+      : forceID(forceID_), pdfsID(pdfsID_), velocityID(velocityID_) {}
 
   void run(IBlock *block);
 
@@ -71,12 +67,12 @@ public:
   void operator()(IBlock *block) { run(block); }
 
   static std::function<void(IBlock *)>
-  getSweep(const shared_ptr<StreamSweepSinglePrecisionAVX> &kernel) {
+  getSweep(const shared_ptr<UpdateVelFromPDFSinglePrecision> &kernel) {
     return [kernel](IBlock *b) { kernel->run(b); };
   }
 
   static std::function<void(IBlock *)> getSweepOnCellInterval(
-      const shared_ptr<StreamSweepSinglePrecisionAVX> &kernel,
+      const shared_ptr<UpdateVelFromPDFSinglePrecision> &kernel,
       const shared_ptr<StructuredBlockStorage> &blocks,
       const CellInterval &globalCellInterval, cell_idx_t ghostLayers = 1) {
     return [kernel, blocks, globalCellInterval, ghostLayers](IBlock *b) {
@@ -101,8 +97,9 @@ public:
                  IBlock * /*block*/) {}
 
 private:
+  BlockDataID forceID;
   BlockDataID pdfsID;
-  std::unordered_map<IBlock *, field::GhostLayerField<float, 19> *> cache_pdfs_;
+  BlockDataID velocityID;
 };
 
 } // namespace pystencils

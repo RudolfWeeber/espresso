@@ -13,13 +13,13 @@
 //  You should have received a copy of the GNU General Public License along
 //  with waLBerla (see COPYING.txt). If not, see <http://www.gnu.org/licenses/>.
 //
-//! \\file CollideSweepDoublePrecisionThermalizedAVX.h
+//! \\file StreamCollideSweepDoublePrecisionThermalized.h
 //! \\author pystencils
 //======================================================================================================================
 
-// kernel generated with pystencils v1.3.7, lbmpy v1.3.7, sympy v1.12.1,
-// lbmpy_walberla/pystencils_walberla from waLBerla commit
-// f36fa0a68bae59f0b516f6587ea8fa7c24a41141
+// kernel generated with pystencils v1.3.7, lbmpy v1.3.7+4.gc7d65a7, sympy
+// v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit
+// 0aab9c0af2335b1f6fec75deae06e514ccb233ab
 
 #pragma once
 #include "core/DataTypes.h"
@@ -52,19 +52,23 @@
 namespace walberla {
 namespace pystencils {
 
-class CollideSweepDoublePrecisionThermalizedAVX {
+class StreamCollideSweepDoublePrecisionThermalized {
 public:
-  CollideSweepDoublePrecisionThermalizedAVX(BlockDataID forceID_,
-                                            BlockDataID pdfsID_, double kT,
-                                            double omega_bulk,
-                                            double omega_even, double omega_odd,
-                                            double omega_shear, uint32_t seed,
-                                            uint32_t time_step)
+  StreamCollideSweepDoublePrecisionThermalized(
+      BlockDataID forceID_, BlockDataID pdfsID_, double kT, double omega_bulk,
+      double omega_even, double omega_odd, double omega_shear, uint32_t seed,
+      uint32_t time_step)
       : forceID(forceID_), pdfsID(pdfsID_), kT_(kT), omega_bulk_(omega_bulk),
         omega_even_(omega_even), omega_odd_(omega_odd),
         omega_shear_(omega_shear), seed_(seed), time_step_(time_step),
         block_offset_0_(uint32_t(0)), block_offset_1_(uint32_t(0)),
         block_offset_2_(uint32_t(0)), configured_(false) {}
+
+  ~StreamCollideSweepDoublePrecisionThermalized() {
+    for (auto p : cache_pdfs_) {
+      delete p.second;
+    }
+  }
 
   void run(IBlock *block);
 
@@ -75,12 +79,12 @@ public:
   void operator()(IBlock *block) { run(block); }
 
   static std::function<void(IBlock *)> getSweep(
-      const shared_ptr<CollideSweepDoublePrecisionThermalizedAVX> &kernel) {
+      const shared_ptr<StreamCollideSweepDoublePrecisionThermalized> &kernel) {
     return [kernel](IBlock *b) { kernel->run(b); };
   }
 
   static std::function<void(IBlock *)> getSweepOnCellInterval(
-      const shared_ptr<CollideSweepDoublePrecisionThermalizedAVX> &kernel,
+      const shared_ptr<StreamCollideSweepDoublePrecisionThermalized> &kernel,
       const shared_ptr<StructuredBlockStorage> &blocks,
       const CellInterval &globalCellInterval, cell_idx_t ghostLayers = 1) {
     return [kernel, blocks, globalCellInterval, ghostLayers](IBlock *b) {
@@ -150,6 +154,8 @@ private:
   double omega_shear_;
   uint32_t seed_;
   uint32_t time_step_;
+  std::unordered_map<IBlock *, field::GhostLayerField<double, 19> *>
+      cache_pdfs_;
 
   bool configured_;
 };

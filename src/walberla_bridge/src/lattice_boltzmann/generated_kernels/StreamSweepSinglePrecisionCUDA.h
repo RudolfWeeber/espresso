@@ -56,9 +56,7 @@ namespace pystencils {
 
 class StreamSweepSinglePrecisionCUDA {
 public:
-  StreamSweepSinglePrecisionCUDA(BlockDataID forceID_, BlockDataID pdfsID_,
-                                 BlockDataID velocityID_)
-      : forceID(forceID_), pdfsID(pdfsID_), velocityID(velocityID_) {}
+  StreamSweepSinglePrecisionCUDA(BlockDataID pdfsID_) : pdfsID(pdfsID_) {}
 
   ~StreamSweepSinglePrecisionCUDA() {
     for (auto p : cache_pdfs_) {
@@ -112,9 +110,7 @@ public:
                  IBlock * /*block*/) {}
 
 private:
-  BlockDataID forceID;
   BlockDataID pdfsID;
-  BlockDataID velocityID;
   std::unordered_map<IBlock *, gpu::GPUField<float> *> cache_pdfs_;
 };
 

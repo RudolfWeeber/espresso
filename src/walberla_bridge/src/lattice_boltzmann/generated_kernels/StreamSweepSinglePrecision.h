@@ -54,9 +54,7 @@ namespace pystencils {
 
 class StreamSweepSinglePrecision {
 public:
-  StreamSweepSinglePrecision(BlockDataID forceID_, BlockDataID pdfsID_,
-                             BlockDataID velocityID_)
-      : forceID(forceID_), pdfsID(pdfsID_), velocityID(velocityID_) {}
+  StreamSweepSinglePrecision(BlockDataID pdfsID_) : pdfsID(pdfsID_) {}
 
   ~StreamSweepSinglePrecision() {
     for (auto p : cache_pdfs_) {
@@ -104,9 +102,7 @@ public:
                  IBlock * /*block*/) {}
 
 private:
-  BlockDataID forceID;
   BlockDataID pdfsID;
-  BlockDataID velocityID;
   std::unordered_map<IBlock *, field::GhostLayerField<float, 19> *> cache_pdfs_;
 };
 

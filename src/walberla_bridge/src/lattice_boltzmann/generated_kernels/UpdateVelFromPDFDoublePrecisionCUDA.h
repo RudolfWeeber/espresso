@@ -13,7 +13,7 @@
 //  You should have received a copy of the GNU General Public License along
 //  with waLBerla (see COPYING.txt). If not, see <http://www.gnu.org/licenses/>.
 //
-//! \\file StreamSweepSinglePrecisionAVX.h
+//! \\file UpdateVelFromPDFDoublePrecisionCUDA.h
 //! \\author pystencils
 //======================================================================================================================
 
@@ -25,10 +25,12 @@
 #include "core/DataTypes.h"
 #include "core/logging/Logging.h"
 
+#include "gpu/GPUField.h"
+#include "gpu/GPUWrapper.h"
+
 #include "domain_decomposition/BlockDataID.h"
 #include "domain_decomposition/IBlock.h"
 #include "domain_decomposition/StructuredBlockStorage.h"
-#include "field/GhostLayerField.h"
 #include "field/SwapableCompare.h"
 
 #include <functional>
@@ -52,48 +54,51 @@
 namespace walberla {
 namespace pystencils {
 
-class StreamSweepSinglePrecisionAVX {
+class UpdateVelFromPDFDoublePrecisionCUDA {
 public:
-  StreamSweepSinglePrecisionAVX(BlockDataID pdfsID_) : pdfsID(pdfsID_) {}
+  UpdateVelFromPDFDoublePrecisionCUDA(BlockDataID forceID_, BlockDataID pdfsID_,
+                                      BlockDataID velocityID_)
+      : forceID(forceID_), pdfsID(pdfsID_), velocityID(velocityID_) {}
 
-  ~StreamSweepSinglePrecisionAVX() {
-    for (auto p : cache_pdfs_) {
-      delete p.second;
-    }
-  }
-
-  void run(IBlock *block);
+  void run(IBlock *block, gpuStream_t stream = nullptr);
 
   void runOnCellInterval(const shared_ptr<StructuredBlockStorage> &blocks,
                          const CellInterval &globalCellInterval,
-                         cell_idx_t ghostLayers, IBlock *block);
+                         cell_idx_t ghostLayers, IBlock *block,
+                         gpuStream_t stream = nullptr);
 
-  void operator()(IBlock *block) { run(block); }
+  void operator()(IBlock *block, gpuStream_t stream = nullptr) {
+    run(block, stream);
+  }
 
   static std::function<void(IBlock *)>
-  getSweep(const shared_ptr<StreamSweepSinglePrecisionAVX> &kernel) {
+  getSweep(const shared_ptr<UpdateVelFromPDFDoublePrecisionCUDA> &kernel) {
     return [kernel](IBlock *b) { kernel->run(b); };
   }
 
-  static std::function<void(IBlock *)> getSweepOnCellInterval(
-      const shared_ptr<StreamSweepSinglePrecisionAVX> &kernel,
+  static std::function<void(IBlock *, gpuStream_t)> getSweepOnCellInterval(
+      const shared_ptr<UpdateVelFromPDFDoublePrecisionCUDA> &kernel,
       const shared_ptr<StructuredBlockStorage> &blocks,
       const CellInterval &globalCellInterval, cell_idx_t ghostLayers = 1) {
-    return [kernel, blocks, globalCellInterval, ghostLayers](IBlock *b) {
-      kernel->runOnCellInterval(blocks, globalCellInterval, ghostLayers, b);
+    return [kernel, blocks, globalCellInterval,
+            ghostLayers](IBlock *b, gpuStream_t stream = nullptr) {
+      kernel->runOnCellInterval(blocks, globalCellInterval, ghostLayers, b,
+                                stream);
     };
   }
 
-  std::function<void(IBlock *)> getSweep() {
-    return [this](IBlock *b) { this->run(b); };
+  std::function<void(IBlock *)> getSweep(gpuStream_t stream = nullptr) {
+    return [this, stream](IBlock *b) { this->run(b, stream); };
   }
 
   std::function<void(IBlock *)>
   getSweepOnCellInterval(const shared_ptr<StructuredBlockStorage> &blocks,
                          const CellInterval &globalCellInterval,
-                         cell_idx_t ghostLayers = 1) {
-    return [this, blocks, globalCellInterval, ghostLayers](IBlock *b) {
-      this->runOnCellInterval(blocks, globalCellInterval, ghostLayers, b);
+                         cell_idx_t ghostLayers = 1,
+                         gpuStream_t stream = nullptr) {
+    return [this, blocks, globalCellInterval, ghostLayers, stream](IBlock *b) {
+      this->runOnCellInterval(blocks, globalCellInterval, ghostLayers, b,
+                              stream);
     };
   }
 
@@ -101,8 +106,9 @@ public:
                  IBlock * /*block*/) {}
 
 private:
+  BlockDataID forceID;
   BlockDataID pdfsID;
-  std::unordered_map<IBlock *, field::GhostLayerField<float, 19> *> cache_pdfs_;
+  BlockDataID velocityID;
 };
 
 } // namespace pystencils

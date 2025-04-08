@@ -656,7 +656,7 @@ class LBTest:
         self.system.lb = lbf
         self.system.thermostat.set_lb(LB_fluid=lbf, seed=3, gamma=self.gamma)
         p = self.system.part.add(pos=[-1E-30] * 3, v=[-1, 0, 0])
-        self.system.integrator.run(1)
+        self.system.integrator.run(2)
         for _ in range(20):
             self.system.integrator.run(1)
             self.assertTrue(np.all(p.f != 0.0))
@@ -678,7 +678,7 @@ class LBTest:
         for _ in range(10):
             self.system.integrator.run(1)
             vel = np.copy(p.v) * self.params["density"]
-            vel_ref = (self.system.time + lbf.tau * 0.5) * ext_f
+            vel_ref = (self.system.time - lbf.tau * 0.5) * ext_f
             np.testing.assert_allclose(vel, vel_ref, rtol=rtol, atol=0.)
 
     @ut.skipIf(n_nodes != 2, "test is designed to run on 2 MPI ranks")
@@ -746,11 +746,11 @@ class LBTest:
         # ext_force_density is a force density, therefore v = ext_force_density
         # / dens * tau * (n_time_steps + 0.5)
         fluid_velocity = np.array(ext_force_density) * self.system.time_step * (
-            n_time_steps + 0.5) / self.params['density']
+            n_time_steps - 0.5) / self.params['density']
         # Check global linear momentum = density * volume * velocity
         rtol = self.rtol
         if hasattr(lbf, "single_precision") and lbf.single_precision:
-            rtol *= 10.
+            rtol *= 15.
         np.testing.assert_allclose(
             np.copy(self.system.analysis.linear_momentum()),
             fluid_velocity * self.params['density'] * self.system.volume(),
