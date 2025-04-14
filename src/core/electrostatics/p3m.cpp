@@ -78,7 +78,6 @@
 #include <boost/range/combine.hpp>
 #include <boost/range/numeric.hpp>
 
-#include "boost/math/complex.hpp"
 #include <algorithm>
 #include <array>
 #include <cassert>
