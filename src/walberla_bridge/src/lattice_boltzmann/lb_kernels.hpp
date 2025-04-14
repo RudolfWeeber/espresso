@@ -35,16 +35,16 @@
 #include "generated_kernels/UpdateVelFromPDFSinglePrecision.h"
 
 #ifdef __AVX2__
-#include "generated_kernels/CollideSweepDoublePrecisionLeesEdwardsAVX.h"
+#include "generated_kernels/StreamCollideSweepDoublePrecisionLeesEdwardsAVX.h"
 #include "generated_kernels/StreamCollideSweepDoublePrecisionThermalizedAVX.h"
-#include "generated_kernels/CollideSweepSinglePrecisionLeesEdwardsAVX.h"
+#include "generated_kernels/StreamCollideSweepSinglePrecisionLeesEdwardsAVX.h"
 #include "generated_kernels/StreamCollideSweepSinglePrecisionThermalizedAVX.h"
 #include "generated_kernels/StreamSweepDoublePrecisionAVX.h"
 #include "generated_kernels/StreamSweepSinglePrecisionAVX.h"
 #else
-#include "generated_kernels/CollideSweepDoublePrecisionLeesEdwards.h"
+#include "generated_kernels/StreamCollideSweepDoublePrecisionLeesEdwards.h"
 #include "generated_kernels/StreamCollideSweepDoublePrecisionThermalized.h"
-#include "generated_kernels/CollideSweepSinglePrecisionLeesEdwards.h"
+#include "generated_kernels/StreamCollideSweepSinglePrecisionLeesEdwards.h"
 #include "generated_kernels/StreamCollideSweepSinglePrecisionThermalized.h"
 #include "generated_kernels/StreamSweepDoublePrecision.h"
 #include "generated_kernels/StreamSweepSinglePrecision.h"
@@ -59,14 +59,14 @@ template <typename FT = double, Arch AT = Arch::CPU> struct KernelTrait {
 #ifdef __AVX2__
   using StreamCollisionModelThermalized =
       pystencils::StreamCollideSweepDoublePrecisionThermalizedAVX;
-  using CollisionModelLeesEdwards =
-      pystencils::CollideSweepDoublePrecisionLeesEdwardsAVX;
+  using StreamCollisionModelLeesEdwards =
+      pystencils::StreamCollideSweepDoublePrecisionLeesEdwardsAVX;
   using StreamSweep = pystencils::StreamSweepDoublePrecisionAVX;
 #else
   using StreamCollisionModelThermalized =
       pystencils::StreamCollideSweepDoublePrecisionThermalized;
-  using CollisionModelLeesEdwards =
-      pystencils::CollideSweepDoublePrecisionLeesEdwards;
+  using StreamCollisionModelLeesEdwards =
+      pystencils::StreamCollideSweepDoublePrecisionLeesEdwards;
   using StreamSweep = pystencils::StreamSweepDoublePrecision;
 #endif
   using InitialPDFsSetter = pystencils::InitialPDFsSetterDoublePrecision;
@@ -79,14 +79,14 @@ template <> struct KernelTrait<float, Arch::CPU> {
 #ifdef __AVX2__
   using StreamCollisionModelThermalized =
       pystencils::StreamCollideSweepSinglePrecisionThermalizedAVX;
-  using CollisionModelLeesEdwards =
-      pystencils::CollideSweepSinglePrecisionLeesEdwardsAVX;
+  using StreamCollisionModelLeesEdwards =
+      pystencils::StreamCollideSweepSinglePrecisionLeesEdwardsAVX;
   using StreamSweep = pystencils::StreamSweepSinglePrecisionAVX;
 #else
   using StreamCollisionModelThermalized =
       pystencils::StreamCollideSweepSinglePrecisionThermalized;
-  using CollisionModelLeesEdwards =
-      pystencils::CollideSweepSinglePrecisionLeesEdwards;
+  using StreamCollisionModelLeesEdwards =
+      pystencils::StreamCollideSweepSinglePrecisionLeesEdwards;
   using StreamSweep = pystencils::StreamSweepSinglePrecision;
 #endif
   using InitialPDFsSetter = pystencils::InitialPDFsSetterSinglePrecision;

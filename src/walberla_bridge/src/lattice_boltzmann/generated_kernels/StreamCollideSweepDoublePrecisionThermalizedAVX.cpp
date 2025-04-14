@@ -25,9 +25,9 @@
 #include "core/DataTypes.h"
 #include "core/Macros.h"
 
-#include <immintrin.h>
-
 #include "philox_rand.h"
+
+#include <immintrin.h>
 
 #define FUNC_PREFIX
 
@@ -764,8 +764,8 @@ void StreamCollideSweepDoublePrecisionThermalizedAVX::run(IBlock *block) {
   if (!this->configured_)
     WALBERLA_ABORT("This Sweep contains a configure function that needs to be called manually")
 
-  auto force = block->getData<field::GhostLayerField<double, 3>>(forceID);
   auto pdfs = block->getData<field::GhostLayerField<double, 19>>(pdfsID);
+  auto force = block->getData<field::GhostLayerField<double, 3>>(forceID);
   field::GhostLayerField<double, 19> *pdfs_tmp;
   {
     if (cache_pdfs_.find(block) == cache_pdfs_.end()) {
@@ -776,16 +776,16 @@ void StreamCollideSweepDoublePrecisionThermalizedAVX::run(IBlock *block) {
     }
   }
 
+  auto &omega_shear = this->omega_shear_;
+  auto &seed = this->seed_;
   auto &omega_even = this->omega_even_;
   auto &block_offset_2 = this->block_offset_2_;
-  auto &block_offset_1 = this->block_offset_1_;
-  auto &time_step = this->time_step_;
-  auto &omega_odd = this->omega_odd_;
   auto &kT = this->kT_;
-  auto &seed = this->seed_;
-  auto &omega_bulk = this->omega_bulk_;
+  auto &omega_odd = this->omega_odd_;
+  auto &time_step = this->time_step_;
+  auto &block_offset_1 = this->block_offset_1_;
   auto &block_offset_0 = this->block_offset_0_;
-  auto &omega_shear = this->omega_shear_;
+  auto &omega_bulk = this->omega_bulk_;
   WALBERLA_ASSERT_GREATER_EQUAL(-1, -int_c(force->nrOfGhostLayers()))
   double *RESTRICT const _data_force = force->dataAt(-1, -1, -1, 0);
   WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
@@ -835,8 +835,8 @@ void StreamCollideSweepDoublePrecisionThermalizedAVX::runOnCellInterval(const sh
   if (ci.empty())
     return;
 
-  auto force = block->getData<field::GhostLayerField<double, 3>>(forceID);
   auto pdfs = block->getData<field::GhostLayerField<double, 19>>(pdfsID);
+  auto force = block->getData<field::GhostLayerField<double, 3>>(forceID);
   field::GhostLayerField<double, 19> *pdfs_tmp;
   {
     if (cache_pdfs_.find(block) == cache_pdfs_.end()) {
@@ -847,16 +847,16 @@ void StreamCollideSweepDoublePrecisionThermalizedAVX::runOnCellInterval(const sh
     }
   }
 
+  auto &omega_shear = this->omega_shear_;
+  auto &seed = this->seed_;
   auto &omega_even = this->omega_even_;
   auto &block_offset_2 = this->block_offset_2_;
-  auto &block_offset_1 = this->block_offset_1_;
-  auto &time_step = this->time_step_;
-  auto &omega_odd = this->omega_odd_;
   auto &kT = this->kT_;
-  auto &seed = this->seed_;
-  auto &omega_bulk = this->omega_bulk_;
+  auto &omega_odd = this->omega_odd_;
+  auto &time_step = this->time_step_;
+  auto &block_offset_1 = this->block_offset_1_;
   auto &block_offset_0 = this->block_offset_0_;
-  auto &omega_shear = this->omega_shear_;
+  auto &omega_bulk = this->omega_bulk_;
   WALBERLA_ASSERT_GREATER_EQUAL(ci.xMin() - 1, -int_c(force->nrOfGhostLayers()))
   WALBERLA_ASSERT_GREATER_EQUAL(ci.yMin() - 1, -int_c(force->nrOfGhostLayers()))
   WALBERLA_ASSERT_GREATER_EQUAL(ci.zMin() - 1, -int_c(force->nrOfGhostLayers()))

@@ -429,16 +429,16 @@ void StreamCollideSweepDoublePrecisionThermalizedCUDA::run(IBlock *block, gpuStr
     }
   }
 
-  auto &block_offset_1 = this->block_offset_1_;
-  auto &omega_bulk = this->omega_bulk_;
-  auto &block_offset_2 = this->block_offset_2_;
   auto &block_offset_0 = this->block_offset_0_;
-  auto &kT = this->kT_;
-  auto &time_step = this->time_step_;
-  auto &omega_shear = this->omega_shear_;
+  auto &block_offset_1 = this->block_offset_1_;
+  auto &block_offset_2 = this->block_offset_2_;
   auto &omega_even = this->omega_even_;
-  auto &seed = this->seed_;
   auto &omega_odd = this->omega_odd_;
+  auto &kT = this->kT_;
+  auto &omega_shear = this->omega_shear_;
+  auto &time_step = this->time_step_;
+  auto &omega_bulk = this->omega_bulk_;
+  auto &seed = this->seed_;
   WALBERLA_ASSERT_GREATER_EQUAL(-1, -int_c(force->nrOfGhostLayers()))
   double *RESTRICT const _data_force = force->dataAt(-1, -1, -1, 0);
   WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
@@ -499,16 +499,16 @@ void StreamCollideSweepDoublePrecisionThermalizedCUDA::runOnCellInterval(const s
     }
   }
 
-  auto &block_offset_1 = this->block_offset_1_;
-  auto &omega_bulk = this->omega_bulk_;
-  auto &block_offset_2 = this->block_offset_2_;
   auto &block_offset_0 = this->block_offset_0_;
-  auto &kT = this->kT_;
-  auto &time_step = this->time_step_;
-  auto &omega_shear = this->omega_shear_;
+  auto &block_offset_1 = this->block_offset_1_;
+  auto &block_offset_2 = this->block_offset_2_;
   auto &omega_even = this->omega_even_;
-  auto &seed = this->seed_;
   auto &omega_odd = this->omega_odd_;
+  auto &kT = this->kT_;
+  auto &omega_shear = this->omega_shear_;
+  auto &time_step = this->time_step_;
+  auto &omega_bulk = this->omega_bulk_;
+  auto &seed = this->seed_;
   WALBERLA_ASSERT_GREATER_EQUAL(ci.xMin() - 1, -int_c(force->nrOfGhostLayers()))
   WALBERLA_ASSERT_GREATER_EQUAL(ci.yMin() - 1, -int_c(force->nrOfGhostLayers()))
   WALBERLA_ASSERT_GREATER_EQUAL(ci.zMin() - 1, -int_c(force->nrOfGhostLayers()))

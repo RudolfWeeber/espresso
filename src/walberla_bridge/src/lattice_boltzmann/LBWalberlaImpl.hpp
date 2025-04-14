@@ -90,13 +90,11 @@ namespace walberla {
 template <typename FloatType, lbmpy::Arch Architecture>
 class LBWalberlaImpl : public LBWalberlaBase {
 protected:
-  using CollisionModelLeesEdwards =
+  using StreamCollisionModelLeesEdwards =
       typename detail::KernelTrait<FloatType,
-                                   Architecture>::CollisionModelLeesEdwards;
+                                   Architecture>::StreamCollisionModelLeesEdwards;
   using StreamCollisionModelThermalized =
       typename detail::KernelTrait<FloatType, Architecture>::StreamCollisionModelThermalized;
-  using StreamSweep =
-      typename detail::KernelTrait<FloatType, Architecture>::StreamSweep;
   using UpdateVelFromPDF =
       typename detail::KernelTrait<FloatType, Architecture>::UpdateVelFromPDF;
   using InitialPDFsSetter =
@@ -106,7 +104,7 @@ protected:
                        typename detail::BoundaryHandlingTrait<
                            FloatType, Architecture>::DynamicUBB>;
   using CollisionModel =
-      std::variant<StreamCollisionModelThermalized, CollisionModelLeesEdwards>;
+      std::variant<StreamCollisionModelThermalized, StreamCollisionModelLeesEdwards>;
 
 public:
   /** @brief Stencil for collision and streaming operations. */
@@ -216,7 +214,7 @@ private:
       cm(b);
     }
 
-    void operator()(CollisionModelLeesEdwards &cm, IBlock *b) {
+    void operator()(StreamCollisionModelLeesEdwards &cm, IBlock *b) {
       cm.setV_s(static_cast<decltype(cm.getV_s())>(
           m_lees_edwards_callbacks->get_shear_velocity()));
       cm(b);
@@ -352,9 +350,6 @@ protected:
 
   // ResetForce sweep + external force handling
   std::shared_ptr<ResetForce<PdfField, VectorField>> m_reset_force;
-
-  // Stream sweep
-  std::shared_ptr<StreamSweep> m_stream;
 
   // Lees Edwards boundary interpolation
   std::shared_ptr<LeesEdwardsPack> m_lees_edwards_callbacks;
@@ -581,27 +576,10 @@ public:
     // Instantiate velocity update sweep
     m_update_velocities_from_pdf = std::make_shared<UpdateVelFromPDF>(
         m_last_applied_force_field_id, m_pdf_field_id, m_velocity_field_id);
-
-    // Prepare LB sweeps
-    // Note: For now, combined collide-stream sweeps cannot be used,
-    // because the collide-push variant is not supported by lbmpy.
-    // The following functors are individual in-place collide and stream steps
-    m_stream = std::make_shared<StreamSweep>(
-        //        m_last_applied_force_field_id, m_pdf_field_id,
-        //        m_velocity_field_id);
-        m_pdf_field_id);
   }
 
 private:
-  void integrate_stream(std::shared_ptr<BlockStorage> const &blocks) {
-    for (auto &block : *blocks)
-      (*m_stream)(&block);
-  }
-
   void integrate_stream_collide(std::shared_ptr<BlockStorage> const &blocks) {
-    if(has_lees_edwards_bc()){
-      integrate_stream(blocks);
-    }
     auto &cm_variant = *m_collision_model;
     for (auto &block : *blocks) {
       auto const block_variant = std::variant<IBlock *>(&block);
@@ -613,7 +591,7 @@ private:
   }
 
   auto has_lees_edwards_bc() const {
-    return std::holds_alternative<CollisionModelLeesEdwards>(
+    return std::holds_alternative<StreamCollisionModelLeesEdwards>(
         *m_collision_model);
   }
 
@@ -797,7 +775,7 @@ public:
     }
     auto const agrid =
         FloatType_c(lattice.get_grid_dimensions()[shear_plane_normal]);
-    auto obj = CollisionModelLeesEdwards(
+    auto obj = StreamCollisionModelLeesEdwards(
         m_last_applied_force_field_id, m_pdf_field_id, agrid, omega, shear_vel);
     m_collision_model = std::make_shared<CollisionModel>(std::move(obj));
     m_lees_edwards_callbacks = std::move(lees_edwards_pack);

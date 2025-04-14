@@ -38,9 +38,9 @@
 #include "generated_kernels/UpdateVelFromPDFDoublePrecisionCUDA.h"
 #include "generated_kernels/UpdateVelFromPDFSinglePrecisionCUDA.h"
 
-#include "generated_kernels/CollideSweepDoublePrecisionLeesEdwardsCUDA.h"
+#include "generated_kernels/StreamCollideSweepDoublePrecisionLeesEdwardsCUDA.h"
 #include "generated_kernels/StreamCollideSweepDoublePrecisionThermalizedCUDA.h"
-#include "generated_kernels/CollideSweepSinglePrecisionLeesEdwardsCUDA.h"
+#include "generated_kernels/StreamCollideSweepSinglePrecisionLeesEdwardsCUDA.h"
 #include "generated_kernels/StreamCollideSweepSinglePrecisionThermalizedCUDA.h"
 
 namespace walberla {
@@ -51,8 +51,8 @@ using lbmpy::Arch;
 template <> struct KernelTrait<double, Arch::GPU> {
   using StreamCollisionModelThermalized =
       pystencils::StreamCollideSweepDoublePrecisionThermalizedCUDA;
-  using CollisionModelLeesEdwards =
-      pystencils::CollideSweepDoublePrecisionLeesEdwardsCUDA;
+  using StreamCollisionModelLeesEdwards =
+      pystencils::StreamCollideSweepDoublePrecisionLeesEdwardsCUDA;
   using StreamSweep = pystencils::StreamSweepDoublePrecisionCUDA;
   using InitialPDFsSetter = pystencils::InitialPDFsSetterDoublePrecisionCUDA;
   using UpdateVelFromPDF = pystencils::UpdateVelFromPDFDoublePrecisionCUDA;
@@ -63,8 +63,8 @@ template <> struct KernelTrait<double, Arch::GPU> {
 template <> struct KernelTrait<float, Arch::GPU> {
   using StreamCollisionModelThermalized =
       pystencils::StreamCollideSweepSinglePrecisionThermalizedCUDA;
-  using CollisionModelLeesEdwards =
-      pystencils::CollideSweepSinglePrecisionLeesEdwardsCUDA;
+  using StreamCollisionModelLeesEdwards =
+      pystencils::StreamCollideSweepSinglePrecisionLeesEdwardsCUDA;
   using StreamSweep = pystencils::StreamSweepSinglePrecisionCUDA;
   using InitialPDFsSetter = pystencils::InitialPDFsSetterSinglePrecisionCUDA;
   using UpdateVelFromPDF = pystencils::UpdateVelFromPDFSinglePrecisionCUDA;

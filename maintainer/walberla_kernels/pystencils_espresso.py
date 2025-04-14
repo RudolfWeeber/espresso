@@ -270,55 +270,10 @@ def generate_config(ctx, params):
     return pystencils_walberla.utility.config_from_context(ctx, **params)
 
 
-def generate_collision_sweep(
-        ctx, lb_method, data_type, collision_rule, class_name, params, **kwargs):
-    config = generate_config(ctx, params)
-
-    # Symbols for PDF (twice, due to double buffering)
-    fields = generate_fields(lb_method.stencil, data_type)
-
-    # Generate collision kernel
-    collide_update_rule = lbmpy.updatekernels.create_lbm_kernel(
-        collision_rule,
-        fields['pdfs'],
-        fields['pdfs_tmp'],
-        lbmpy.fieldaccess.CollideOnlyInplaceAccessor())
-    collide_ast = ps.create_kernel(
-        collide_update_rule, config=config, **params)
-    collide_ast.function_name = 'kernel_collide'
-    collide_ast.assumed_inner_stride_one = True
-    pystencils_walberla.generate_sweep(
-        ctx, class_name, collide_ast, **params, **kwargs)
-
-
-def generate_stream_sweep(ctx, lb_method, data_type, class_name, params):
-    config = generate_config(ctx, params)
-
-    # Symbols for PDF (twice, due to double buffering)
-    fields = generate_fields(lb_method.stencil, data_type)
-
-    # Generate stream kernel
-    stream_update_rule = lbmpy.updatekernels.create_stream_only_kernel(
-        lb_method.stencil, fields['pdfs'], fields['pdfs_tmp'])
-    stream_ast = ps.create_kernel(stream_update_rule, config=config, **params)
-    stream_ast.function_name = 'kernel_stream'
-    stream_ast.assumed_inner_stride_one = True
-    pystencils_walberla.generate_sweep(
-        ctx, class_name, stream_ast,
-        field_swaps=[(fields['pdfs'], fields['pdfs_tmp'])], **params)
-
 def generate_stream_collision_sweep(
-        ctx, lb_method, data_type, collision_rule, class_name, optimization, params, **kwargs):
+        ctx, lb_method, lbm_config, data_type, collision_rule, class_name, optimization, params, **kwargs):
     stencil = lbmpy.enums.Stencil.D3Q19
     fields = generate_fields(lb_method.stencil, data_type)
-    lbm_config = lbmpy.LBMConfig(stencil=stencil,
-                                 method=lbmpy.Method.CUMULANT,
-                                 compressible=True,
-                                 zero_centered=False,
-                                 weighted=True,
-                                 streaming_pattern="pull",
-                                 relaxation_rate=sp.Symbol("omega_shear")
-                                 )
     lbm_opt = lbmpy.LBMOptimisation(
         symbolic_field=fields["pdfs"],
         symbolic_temporary_field=fields["pdfs_tmp"],

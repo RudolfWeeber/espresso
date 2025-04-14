@@ -28,7 +28,7 @@ import pystencils as ps
 
 import lbmpy
 
-kernel_codes = "packinfo boundary collide stream stream_collide init macroscopic_value_getter accessors".split()
+kernel_codes = "packinfo boundary stream_collide init macroscopic_value_getter accessors".split()
 parser = argparse.ArgumentParser(description="Generate the waLBerla kernels.")
 parser.add_argument("--single-precision", action="store_true", required=False,
                     help="Use single-precision")
@@ -125,87 +125,44 @@ def generate_init_kernels(ctx, method):
         ctx.patch_file(stem, get_ext_source(target_suffix),
                        patch_openmp_kernels)
 
-
-def generate_stream_kernels(ctx, method):
+def generate_stream_collide_lees_edwards_kernels(ctx, method, data_type, fields):
     precision_prefix = pystencils_espresso.precision_prefix[ctx.double_accuracy]
-    for params, target_suffix in paramlist(parameters, ("GPU", "CPU", "AVX")):
-        stem = f"StreamSweep{precision_prefix}{target_suffix}"
-        pystencils_espresso.generate_stream_sweep(
-            ctx,
-            method,
-            data_type,
-            stem,
-            params)
-        ctx.patch_file(stem, get_ext_source(target_suffix),
-                       patch_openmp_kernels)
-
-
-def generate_collide_lees_edwards_kernels(ctx, data_type, fields):
-    precision_prefix = pystencils_espresso.precision_prefix[ctx.double_accuracy]
-    lbm_opt = lbmpy.LBMOptimisation(symbolic_field=fields["pdfs"])
+    lbm_opt = lbmpy.LBMOptimisation(symbolic_field=fields["pdfs"],
+                                    symbolic_temporary_field=fields["pdfs_tmp"])
     shear_dir_normal = 1  # y-axis
     le_config = lbmpy.LBMConfig(stencil=stencil,
                                 method=lbmpy.Method.TRT,
                                 relaxation_rate=sp.Symbol("omega_shear"),
                                 compressible=True,
                                 zero_centered=False,
+                                streaming_pattern='pull',
                                 force_model=lbmpy.ForceModel.GUO,
                                 force=fields["force"].center_vector,
-                                kernel_type="collide_only")
+                                kernel_type="stream_pull_collide")
     le_update_rule_unthermalized = lbmpy.create_lb_update_rule(
         lbm_config=le_config,
         lbm_optimisation=lbm_opt)
+    print(le_update_rule_unthermalized)
     le_collision_rule_unthermalized = lees_edwards.add_lees_edwards_to_collision(
         config, le_update_rule_unthermalized, fields["pdfs"], stencil,
-        shear_dir_normal)
-
+        shear_dir_normal, True)
+    optimization={"cse_global": True,
+                  "double_precision": ctx.double_accuracy}
+    print(le_collision_rule_unthermalized)
     for params, target_suffix in paramlist(parameters, ("GPU", "CPU", "AVX")):
-        stem = f"CollideSweep{precision_prefix}LeesEdwards{target_suffix}"
-        pystencils_espresso.generate_collision_sweep(
+        stem = f"StreamCollideSweep{precision_prefix}LeesEdwards{target_suffix}"
+        pystencils_espresso.generate_stream_collision_sweep(
             ctx,
+            method,
             le_config,
             data_type,
             le_collision_rule_unthermalized,
             stem,
+            optimization,
             params
         )
         ctx.patch_file(stem, get_ext_source(target_suffix),
                        patch_openmp_kernels)
-
-# TODO: Combining the stream and LE collide needs more research
-# def generate_stream_collide_lees_edwards_kernels(ctx, data_type, fields):
-#     precision_prefix = pystencils_espresso.precision_prefix[ctx.double_accuracy]
-#     lbm_opt = lbmpy.LBMOptimisation(symbolic_field=fields["pdfs"],
-#                                     symbolic_temporary_field=fields["pdfs_tmp"])
-#     shear_dir_normal = 1  # y-axis
-#     le_config = lbmpy.LBMConfig(stencil=stencil,
-#                                 method=lbmpy.Method.TRT,
-#                                 relaxation_rate=sp.Symbol("omega_shear"),
-#                                 compressible=True,
-#                                 zero_centered=False,
-#                                 force_model=lbmpy.ForceModel.GUO,
-#                                 force=fields["force"].center_vector,
-#                                 kernel_type="stream_pull_collide")
-#     le_update_rule_unthermalized = lbmpy.create_lb_update_rule(
-#         lbm_config=le_config,
-#         lbm_optimisation=lbm_opt)
-#     le_collision_rule_unthermalized = lees_edwards.add_lees_edwards_to_collision(
-#         config, le_update_rule_unthermalized, fields["pdfs"], stencil,
-#         shear_dir_normal)
-#     optimization={"cse_global": True,
-#                   "double_precision": ctx.double_accuracy}
-
-#     for params, target_suffix in paramlist(parameters, ("GPU", "CPU", "AVX")):
-#         stem = f"StreamCollideSweep{precision_prefix}LeesEdwards{target_suffix}"
-#         pystencils_espresso.generate_stream_collision_sweep(
-#             ctx,
-#             le_config,
-#             data_type,
-#             le_collision_rule_unthermalized,
-#             stem,
-#             optimization,
-#             params
-#         )
 
 def generate_stream_collide_kernels(ctx, method, data_type):
     precision_prefix = pystencils_espresso.precision_prefix[ctx.double_accuracy]
@@ -215,6 +172,14 @@ def generate_stream_collide_kernels(ctx, method, data_type):
         for i in range(3))
     optimization={"cse_global": True,
                   "double_precision": ctx.double_accuracy}
+    lbm_config = lbmpy.LBMConfig(stencil=stencil,
+                                method=lbmpy.Method.CUMULANT,
+                                compressible=True,
+                                zero_centered=False,
+                                weighted=True,
+                                streaming_pattern="pull",
+                                relaxation_rate=sp.Symbol("omega_shear")
+                                )
     lb_collision_rule_thermalized = lbmpy.creationfunctions.create_lb_collision_rule(
         method,
         zero_centered=False,
@@ -231,6 +196,7 @@ def generate_stream_collide_kernels(ctx, method, data_type):
         pystencils_espresso.generate_stream_collision_sweep(
             ctx,
             method,
+            lbm_config,
             data_type,
             lb_collision_rule_thermalized,
             stem,
@@ -382,15 +348,11 @@ with code_generation_context.CodeGeneration() as ctx:
         force_model=lbmpy.forcemodels.Schiller(fields["force"].center_vector)
     )
 
-    if "stream" in args.kernels:
-        generate_stream_kernels(ctx, method)
     if "init" in args.kernels:
         generate_init_kernels(ctx, method)
-    if "collide" in args.kernels:
-        generate_collide_lees_edwards_kernels(ctx, data_type, fields)
     if "stream_collide" in args.kernels:
         generate_stream_collide_kernels(ctx, method, data_type)
-        # generate_stream_collide_lees_edwards_kernels(ctx, data_type, fields)
+        generate_stream_collide_lees_edwards_kernels(ctx, method, data_type, fields)
     if "macroscopic_value_getter" in args.kernels:
         generate_macroscopic_value_getter_kernels(ctx, method, fields)
     if "accessors" in args.kernels:
