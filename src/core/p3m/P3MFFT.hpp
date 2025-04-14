@@ -110,7 +110,8 @@ public:
     // perform better (depending on hardware and backend)
     options.use_pencils = true;
     fft3d = heffte::fft3d<backend_tag>(*in_box, *out_box, comm, options);
-    m_buffer.resize(4 * fft3d.size_workspace());
+    m_buffer.resize(fft3d.size_workspace()); // needs to be changed to 3x for
+                                             // batched transform
   }
 
   Utils::Vector3i ks_local_ld_index() const {
@@ -141,7 +142,7 @@ public:
 #ifdef CALIPER
     CALI_CXX_MARK_FUNCTION;
 #endif
-    return fft3d.backward(n, in, out, m_buffer.data());
+    return fft3d.backward(n, in, out);
   }
   auto const &get_memory_layout() const { return m_memory_layout; }
 };
