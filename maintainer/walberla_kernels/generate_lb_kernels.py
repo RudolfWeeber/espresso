@@ -241,7 +241,7 @@ def generate_accessors_kernels(ctx, method):
 def generate_packinfo_kernels(ctx, data_type, fields):
     precision_prefix = pystencils_espresso.precision_prefix[ctx.double_accuracy]
     assignments = pystencils_espresso.generate_pack_info_pdfs_field_assignments(
-        fields, streaming_pattern="push")
+        fields, streaming_pattern="pull")
     spec = pystencils_espresso.generate_pack_info_field_specifications(
         stencil, data_type, fields["force"].layout)
 
@@ -276,7 +276,7 @@ def generate_packinfo_kernels(ctx, data_type, fields):
     for params, target_suffix in paramlist(parameters, ["CPU_linear", "GPU"]):
         pystencils_walberla.generate_pack_info_from_kernel(
             ctx, f"PackInfoPdf{precision_prefix}{target_suffix}", assignments,
-            kind="push", **params)
+            kind="pull", **params)
         pystencils_walberla.generate_pack_info(
             ctx, f"PackInfoVec{precision_prefix}{target_suffix}", spec, **params)
         for suffix in ["Pdf", "Vec"]:

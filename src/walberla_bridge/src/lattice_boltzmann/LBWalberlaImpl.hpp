@@ -640,8 +640,13 @@ private:
     m_pending_ghost_comm.set(GhostComm::VEL);
     m_pending_ghost_comm.set(GhostComm::LAF);
     // Refresh ghost layers
-    ghost_communication_pdf();
-    ghost_communication_laf();
+    // ghost_communication_pdf();
+    // ghost_communication_laf();
+    m_pdf_streaming_communicator->communicate();
+    if (has_lees_edwards_bc()) {
+      apply_lees_edwards_pdf_interpolation(blocks);
+      apply_lees_edwards_last_applied_force_interpolation(blocks);
+    }
     // Handle boundaries
     if (m_has_boundaries) {
       integrate_boundaries(blocks);
