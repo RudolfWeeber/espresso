@@ -33,8 +33,6 @@
 #include "generated_kernels/PackInfoPdfSinglePrecisionCUDA.h"
 #include "generated_kernels/PackInfoVecDoublePrecisionCUDA.h"
 #include "generated_kernels/PackInfoVecSinglePrecisionCUDA.h"
-#include "generated_kernels/StreamSweepDoublePrecisionCUDA.h"
-#include "generated_kernels/StreamSweepSinglePrecisionCUDA.h"
 #include "generated_kernels/UpdateVelFromPDFDoublePrecisionCUDA.h"
 #include "generated_kernels/UpdateVelFromPDFSinglePrecisionCUDA.h"
 
@@ -53,7 +51,6 @@ template <> struct KernelTrait<double, Arch::GPU> {
       pystencils::StreamCollideSweepDoublePrecisionThermalizedCUDA;
   using StreamCollisionModelLeesEdwards =
       pystencils::StreamCollideSweepDoublePrecisionLeesEdwardsCUDA;
-  using StreamSweep = pystencils::StreamSweepDoublePrecisionCUDA;
   using InitialPDFsSetter = pystencils::InitialPDFsSetterDoublePrecisionCUDA;
   using UpdateVelFromPDF = pystencils::UpdateVelFromPDFDoublePrecisionCUDA;
   using PackInfoPdf = pystencils::PackInfoPdfDoublePrecisionCUDA;
@@ -65,7 +62,6 @@ template <> struct KernelTrait<float, Arch::GPU> {
       pystencils::StreamCollideSweepSinglePrecisionThermalizedCUDA;
   using StreamCollisionModelLeesEdwards =
       pystencils::StreamCollideSweepSinglePrecisionLeesEdwardsCUDA;
-  using StreamSweep = pystencils::StreamSweepSinglePrecisionCUDA;
   using InitialPDFsSetter = pystencils::InitialPDFsSetterSinglePrecisionCUDA;
   using UpdateVelFromPDF = pystencils::UpdateVelFromPDFSinglePrecisionCUDA;
   using PackInfoPdf = pystencils::PackInfoPdfSinglePrecisionCUDA;
