@@ -54,6 +54,9 @@ if(ESPRESSO_BUILD_WITH_FFTW AND ESPRESSO_BUILD_WITH_CLANG_TIDY)
   set_target_properties(espresso_core PROPERTIES CXX_CLANG_TIDY
                                                  "${HEFFTE_CXX_CLANG_TIDY}")
 endif()
+# if(ESPRESSO_BUILD_WITH_CABANA)
+target_link_libraries(espresso_core PUBLIC kokkos)
+# endif()
 
 if(ESPRESSO_BUILD_WITH_CUDA)
   target_sources(espresso_core PRIVATE cuda/init.cpp)
@@ -87,7 +90,8 @@ target_link_libraries(
   PUBLIC espresso::utils MPI::MPI_CXX Random123 espresso::particle_observables
          Boost::serialization Boost::mpi espresso::instrumentation)
 
-target_include_directories(espresso_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(espresso_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+                                                ${Kokkos_INCLUDE_DIRS})
 
 if(ESPRESSO_BUILD_WITH_WALBERLA)
   target_link_libraries(
