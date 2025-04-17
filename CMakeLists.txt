@@ -486,14 +486,13 @@ if(ESPRESSO_BUILD_WITH_CABANA)
   # Find kokkos
   find_package(Kokkos QUIET)
 
-  if(NOT Kokkos_FOUND)  
+  if(NOT Kokkos_FOUND)
     message(
       FATAL_ERROR
-        "Kokkos was not found. To fix this, please set the CMake build option 
-        '-D Kokkos_DIR=/path/to/kokkos/build' to the directory containing 
-        KokkosConfig.cmake (typically the Kokkos build folder) OR place Kokkos 
-        in a standard path of CMake"
-    )
+        "Kokkos was not found. To fix this, please set the CMake build option
+        '-D Kokkos_DIR=/path/to/kokkos/build' to the directory containing
+        KokkosConfig.cmake (typically the Kokkos build folder) OR place Kokkos
+        in a standard path of CMake")
   endif()
 
   # Fetch Cabana 0.7.0 Cabana already uses find_package(Kokkos) internally
