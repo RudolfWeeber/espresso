@@ -636,12 +636,8 @@ private:
     // Reset force fields
     integrate_reset_force(blocks);
     // Mark pending ghost layer updates
-    m_pending_ghost_comm.set(GhostComm::PDF);
+    // As pdf and laf are communicated direcly afterwards they are not set.
     m_pending_ghost_comm.set(GhostComm::VEL);
-    m_pending_ghost_comm.set(GhostComm::LAF);
-    // Refresh ghost layers
-    // ghost_communication_pdf();
-    // ghost_communication_laf();
     m_pdf_streaming_communicator->communicate();
     if (has_lees_edwards_bc()) {
       apply_lees_edwards_pdf_interpolation(blocks);
@@ -653,7 +649,10 @@ private:
     }
     // Update velocities from pdfs
     integrate_update_velocities_from_pdf(blocks);
-    ghost_communication_vel();
+
+    if (has_lees_edwards_bc()) {
+      apply_lees_edwards_vel_interpolation_and_shift(blocks);
+    }
   }
 
 protected:
@@ -677,7 +676,9 @@ public:
   void ghost_communication() override {
     if (m_pending_ghost_comm.any()) {
       ghost_communication_boundary();
-      ghost_communication_full();
+      ghost_communication_pdf();
+      ghost_communication_laf();
+      ghost_communication_vel();
     }
   }
 
