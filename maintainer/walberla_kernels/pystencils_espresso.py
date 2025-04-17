@@ -272,7 +272,6 @@ def generate_config(ctx, params):
 
 def generate_stream_collision_sweep(
         ctx, lb_method, lbm_config, data_type, collision_rule, class_name, optimization, params, **kwargs):
-    stencil = lbmpy.enums.Stencil.D3Q19
     fields = generate_fields(lb_method.stencil, data_type)
     lbm_opt = lbmpy.LBMOptimisation(
         symbolic_field=fields["pdfs"],

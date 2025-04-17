@@ -125,6 +125,7 @@ def generate_init_kernels(ctx, method):
         ctx.patch_file(stem, get_ext_source(target_suffix),
                        patch_openmp_kernels)
 
+
 def generate_stream_collide_lees_edwards_kernels(ctx, method, data_type, fields):
     precision_prefix = pystencils_espresso.precision_prefix[ctx.double_accuracy]
     lbm_opt = lbmpy.LBMOptimisation(symbolic_field=fields["pdfs"],
@@ -146,11 +147,12 @@ def generate_stream_collide_lees_edwards_kernels(ctx, method, data_type, fields)
     le_collision_rule_unthermalized = lees_edwards.add_lees_edwards_to_collision(
         config, le_update_rule_unthermalized, fields["pdfs"], stencil,
         shear_dir_normal, True)
-    optimization={"cse_global": True,
-                  "double_precision": ctx.double_accuracy}
+    optimization = {"cse_global": True,
+                    "double_precision": ctx.double_accuracy}
     print(le_collision_rule_unthermalized)
     for params, target_suffix in paramlist(parameters, ("GPU", "CPU", "AVX")):
-        stem = f"StreamCollideSweep{precision_prefix}LeesEdwards{target_suffix}"
+        stem = f"StreamCollideSweep{
+            precision_prefix}LeesEdwards{target_suffix}"
         pystencils_espresso.generate_stream_collision_sweep(
             ctx,
             method,
@@ -164,22 +166,23 @@ def generate_stream_collide_lees_edwards_kernels(ctx, method, data_type, fields)
         ctx.patch_file(stem, get_ext_source(target_suffix),
                        patch_openmp_kernels)
 
+
 def generate_stream_collide_kernels(ctx, method, data_type):
     precision_prefix = pystencils_espresso.precision_prefix[ctx.double_accuracy]
     precision_rng = pystencils_espresso.precision_rng[ctx.double_accuracy]
     block_offsets = tuple(
         ps.TypedSymbol(f"block_offset_{i}", np.uint32)
         for i in range(3))
-    optimization={"cse_global": True,
-                  "double_precision": ctx.double_accuracy}
+    optimization = {"cse_global": True,
+                    "double_precision": ctx.double_accuracy}
     lbm_config = lbmpy.LBMConfig(stencil=stencil,
-                                method=lbmpy.Method.CUMULANT,
-                                compressible=True,
-                                zero_centered=False,
-                                weighted=True,
-                                streaming_pattern="pull",
-                                relaxation_rate=sp.Symbol("omega_shear")
-                                )
+                                 method=lbmpy.Method.CUMULANT,
+                                 compressible=True,
+                                 zero_centered=False,
+                                 weighted=True,
+                                 streaming_pattern="pull",
+                                 relaxation_rate=sp.Symbol("omega_shear")
+                                 )
     lb_collision_rule_thermalized = lbmpy.creationfunctions.create_lb_collision_rule(
         method,
         zero_centered=False,
@@ -192,7 +195,8 @@ def generate_stream_collide_kernels(ctx, method, data_type):
     )
 
     for params, target_suffix in paramlist(parameters, ("GPU", "CPU", "AVX")):
-        stem = f"StreamCollideSweep{precision_prefix}Thermalized{target_suffix}"
+        stem = f"StreamCollideSweep{
+            precision_prefix}Thermalized{target_suffix}"
         pystencils_espresso.generate_stream_collision_sweep(
             ctx,
             method,
@@ -352,7 +356,8 @@ with code_generation_context.CodeGeneration() as ctx:
         generate_init_kernels(ctx, method)
     if "stream_collide" in args.kernels:
         generate_stream_collide_kernels(ctx, method, data_type)
-        generate_stream_collide_lees_edwards_kernels(ctx, method, data_type, fields)
+        generate_stream_collide_lees_edwards_kernels(
+            ctx, method, data_type, fields)
     if "macroscopic_value_getter" in args.kernels:
         generate_macroscopic_value_getter_kernels(ctx, method, fields)
     if "accessors" in args.kernels:

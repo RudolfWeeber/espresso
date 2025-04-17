@@ -63,7 +63,7 @@ def velocity_offset_eqs(config, method, pdfs, shear_dir_normal, stencil, combine
     # one grid cell further to pull the populations. This changes the
     # position where to apply the LE boundary by one cell.
     boundary_offset = [0, grid_size - 1]
-    if(combined_kernel):
+    if (combined_kernel):
         boundary_offset = [1, grid_size - 0]
     # +,-1 for upper/lower boundary layers, 0 otherwise.
     # Based on symbolic counters defined above. Only becomes

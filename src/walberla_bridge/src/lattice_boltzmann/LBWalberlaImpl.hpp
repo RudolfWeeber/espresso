@@ -90,11 +90,10 @@ namespace walberla {
 template <typename FloatType, lbmpy::Arch Architecture>
 class LBWalberlaImpl : public LBWalberlaBase {
 protected:
-  using StreamCollisionModelLeesEdwards =
-      typename detail::KernelTrait<FloatType,
-                                   Architecture>::StreamCollisionModelLeesEdwards;
-  using StreamCollisionModelThermalized =
-      typename detail::KernelTrait<FloatType, Architecture>::StreamCollisionModelThermalized;
+  using StreamCollisionModelLeesEdwards = typename detail::KernelTrait<
+      FloatType, Architecture>::StreamCollisionModelLeesEdwards;
+  using StreamCollisionModelThermalized = typename detail::KernelTrait<
+      FloatType, Architecture>::StreamCollisionModelThermalized;
   using UpdateVelFromPDF =
       typename detail::KernelTrait<FloatType, Architecture>::UpdateVelFromPDF;
   using InitialPDFsSetter =
@@ -103,8 +102,8 @@ protected:
       BoundaryHandling<Vector3<FloatType>,
                        typename detail::BoundaryHandlingTrait<
                            FloatType, Architecture>::DynamicUBB>;
-  using CollisionModel =
-      std::variant<StreamCollisionModelThermalized, StreamCollisionModelLeesEdwards>;
+  using CollisionModel = std::variant<StreamCollisionModelThermalized,
+                                      StreamCollisionModelLeesEdwards>;
 
 public:
   /** @brief Stencil for collision and streaming operations. */
@@ -220,11 +219,12 @@ private:
       cm(b);
     }
 
-    StreamCollideSweepVisitor() = default;    StreamCollideSweepVisitor(std::shared_ptr<StructuredBlockStorage> storage) {
+    StreamCollideSweepVisitor() = default;
+    StreamCollideSweepVisitor(std::shared_ptr<StructuredBlockStorage> storage) {
       m_storage = std::move(storage);
     }
     StreamCollideSweepVisitor(std::shared_ptr<StructuredBlockStorage> storage,
-                        std::shared_ptr<LeesEdwardsPack> callbacks) {
+                              std::shared_ptr<LeesEdwardsPack> callbacks) {
       m_storage = std::move(storage);
       m_lees_edwards_callbacks = std::move(callbacks);
     }
@@ -745,9 +745,9 @@ public:
     auto const blocks = get_lattice().get_blocks();
     m_kT = FloatType_c(kT);
     m_seed = seed;
-    auto obj = StreamCollisionModelThermalized(m_last_applied_force_field_id,
-                                         m_pdf_field_id, m_kT, omega, omega,
-                                         omega_odd, omega, seed, uint32_t{0u});
+    auto obj = StreamCollisionModelThermalized(
+        m_last_applied_force_field_id, m_pdf_field_id, m_kT, omega, omega,
+        omega_odd, omega, seed, uint32_t{0u});
     m_collision_model = std::make_shared<CollisionModel>(std::move(obj));
     m_run_stream_collide_sweep = StreamCollideSweepVisitor(blocks);
     setup_streaming_communicator();
@@ -785,7 +785,8 @@ public:
         m_last_applied_force_field_id, m_pdf_field_id, agrid, omega, shear_vel);
     m_collision_model = std::make_shared<CollisionModel>(std::move(obj));
     m_lees_edwards_callbacks = std::move(lees_edwards_pack);
-    m_run_stream_collide_sweep = StreamCollideSweepVisitor(blocks, m_lees_edwards_callbacks);
+    m_run_stream_collide_sweep =
+        StreamCollideSweepVisitor(blocks, m_lees_edwards_callbacks);
     m_lees_edwards_pdf_interpol_sweep =
         std::make_shared<InterpolateAndShiftAtBoundary<_PdfField, FloatType>>(
             blocks, m_pdf_field_id, m_pdf_tmp_field_id, n_ghost_layers,
@@ -1722,7 +1723,8 @@ public:
   }
 
   [[nodiscard]] std::optional<uint64_t> get_rng_state() const override {
-    auto const cm = std::get_if<StreamCollisionModelThermalized>(&*m_collision_model);
+    auto const cm =
+        std::get_if<StreamCollisionModelThermalized>(&*m_collision_model);
     if (!cm or m_kT == 0.) {
       return std::nullopt;
     }
@@ -1730,7 +1732,8 @@ public:
   }
 
   void set_rng_state(uint64_t counter) override {
-    auto const cm = std::get_if<StreamCollisionModelThermalized>(&*m_collision_model);
+    auto const cm =
+        std::get_if<StreamCollisionModelThermalized>(&*m_collision_model);
     if (!cm or m_kT == 0.) {
       throw std::runtime_error("This LB instance is unthermalized");
     }
