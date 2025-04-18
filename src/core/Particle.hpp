@@ -24,6 +24,7 @@
 #include "BondList.hpp"
 #include "PropagationMode.hpp"
 
+#include <utils/AtomicVector.hpp>
 #include <utils/Vector.hpp>
 #include <utils/compact_vector.hpp>
 #include <utils/math/quaternion.hpp>
@@ -322,6 +323,44 @@ struct ParticleForce {
 
   template <class Archive> void serialize(Archive &ar, long int /* version */) {
     ar & f;
+#ifdef ROTATION
+    ar & torque;
+#endif
+  }
+};
+
+struct AtomicParticleForce {
+  Utils::AtomicVector<double, 3> force;
+#ifdef ROTATION
+  Utils::AtomicVector<double, 3> torque;
+#endif
+public:
+  AtomicParticleForce() = default;
+  AtomicParticleForce(ParticleForce const &other) {
+    force.set(other.f);
+#ifdef ROTATION
+    torque.set(other.torque);
+#endif
+  }
+  AtomicParticleForce(const Utils::Vector3d &f) { force.set(f); }
+#ifdef ROTATION
+  AtomicParticleForce(const Utils::Vector3d &force_,
+                      const Utils::Vector3d &torque_) {
+    force.set(force_);
+    torque.set(torque_);
+  }
+#endif
+
+  AtomicParticleForce &operator+=(ParticleForce const &rhs) {
+    force.add(rhs.f);
+#ifdef ROTATION
+    torque.add(rhs.torque);
+#endif
+    return *this;
+  }
+
+  template <class Archive> void serialize(Archive &ar, long int /* version */) {
+    ar & force;
 #ifdef ROTATION
     ar & torque;
 #endif
