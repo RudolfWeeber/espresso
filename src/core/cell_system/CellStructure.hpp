@@ -682,9 +682,10 @@ private:
             detail::MinimalImageDistance{decomposition().box()};
 #ifdef CABANA
         Kokkos::parallel_for(
-            "verlet_list_loop", m_verlet_list.size(), [&](auto pair) {
-              pair_kernel(*pair.first, *pair.second,
-                          distance_function(*pair.first, *pair.second));
+            "verlet_list_loop", m_verlet_list.size(), [&](auto i) {
+              pair_kernel(*(m_verlet_list[i].first), *(m_verlet_list[i].second),
+                          distance_function(*(m_verlet_list[i].first),
+                                            *(m_verlet_list[i].second)));
             });
 #else
         for (auto &pair : m_verlet_list) {
