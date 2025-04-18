@@ -248,8 +248,8 @@ inline void add_non_bonded_pair_force(
   if (thermostat.thermo_switch & THERMO_DPD) {
     auto const force = dpd_pair_force(p1, p2, *thermostat.dpd, box_geo,
                                       ia_params, d, dist, dist2);
-    p1.force() += force;
-    p2.force() -= force;
+    p1.add_force(force);
+    p2.add_force(-1.0 * force);
   }
 #endif
 
@@ -328,16 +328,16 @@ inline bool add_bonded_two_body_force(
     if (result) {
       auto const &forces = result.value();
 
-      p1.force() += std::get<0>(forces);
-      p2.force() += std::get<1>(forces);
+      p1.add_force(std::get<0>(forces));
+      p2.add_force(std::get<1>(forces));
 
       return false;
     }
   } else {
     auto result = calc_bond_pair_force(iaparams, p1, p2, dx, kernel);
     if (result) {
-      p1.force() += result.value();
-      p2.force() -= result.value();
+      p1.add_force(result.value());
+      p2.add_force(-1.0 * result.value());
 
 #ifdef NPT
       npt_add_virial_force_contribution(result.value(), dx);
@@ -387,9 +387,9 @@ inline bool add_bonded_three_body_force(Bonded_IA_Parameters const &iaparams,
   if (result) {
     auto const &forces = result.value();
 
-    p1.force() += std::get<0>(forces);
-    p2.force() += std::get<1>(forces);
-    p3.force() += std::get<2>(forces);
+    p1.add_force(std::get<0>(forces));
+    p2.add_force(std::get<1>(forces));
+    p3.add_force(std::get<2>(forces));
 
     return false;
   }
@@ -432,10 +432,10 @@ inline bool add_bonded_four_body_force(Bonded_IA_Parameters const &iaparams,
   if (result) {
     auto const &forces = result.value();
 
-    p1.force() += std::get<0>(forces);
-    p2.force() += std::get<1>(forces);
-    p3.force() += std::get<2>(forces);
-    p4.force() += std::get<3>(forces);
+    p1.add_force(std::get<0>(forces));
+    p2.add_force(std::get<1>(forces));
+    p3.add_force(std::get<2>(forces));
+    p4.add_force(std::get<3>(forces));
 
     return false;
   }

@@ -661,10 +661,18 @@ private:
       if (maybe_box) {
         auto const distance_function =
             detail::MinimalImageDistance{decomposition().box()};
+#ifdef CABANA
+        Kokkos::parallel_for(
+            "verlet_list_loop", m_verlet_list.size(), [&](auto pair) {
+              pair_kernel(*pair.first, *pair.second,
+                          distance_function(*pair.first, *pair.second));
+            });
+#else
         for (auto &pair : m_verlet_list) {
           pair_kernel(*pair.first, *pair.second,
                       distance_function(*pair.first, *pair.second));
         }
+#endif
       } else {
         auto const distance_function = detail::EuclidianDistance{};
         for (auto &pair : m_verlet_list) {

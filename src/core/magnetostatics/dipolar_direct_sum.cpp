@@ -334,12 +334,12 @@ void DipolarDirectSum::add_long_range_forces(
       });
 
       fi += fij;
-      (*q)->force() += prefactor * fji.f;
-      (*q)->torque() += prefactor * fji.torque;
+      (*q)->add_force(prefactor * fji.f);
+      (*q)->add_torque(prefactor * fji.torque);
     }
 
-    (*p)->force() += prefactor * fi.f;
-    (*p)->torque() += prefactor * fi.torque;
+    (*p)->add_force(prefactor * fi.f);
+    (*p)->add_torque(prefactor * fi.torque);
   }
 
   /* Wait for the rest of the data to arrive */
@@ -365,8 +365,8 @@ void DipolarDirectSum::add_long_range_forces(
                       return pair_force(rn, it->m, mj);
                     });
 
-    (*p)->force() += prefactor * fi.f;
-    (*p)->torque() += prefactor * fi.torque;
+    (*p)->add_force(prefactor * fi.f);
+    (*p)->add_torque(prefactor * fi.torque);
   }
 }
 

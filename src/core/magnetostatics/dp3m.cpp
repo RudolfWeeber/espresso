@@ -212,7 +212,7 @@ template <int cao> struct AssignTorques {
                           E[d_rs] += w * double(dp3m.mesh.rs_scalar[ind]);
                         });
 
-        p.torque() -= vector_product(p.calc_dip(), prefac * E);
+        p.add_torque(-1.0 * vector_product(p.calc_dip(), prefac * E));
         ++p_index;
       }
     }
@@ -513,10 +513,8 @@ double DipolarP3MImpl<FloatType, Architecture>::calc_surface_term(
 
     ip = 0u;
     for (auto &p : particles) {
-      auto &torque = p.torque();
-      torque[0u] -= pref * sumix[ip];
-      torque[1u] -= pref * sumiy[ip];
-      torque[2u] -= pref * sumiz[ip];
+      p.add_torque(-1.0 * Utils::Vector3d{pref * sumix[ip], pref * sumiy[ip],
+                                          pref * sumiz[ip]});
       ip++;
     }
   }

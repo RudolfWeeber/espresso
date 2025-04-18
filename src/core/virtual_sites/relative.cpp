@@ -178,12 +178,12 @@ void vs_relative_back_transfer_forces_and_torques(
 
     auto &p_ref = *p_ref_ptr;
     if (is_vs_relative_trans(p)) {
-      p_ref.force() += p.force();
-      p_ref.torque() += vector_product(connection_vector(p_ref, p), p.force());
+      p_ref.add_force(p.force());
+      p_ref.add_torque(vector_product(connection_vector(p_ref, p), p.force()));
     }
 
     if (is_vs_relative_rot(p)) {
-      p_ref.torque() += p.torque();
+      p_ref.add_torque(p.torque());
     }
   });
 }

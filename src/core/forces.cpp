@@ -110,7 +110,8 @@ static void force_capping(CellStructure &cell_structure, double force_cap) {
         [&force_cap, &force_cap_sq](Particle &p) {
           auto const force_sq = p.force().norm2();
           if (force_sq > force_cap_sq) {
-            p.force() *= force_cap / std::sqrt(force_sq);
+            p.force_and_torque().force.set(p.force() * force_cap /
+                                           std::sqrt(force_sq));
           }
         });
   }

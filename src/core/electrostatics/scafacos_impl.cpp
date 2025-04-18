@@ -74,8 +74,8 @@ void CoulombScafacosImpl::update_particle_forces() const {
 
   auto it_fields = fields.begin();
   for (auto &p : cell_structure.local_particles()) {
-    p.force() += prefactor * p.q() *
-                 Utils::Vector3d(std::span<const double>(&*it_fields, 3ul));
+    p.add_force(prefactor * p.q() *
+                Utils::Vector3d(std::span<const double>(&*it_fields, 3ul)));
     std::advance(it_fields, 3);
   }
 

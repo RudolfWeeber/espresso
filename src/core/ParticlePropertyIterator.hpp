@@ -61,8 +61,8 @@ inline auto charge_range(ParticleRange const &particles) {
 }
 
 inline auto force_range(ParticleRange const &particles) {
-  auto return_force = [](Particle &p) -> Utils::Vector3d & {
-    return p.force();
+  auto return_force = [](Particle &p) -> Utils::AtomicVector<double, 3> & {
+    return p.force_and_torque().force;
   };
   return detail::create_transform_range(particles, return_force);
 }

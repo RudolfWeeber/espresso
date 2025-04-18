@@ -326,7 +326,7 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
       if (pos >= domain_lower_corner and pos < domain_upper_corner) {
         /* Particle is in our LB volume, so this node
          * is responsible to adding its force */
-        p.force() += force_on_particle;
+        p.add_force(force_on_particle);
       }
       force_coupling_forces.emplace_back(force_on_fluid);
       ++it_positions_force_coupling;

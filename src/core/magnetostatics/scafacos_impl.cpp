@@ -93,8 +93,8 @@ void DipolarScafacosImpl::update_particle_forces() const {
     auto const f = G * dip;
 
     // Add to particles
-    p.force() += prefactor * f;
-    p.torque() += prefactor * t;
+    p.add_force(prefactor * f);
+    p.add_torque(prefactor * t);
     index += 6ul;
     std::advance(it_potentials, 3);
   }

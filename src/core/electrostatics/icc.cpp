@@ -85,8 +85,8 @@ static void force_calc_icc(
         auto const q1q2 = p1.q() * p2.q();
         if (q1q2 != 0.) {
           auto force = (*coulomb_kernel_ptr)(q1q2, d.vec21, std::sqrt(d.dist2));
-          p1.force() += force;
-          p2.force() -= force;
+          p1.add_force(force);
+          p2.add_force(-1.0 * force);
 #ifdef P3M
           if (elc_kernel_ptr) {
             (*elc_kernel_ptr)(p1, p2, q1q2);

@@ -197,18 +197,32 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
         direction == SerializationDirection::LOAD) {
       Utils::Vector3d force;
       ar & force;
-      p.force() += force;
+      p.add_force(force);
     } else {
-      ar & p.force();
+      if (direction == SerializationDirection::LOAD) {
+        Utils::Vector3d force;
+        ar & force;
+        p.force_and_torque().force.set(force);
+      } else {
+        Utils::Vector3d force = p.force();
+        ar & force;
+      }
     }
 #ifdef ROTATION
     if (policy == ReductionPolicy::UPDATE and
         direction == SerializationDirection::LOAD) {
       Utils::Vector3d torque;
       ar & torque;
-      p.torque() += torque;
+      p.add_torque(torque);
     } else {
-      ar & p.torque();
+      if (direction == SerializationDirection::LOAD) {
+        Utils::Vector3d torque;
+        ar & torque;
+        p.force_and_torque().torque.set(torque);
+      } else {
+        Utils::Vector3d torque = p.torque();
+        ar & torque;
+      }
     }
 #endif
   }

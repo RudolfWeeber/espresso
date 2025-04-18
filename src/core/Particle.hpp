@@ -436,7 +436,7 @@ private:
   ParticleProperties p;
   ParticlePosition r;
   ParticleMomentum m;
-  ParticleForce f;
+  AtomicParticleForce f;
   ParticleLocal l;
 #ifdef BOND_CONSTRAINT
   ParticleRattle rattle;
@@ -471,8 +471,8 @@ public:
   auto &pos() { return r.p; }
   auto const &v() const { return m.v; }
   auto &v() { return m.v; }
-  auto const &force() const { return f.f; }
-  auto &force() { return f.f; }
+  auto force() const { return f.force.get(); }
+  void add_force(const Utils::Vector3d &to_add) { f.force.add(to_add); }
   auto const &force_and_torque() const { return f; }
   auto &force_and_torque() { return f; }
 
@@ -515,8 +515,8 @@ public:
   }
   auto const &quat() const { return r.quat; }
   auto &quat() { return r.quat; }
-  auto const &torque() const { return f.torque; }
-  auto &torque() { return f.torque; }
+  auto torque() const { return f.torque.get(); }
+  void add_torque(const Utils::Vector3d &to_add) { f.torque.add(to_add); }
   auto const &omega() const { return m.omega; }
   auto &omega() { return m.omega; }
 #ifdef EXTERNAL_FORCES

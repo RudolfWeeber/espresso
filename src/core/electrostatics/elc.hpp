@@ -158,7 +158,7 @@ struct elc_data {
       dielectric_layers_contribution(
           p3m, box_geo, p.pos(), p.pos(), Utils::sqr(p.q()),
           [&](double q1q2, Utils::Vector3d const &d) {
-            p.force() += p3m.pair_force(q1q2, d, d.norm());
+            p.add_force(p3m.pair_force(q1q2, d, d.norm()));
           });
     }
   }
@@ -289,12 +289,12 @@ struct ElectrostaticLayerCorrection
             elc.dielectric_layers_contribution(
                 p3m, *m_box_geo, pos1, pos2, q1q2,
                 [&](double q_eff, Utils::Vector3d const &d) {
-                  p1.force() += p3m.pair_force(q_eff, d, d.norm());
+                  p1.add_force(p3m.pair_force(q_eff, d, d.norm()));
                 });
             elc.dielectric_layers_contribution(
                 p3m, *m_box_geo, pos2, pos1, q1q2,
                 [&](double q_eff, Utils::Vector3d const &d) {
-                  p2.force() += p3m.pair_force(q_eff, d, d.norm());
+                  p2.add_force(p3m.pair_force(q_eff, d, d.norm()));
                 });
           },
           base_solver);

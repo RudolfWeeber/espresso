@@ -338,7 +338,7 @@ void DipolarLayerCorrection::add_force_corrections(
 
     if (p.dipm() != 0.) {
       // SDC correction term is zero for the forces
-      p.force() += prefactor * dip_DLC_f[ip];
+      p.add_force(prefactor * dip_DLC_f[ip]);
 
       auto const dip = p.calc_dip();
       // SDC correction for the torques
@@ -348,7 +348,7 @@ void DipolarLayerCorrection::add_force_corrections(
         d += correc * epsilon_correction * box_dip;
       }
 #endif
-      p.torque() += prefactor * (dip_DLC_t[ip] + vector_product(dip, d));
+      p.add_torque(prefactor * (dip_DLC_t[ip] + vector_product(dip, d)));
     }
     ++ip;
   }

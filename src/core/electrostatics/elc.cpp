@@ -607,15 +607,16 @@ template <PoQ axis> void add_PoQ_force(ParticleRange const &particles) {
 
   std::size_t ic = 0;
   for (auto &p : particles) {
-    auto &force = p.force();
-    force[i] += partblk[size * ic + POQESM] * gblcblk[POQECP] -
-                partblk[size * ic + POQECM] * gblcblk[POQESP] +
-                partblk[size * ic + POQESP] * gblcblk[POQECM] -
-                partblk[size * ic + POQECP] * gblcblk[POQESM];
-    force[2] += partblk[size * ic + POQECM] * gblcblk[POQECP] +
-                partblk[size * ic + POQESM] * gblcblk[POQESP] -
-                partblk[size * ic + POQECP] * gblcblk[POQECM] -
-                partblk[size * ic + POQESP] * gblcblk[POQESM];
+    Utils::Vector3d force;
+    force[i] = partblk[size * ic + POQESM] * gblcblk[POQECP] -
+               partblk[size * ic + POQECM] * gblcblk[POQESP] +
+               partblk[size * ic + POQESP] * gblcblk[POQECM] -
+               partblk[size * ic + POQECP] * gblcblk[POQESM];
+    force[2] = partblk[size * ic + POQECM] * gblcblk[POQECP] +
+               partblk[size * ic + POQESM] * gblcblk[POQESP] -
+               partblk[size * ic + POQECP] * gblcblk[POQECM] -
+               partblk[size * ic + POQESP] * gblcblk[POQESM];
+    p.add_force(force);
     ++ic;
   }
 }
@@ -783,31 +784,30 @@ static void add_PQ_force(std::size_t index_p, std::size_t index_q, double omega,
 
   std::size_t ic = 0;
   for (auto &p : particles) {
-    auto &force = p.force();
-    force[0] += pref_x * (partblk[size * ic + PQESCM] * gblcblk[PQECCP] +
-                          partblk[size * ic + PQESSM] * gblcblk[PQECSP] -
-                          partblk[size * ic + PQECCM] * gblcblk[PQESCP] -
-                          partblk[size * ic + PQECSM] * gblcblk[PQESSP] +
-                          partblk[size * ic + PQESCP] * gblcblk[PQECCM] +
-                          partblk[size * ic + PQESSP] * gblcblk[PQECSM] -
-                          partblk[size * ic + PQECCP] * gblcblk[PQESCM] -
-                          partblk[size * ic + PQECSP] * gblcblk[PQESSM]);
-    force[1] += pref_y * (partblk[size * ic + PQECSM] * gblcblk[PQECCP] +
-                          partblk[size * ic + PQESSM] * gblcblk[PQESCP] -
-                          partblk[size * ic + PQECCM] * gblcblk[PQECSP] -
-                          partblk[size * ic + PQESCM] * gblcblk[PQESSP] +
-                          partblk[size * ic + PQECSP] * gblcblk[PQECCM] +
-                          partblk[size * ic + PQESSP] * gblcblk[PQESCM] -
-                          partblk[size * ic + PQECCP] * gblcblk[PQECSM] -
-                          partblk[size * ic + PQESCP] * gblcblk[PQESSM]);
-    force[2] += (partblk[size * ic + PQECCM] * gblcblk[PQECCP] +
-                 partblk[size * ic + PQECSM] * gblcblk[PQECSP] +
-                 partblk[size * ic + PQESCM] * gblcblk[PQESCP] +
-                 partblk[size * ic + PQESSM] * gblcblk[PQESSP] -
-                 partblk[size * ic + PQECCP] * gblcblk[PQECCM] -
-                 partblk[size * ic + PQECSP] * gblcblk[PQECSM] -
-                 partblk[size * ic + PQESCP] * gblcblk[PQESCM] -
-                 partblk[size * ic + PQESSP] * gblcblk[PQESSM]);
+    p.add_force({pref_x * (partblk[size * ic + PQESCM] * gblcblk[PQECCP] +
+                           partblk[size * ic + PQESSM] * gblcblk[PQECSP] -
+                           partblk[size * ic + PQECCM] * gblcblk[PQESCP] -
+                           partblk[size * ic + PQECSM] * gblcblk[PQESSP] +
+                           partblk[size * ic + PQESCP] * gblcblk[PQECCM] +
+                           partblk[size * ic + PQESSP] * gblcblk[PQECSM] -
+                           partblk[size * ic + PQECCP] * gblcblk[PQESCM] -
+                           partblk[size * ic + PQECSP] * gblcblk[PQESSM]),
+                 pref_y * (partblk[size * ic + PQECSM] * gblcblk[PQECCP] +
+                           partblk[size * ic + PQESSM] * gblcblk[PQESCP] -
+                           partblk[size * ic + PQECCM] * gblcblk[PQECSP] -
+                           partblk[size * ic + PQESCM] * gblcblk[PQESSP] +
+                           partblk[size * ic + PQECSP] * gblcblk[PQECCM] +
+                           partblk[size * ic + PQESSP] * gblcblk[PQESCM] -
+                           partblk[size * ic + PQECCP] * gblcblk[PQECSM] -
+                           partblk[size * ic + PQESCP] * gblcblk[PQESSM]),
+                 (partblk[size * ic + PQECCM] * gblcblk[PQECCP] +
+                  partblk[size * ic + PQECSM] * gblcblk[PQECSP] +
+                  partblk[size * ic + PQESCM] * gblcblk[PQESCP] +
+                  partblk[size * ic + PQESSM] * gblcblk[PQESSP] -
+                  partblk[size * ic + PQECCP] * gblcblk[PQECCM] -
+                  partblk[size * ic + PQECSP] * gblcblk[PQECSM] -
+                  partblk[size * ic + PQESCP] * gblcblk[PQESCM] -
+                  partblk[size * ic + PQESSP] * gblcblk[PQESSM])});
     ic++;
   }
 }

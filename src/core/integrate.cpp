@@ -327,11 +327,11 @@ void System::System::thermostat_force_init() {
   auto const kT = thermostat->kT;
   cell_structure->for_each_local_particle([&](Particle &p) {
     if (propagation.should_propagate_with(p, PropagationMode::TRANS_LANGEVIN))
-      p.force() += friction_thermo_langevin(langevin, p, time_step, kT);
+      p.add_force(friction_thermo_langevin(langevin, p, time_step, kT));
 #ifdef ROTATION
     if (propagation.should_propagate_with(p, PropagationMode::ROT_LANGEVIN))
-      p.torque() += convert_vector_body_to_space(
-          p, friction_thermo_langevin_rotation(langevin, p, time_step, kT));
+      p.add_torque(convert_vector_body_to_space(
+          p, friction_thermo_langevin_rotation(langevin, p, time_step, kT)));
 #endif
   });
 }

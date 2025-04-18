@@ -220,7 +220,9 @@ ParticleHandle::ParticleHandle() {
        [this]() { return get_particle_data(m_pid).v(); }},
       {"f",
        [this](Variant const &value) {
-         set_particle_property(&Particle::force, value);
+         set_particle_property([&value](Particle &p) {
+           p.force_and_torque().force.set(get_value<Utils::Vector3d>(value));
+         });
        },
        [this]() { return get_particle_data(m_pid).force(); }},
       {"mass",
@@ -327,7 +329,8 @@ ParticleHandle::ParticleHandle() {
        [this](Variant const &value) {
          set_particle_property([&value](Particle &p) {
            auto const torque = get_value<Utils::Vector3d>(value);
-           p.torque() = convert_vector_space_to_body(p, torque);
+           p.force_and_torque().torque.set(
+               convert_vector_space_to_body(p, torque));
          });
        },
        [this]() {

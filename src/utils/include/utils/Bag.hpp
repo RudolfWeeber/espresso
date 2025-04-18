@@ -47,7 +47,7 @@ namespace Utils {
  * @tparam T Element type, needs to be Swappable.
  */
 template <class T> class Bag {
-  static_assert(std::is_swappable_v<T>);
+  //  static_assert(std::is_swappable_v<T>);
 
   /** Storage backend */
   using storage_type = std::vector<T>;

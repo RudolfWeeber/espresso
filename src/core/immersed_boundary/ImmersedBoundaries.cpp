@@ -202,9 +202,9 @@ void ImmersedBoundaries::calc_volume_force(CellStructure &cs) {
       auto const nHat = n / ln;
       auto const force = -fact * A * nHat;
 
-      p1.force() += force;
-      p2.force() += force;
-      p3.force() += force;
+      p1.add_force(force);
+      p2.add_force(force);
+      p3.add_force(force);
     }
     return false;
   });

@@ -111,9 +111,9 @@ static void add_oif_global_forces(double area, double volume, int molType,
                        (m1_length * m1_length + m2_length * m2_length +
                         m3_length * m3_length);
 
-      p1.force() += fac * m1 + VOL_force;
-      partners[0]->force() += fac * m2 + VOL_force;
-      partners[1]->force() += fac * m3 + VOL_force;
+      p1.add_force(fac * m1 + VOL_force);
+      partners[0]->add_force(fac * m2 + VOL_force);
+      partners[1]->add_force(fac * m3 + VOL_force);
     }
 
     return false;

@@ -424,7 +424,7 @@ template <int cao> struct AssignForces {
           force[2u] += w * double(p3m.rs_E_fields[2u][ind]);
         });
 
-        p_force -= pref * force;
+        p_force.add(-1.0 * pref * force);
         ++p_index;
       }
     }
@@ -641,7 +641,7 @@ double CoulombP3MImpl<FloatType, Architecture>::long_range_kernel(
       for (auto zipped : boost::combine(p_q_range, p_force_range)) {
         auto p_q = boost::get<0>(zipped);
         auto &p_force = boost::get<1>(zipped);
-        p_force -= p_q * dm;
+        p_force.add(-1.0 * p_q * dm);
       }
     }
   }

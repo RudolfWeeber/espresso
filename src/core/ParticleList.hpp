@@ -24,6 +24,7 @@
 #include "Particle.hpp"
 
 #include <utils/Bag.hpp>
+#include <vector>
 
 /**
  * @brief List of particles.

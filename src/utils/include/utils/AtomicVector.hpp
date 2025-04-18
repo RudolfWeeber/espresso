@@ -13,6 +13,12 @@ template <typename T, std::size_t N> class AtomicVector {
                 "T must be lock-free atomic");
 
 public:
+  AtomicVector(const AtomicVector &other) { set(other.get()); }
+  AtomicVector &operator=(const AtomicVector &other) {
+    set(other.get());
+    return *this;
+  }
+
   AtomicVector() { clear(); }
 
   void clear() {
@@ -33,7 +39,7 @@ public:
     }
   }
 
-  std::array<T, N> get() const {
+  Vector<T, N> get() const {
     Vector<T, N> result;
     for (std::size_t i = 0; i < N; ++i) {
       result[i] = data_[i].load(std::memory_order_relaxed);
@@ -47,12 +53,12 @@ private:
   template <class Archive>
   void serialize(Archive &ar, const unsigned int /*version*/) {
     if constexpr (Archive::is_saving::value) {
-      std::array<T, N> snapshot = get();
+      Vector<T, N> snapshot = get();
       ar & snapshot;
     } else {
       Utils::Vector<T, N> temp;
       ar & temp;
-      set(temp.data()); // std::array<T,N>::data() returns T*
+      set(temp); // std::array<T,N>::data() returns T*
     }
   }
 };
