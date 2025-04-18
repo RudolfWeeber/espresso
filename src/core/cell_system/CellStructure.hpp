@@ -41,6 +41,11 @@
 #include <boost/container/static_vector.hpp>
 #include <boost/iterator/indirect_iterator.hpp>
 #include <boost/range/algorithm/transform.hpp>
+#ifdef CABANA
+#include "parallel_for_each_particle_impl.hpp"
+#include <Kokkos_Core.hpp>
+#include <Kokkos_StdAlgorithms.hpp>
+#endif
 
 #include <algorithm>
 #include <cassert>
@@ -281,6 +286,14 @@ public:
     return Cells::particles(decomposition().ghost_cells());
   }
 
+  bool use_parallel_for_each_local_particle() const {
+#ifdef CABANA
+    return true;
+#else
+    return false;
+#endif
+  }
+
   /**
    * @brief Run a kernel on all local particles.
    * The kernel is assumed to be thread-safe.
@@ -288,6 +301,12 @@ public:
   template <typename Kernel>
     requires ParticleCallback<Kernel>
   void for_each_local_particle(Kernel f) const {
+#ifdef CABANA
+    if (use_parallel_for_each_local_particle()) {
+      parallel_for_each_particle_impl(decomposition().local_cells(), f);
+      return;
+    }
+#endif
     for (auto &p : local_particles()) {
       f(p);
     }

@@ -87,7 +87,8 @@ target_link_libraries(
   PUBLIC espresso::utils MPI::MPI_CXX Random123 espresso::particle_observables
          Boost::serialization Boost::mpi espresso::instrumentation)
 
-target_include_directories(espresso_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(espresso_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+                                                ${Kokkos_INCLUDE_DIRS})
 
 if(ESPRESSO_BUILD_WITH_WALBERLA)
   target_link_libraries(

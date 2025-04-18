@@ -23,6 +23,9 @@ target_sources(
 
 if(ESPRESSO_BUILD_WITH_FFTW)
   add_library(espresso_p3m OBJECT)
+  if(ESPRESSO_BUILD_WITH_CABANA)
+    target_link_libraries(espresso_p3m PUBLIC Cabana::Core)
+  endif()
   add_library(espresso::p3m ALIAS espresso_p3m)
   if(ESPRESSO_BUILD_WITH_CLANG_TIDY)
     set_target_properties(espresso_p3m PROPERTIES CXX_CLANG_TIDY
