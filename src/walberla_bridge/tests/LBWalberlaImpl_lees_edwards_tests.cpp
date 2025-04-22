@@ -82,6 +82,7 @@ BOOST_AUTO_TEST_CASE(test_transient_shear) {
     lb.integrate();
     if (i < grid_size_y / 2.)
       continue;
+    lb.ghost_communication_vel();
     for (double y :
          {0., 0.13 * grid_size_y, 0.7 * grid_size_y, 1. * grid_size_y}) {
       auto u = lb.get_velocity_at_pos(Vector3d{4, y, 4}, true);
@@ -118,7 +119,7 @@ BOOST_AUTO_TEST_CASE(test_interpolation_force) {
   lb->add_force_at_pos(force_pos, f1);
 
   lb->integrate();
-
+  lb->ghost_communication_laf();
   auto const ghost_node = Vector3i{force_node[0] - offset, -1, force_node[2]};
   auto const laf = *(lb->get_node_last_applied_force(ghost_node, true));
   BOOST_CHECK_SMALL((laf - f1).norm(), 1E-10);

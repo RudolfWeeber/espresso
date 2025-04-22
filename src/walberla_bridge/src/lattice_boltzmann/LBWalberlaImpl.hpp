@@ -638,6 +638,7 @@ private:
     // Mark pending ghost layer updates
     // As pdf and laf are communicated direcly afterwards they are not set.
     m_pending_ghost_comm.set(GhostComm::VEL);
+    m_pending_ghost_comm.set(GhostComm::LAF);
     m_pdf_streaming_communicator->communicate();
     if (has_lees_edwards_bc()) {
       apply_lees_edwards_pdf_interpolation(blocks);
