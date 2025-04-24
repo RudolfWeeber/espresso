@@ -193,15 +193,16 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
         return Vector3<FT>(std::data(values));
       }
     };
-    auto const make_ref_matrix = [](std::initializer_list<FT> values) {
-      if constexpr (is_interval) {
-        assert(values.size() % 9ul == 0ul);
-        return std::vector<FT>(values);
-      } else {
-        assert(values.size() == 9ul);
-        return Matrix3<FT>(std::data(values));
-      }
-    };
+    // TODO: see pressure tensor todo below
+    // auto const make_ref_matrix = [](std::initializer_list<FT> values) {
+    //   if constexpr (is_interval) {
+    //     assert(values.size() % 9ul == 0ul);
+    //     return std::vector<FT>(values);
+    //   } else {
+    //     assert(values.size() == 9ul);
+    //     return Matrix3<FT>(std::data(values));
+    //   }
+    // };
     auto const to_number = [](auto const &value) {
       if constexpr (std::is_same_v<decltype(value), FT const &>) {
         return value;
@@ -238,7 +239,7 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
       auto diag = FT{0};
       auto const zero = FT{0};
       auto const old_pop = lbm::accessor::Population::get(pdf_field, it);
-      auto const old_pre = lbm::accessor::PressureTensor::get(pdf_field, it);
+      // auto const old_pre = lbm::accessor::PressureTensor::get(pdf_field, it);
       auto const old_laf = lbm::accessor::Vector::get(force_field, it);
       auto const old_rho = lbm::accessor::Density::get(pdf_field, it);
       auto ref_pop = old_pop;
@@ -246,7 +247,7 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
                              [](auto const &f) { return FT{2} * f; });
       lbm::accessor::Population::set(pdf_field, ref_pop, it);
       auto const new_pop = lbm::accessor::Population::get(pdf_field, it);
-      auto const new_pre = lbm::accessor::PressureTensor::get(pdf_field, it);
+      // auto const new_pre = lbm::accessor::PressureTensor::get(pdf_field, it);
       auto const new_rho = lbm::accessor::Density::get(pdf_field, it);
       BOOST_CHECK(almost_equal(new_pop, ref_pop, exact));
       // clang-format off

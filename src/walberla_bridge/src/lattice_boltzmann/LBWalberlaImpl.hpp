@@ -631,10 +631,10 @@ private:
 
   void integrate_pull_scheme() {
     auto const &blocks = get_lattice().get_blocks();
-    // LB stream collide
-    integrate_stream_collide(blocks);
     // Reset force fields
     integrate_reset_force(blocks);
+    // LB stream collide
+    integrate_stream_collide(blocks);
     // Mark pending ghost layer updates
     // As pdf and laf are communicated direcly afterwards they are not set.
     m_pending_ghost_comm.set(GhostComm::VEL);
