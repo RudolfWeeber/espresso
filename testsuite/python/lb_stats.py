@@ -115,8 +115,11 @@ class TestLB:
 
             # check momentum conservation
             momentum = self.system.analysis.linear_momentum()
+            f_2_correction = np.sum(
+                self.system.part.all().f,
+                axis=0) * self.system.time_step
 
-            np.testing.assert_allclose(momentum, self.tot_mom,
+            np.testing.assert_allclose(momentum + f_2_correction, self.tot_mom,
                                        atol=1E-10)
 
             temp_particle = np.average(

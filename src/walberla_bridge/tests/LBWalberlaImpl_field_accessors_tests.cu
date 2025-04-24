@@ -236,8 +236,8 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
     };
 
     {
-      auto diag = FT{0};
-      auto const zero = FT{0};
+      // auto diag = FT{0};
+      // auto const zero = FT{0};
       auto const old_pop = lbm::accessor::Population::get(pdf_field, it);
       // auto const old_pre = lbm::accessor::PressureTensor::get(pdf_field, it);
       auto const old_laf = lbm::accessor::Vector::get(force_field, it);
