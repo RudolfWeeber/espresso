@@ -25,8 +25,9 @@
 #include <cstddef>
 
 #include "config/config.hpp"
+#ifdef SHARED_MEMORY_PARALLELISM
 #include <Kokkos_Core.hpp>
-
+#endif
 namespace detail {
 
 constexpr inline void noop_projector(unsigned, int) {}
