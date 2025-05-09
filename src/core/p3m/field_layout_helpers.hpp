@@ -47,7 +47,7 @@ auto extract_block(Container const &in_array, Utils::Vector3i const &dimensions,
         auto const in_index =
             Utils::get_linear_index<memory_order>(indices, dimensions);
         assert(out_index == Utils::get_linear_index<output_memory_order>(
-                                indices, block_dim));
+                                indices - start, block_dim));
         // Copy the value
         out_array[out_index] = in_array[in_index];
       });
