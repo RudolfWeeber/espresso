@@ -76,12 +76,17 @@ void for_each_3d(detail::IndexVectorConcept auto &&start,
   }
 }
 
+#ifdef SHARED_MEMORY_PARALLELISM
+/** @brief Mapping between ESPResSo and Kokkos tags for memory order */
 template <Utils::MemoryOrder Order>
 using LayoutIterate = typename std::conditional_t<
     Order == Utils::MemoryOrder::COLUMN_MAJOR,
     std::integral_constant<Kokkos::Iterate, Kokkos::Iterate::Left>,
     std::integral_constant<Kokkos::Iterate, Kokkos::Iterate::Right>>;
+#endif
 
+/** @brief Run a kernel(index_3d, linear_index) over the given 3d range with
+ * given memory order */
 template <Utils::MemoryOrder memory_order, class Kernel>
 //  requires std::invocable<Kernel, detail::IndexVectorConcept auto, int>
 void for_each_3d_lin(detail::IndexVectorConcept auto &&start,
