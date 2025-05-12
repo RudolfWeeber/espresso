@@ -477,7 +477,7 @@ void CoulombP3MImpl<FloatType, Architecture>::kernel_rs_electric_field() {
       [&](const Utils::Vector3i &indices, int local_index) {
         assert(local_index ==
                Utils::get_linear_index<Utils::MemoryOrder::COLUMN_MAJOR>(
-                   indices - mesh_start, mesh_stop));
+                   indices - mesh_start, p3m.fft->ks_local_size()));
         auto const phi_hat = multiply_complex_by_real(
             p3m.ks_charge_density[local_index], p3m.g_force[local_index]);
 
