@@ -85,8 +85,13 @@ if(ESPRESSO_BUILD_WITH_WALBERLA)
 endif()
 
 if(ESPRESSO_BUILD_WITH_FFTW)
-  espresso_unit_test(SRC p3m_test.cpp DEPENDS espresso::utils espresso::core)
-  espresso_unit_test(SRC fft_test.cpp DEPENDS espresso::utils espresso::core)
+  espresso_unit_test(
+    SRC p3m_test.cpp DEPENDS espresso::utils espresso::core
+    $<$<BOOL:${ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM}>:Kokkos::kokkos>)
+  espresso_unit_test(
+    SRC fft_test.cpp DEPENDS espresso::utils espresso::core
+    $<$<BOOL:${ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM}>:Kokkos::kokkos>)
+
   espresso_unit_test(SRC math_test.cpp DEPENDS espresso::utils espresso::core)
 endif()
 
