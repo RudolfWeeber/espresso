@@ -88,7 +88,6 @@ using LayoutIterate = typename std::conditional_t<
 /** @brief Run a kernel(index_3d, linear_index) over the given 3d range with
  * given memory order */
 template <Utils::MemoryOrder memory_order, class Kernel>
-//  requires std::invocable<Kernel, detail::IndexVectorConcept auto, int>
 void for_each_3d_lin(detail::IndexVectorConcept auto &&start,
                      detail::IndexVectorConcept auto &&stop, Kernel &&kernel) {
 #ifdef SHARED_MEMORY_PARALLELISM
