@@ -647,7 +647,6 @@ private:
     // Handle boundaries
     if (m_has_boundaries) {
       integrate_boundaries(blocks);
-      m_pending_ghost_comm.set(GhostComm::PDF);
     }
     // Update velocities from pdfs
     integrate_update_velocities_from_pdf(blocks);
