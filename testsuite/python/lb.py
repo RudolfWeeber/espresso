@@ -656,7 +656,7 @@ class LBTest:
         self.system.lb = lbf
         self.system.thermostat.set_lb(LB_fluid=lbf, seed=3, gamma=self.gamma)
         p = self.system.part.add(pos=[-1E-30] * 3, v=[-1, 0, 0])
-        self.system.integrator.run(2)
+        self.system.integrator.run(1)
         for _ in range(20):
             self.system.integrator.run(1)
             self.assertTrue(np.all(p.f != 0.0))
