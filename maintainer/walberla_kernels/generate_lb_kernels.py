@@ -151,7 +151,7 @@ def generate_stream_collide_lees_edwards_kernels(ctx, method, data_type, fields)
                     "double_precision": ctx.double_accuracy}
     print(le_collision_rule_unthermalized)
     for params, target_suffix in paramlist(parameters, ("GPU", "CPU", "AVX")):
-        stem = f"StreamCollideSweep{
+        kernel_name = f"StreamCollideSweep{
             precision_prefix}LeesEdwards{target_suffix}"
         pystencils_espresso.generate_stream_collision_sweep(
             ctx,
@@ -159,7 +159,7 @@ def generate_stream_collide_lees_edwards_kernels(ctx, method, data_type, fields)
             le_config,
             data_type,
             le_collision_rule_unthermalized,
-            stem,
+            kernel_name,
             optimization,
             params
         )
@@ -195,7 +195,7 @@ def generate_stream_collide_kernels(ctx, method, data_type):
     )
 
     for params, target_suffix in paramlist(parameters, ("GPU", "CPU", "AVX")):
-        stem = f"StreamCollideSweep{
+        kernel_name = f"StreamCollideSweep{
             precision_prefix}Thermalized{target_suffix}"
         pystencils_espresso.generate_stream_collision_sweep(
             ctx,
@@ -203,7 +203,7 @@ def generate_stream_collide_kernels(ctx, method, data_type):
             lbm_config,
             data_type,
             lb_collision_rule_thermalized,
-            stem,
+            kernel_name,
             optimization,
             params,
             block_offset=block_offsets,
@@ -227,15 +227,15 @@ def generate_macroscopic_value_getter_kernels(ctx, method, fields):
 def generate_accessors_kernels(ctx, method):
     precision_prefix = pystencils_espresso.precision_prefix[ctx.double_accuracy]
     for _, target_suffix in paramlist(parameters, ("GPU", "CPU")):
-        stem = f"FieldAccessors{precision_prefix}{target_suffix}"
+        kernel_name = f"FieldAccessors{precision_prefix}{target_suffix}"
         if target == ps.Target.GPU:
             templates = {
-                f"{stem}.cuh": "templates/FieldAccessors.tmpl.cuh",
-                f"{stem}.cu": "templates/FieldAccessors.tmpl.cu",
+                f"{kernel_name}.cuh": "templates/FieldAccessors.tmpl.cuh",
+                f"{kernel_name}.cu": "templates/FieldAccessors.tmpl.cu",
             }
         else:
             templates = {
-                f"{stem}.h": "templates/FieldAccessors.tmpl.h",
+                f"{kernel_name}.h": "templates/FieldAccessors.tmpl.h",
             }
         walberla_lbm_generation.generate_macroscopic_values_accessors(
             ctx, config, method, templates
