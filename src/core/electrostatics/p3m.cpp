@@ -151,7 +151,8 @@ void CoulombP3MImpl<FloatType, Architecture>::count_charged_particles() {
     double local_q = 0.0;
     double local_q2 = 0.0;
   };
-  ParticleReduceKernel<Res> kernel = [](const Particle &p, Res &res) {
+  Reduction::AddPartialResultKernel<Res> kernel = [](const Particle &p,
+                                                     Res &res) {
     if (p.q() != 0.0) {
       res.local_n++;
       res.local_q2 += Utils::sqr(p.q());
@@ -159,7 +160,7 @@ void CoulombP3MImpl<FloatType, Architecture>::count_charged_particles() {
     }
   };
 
-  auto reduce = [](Res &a, Res &b) {
+  Reduction::ReductionOp<Res> reduce = [](Res &a, Res &b) {
     return Res{.local_n = a.local_n + b.local_n,
                .local_q = a.local_q + b.local_q,
                .local_q2 = a.local_q2 + b.local_q2};
