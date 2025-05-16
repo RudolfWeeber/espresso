@@ -475,9 +475,11 @@ void CoulombP3MImpl<FloatType, Architecture>::kernel_rs_electric_field() {
   for_each_3d_lin<Utils::MemoryOrder::COLUMN_MAJOR>(
       mesh_start, mesh_stop,
       [&](const Utils::Vector3i &indices, int local_index) {
+#ifdef ADDITIONAL_CHECKS
         assert(local_index ==
                Utils::get_linear_index<Utils::MemoryOrder::COLUMN_MAJOR>(
                    indices - mesh_start, p3m.fft->ks_local_size()));
+#endif
         auto const phi_hat = multiply_complex_by_real(
             p3m.ks_charge_density[local_index], p3m.g_force[local_index]);
 
@@ -502,8 +504,6 @@ void CoulombP3MImpl<FloatType, Architecture>::kernel_rs_electric_field() {
     auto const offset = d * rs_mesh_size_no_halo;
     auto const begin = p3m.rs_E_fields_no_halo.begin() + offset;
     auto f = std::span<std::complex<FloatType>>(begin, rs_mesh_size_no_halo);
-    //    auto f_t = transpose<Utils::MemoryOrder::COLUMN_MAJOR,
-    //                         Utils::MemoryOrder::ROW_MAJOR>(f, size);
     p3m.rs_E_fields[d] =
         pad_with_zeros_discard_imag<Utils::MemoryOrder::COLUMN_MAJOR,
                                     Utils::MemoryOrder::ROW_MAJOR>(

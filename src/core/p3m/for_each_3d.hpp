@@ -19,15 +19,18 @@
 
 #pragma once
 
+#include <config/config.hpp>
+
 #include <utils/index.hpp>
 
-#include <concepts>
-#include <cstddef>
-
-#include "config/config.hpp"
 #ifdef SHARED_MEMORY_PARALLELISM
 #include <Kokkos_Core.hpp>
 #endif
+
+#include <concepts>
+#include <cstddef>
+#include <type_traits>
+
 namespace detail {
 
 constexpr inline void noop_projector(unsigned, int) {}
@@ -85,8 +88,10 @@ using LayoutIterate = typename std::conditional_t<
     std::integral_constant<Kokkos::Iterate, Kokkos::Iterate::Right>>;
 #endif
 
-/** @brief Run a kernel(index_3d, linear_index) over the given 3d range with
- * given memory order */
+/**
+ * @brief Run a kernel(index_3d, linear_index) over the given 3d range with
+ * given memory order
+ */
 template <Utils::MemoryOrder memory_order, class Kernel>
 void for_each_3d_lin(detail::IndexVectorConcept auto &&start,
                      detail::IndexVectorConcept auto &&stop, Kernel &&kernel) {
@@ -100,8 +105,8 @@ void for_each_3d_lin(detail::IndexVectorConcept auto &&start,
     Range3d policy({0, 0, 0}, {nx, ny, nz});
     Kokkos::parallel_for(
         "for_each_3d", policy, KOKKOS_LAMBDA(int i, int j, int k) {
-          auto idx = {start[0] + i, start[1] + j, start[2] + k};
-          auto linear_idx =
+          auto const idx = {start[0] + i, start[1] + j, start[2] + k};
+          auto const linear_idx =
               Utils::get_linear_index<memory_order>({i, j, k}, {nx, ny, nz});
           kernel(idx, linear_idx);
         });

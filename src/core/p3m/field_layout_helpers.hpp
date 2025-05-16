@@ -24,6 +24,7 @@
 #include <utils/Vector.hpp>
 #include <utils/index.hpp>
 
+#include <cassert>
 #include <cstddef>
 #include <span>
 #include <vector>
@@ -35,14 +36,14 @@ auto extract_block(Container const &in_array, Utils::Vector3i const &dimensions,
                    Utils::Vector3i const &start, Utils::Vector3i const &stop) {
   // Calculate the size of the block excluding halo regions
   auto const block_dim = stop - start;
-  auto const size = Utils::product(block_dim);
+  auto const size = static_cast<std::size_t>(Utils::product(block_dim));
 
   // Output vector to hold the block
   std::vector<typename Container::value_type> out_array(size);
 
   // Extract the block
   for_each_3d_lin<output_memory_order>(
-      start, stop, [&](const Utils::Vector3i &indices, int out_index) {
+      start, stop, [&](Utils::Vector3i const &indices, int out_index) {
         // Compute indices for input and output arrays
         auto const in_index =
             Utils::get_linear_index<memory_order>(indices, dimensions);
@@ -59,9 +60,9 @@ auto extract_block(Container const &in_array, Utils::Vector3i const &dimensions,
 template <Utils::MemoryOrder memory_order,
           Utils::MemoryOrder output_memory_order, typename T>
 auto pad_with_zeros_discard_imag(std::span<T> cropped_array,
-                                 Utils::Vector3i cropped_dim,
-                                 Utils::Vector3i pad_left,
-                                 Utils::Vector3i pad_right) {
+                                 Utils::Vector3i const &cropped_dim,
+                                 Utils::Vector3i const &pad_left,
+                                 Utils::Vector3i const &pad_right) {
 
   // Calculate dimensions and strides
   Utils::Vector3i padded_dim = cropped_dim + pad_left + pad_right;
@@ -72,7 +73,7 @@ auto pad_with_zeros_discard_imag(std::span<T> cropped_array,
   // Fill in the original cropped field into the padded array by chunks
   for_each_3d_lin<memory_order>(
       Utils::Vector3i{0, 0, 0}, cropped_dim,
-      [&](const Utils::Vector3i &indices, int in_index) {
+      [&](Utils::Vector3i const &indices, int in_index) {
         // Compute indices for input and output arrays
         auto const out_index = Utils::get_linear_index<output_memory_order>(
             indices + pad_left, padded_dim);
