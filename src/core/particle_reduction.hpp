@@ -11,16 +11,19 @@
 #include <functional>
 
 namespace Reduction {
+
+/** @brief Kernel that adds the result from a single particle to a reduction */
 template <typename ResultType>
 using AddPartialResultKernel =
     std::function<void(const Particle &, ResultType &)>;
 
-template <typename ResultType>
-using SingleResultKernel = std::function<ResultType(const Particle &)>;
-
+/** @brief Join two partial reduciton results */
 template <typename ResultType>
 using ReductionOp = std::function<void(ResultType &, const ResultType &)>;
+
 #ifdef SHARED_MEMORY_PARALLELISM
+
+/** @brief Implements a custom reduction in the form required by  Kokkos */
 template <typename ResultType, typename Kernel> class KokkosReducer {
 public:
   // Kokkos reduction functors need the value_type typedef.
@@ -59,6 +62,14 @@ public:
   }
 };
 
+/** @brief performs a reductino over all particles
+ *
+ * @param add_partial is a function that adds a reduction result from a single
+ * particle
+ * @param reduction_op is a function that joins two reduction results
+ *
+ * both functions have to implement the same reduction.
+ */
 template <typename ResultType, typename Kernel>
 KokkosReducer<ResultType, Kernel>
 make_kokkos_reducer(Kernel k, ReductionOp<ResultType> reduce_op) {
@@ -106,14 +117,4 @@ ResultType reduce_over_local_particles(
     add_partial(p, accumulated);
   }
   return accumulated;
-}
-
-void test_redue(CellStructure &cs) {
-  using ResultType = double;
-  Reduction::ReductionOp<ResultType> reduce_op =
-      [](ResultType &a, const ResultType &b) { a += b; };
-  Reduction::AddPartialResultKernel<ResultType> add_partial_result =
-      [](const Particle &p, ResultType &res) { res += p.mass(); };
-  ResultType total_mass = reduce_over_local_particles<ResultType>(
-      cs, add_partial_result, reduce_op);
 }
