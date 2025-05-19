@@ -35,9 +35,9 @@ public:
   // will use the default execution space by default.
 
   // kernels to wrap
-  ReductionOp<ResultType> &reduction_op;
+  ReductionOp<ResultType> reduction_op;
   Kernel kernel;
-  KokkosReducer(Kernel kernel, ReductionOp<ResultType> &redduction_op)
+  KokkosReducer(Kernel kernel, ReductionOp<ResultType> reduction_op)
       : reduction_op(reduction_op), kernel(kernel) {}
   KokkosReducer(const KokkosReducer &other)
       : reduction_op(other.reduction_op), kernel(other.kernel) {};
