@@ -62,14 +62,6 @@ public:
   }
 };
 
-/** @brief performs a reductino over all particles
- *
- * @param add_partial is a function that adds a reduction result from a single
- * particle
- * @param reduction_op is a function that joins two reduction results
- *
- * both functions have to implement the same reduction.
- */
 template <typename ResultType, typename Kernel>
 KokkosReducer<ResultType, Kernel>
 make_kokkos_reducer(Kernel k, ReductionOp<ResultType> reduce_op) {
@@ -79,6 +71,14 @@ make_kokkos_reducer(Kernel k, ReductionOp<ResultType> reduce_op) {
 
 } // namespace Reduction
 
+/** @brief performs a reductino over all particles
+ *
+ * @param add_partial is a function that adds a reduction result from a single
+ * particle
+ * @param reduction_op is a function that joins two reduction results
+ *
+ * both functions have to implement the same reduction.
+ */
 template <typename ResultType>
 ResultType reduce_over_local_particles(
     const CellStructure &cs,
