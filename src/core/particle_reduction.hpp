@@ -82,7 +82,7 @@ make_kokkos_reducer(Kernel k, ReductionOp<ResultType> reduce_op) {
 template <typename ResultType>
 ResultType reduce_over_local_particles(
     const CellStructure &cs,
-    Reduction::AddPartialResultKernel<ResultType> &add_partial,
+    Reduction::AddPartialResultKernel<ResultType> add_partial,
     Reduction::ReductionOp<ResultType> reduce_op) {
 #ifdef SHARED_MEMORY_PARALLELISM
   ResultType result{};
@@ -107,7 +107,7 @@ ResultType reduce_over_local_particles(
         },
         reduce_op);
     Kokkos::parallel_reduce( // loop over cells
-        "reduce_on_local_particle", cells.size(), reducer, result);
+        "reduce_on_local_particle", cell->particles().size(), reducer, result);
     return result;
   }
 #endif
