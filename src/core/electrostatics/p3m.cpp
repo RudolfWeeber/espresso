@@ -160,10 +160,10 @@ void CoulombP3MImpl<FloatType, Architecture>::count_charged_particles() {
     }
   };
 
-  Reduction::ReductionOp<Res> reduce = [](Res &a, Res &b) {
-    return Res{.local_n = a.local_n + b.local_n,
-               .local_q = a.local_q + b.local_q,
-               .local_q2 = a.local_q2 + b.local_q2};
+  Reduction::ReductionOp<Res> reduce = [](Res &a, const Res &b) {
+    a.local_n += b.local_n;
+    a.local_q += b.local_q;
+    a.local_q2 += b.local_q2;
   };
   auto res = reduce_over_local_particles(*(get_system().cell_structure), kernel,
                                          reduce);

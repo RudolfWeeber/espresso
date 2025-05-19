@@ -1,10 +1,14 @@
 #pragma once
-
 #include <functional>
 #include <type_traits>
 
 #include "cell_system/CellStructure.hpp"
 #include "config/config.hpp"
+#ifdef SHARED_MEMORY_PARALLELISM
+#include "Kokkos_Core.hpp"
+#endif
+
+#include <functional>
 
 namespace Reduction {
 template <typename ResultType>
@@ -15,20 +19,101 @@ template <typename ResultType>
 using SingleResultKernel = std::function<ResultType(const Particle &)>;
 
 template <typename ResultType>
-using ReductionOp = std::function<ResultType(ResultType &, ResultType &)>;
+using ReductionOp = std::function<void(ResultType &, const ResultType &)>;
+#ifdef SHARED_MEMORY_PARALLELISM
+template <typename ResultType, typename Kernel> class KokkosReducer {
+public:
+  // Kokkos reduction functors need the value_type typedef.
+  // This is the type of the result of the reduction.
+  using value_type = ResultType;
+
+  // Just like with parallel_for functors, you may specify
+  // an execution_space typedef. If not provided, Kokkos
+  // will use the default execution space by default.
+
+  // kernels to wrap
+  ReductionOp<ResultType> &reduction_op;
+  Kernel kernel;
+  KokkosReducer(Kernel kernel, ReductionOp<ResultType> &redduction_op)
+      : reduction_op(reduction_op), kernel(kernel) {}
+  KokkosReducer(const KokkosReducer &other)
+      : reduction_op(other.reduction_op), kernel(other.kernel) {};
+
+  KOKKOS_INLINE_FUNCTION void operator()(const int i,
+                                         value_type &update) const {
+    kernel(i, update);
+  }
+
+  // "Join" intermediate results from different threads.
+  // This should normally implement the same reduction
+  // operation as operator() above.
+  KOKKOS_INLINE_FUNCTION void join(value_type &dst,
+                                   const value_type &src) const {
+    reduction_op(dst, src);
+  }
+
+  // Tell each thread how to initialize its reduction result.
+  KOKKOS_INLINE_FUNCTION void
+  init(value_type &dst) const { // The identity under max is -Inf.
+    dst = {};
+  }
+};
+
+template <typename ResultType, typename Kernel>
+KokkosReducer<ResultType, Kernel>
+make_kokkos_reducer(Kernel k, ReductionOp<ResultType> reduce_op) {
+  return KokkosReducer<ResultType, Kernel>(k, reduce_op);
+}
+#endif
 
 } // namespace Reduction
 
 template <typename ResultType>
 ResultType reduce_over_local_particles(
     const CellStructure &cs,
-    Reduction::AddPartialResultKernel<ResultType> &kernel,
-    Reduction::ReductionOp<ResultType> &reduce_op) {
-  ResultType accumulator{};
-  for (const auto &p : cs.local_particles()) {
-    ResultType temp{};
-    kernel(p, temp);
-    accumulator = reduce_op(accumulator, temp);
+    Reduction::AddPartialResultKernel<ResultType> &add_partial,
+    Reduction::ReductionOp<ResultType> reduce_op) {
+#ifdef SHARED_MEMORY_PARALLELISM
+  ResultType result{};
+
+  auto const &cells = cs.decomposition().local_cells();
+  if (cells.size() > 1) { // parallel loop over cells
+    auto reducer = Reduction::make_kokkos_reducer<ResultType>(
+        [&cells, add_partial](int i, ResultType &res) {
+          for (auto &p : cells[i]->particles()) {
+            add_partial(p, res);
+          }
+        },
+        reduce_op);
+    Kokkos::parallel_reduce( // loop over cells
+        "reduce_on_local_particle", cells.size(), reducer, result);
+    return result;
+  } else { // cells.size()==1
+    auto const &cell = cells[0];
+    auto reducer = Reduction::make_kokkos_reducer<ResultType>(
+        [&cell, add_partial](int i, ResultType &res) {
+          add_partial(*(cell->particles().begin() + i), res);
+        },
+        reduce_op);
+    Kokkos::parallel_reduce( // loop over cells
+        "reduce_on_local_particle", cells.size(), reducer, result);
+    return result;
   }
-  return accumulator;
+#endif
+
+  ResultType accumulated{};
+  for (const auto &p : cs.local_particles()) {
+    add_partial(p, accumulated);
+  }
+  return accumulated;
+}
+
+void test_redue(CellStructure &cs) {
+  using ResultType = double;
+  Reduction::ReductionOp<ResultType> reduce_op =
+      [](ResultType &a, const ResultType &b) { a += b; };
+  Reduction::AddPartialResultKernel<ResultType> add_partial_result =
+      [](const Particle &p, ResultType &res) { res += p.mass(); };
+  ResultType total_mass = reduce_over_local_particles<ResultType>(
+      cs, add_partial_result, reduce_op);
 }
