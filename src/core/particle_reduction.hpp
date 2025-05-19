@@ -75,7 +75,7 @@ make_kokkos_reducer(Kernel k, ReductionOp<ResultType> reduce_op) {
  *
  * @param add_partial is a function that adds a reduction result from a single
  * particle
- * @param reduction_op is a function that joins two reduction results
+ * @param reduce_op is a function that joins two reduction results
  *
  * both functions have to implement the same reduction.
  */
