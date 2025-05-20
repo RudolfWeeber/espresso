@@ -18,7 +18,8 @@
  */
 
 #define BOOST_TEST_NO_MAIN
-#define BOOST_TEST_MODULE particle_reduction
+#define BOOST_TEST_MODULE particle_reduction test
+#define BOOST_TEST_ALTERNATIVE_INIT_API
 #define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
 
