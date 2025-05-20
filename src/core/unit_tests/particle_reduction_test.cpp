@@ -70,6 +70,7 @@ BOOST_AUTO_TEST_CASE(make_kokkos_reduction_) {
     BOOST_CHECK_EQUAL(ref, res);
   }
 }
+#endif
 
 int main(int argc, char **argv) {
   auto const mpi_handle = MpiContainerUnitTest(argc, argv);
@@ -81,4 +82,3 @@ int main(int argc, char **argv) {
 
   return boost::unit_test::unit_test_main(init_unit_test, argc, argv);
 }
-#endif
