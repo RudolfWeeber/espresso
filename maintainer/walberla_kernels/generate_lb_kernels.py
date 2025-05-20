@@ -116,13 +116,13 @@ def patch_openmp_kernels(content):
 def generate_init_kernels(ctx, method):
     precision_prefix = pystencils_espresso.precision_prefix[ctx.double_accuracy]
     for params, target_suffix in paramlist(parameters, (default_key,)):
-        stem = f"InitialPDFsSetter{precision_prefix}{target_suffix}"
+        kernel_name = f"InitialPDFsSetter{precision_prefix}{target_suffix}"
         pystencils_walberla.generate_sweep(
             ctx,
-            stem,
+            kernel_name,
             pystencils_espresso.generate_setters(method, data_type),
             **params)
-        ctx.patch_file(stem, get_ext_source(target_suffix),
+        ctx.patch_file(kernel_name, get_ext_source(target_suffix),
                        patch_openmp_kernels)
 
 
@@ -163,7 +163,7 @@ def generate_stream_collide_lees_edwards_kernels(ctx, method, data_type, fields)
             optimization,
             params
         )
-        ctx.patch_file(stem, get_ext_source(target_suffix),
+        ctx.patch_file(kernel_name, get_ext_source(target_suffix),
                        patch_openmp_kernels)
 
 
@@ -208,20 +208,23 @@ def generate_stream_collide_kernels(ctx, method, data_type):
             params,
             block_offset=block_offsets,
         )
-        ctx.patch_file(stem, get_ext_source(target_suffix),
+        ctx.patch_file(kernel_name, get_ext_source(target_suffix),
                        patch_openmp_kernels)
 
 
 def generate_macroscopic_value_getter_kernels(ctx, method, fields):
     precision_prefix = pystencils_espresso.precision_prefix[ctx.double_accuracy]
     for params, target_suffix in paramlist(parameters, ("GPU", "CPU", "AVX")):
+        kernel_name = f"UpdateVelFromPDF{precision_prefix}{target_suffix}"
         pystencils_walberla.generate_sweep(
             ctx,
-            f"UpdateVelFromPDF{precision_prefix}{target_suffix}",
+            kernel_name,
             lbmpy.macroscopic_value_kernels.macroscopic_values_getter(
                 method, None, fields["velocity"], fields["pdfs"],
                 use_pre_collision_pdfs=True),
             **params)
+        ctx.patch_file(kernel_name, get_ext_source(target_suffix),
+                       patch_openmp_kernels)
 
 
 def generate_accessors_kernels(ctx, method):
