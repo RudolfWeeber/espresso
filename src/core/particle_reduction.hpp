@@ -1,11 +1,31 @@
-#pragma once
-#include <functional>
-#include <type_traits>
+/*
+ * Copyright (C) 2025 The ESPResSo project
+ *
+ * This file is part of ESPResSo.
+ *
+ * ESPResSo is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * ESPResSo is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
+#pragma once
+
+#include <config/config.hpp>
+
+#include "Particle.hpp"
 #include "cell_system/CellStructure.hpp"
-#include "config/config.hpp"
+
 #ifdef SHARED_MEMORY_PARALLELISM
-#include "Kokkos_Core.hpp"
+#include <Kokkos_Core.hpp>
 #endif
 
 #include <functional>
@@ -15,11 +35,11 @@ namespace Reduction {
 /** @brief Kernel that adds the result from a single particle to a reduction */
 template <typename ResultType>
 using AddPartialResultKernel =
-    std::function<void(const Particle &, ResultType &)>;
+    std::function<void(Particle const &, ResultType &)>;
 
 /** @brief Join two partial reduciton results */
 template <typename ResultType>
-using ReductionOp = std::function<void(ResultType &, const ResultType &)>;
+using ReductionOp = std::function<void(ResultType &, ResultType const &)>;
 
 #ifdef SHARED_MEMORY_PARALLELISM
 
@@ -39,10 +59,10 @@ public:
   Kernel kernel;
   KokkosReducer(Kernel kernel, ReductionOp<ResultType> reduction_op)
       : reduction_op(reduction_op), kernel(kernel) {}
-  KokkosReducer(const KokkosReducer &other)
+  KokkosReducer(KokkosReducer const &other)
       : reduction_op(other.reduction_op), kernel(other.kernel) {};
 
-  KOKKOS_INLINE_FUNCTION void operator()(const int i,
+  KOKKOS_INLINE_FUNCTION void operator()(int const i,
                                          value_type &update) const {
     kernel(i, update);
   }
@@ -51,7 +71,7 @@ public:
   // This should normally implement the same reduction
   // operation as operator() above.
   KOKKOS_INLINE_FUNCTION void join(value_type &dst,
-                                   const value_type &src) const {
+                                   value_type const &src) const {
     reduction_op(dst, src);
   }
 };
@@ -61,11 +81,12 @@ KokkosReducer<ResultType, Kernel>
 make_kokkos_reducer(Kernel k, ReductionOp<ResultType> reduce_op) {
   return KokkosReducer<ResultType, Kernel>(k, reduce_op);
 }
-#endif
+
+#endif // SHARED_MEMORY_PARALLELISM
 
 } // namespace Reduction
 
-/** @brief performs a reductino over all particles
+/** @brief performs a reduction over all particles
  *
  * @param add_partial is a function that adds a reduction result from a single
  * particle
@@ -75,12 +96,13 @@ make_kokkos_reducer(Kernel k, ReductionOp<ResultType> reduce_op) {
  */
 template <typename ResultType>
 ResultType reduce_over_local_particles(
-    const CellStructure &cs,
+    CellStructure const &cs,
     Reduction::AddPartialResultKernel<ResultType> add_partial,
     Reduction::ReductionOp<ResultType> reduce_op) {
-#ifdef SHARED_MEMORY_PARALLELISM
+
   ResultType result{};
 
+#ifdef SHARED_MEMORY_PARALLELISM
   auto const &cells = cs.decomposition().local_cells();
   if (cells.size() > 1) { // parallel loop over cells
     auto reducer = Reduction::make_kokkos_reducer<ResultType>(
@@ -93,22 +115,21 @@ ResultType reduce_over_local_particles(
     Kokkos::parallel_reduce( // loop over cells
         "reduce_on_local_particle", cells.size(), reducer, result);
     return result;
-  } else { // cells.size()==1
-    auto const &cell = cells[0];
-    auto reducer = Reduction::make_kokkos_reducer<ResultType>(
-        [&cell, add_partial](int i, ResultType &res) {
-          add_partial(*(cell->particles().begin() + i), res);
-        },
-        reduce_op);
-    Kokkos::parallel_reduce( // loop over cells
-        "reduce_on_local_particle", cell->particles().size(), reducer, result);
-    return result;
   }
+  // single cell case
+  auto const &particles = cells.front()->particles();
+  auto reducer = Reduction::make_kokkos_reducer<ResultType>(
+      [&particles, add_partial](int i, ResultType &res) {
+        add_partial(*(particles.begin() + i), res);
+      },
+      reduce_op);
+  Kokkos::parallel_reduce( // loop over particles
+      "reduce_on_local_particle", particles.size(), reducer, result);
+  return result;
+#else // SHARED_MEMORY_PARALLELISM
+  for (auto const &p : cs.local_particles()) {
+    add_partial(p, result);
+  }
+  return result;
 #endif
-
-  ResultType accumulated{};
-  for (const auto &p : cs.local_particles()) {
-    add_partial(p, accumulated);
-  }
-  return accumulated;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2022 The ESPResSo project
+ * Copyright (C) 2025 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -33,6 +33,7 @@
 #include <utils/Vector.hpp>
 
 #include <boost/mpi.hpp>
+
 #include <functional>
 
 #ifdef SHARED_MEMORY_PARALLELISM
@@ -50,23 +51,23 @@ BOOST_AUTO_TEST_CASE(make_kokkos_reduction_) {
 #endif
   p.v() = {3., 0., 0.};
 
-  auto kernel = [&cells](int i, Utils::Vector3d &res) {
+  auto const kernel = [&cells](int i, Utils::Vector3d &res) {
     for (auto &p : cells[i]->particles()) {
       res += p.mass() * p.v();
     }
   };
-  auto reduce_op = [](Utils::Vector3d &a, const Utils::Vector3d &b) {
+  auto const reduce_op = [](Utils::Vector3d &a, Utils::Vector3d const &b) {
     a = a + b;
   };
-  auto reducer =
+  auto const reducer =
       Reduction::make_kokkos_reducer<Utils::Vector3d>(kernel, reduce_op);
   for (auto i = 0; i < cells.size(); ++i) {
     auto ref = Utils::Vector3d{0., 0., 0.};
     kernel(i, ref);
     auto res = Utils::Vector3d{0., 0., 0.};
     reducer(i, res);
-    // The Lambda function `kernel(i, res)` is executed inside `reducer(i,
-    // res)`, so make sure that both results are equal.
+    // The lambda `kernel(i, res)` is executed inside `reducer(i, res)`,
+    // so make sure that both results are equal.
     BOOST_CHECK_EQUAL(ref, res);
   }
 }
@@ -82,5 +83,5 @@ int main(int argc, char **argv) {
   return boost::unit_test::unit_test_main(init_unit_test, argc, argv);
 }
 #else // SHARED_MEMORY_PARALLELISM
-int main(int argc, char **argv) {}
+int main(int, char **) {}
 #endif

@@ -149,10 +149,10 @@ Utils::Vector3d calc_linear_momentum(System::System const &system,
   if (include_particles) {
     momentum = reduce_over_local_particles<Utils::Vector3d>(
         *(system.cell_structure),
-        [](const Particle &p, Utils::Vector3d &res) {
+        [](Particle const &p, Utils::Vector3d &res) {
           res += p.mass() * p.v();
         },
-        [](Utils::Vector3d &a, const Utils::Vector3d &b) { a = a + b; });
+        [](Utils::Vector3d &a, Utils::Vector3d const &b) { a = a + b; });
   }
   if (include_lbfluid and system.lb.is_solver_set()) {
     momentum += system.lb.get_momentum() * system.lb.get_lattice_speed();
