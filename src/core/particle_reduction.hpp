@@ -54,12 +54,6 @@ public:
                                    const value_type &src) const {
     reduction_op(dst, src);
   }
-
-  // Tell each thread how to initialize its reduction result.
-  KOKKOS_INLINE_FUNCTION void
-  init(value_type &dst) const { // The identity under max is -Inf.
-    dst = {};
-  }
 };
 
 template <typename ResultType, typename Kernel>
