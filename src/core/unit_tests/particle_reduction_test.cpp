@@ -54,15 +54,18 @@ BOOST_AUTO_TEST_CASE(make_kokkos_reduction_) {
       res += p.mass() * p.v();
     }
   };
-  auto reduce_op = [](Utils::Vector3d &a, const Utils::Vector3d &b) { a = a + b; };
-  auto reducer = Reduction::make_kokkos_reducer<Utils::Vector3d>(kernel, reduce_op);
+  auto reduce_op = [](Utils::Vector3d &a, const Utils::Vector3d &b) {
+    a = a + b;
+  };
+  auto reducer =
+      Reduction::make_kokkos_reducer<Utils::Vector3d>(kernel, reduce_op);
   for (auto i = 0; i < cells.size(); ++i) {
     auto ref = Utils::Vector3d{0., 0., 0.};
     kernel(i, ref);
     auto res = Utils::Vector3d{0., 0., 0.};
     reducer(i, res);
-    // The Lambda function `kernel(i, res)` is executed inside `reducer(i, res)`,
-    // so make sure that both results are equal. 
+    // The Lambda function `kernel(i, res)` is executed inside `reducer(i,
+    // res)`, so make sure that both results are equal.
     BOOST_CHECK_EQUAL(ref, res);
   }
 }
