@@ -168,7 +168,7 @@ BOOST_DATA_TEST_CASE(force_interpolation_ghosts, bdata::make(all_lbs()),
     }
   }
   lb->integrate();
-  lb->ghost_communication();
+  lb->ghost_communication(true);
   // last applied forces should now contain forces to be applied,
   // and its ghost layer should have been zeroed out
   for (int x : {-1, 0, 1}) {
