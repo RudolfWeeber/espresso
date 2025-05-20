@@ -504,7 +504,7 @@ BOOST_DATA_TEST_CASE(forces_book_keeping, bdata::make(all_lbs()),
       lb->ghost_communication();
     }
     lb->integrate();
-    lb->ghost_communication(true);
+    lb->ghost_communication();
     // Check nodes incl some of the ghosts
     for (auto cn : {n, n + params.grid_dimensions, n - params.grid_dimensions,
                     n + Vector3i{{params.grid_dimensions[0], 0, 0}}}) {

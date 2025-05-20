@@ -51,16 +51,16 @@ public:
   virtual void integrate() = 0;
 
   /** @brief Perform a full ghost communication. */
-  virtual void ghost_communication(bool forced = false) = 0;
+  virtual void ghost_communication() = 0;
 
   /** @brief Perform a ghost communication of the PDF field. */
-  virtual void ghost_communication_pdf(bool forced = false) = 0;
+  virtual void ghost_communication_pdf() = 0;
 
   /** @brief Perform a ghost communication of the velocity field. */
-  virtual void ghost_communication_vel(bool forced = false) = 0;
+  virtual void ghost_communication_vel() = 0;
 
   /** @brief Perform a ghost communication of the last applied forces field. */
-  virtual void ghost_communication_laf(bool forced = false) = 0;
+  virtual void ghost_communication_laf() = 0;
 
   /** @brief Number of discretized velocities in the PDF. */
   virtual std::size_t stencil_size() const noexcept = 0;

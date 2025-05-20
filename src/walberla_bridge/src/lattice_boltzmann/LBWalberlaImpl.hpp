@@ -638,6 +638,7 @@ private:
     // Mark pending ghost layer updates
     // As pdf and laf are communicated direcly afterwards they are not set.
     m_pending_ghost_comm.set(GhostComm::VEL);
+    m_pending_ghost_comm.set(GhostComm::LAF);
     m_pdf_streaming_communicator->communicate();
     if (has_lees_edwards_bc()) {
       apply_lees_edwards_pdf_interpolation(blocks);
@@ -673,17 +674,17 @@ public:
     integrate_vtk_writers();
   }
 
-  void ghost_communication(bool forced = false) override {
-    if (m_pending_ghost_comm.any() || forced) {
-      ghost_communication_boundary(forced);
-      ghost_communication_pdf(forced);
-      ghost_communication_laf(forced);
-      ghost_communication_vel(forced);
+  void ghost_communication() override {
+    if (m_pending_ghost_comm.any()) {
+      ghost_communication_boundary();
+      ghost_communication_pdf();
+      ghost_communication_laf();
+      ghost_communication_vel();
     }
   }
 
-  void ghost_communication_pdf(bool forced = false) override {
-    if (m_pending_ghost_comm.test(GhostComm::PDF) || forced) {
+  void ghost_communication_pdf() override {
+    if (m_pending_ghost_comm.test(GhostComm::PDF)) {
       m_pdf_communicator->communicate();
       if (has_lees_edwards_bc()) {
         auto const &blocks = get_lattice().get_blocks();
@@ -693,8 +694,8 @@ public:
     }
   }
 
-  void ghost_communication_vel(bool forced = false) override {
-    if (m_pending_ghost_comm.test(GhostComm::VEL) || forced) {
+  void ghost_communication_vel() override {
+    if (m_pending_ghost_comm.test(GhostComm::VEL)) {
       m_vel_communicator->communicate();
       if (has_lees_edwards_bc()) {
         auto const &blocks = get_lattice().get_blocks();
@@ -704,8 +705,8 @@ public:
     }
   }
 
-  void ghost_communication_laf(bool forced = false) override {
-    if (m_pending_ghost_comm.test(GhostComm::LAF) || forced) {
+  void ghost_communication_laf() override {
+    if (m_pending_ghost_comm.test(GhostComm::LAF)) {
       m_laf_communicator->communicate();
       if (has_lees_edwards_bc()) {
         auto const &blocks = get_lattice().get_blocks();
@@ -715,8 +716,8 @@ public:
     }
   }
 
-  void ghost_communication_boundary(bool forced = false) {
-    if (m_pending_ghost_comm.test(GhostComm::UBB) || forced) {
+  void ghost_communication_boundary() {
+    if (m_pending_ghost_comm.test(GhostComm::UBB)) {
       m_boundary_communicator->communicate();
       m_pending_ghost_comm.reset(GhostComm::UBB);
     }
@@ -725,14 +726,14 @@ public:
   void ghost_communication_full() {
     m_full_communicator->communicate();
     if (has_lees_edwards_bc()) {
-      apply_lees_edwards_interploation();
+      apply_lees_edwards_interpolation();
     }
     m_pending_ghost_comm.reset(GhostComm::PDF);
     m_pending_ghost_comm.reset(GhostComm::VEL);
     m_pending_ghost_comm.reset(GhostComm::LAF);
   }
 
-  void apply_lees_edwards_interploation() {
+  void apply_lees_edwards_interpolation() {
     auto const &blocks = get_lattice().get_blocks();
     apply_lees_edwards_pdf_interpolation(blocks);
     apply_lees_edwards_vel_interpolation_and_shift(blocks);
