@@ -224,9 +224,10 @@ def generate_pack_info_pdfs_field_assignments(fields, streaming_pattern):
     """
     stencil = lbmpy.enums.Stencil.D3Q19
     lbm_config = lbmpy.LBMConfig(stencil=stencil,
-                                 method=lbmpy.Method.CUMULANT,
+                                 method=lbmpy.Method.TRT,
                                  compressible=True,
-                                 zero_centered=False,
+                                 delta_equilibrium=True,
+                                 zero_centered=True,
                                  weighted=True,
                                  streaming_pattern=streaming_pattern,
                                  relaxation_rate=sp.Symbol("omega_shear"),

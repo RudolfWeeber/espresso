@@ -198,7 +198,8 @@ static FUNC_PREFIX __launch_bounds__(256) void streamcollidesweepdoubleprecision
     const double vel0Term = xi_3 + _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 4 * _stride_pdfs_3];
     const double vel1Term = xi_4 + xi_5;
     const double vel2Term = xi_6 + _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 13 * _stride_pdfs_3];
-    const double rho = vel0Term + vel1Term + vel2Term + xi_8 + xi_9 + _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 6 * _stride_pdfs_3] + _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2];
+    const double delta_rho = vel0Term + vel1Term + vel2Term + xi_8 + xi_9 + _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 6 * _stride_pdfs_3] + _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2];
+    const double rho = delta_rho + 1.0;
     const double xi_95 = kT * rho;
     const double xi_96 = pow(xi_95 * (1.0 - ((-omega_even + 1.0) * (-omega_even + 1.0))), 0.5);
     const double xi_99 = xi_96 * xi_97 * xi_98;
@@ -429,16 +430,16 @@ void StreamCollideSweepDoublePrecisionThermalizedCUDA::run(IBlock *block, gpuStr
     }
   }
 
-  auto &block_offset_0 = this->block_offset_0_;
-  auto &block_offset_1 = this->block_offset_1_;
-  auto &block_offset_2 = this->block_offset_2_;
-  auto &omega_even = this->omega_even_;
-  auto &omega_odd = this->omega_odd_;
   auto &kT = this->kT_;
-  auto &omega_shear = this->omega_shear_;
-  auto &time_step = this->time_step_;
+  auto &block_offset_1 = this->block_offset_1_;
   auto &omega_bulk = this->omega_bulk_;
   auto &seed = this->seed_;
+  auto &time_step = this->time_step_;
+  auto &block_offset_0 = this->block_offset_0_;
+  auto &omega_shear = this->omega_shear_;
+  auto &omega_odd = this->omega_odd_;
+  auto &block_offset_2 = this->block_offset_2_;
+  auto &omega_even = this->omega_even_;
   WALBERLA_ASSERT_GREATER_EQUAL(-1, -int_c(force->nrOfGhostLayers()))
   double *RESTRICT const _data_force = force->dataAt(-1, -1, -1, 0);
   WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
@@ -499,16 +500,16 @@ void StreamCollideSweepDoublePrecisionThermalizedCUDA::runOnCellInterval(const s
     }
   }
 
-  auto &block_offset_0 = this->block_offset_0_;
-  auto &block_offset_1 = this->block_offset_1_;
-  auto &block_offset_2 = this->block_offset_2_;
-  auto &omega_even = this->omega_even_;
-  auto &omega_odd = this->omega_odd_;
   auto &kT = this->kT_;
-  auto &omega_shear = this->omega_shear_;
-  auto &time_step = this->time_step_;
+  auto &block_offset_1 = this->block_offset_1_;
   auto &omega_bulk = this->omega_bulk_;
   auto &seed = this->seed_;
+  auto &time_step = this->time_step_;
+  auto &block_offset_0 = this->block_offset_0_;
+  auto &omega_shear = this->omega_shear_;
+  auto &omega_odd = this->omega_odd_;
+  auto &block_offset_2 = this->block_offset_2_;
+  auto &omega_even = this->omega_even_;
   WALBERLA_ASSERT_GREATER_EQUAL(ci.xMin() - 1, -int_c(force->nrOfGhostLayers()))
   WALBERLA_ASSERT_GREATER_EQUAL(ci.yMin() - 1, -int_c(force->nrOfGhostLayers()))
   WALBERLA_ASSERT_GREATER_EQUAL(ci.zMin() - 1, -int_c(force->nrOfGhostLayers()))

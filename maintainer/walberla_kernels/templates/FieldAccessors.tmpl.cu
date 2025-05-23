@@ -599,6 +599,10 @@ namespace Equilibrium
         rho -= {{dtype}}(1.0);
         {%endif %}
 
+        {%if zero_centered %}
+        {{dtype}} delta_rho = rho - {{dtype}} {1};
+        {%endif %}
+
         {% for eqTerm in equilibrium -%}
             pdf.get({{loop.index0 }}u) = {{eqTerm}};
         {% endfor -%}

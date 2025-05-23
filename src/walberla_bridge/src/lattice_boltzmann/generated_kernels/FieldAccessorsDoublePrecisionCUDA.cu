@@ -18,7 +18,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// kernel generated with pystencils v1.3.7, lbmpy v1.3.7, sympy v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit f36fa0a68bae59f0b516f6587ea8fa7c24a41141
+// kernel generated with pystencils v1.3.7, lbmpy v1.3.7+4.gc7d65a7, sympy v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit 0aab9c0af2335b1f6fec75deae06e514ccb233ab
 
 /**
  * @file
@@ -215,8 +215,9 @@ __global__ void kernel_set_vel(
     const double vel1Term = f_1 + f_11 + f_15 + f_7;
     const double momdensity_1 = -f_10 - f_12 - f_16 - f_2 + f_8 - f_9 + vel1Term;
     const double vel2Term = f_12 + f_13 + f_5;
+    const double delta_rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
     const double momdensity_2 = f_11 + f_14 - f_15 - f_16 - f_17 - f_18 - f_6 + vel2Term;
-    const double rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
+    const double rho = delta_rho + 1;
     const double md_0 = force.get(0) * 0.50000000000000000 + momdensity_0;
     const double md_1 = force.get(1) * 0.50000000000000000 + momdensity_1;
     const double md_2 = force.get(2) * 0.50000000000000000 + momdensity_2;
@@ -640,25 +641,27 @@ __device__ void kernel_set_device(
     double const *RESTRICT const u,
     double rho) {
 
-  pdf.get(0u) = rho * -0.33333333333333331 * (u[0] * u[0]) + rho * -0.33333333333333331 * (u[1] * u[1]) + rho * -0.33333333333333331 * (u[2] * u[2]) + rho * 0.33333333333333331;
-  pdf.get(1u) = rho * -0.16666666666666666 * (u[0] * u[0]) + rho * -0.16666666666666666 * (u[2] * u[2]) + rho * 0.055555555555555552 + rho * 0.16666666666666666 * u[1] + rho * 0.16666666666666666 * (u[1] * u[1]);
-  pdf.get(2u) = rho * -0.16666666666666666 * u[1] + rho * -0.16666666666666666 * (u[0] * u[0]) + rho * -0.16666666666666666 * (u[2] * u[2]) + rho * 0.055555555555555552 + rho * 0.16666666666666666 * (u[1] * u[1]);
-  pdf.get(3u) = rho * -0.16666666666666666 * u[0] + rho * -0.16666666666666666 * (u[1] * u[1]) + rho * -0.16666666666666666 * (u[2] * u[2]) + rho * 0.055555555555555552 + rho * 0.16666666666666666 * (u[0] * u[0]);
-  pdf.get(4u) = rho * -0.16666666666666666 * (u[1] * u[1]) + rho * -0.16666666666666666 * (u[2] * u[2]) + rho * 0.055555555555555552 + rho * 0.16666666666666666 * u[0] + rho * 0.16666666666666666 * (u[0] * u[0]);
-  pdf.get(5u) = rho * -0.16666666666666666 * (u[0] * u[0]) + rho * -0.16666666666666666 * (u[1] * u[1]) + rho * 0.055555555555555552 + rho * 0.16666666666666666 * u[2] + rho * 0.16666666666666666 * (u[2] * u[2]);
-  pdf.get(6u) = rho * -0.16666666666666666 * u[2] + rho * -0.16666666666666666 * (u[0] * u[0]) + rho * -0.16666666666666666 * (u[1] * u[1]) + rho * 0.055555555555555552 + rho * 0.16666666666666666 * (u[2] * u[2]);
-  pdf.get(7u) = rho * -0.083333333333333329 * u[0] + rho * -0.25 * u[0] * u[1] + rho * 0.027777777777777776 + rho * 0.083333333333333329 * u[1] + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[1] * u[1]);
-  pdf.get(8u) = rho * 0.027777777777777776 + rho * 0.083333333333333329 * u[0] + rho * 0.083333333333333329 * u[1] + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[1] * u[1]) + rho * 0.25 * u[0] * u[1];
-  pdf.get(9u) = rho * -0.083333333333333329 * u[0] + rho * -0.083333333333333329 * u[1] + rho * 0.027777777777777776 + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[1] * u[1]) + rho * 0.25 * u[0] * u[1];
-  pdf.get(10u) = rho * -0.083333333333333329 * u[1] + rho * -0.25 * u[0] * u[1] + rho * 0.027777777777777776 + rho * 0.083333333333333329 * u[0] + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[1] * u[1]);
-  pdf.get(11u) = rho * 0.027777777777777776 + rho * 0.083333333333333329 * u[1] + rho * 0.083333333333333329 * u[2] + rho * 0.083333333333333329 * (u[1] * u[1]) + rho * 0.083333333333333329 * (u[2] * u[2]) + rho * 0.25 * u[1] * u[2];
-  pdf.get(12u) = rho * -0.083333333333333329 * u[1] + rho * -0.25 * u[1] * u[2] + rho * 0.027777777777777776 + rho * 0.083333333333333329 * u[2] + rho * 0.083333333333333329 * (u[1] * u[1]) + rho * 0.083333333333333329 * (u[2] * u[2]);
-  pdf.get(13u) = rho * -0.083333333333333329 * u[0] + rho * -0.25 * u[0] * u[2] + rho * 0.027777777777777776 + rho * 0.083333333333333329 * u[2] + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[2] * u[2]);
-  pdf.get(14u) = rho * 0.027777777777777776 + rho * 0.083333333333333329 * u[0] + rho * 0.083333333333333329 * u[2] + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[2] * u[2]) + rho * 0.25 * u[0] * u[2];
-  pdf.get(15u) = rho * -0.083333333333333329 * u[2] + rho * -0.25 * u[1] * u[2] + rho * 0.027777777777777776 + rho * 0.083333333333333329 * u[1] + rho * 0.083333333333333329 * (u[1] * u[1]) + rho * 0.083333333333333329 * (u[2] * u[2]);
-  pdf.get(16u) = rho * -0.083333333333333329 * u[1] + rho * -0.083333333333333329 * u[2] + rho * 0.027777777777777776 + rho * 0.083333333333333329 * (u[1] * u[1]) + rho * 0.083333333333333329 * (u[2] * u[2]) + rho * 0.25 * u[1] * u[2];
-  pdf.get(17u) = rho * -0.083333333333333329 * u[0] + rho * -0.083333333333333329 * u[2] + rho * 0.027777777777777776 + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[2] * u[2]) + rho * 0.25 * u[0] * u[2];
-  pdf.get(18u) = rho * -0.083333333333333329 * u[2] + rho * -0.25 * u[0] * u[2] + rho * 0.027777777777777776 + rho * 0.083333333333333329 * u[0] + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[2] * u[2]);
+  double delta_rho = rho - double{1};
+
+  pdf.get(0u) = delta_rho * 0.33333333333333331 + rho * -0.33333333333333331 * (u[0] * u[0]) + rho * -0.33333333333333331 * (u[1] * u[1]) + rho * -0.33333333333333331 * (u[2] * u[2]);
+  pdf.get(1u) = delta_rho * 0.055555555555555552 + rho * -0.16666666666666666 * (u[0] * u[0]) + rho * -0.16666666666666666 * (u[2] * u[2]) + rho * 0.16666666666666666 * u[1] + rho * 0.16666666666666666 * (u[1] * u[1]);
+  pdf.get(2u) = delta_rho * 0.055555555555555552 + rho * -0.16666666666666666 * u[1] + rho * -0.16666666666666666 * (u[0] * u[0]) + rho * -0.16666666666666666 * (u[2] * u[2]) + rho * 0.16666666666666666 * (u[1] * u[1]);
+  pdf.get(3u) = delta_rho * 0.055555555555555552 + rho * -0.16666666666666666 * u[0] + rho * -0.16666666666666666 * (u[1] * u[1]) + rho * -0.16666666666666666 * (u[2] * u[2]) + rho * 0.16666666666666666 * (u[0] * u[0]);
+  pdf.get(4u) = delta_rho * 0.055555555555555552 + rho * -0.16666666666666666 * (u[1] * u[1]) + rho * -0.16666666666666666 * (u[2] * u[2]) + rho * 0.16666666666666666 * u[0] + rho * 0.16666666666666666 * (u[0] * u[0]);
+  pdf.get(5u) = delta_rho * 0.055555555555555552 + rho * -0.16666666666666666 * (u[0] * u[0]) + rho * -0.16666666666666666 * (u[1] * u[1]) + rho * 0.16666666666666666 * u[2] + rho * 0.16666666666666666 * (u[2] * u[2]);
+  pdf.get(6u) = delta_rho * 0.055555555555555552 + rho * -0.16666666666666666 * u[2] + rho * -0.16666666666666666 * (u[0] * u[0]) + rho * -0.16666666666666666 * (u[1] * u[1]) + rho * 0.16666666666666666 * (u[2] * u[2]);
+  pdf.get(7u) = delta_rho * 0.027777777777777776 + rho * -0.083333333333333329 * u[0] + rho * -0.25 * u[0] * u[1] + rho * 0.083333333333333329 * u[1] + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[1] * u[1]);
+  pdf.get(8u) = delta_rho * 0.027777777777777776 + rho * 0.083333333333333329 * u[0] + rho * 0.083333333333333329 * u[1] + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[1] * u[1]) + rho * 0.25 * u[0] * u[1];
+  pdf.get(9u) = delta_rho * 0.027777777777777776 + rho * -0.083333333333333329 * u[0] + rho * -0.083333333333333329 * u[1] + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[1] * u[1]) + rho * 0.25 * u[0] * u[1];
+  pdf.get(10u) = delta_rho * 0.027777777777777776 + rho * -0.083333333333333329 * u[1] + rho * -0.25 * u[0] * u[1] + rho * 0.083333333333333329 * u[0] + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[1] * u[1]);
+  pdf.get(11u) = delta_rho * 0.027777777777777776 + rho * 0.083333333333333329 * u[1] + rho * 0.083333333333333329 * u[2] + rho * 0.083333333333333329 * (u[1] * u[1]) + rho * 0.083333333333333329 * (u[2] * u[2]) + rho * 0.25 * u[1] * u[2];
+  pdf.get(12u) = delta_rho * 0.027777777777777776 + rho * -0.083333333333333329 * u[1] + rho * -0.25 * u[1] * u[2] + rho * 0.083333333333333329 * u[2] + rho * 0.083333333333333329 * (u[1] * u[1]) + rho * 0.083333333333333329 * (u[2] * u[2]);
+  pdf.get(13u) = delta_rho * 0.027777777777777776 + rho * -0.083333333333333329 * u[0] + rho * -0.25 * u[0] * u[2] + rho * 0.083333333333333329 * u[2] + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[2] * u[2]);
+  pdf.get(14u) = delta_rho * 0.027777777777777776 + rho * 0.083333333333333329 * u[0] + rho * 0.083333333333333329 * u[2] + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[2] * u[2]) + rho * 0.25 * u[0] * u[2];
+  pdf.get(15u) = delta_rho * 0.027777777777777776 + rho * -0.083333333333333329 * u[2] + rho * -0.25 * u[1] * u[2] + rho * 0.083333333333333329 * u[1] + rho * 0.083333333333333329 * (u[1] * u[1]) + rho * 0.083333333333333329 * (u[2] * u[2]);
+  pdf.get(16u) = delta_rho * 0.027777777777777776 + rho * -0.083333333333333329 * u[1] + rho * -0.083333333333333329 * u[2] + rho * 0.083333333333333329 * (u[1] * u[1]) + rho * 0.083333333333333329 * (u[2] * u[2]) + rho * 0.25 * u[1] * u[2];
+  pdf.get(17u) = delta_rho * 0.027777777777777776 + rho * -0.083333333333333329 * u[0] + rho * -0.083333333333333329 * u[2] + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[2] * u[2]) + rho * 0.25 * u[0] * u[2];
+  pdf.get(18u) = delta_rho * 0.027777777777777776 + rho * -0.083333333333333329 * u[2] + rho * -0.25 * u[0] * u[2] + rho * 0.083333333333333329 * u[0] + rho * 0.083333333333333329 * (u[0] * u[0]) + rho * 0.083333333333333329 * (u[2] * u[2]);
 }
 // LCOV_EXCL_STOP
 } // namespace Equilibrium
@@ -694,7 +697,8 @@ __global__ void kernel_get(
     const double vel0Term = f_10 + f_14 + f_18 + f_4 + f_8;
     const double vel1Term = f_1 + f_11 + f_15 + f_7;
     const double vel2Term = f_12 + f_13 + f_5;
-    const double rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
+    const double delta_rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
+    const double rho = delta_rho + 1;
     rho_out[0u] = rho;
   }
 }
@@ -730,8 +734,9 @@ __global__ void kernel_set(
     const double vel1Term = f_1 + f_11 + f_15 + f_7;
     const double momdensity_1 = -f_10 - f_12 - f_16 - f_2 + f_8 - f_9 + vel1Term;
     const double vel2Term = f_12 + f_13 + f_5;
+    const double delta_rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
     const double momdensity_2 = f_11 + f_14 - f_15 - f_16 - f_17 - f_18 - f_6 + vel2Term;
-    const double rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
+    const double rho = delta_rho + 1;
 
     // calculate current velocity (before density change)
     double const rho_inv = double{1} / rho;
@@ -831,8 +836,9 @@ __global__ void kernel_get(
     const double vel1Term = f_1 + f_11 + f_15 + f_7;
     const double momdensity_1 = -f_10 - f_12 - f_16 - f_2 + f_8 - f_9 + vel1Term;
     const double vel2Term = f_12 + f_13 + f_5;
+    const double delta_rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
     const double momdensity_2 = f_11 + f_14 - f_15 - f_16 - f_17 - f_18 - f_6 + vel2Term;
-    const double rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
+    const double rho = delta_rho + 1;
     const double md_0 = force.get(0) * 0.50000000000000000 + momdensity_0;
     const double md_1 = force.get(1) * 0.50000000000000000 + momdensity_1;
     const double md_2 = force.get(2) * 0.50000000000000000 + momdensity_2;
@@ -877,7 +883,8 @@ __global__ void kernel_set(
     const double vel0Term = f_10 + f_14 + f_18 + f_4 + f_8;
     const double vel1Term = f_1 + f_11 + f_15 + f_7;
     const double vel2Term = f_12 + f_13 + f_5;
-    const double rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
+    const double delta_rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
+    const double rho = delta_rho + 1;
     const double u_0 = -force.get(0) * 0.50000000000000000 / rho + u[0];
     const double u_1 = -force.get(1) * 0.50000000000000000 / rho + u[1];
     const double u_2 = -force.get(2) * 0.50000000000000000 / rho + u[2];
@@ -996,8 +1003,9 @@ __global__ void kernel_set(
     const double vel1Term = f_1 + f_11 + f_15 + f_7;
     const double momdensity_1 = -f_10 - f_12 - f_16 - f_2 + f_8 - f_9 + vel1Term;
     const double vel2Term = f_12 + f_13 + f_5;
+    const double delta_rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
     const double momdensity_2 = f_11 + f_14 - f_15 - f_16 - f_17 - f_18 - f_6 + vel2Term;
-    const double rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
+    const double rho = delta_rho + 1;
     const double md_0 = f_in[0u] * 0.50000000000000000 + momdensity_0;
     const double md_1 = f_in[1u] * 0.50000000000000000 + momdensity_1;
     const double md_2 = f_in[2u] * 0.50000000000000000 + momdensity_2;
@@ -1081,8 +1089,9 @@ __global__ void kernel_get(
     const double vel1Term = f_1 + f_11 + f_15 + f_7;
     const double momdensity_1 = -f_10 - f_12 - f_16 - f_2 + f_8 - f_9 + vel1Term;
     const double vel2Term = f_12 + f_13 + f_5;
+    const double delta_rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
     const double momdensity_2 = f_11 + f_14 - f_15 - f_16 - f_17 - f_18 - f_6 + vel2Term;
-    const double rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
+    const double rho = delta_rho + 1;
     const double md_0 = force.get(0) * 0.50000000000000000 + momdensity_0;
     const double md_1 = force.get(1) * 0.50000000000000000 + momdensity_1;
     const double md_2 = force.get(2) * 0.50000000000000000 + momdensity_2;
@@ -1144,15 +1153,15 @@ __global__ void kernel_get(
     double const f_16 = pdf.getNeighbor(0, 1, 1, 16u);
     double const f_17 = pdf.getNeighbor(1, 0, 1, 17u);
     double const f_18 = pdf.getNeighbor(-1, 0, 1, 18u);
-    const double p_0 = f_10 + f_13 + f_14 + f_17 + f_18 + f_3 + f_4 + f_7 + f_8 + f_9;
+    const double p_0 = f_10 + f_13 + f_14 + f_17 + f_18 + f_3 + f_4 + f_7 + f_8 + f_9 + 0.33333333333333333;
     const double p_1 = -f_10 - f_7 + f_8 + f_9;
     const double p_2 = -f_13 + f_14 + f_17 - f_18;
     const double p_3 = -f_10 - f_7 + f_8 + f_9;
-    const double p_4 = f_1 + f_10 + f_11 + f_12 + f_15 + f_16 + f_2 + f_7 + f_8 + f_9;
+    const double p_4 = f_1 + f_10 + f_11 + f_12 + f_15 + f_16 + f_2 + f_7 + f_8 + f_9 + 0.33333333333333333;
     const double p_5 = f_11 - f_12 - f_15 + f_16;
     const double p_6 = -f_13 + f_14 + f_17 - f_18;
     const double p_7 = f_11 - f_12 - f_15 + f_16;
-    const double p_8 = f_11 + f_12 + f_13 + f_14 + f_15 + f_16 + f_17 + f_18 + f_5 + f_6;
+    const double p_8 = f_11 + f_12 + f_13 + f_14 + f_15 + f_16 + f_17 + f_18 + f_5 + f_6 + 0.33333333333333333;
     p_out[0u] = p_0;
     p_out[1u] = p_1;
     p_out[2u] = p_2;

@@ -135,7 +135,8 @@ def generate_stream_collide_lees_edwards_kernels(ctx, method, data_type, fields)
                                 method=lbmpy.Method.TRT,
                                 relaxation_rate=sp.Symbol("omega_shear"),
                                 compressible=True,
-                                zero_centered=False,
+                                delta_equilibrium=True,
+                                zero_centered=True,
                                 streaming_pattern='pull',
                                 force_model=lbmpy.ForceModel.GUO,
                                 force=fields["force"].center_vector,
@@ -176,16 +177,17 @@ def generate_stream_collide_kernels(ctx, method, data_type):
     optimization = {"cse_global": True,
                     "double_precision": ctx.double_accuracy}
     lbm_config = lbmpy.LBMConfig(stencil=stencil,
-                                 method=lbmpy.Method.CUMULANT,
+                                 method=lbmpy.Method.TRT,
                                  compressible=True,
-                                 zero_centered=False,
+                                 delta_equilibrium=True,
+                                 zero_centered=True,
                                  weighted=True,
                                  streaming_pattern="pull",
                                  relaxation_rate=sp.Symbol("omega_shear")
                                  )
     lb_collision_rule_thermalized = lbmpy.creationfunctions.create_lb_collision_rule(
         method,
-        zero_centered=False,
+        lbm_config=lbm_config,
         fluctuating={
             "temperature": kT,
             "block_offsets": block_offsets,
@@ -351,6 +353,8 @@ with code_generation_context.CodeGeneration() as ctx:
         stencil=stencil,
         compressible=True,
         weighted=True,
+        delta_equilibrium=True,
+        zero_centered=True,
         relaxation_rates=relaxation_rates.rr_getter,
         force_model=lbmpy.forcemodels.Schiller(fields["force"].center_vector)
     )

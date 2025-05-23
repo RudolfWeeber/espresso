@@ -307,6 +307,10 @@ namespace Equilibrium
         rho -= {{dtype}} {1};
         {%endif %}
 
+        {%if zero_centered %}
+        {{dtype}} delta_rho = rho - {{dtype}} {1};
+        {%endif %}
+
         {{dtype}} & xyz0 = pdf_field->get(cell, uint_t{ 0u });
         {% for eqTerm in equilibrium -%}
             pdf_field->getF( &xyz0, uint_t{ {{ loop.index0 }}u }) = {{eqTerm}};

@@ -17,7 +17,7 @@
 //! \\author pystencils
 //======================================================================================================================
 
-// kernel generated with pystencils v1.3.7, lbmpy v1.3.7, sympy v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit 0aab9c0af2335b1f6fec75deae06e514ccb233ab
+// kernel generated with pystencils v1.3.7, lbmpy v1.3.7+4.gc7d65a7, sympy v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit 0aab9c0af2335b1f6fec75deae06e514ccb233ab
 
 #include <cmath>
 
@@ -188,7 +188,8 @@ static FUNC_PREFIX void streamcollidesweepsingleprecisionthermalized_streamcolli
           const float vel0Term = xi_3 + _data_pdfs[_stride_pdfs_0 * ctr_0 - _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 4 * _stride_pdfs_3];
           const float vel1Term = xi_4 + xi_5;
           const float vel2Term = xi_6 + _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 13 * _stride_pdfs_3];
-          const float rho = vel0Term + vel1Term + vel2Term + xi_8 + xi_9 + _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 6 * _stride_pdfs_3] + _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2];
+          const float delta_rho = vel0Term + vel1Term + vel2Term + xi_8 + xi_9 + _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 6 * _stride_pdfs_3] + _data_pdfs[_stride_pdfs_0 * ctr_0 + _stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2];
+          const float rho = delta_rho + 1.0f;
           const float xi_95 = kT * rho;
           const float xi_96 = powf(xi_95 * (1.0f - ((-omega_even + 1.0f) * (-omega_even + 1.0f))), 0.5f);
           const float xi_99 = xi_96 * xi_97 * xi_98;
@@ -410,8 +411,8 @@ void StreamCollideSweepSinglePrecisionThermalized::run(IBlock *block) {
   if (!this->configured_)
     WALBERLA_ABORT("This Sweep contains a configure function that needs to be called manually")
 
-  auto force = block->getData<field::GhostLayerField<float, 3>>(forceID);
   auto pdfs = block->getData<field::GhostLayerField<float, 19>>(pdfsID);
+  auto force = block->getData<field::GhostLayerField<float, 3>>(forceID);
   field::GhostLayerField<float, 19> *pdfs_tmp;
   {
     if (cache_pdfs_.find(block) == cache_pdfs_.end()) {
@@ -422,16 +423,16 @@ void StreamCollideSweepSinglePrecisionThermalized::run(IBlock *block) {
     }
   }
 
+  auto &omega_shear = this->omega_shear_;
+  auto &kT = this->kT_;
+  auto &block_offset_1 = this->block_offset_1_;
+  auto &omega_bulk = this->omega_bulk_;
+  auto &time_step = this->time_step_;
+  auto &block_offset_2 = this->block_offset_2_;
+  auto &block_offset_0 = this->block_offset_0_;
+  auto &omega_odd = this->omega_odd_;
   auto &seed = this->seed_;
   auto &omega_even = this->omega_even_;
-  auto &omega_shear = this->omega_shear_;
-  auto &block_offset_2 = this->block_offset_2_;
-  auto &omega_odd = this->omega_odd_;
-  auto &kT = this->kT_;
-  auto &block_offset_0 = this->block_offset_0_;
-  auto &block_offset_1 = this->block_offset_1_;
-  auto &time_step = this->time_step_;
-  auto &omega_bulk = this->omega_bulk_;
   WALBERLA_ASSERT_GREATER_EQUAL(-1, -int_c(force->nrOfGhostLayers()))
   float *RESTRICT const _data_force = force->dataAt(-1, -1, -1, 0);
   WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
@@ -478,8 +479,8 @@ void StreamCollideSweepSinglePrecisionThermalized::runOnCellInterval(const share
   if (ci.empty())
     return;
 
-  auto force = block->getData<field::GhostLayerField<float, 3>>(forceID);
   auto pdfs = block->getData<field::GhostLayerField<float, 19>>(pdfsID);
+  auto force = block->getData<field::GhostLayerField<float, 3>>(forceID);
   field::GhostLayerField<float, 19> *pdfs_tmp;
   {
     if (cache_pdfs_.find(block) == cache_pdfs_.end()) {
@@ -490,16 +491,16 @@ void StreamCollideSweepSinglePrecisionThermalized::runOnCellInterval(const share
     }
   }
 
+  auto &omega_shear = this->omega_shear_;
+  auto &kT = this->kT_;
+  auto &block_offset_1 = this->block_offset_1_;
+  auto &omega_bulk = this->omega_bulk_;
+  auto &time_step = this->time_step_;
+  auto &block_offset_2 = this->block_offset_2_;
+  auto &block_offset_0 = this->block_offset_0_;
+  auto &omega_odd = this->omega_odd_;
   auto &seed = this->seed_;
   auto &omega_even = this->omega_even_;
-  auto &omega_shear = this->omega_shear_;
-  auto &block_offset_2 = this->block_offset_2_;
-  auto &omega_odd = this->omega_odd_;
-  auto &kT = this->kT_;
-  auto &block_offset_0 = this->block_offset_0_;
-  auto &block_offset_1 = this->block_offset_1_;
-  auto &time_step = this->time_step_;
-  auto &omega_bulk = this->omega_bulk_;
   WALBERLA_ASSERT_GREATER_EQUAL(ci.xMin() - 1, -int_c(force->nrOfGhostLayers()))
   WALBERLA_ASSERT_GREATER_EQUAL(ci.yMin() - 1, -int_c(force->nrOfGhostLayers()))
   WALBERLA_ASSERT_GREATER_EQUAL(ci.zMin() - 1, -int_c(force->nrOfGhostLayers()))

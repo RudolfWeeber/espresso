@@ -171,6 +171,7 @@ def generate_macroscopic_values_accessors(ctx, config, lb_method, templates):
     cqc = lb_method.conserved_quantity_computation
     vel_symbols = cqc.velocity_symbols
     rho_sym = sp.Symbol("rho")
+    delta_rho_sym = sp.Symbol("delta_rho")
     pdfs_sym = sp.symbols(f"f_:{lb_method.stencil.Q}")
     inv_neighbor_dir_offset = [
         [f"{-c}" for i, c in enumerate(dir)] for dir in lb_method.stencil]
@@ -188,7 +189,10 @@ def generate_macroscopic_values_accessors(ctx, config, lb_method, templates):
         [e.rhs for e in equilibrium.main_assignments])
     equilibrium = ps.AssignmentCollection([ps.Assignment(lhs, rhs)
                                            for lhs, rhs in zip(lhs_list, equilibrium_matrix)])
-    equilibrium = __type_equilibrium_assignments(
+    equilibrium_setter = __type_equilibrium_assignments(
+        equilibrium, config, equilibrium_subs_dict)
+    equilibrium_subs_dict[delta_rho_sym] = rho_sym
+    equilibrium_getter = __type_equilibrium_assignments(
         equilibrium, config, equilibrium_subs_dict)
 
     velocity_getters = make_velocity_getters(cqc, rho_sym, vel_arr_symbols)
@@ -214,8 +218,8 @@ def generate_macroscopic_values_accessors(ctx, config, lb_method, templates):
         "zero_centered": cqc.zero_centered_pdfs,
         "dtype": default_dtype,
 
-        "equilibrium_from_direction": stencil_switch_statement(lb_method.stencil, equilibrium),
-        "equilibrium": [cpp_printer.doprint(e.rhs) for e in equilibrium],
+        "equilibrium_from_direction": stencil_switch_statement(lb_method.stencil, equilibrium_getter),
+        "equilibrium": [cpp_printer.doprint(e.rhs) for e in equilibrium_setter],
 
         "density_getters": equations_to_code(
             cqc.output_equations_from_pdfs(pdfs_sym, {"density": rho_sym}),

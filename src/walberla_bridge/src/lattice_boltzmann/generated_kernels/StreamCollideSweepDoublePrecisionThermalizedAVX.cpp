@@ -17,7 +17,7 @@
 //! \\author pystencils
 //======================================================================================================================
 
-// kernel generated with pystencils v1.3.7, lbmpy v1.3.7, sympy v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit 0aab9c0af2335b1f6fec75deae06e514ccb233ab
+// kernel generated with pystencils v1.3.7, lbmpy v1.3.7+4.gc7d65a7, sympy v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit 0aab9c0af2335b1f6fec75deae06e514ccb233ab
 
 #include <cmath>
 
@@ -25,9 +25,9 @@
 #include "core/DataTypes.h"
 #include "core/Macros.h"
 
-#include <immintrin.h>
-
 #include "philox_rand.h"
+
+#include <immintrin.h>
 
 #define FUNC_PREFIX
 
@@ -207,7 +207,8 @@ static FUNC_PREFIX void streamcollidesweepdoubleprecisionthermalizedavx_streamco
             const __m256d vel0Term = _mm256_add_pd(xi_3, _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 4 * _stride_pdfs_3 + ctr_0 - 1]));
             const __m256d vel1Term = _mm256_add_pd(xi_4, xi_5);
             const __m256d vel2Term = _mm256_add_pd(xi_6, _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 13 * _stride_pdfs_3 + ctr_0 + 1]));
-            const __m256d rho = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(vel0Term, vel1Term), vel2Term), xi_8), xi_9), _mm256_load_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + ctr_0])), _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 6 * _stride_pdfs_3 + ctr_0]));
+            const __m256d delta_rho = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(vel0Term, vel1Term), vel2Term), xi_8), xi_9), _mm256_load_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + ctr_0])), _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 6 * _stride_pdfs_3 + ctr_0]));
+            const __m256d rho = _mm256_add_pd(_mm256_set_pd(1.0, 1.0, 1.0, 1.0), delta_rho);
             const __m256d xi_95 = _mm256_mul_pd(rho, _mm256_set_pd(kT, kT, kT, kT));
             const __m256d xi_96 = _mm256_sqrt_pd(_mm256_mul_pd(xi_95, _mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0, -1.0, -1.0, -1.0), _mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0, -1.0, -1.0, -1.0), _mm256_set_pd(omega_even, omega_even, omega_even, omega_even)), _mm256_set_pd(1.0, 1.0, 1.0, 1.0)), _mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0, -1.0, -1.0, -1.0), _mm256_set_pd(omega_even, omega_even, omega_even, omega_even)), _mm256_set_pd(1.0, 1.0, 1.0, 1.0)))), _mm256_set_pd(1.0, 1.0, 1.0, 1.0))));
             const __m256d xi_99 = _mm256_mul_pd(_mm256_mul_pd(xi_96, xi_98), _mm256_set_pd(xi_97, xi_97, xi_97, xi_97));
@@ -549,7 +550,8 @@ static FUNC_PREFIX void streamcollidesweepdoubleprecisionthermalizedavx_streamco
             const double vel0Term = xi_3 + _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 4 * _stride_pdfs_3 + ctr_0 - 1];
             const double vel1Term = xi_4 + xi_5;
             const double vel2Term = xi_6 + _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 - _stride_pdfs_2 + 13 * _stride_pdfs_3 + ctr_0 + 1];
-            const double rho = vel0Term + vel1Term + vel2Term + xi_8 + xi_9 + _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 6 * _stride_pdfs_3 + ctr_0] + _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + ctr_0];
+            const double delta_rho = vel0Term + vel1Term + vel2Term + xi_8 + xi_9 + _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_2 + 6 * _stride_pdfs_3 + ctr_0] + _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + ctr_0];
+            const double rho = delta_rho + 1.0;
             const double xi_95 = kT * rho;
             const double xi_96 = pow(xi_95 * (1.0 - ((-omega_even + 1.0) * (-omega_even + 1.0))), 0.5);
             const double xi_99 = xi_96 * xi_97 * xi_98;
@@ -784,16 +786,16 @@ void StreamCollideSweepDoublePrecisionThermalizedAVX::run(IBlock *block) {
     }
   }
 
-  auto &omega_bulk = this->omega_bulk_;
   auto &omega_even = this->omega_even_;
-  auto &block_offset_1 = this->block_offset_1_;
-  auto &block_offset_0 = this->block_offset_0_;
   auto &time_step = this->time_step_;
-  auto &omega_shear = this->omega_shear_;
   auto &kT = this->kT_;
-  auto &block_offset_2 = this->block_offset_2_;
-  auto &omega_odd = this->omega_odd_;
+  auto &block_offset_1 = this->block_offset_1_;
+  auto &omega_shear = this->omega_shear_;
   auto &seed = this->seed_;
+  auto &omega_bulk = this->omega_bulk_;
+  auto &block_offset_2 = this->block_offset_2_;
+  auto &block_offset_0 = this->block_offset_0_;
+  auto &omega_odd = this->omega_odd_;
   WALBERLA_ASSERT_GREATER_EQUAL(-1, -int_c(force->nrOfGhostLayers()))
   double *RESTRICT const _data_force = force->dataAt(-1, -1, -1, 0);
   WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
@@ -855,16 +857,16 @@ void StreamCollideSweepDoublePrecisionThermalizedAVX::runOnCellInterval(const sh
     }
   }
 
-  auto &omega_bulk = this->omega_bulk_;
   auto &omega_even = this->omega_even_;
-  auto &block_offset_1 = this->block_offset_1_;
-  auto &block_offset_0 = this->block_offset_0_;
   auto &time_step = this->time_step_;
-  auto &omega_shear = this->omega_shear_;
   auto &kT = this->kT_;
-  auto &block_offset_2 = this->block_offset_2_;
-  auto &omega_odd = this->omega_odd_;
+  auto &block_offset_1 = this->block_offset_1_;
+  auto &omega_shear = this->omega_shear_;
   auto &seed = this->seed_;
+  auto &omega_bulk = this->omega_bulk_;
+  auto &block_offset_2 = this->block_offset_2_;
+  auto &block_offset_0 = this->block_offset_0_;
+  auto &omega_odd = this->omega_odd_;
   WALBERLA_ASSERT_GREATER_EQUAL(ci.xMin() - 1, -int_c(force->nrOfGhostLayers()))
   WALBERLA_ASSERT_GREATER_EQUAL(ci.yMin() - 1, -int_c(force->nrOfGhostLayers()))
   WALBERLA_ASSERT_GREATER_EQUAL(ci.zMin() - 1, -int_c(force->nrOfGhostLayers()))
