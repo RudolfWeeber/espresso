@@ -243,7 +243,7 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
       auto const old_laf = lbm::accessor::Vector::get(force_field, it);
       auto old_rho = to_number(lbm::accessor::Density::get(pdf_field, it));
       // Multiplication by the density due to zero centered accessor
-      old_rho *= density; 
+      old_rho *= density;
       auto ref_pop = old_pop;
       std::ranges::transform(old_pop, ref_pop.begin(),
                              [](auto const &f) { return FT{2} * f; });
@@ -251,7 +251,7 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
       auto const new_pop = lbm::accessor::Population::get(pdf_field, it);
       // auto const new_pre = lbm::accessor::PressureTensor::get(pdf_field, it);
       auto new_rho = to_number(lbm::accessor::Density::get(pdf_field, it));
-      // As the pop increased by factor 2 the density does the same 
+      // As the pop increased by factor 2 the density does the same
       new_rho *= FT{2} * density;
       BOOST_CHECK(almost_equal(new_pop, ref_pop, exact));
       // clang-format off
@@ -305,7 +305,8 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
       auto const new_vel = lbm::accessor::Vector::get(velocity_field, it);
       BOOST_CHECK(almost_equal(new_vel, ref_vel, epsilon));
       auto const new_mom =
-          lbm::accessor::MomentumDensity::reduce(pdf_field, force_field) * density;
+          lbm::accessor::MomentumDensity::reduce(pdf_field, force_field) *
+          density;
       auto const ref_mom = Vector3<FT>(
           ref_vel[0u] * density, ref_vel[1u] * density, ref_vel[2u] * density);
       BOOST_CHECK(almost_equal(new_mom, ref_mom, FT{20} * epsilon));
@@ -327,9 +328,8 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
       cur_vel = lbm::accessor::Velocity::get(pdf_field, force_field, it);
       BOOST_CHECK(almost_equal(cur_vel, new_vel, epsilon));
       // update forces and recalculate cached velocities in a single step
-      auto const ref_laf = make_ref_vector({ref_vel[0u] * FT{2},
-                                            ref_vel[1u] * FT{2},
-                                            ref_vel[2u] * FT{2}});
+      auto const ref_laf = make_ref_vector(
+          {ref_vel[0u] * FT{2}, ref_vel[1u] * FT{2}, ref_vel[2u] * FT{2}});
       lbm::accessor::Population::set(pdf_field, velocity_field, force_field,
                                      old_pop, it);
       lbm::accessor::Force::set(pdf_field, velocity_field, force_field, ref_laf,

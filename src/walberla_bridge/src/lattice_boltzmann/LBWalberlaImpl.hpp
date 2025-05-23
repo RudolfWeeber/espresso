@@ -521,9 +521,8 @@ public:
 #endif
 
     // Initialize and register pdf field with zero centered density
-    auto pdf_setter =
-        InitialPDFsSetter(m_force_to_be_applied_id, m_pdf_field_id,
-                          m_velocity_field_id, 1.0);
+    auto pdf_setter = InitialPDFsSetter(
+        m_force_to_be_applied_id, m_pdf_field_id, m_velocity_field_id, 1.0);
     for (auto &block : *blocks) {
       pdf_setter(&block);
     }
@@ -747,9 +746,9 @@ public:
     m_kT = FloatType_c(kT);
     m_seed = seed;
     auto obj = StreamCollisionModelThermalized(
-        m_last_applied_force_field_id, m_pdf_field_id, 
-        zero_centered_conversion_value_set(m_kT),
-        omega, omega, omega_odd, omega, seed, uint32_t{0u});
+        m_last_applied_force_field_id, m_pdf_field_id,
+        zero_centered_conversion_value_set(m_kT), omega, omega, omega_odd,
+        omega, seed, uint32_t{0u});
     m_collision_model = std::make_shared<CollisionModel>(std::move(obj));
     m_run_stream_collide_sweep = StreamCollideSweepVisitor(blocks);
     setup_streaming_communicator();
@@ -831,29 +830,27 @@ public:
     return numeric_cast<double>(m_density);
   }
 
-  template <typename T>
-  T zero_centered_conversion_vector_get(T vector) const {
+  template <typename T> T zero_centered_conversion_vector_get(T vector) const {
     T result = vector;
-    std::transform(vector.begin(), vector.end(), result.begin(),
-                   std::bind(std::multiplies<double>(), std::placeholders::_1, m_density));
+    std::transform(
+        vector.begin(), vector.end(), result.begin(),
+        std::bind(std::multiplies<double>(), std::placeholders::_1, m_density));
     return result;
   }
 
-  template <typename T>
-  T zero_centered_conversion_value_get(T values) const {
+  template <typename T> T zero_centered_conversion_value_get(T values) const {
     return values * m_density;
   }
 
-  template <typename T>
-  T zero_centered_conversion_vector_set(T vector) const{
+  template <typename T> T zero_centered_conversion_vector_set(T vector) const {
     T result = vector;
     std::transform(vector.begin(), vector.end(), result.begin(),
-                   std::bind(std::multiplies<double>(), std::placeholders::_1, 1.0/m_density));
+                   std::bind(std::multiplies<double>(), std::placeholders::_1,
+                             1.0 / m_density));
     return result;
   }
 
-  template <typename T>
-  T zero_centered_conversion_value_set(T values) const {
+  template <typename T> T zero_centered_conversion_value_set(T values) const {
     return values / m_density;
   }
 
@@ -1415,7 +1412,7 @@ public:
     auto pdf_field =
         bc->block->template uncheckedFastGetData<PdfField>(m_pdf_field_id);
     auto const density = zero_centered_conversion_value_get(
-                          lbm::accessor::Density::get(pdf_field, bc->cell));
+        lbm::accessor::Density::get(pdf_field, bc->cell));
     return {double_c(density)};
   }
 
@@ -1426,9 +1423,9 @@ public:
       return false;
 
     auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
-    lbm::accessor::Density::set(pdf_field,
-                                FloatType_c(zero_centered_conversion_value_set(density)),
-                                bc->cell);
+    lbm::accessor::Density::set(
+        pdf_field, FloatType_c(zero_centered_conversion_value_set(density)),
+        bc->cell);
 
     return true;
   }
@@ -1479,9 +1476,10 @@ public:
           std::vector<FloatType> values(bci->numCells());
 
           auto kernel = [&values, &density_set](unsigned const block_index,
-                                            unsigned const local_index,
-                                            Utils::Vector3i const &node) {
-            values[block_index] = numeric_cast<FloatType>(density_set[local_index]);
+                                                unsigned const local_index,
+                                                Utils::Vector3i const &node) {
+            values[block_index] =
+                numeric_cast<FloatType>(density_set[local_index]);
           };
 
           copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
@@ -1893,8 +1891,8 @@ public:
         };
 #endif
     if (flag_observables & static_cast<int>(OutputVTK::density)) {
-      auto const unit_conversion = zero_centered_conversion_value_get(
-                                     FloatType_c(units.at("density")));
+      auto const unit_conversion =
+          zero_centered_conversion_value_get(FloatType_c(units.at("density")));
 #if defined(__CUDACC__)
       if constexpr (Architecture == lbmpy::Arch::GPU) {
         auto const &blocks = m_lattice->get_blocks();
@@ -1923,8 +1921,8 @@ public:
           m_velocity_field_id, "velocity_vector", unit_conversion));
     }
     if (flag_observables & static_cast<int>(OutputVTK::pressure_tensor)) {
-      auto const unit_conversion = zero_centered_conversion_value_get(
-                                     FloatType_c(units.at("pressure")));
+      auto const unit_conversion =
+          zero_centered_conversion_value_get(FloatType_c(units.at("pressure")));
 #if defined(__CUDACC__)
       if constexpr (Architecture == lbmpy::Arch::GPU) {
         auto const &blocks = m_lattice->get_blocks();
