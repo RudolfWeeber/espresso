@@ -90,7 +90,6 @@ BOOST_DATA_TEST_CASE(integrate_with_point_force_thermalized,
   }
   mom_local = lb->get_momentum();
   mom = boost::mpi::all_reduce(world, mom_local, std::plus<Vector3d>());
-  mom /= params.density;
 
   // Expected momentum = momentum added in prev. time step
   // + f/2 from velocity shift due to last applied forces
@@ -108,7 +107,6 @@ BOOST_DATA_TEST_CASE(integrate_with_point_force_thermalized,
   lb->ghost_communication();
   mom_local = lb->get_momentum();
   mom = boost::mpi::all_reduce(world, mom_local, std::plus<Vector3d>());
-  mom /= params.density;
   BOOST_CHECK_SMALL((mom - mom_exp).norm(), 1E-10);
 }
 
@@ -134,7 +132,6 @@ BOOST_DATA_TEST_CASE(integrate_with_point_force_unthermalized,
 
   auto mom_local = lb->get_momentum();
   auto mom = boost::mpi::all_reduce(world, mom_local, std::plus<Vector3d>());
-  mom /= params.density;
 
   // Expected momentum = momentum added in prev. time step
   // + f/2 from velocity shift due to last applied forces
@@ -152,7 +149,6 @@ BOOST_DATA_TEST_CASE(integrate_with_point_force_unthermalized,
   mom_exp = 1.0 * f1 * Utils::product(params.grid_dimensions) + 1.0 * f2;
   mom_local = lb->get_momentum();
   mom = boost::mpi::all_reduce(world, mom_local, std::plus<Vector3d>());
-  mom /= params.density;
   BOOST_CHECK_SMALL((mom - mom_exp).norm(), 1E-10);
 }
 

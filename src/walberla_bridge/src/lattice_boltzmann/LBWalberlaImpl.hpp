@@ -1737,7 +1737,6 @@ public:
           block.template getData<VectorField>(m_last_applied_force_field_id);
       mom += lbm::accessor::MomentumDensity::reduce(pdf_field, force_field);
     }
-    mom = zero_centered_conversion_value_get(mom);
     return to_vector3d(mom);
   }
 
