@@ -851,7 +851,7 @@ public:
   }
 
   template <typename T> T zero_centered_conversion_value_set(T values) const {
-    return values / m_density;
+    return values * (1.0 / m_density);
   }
 
   // Velocity
@@ -873,7 +873,7 @@ public:
     auto field = bc->block->template uncheckedFastGetData<VectorField>(
         m_velocity_field_id);
     auto const vec = lbm::accessor::Vector::get(field, bc->cell);
-    return to_vector3d(vec);
+    return to_vector3d(zero_centered_conversion_value_set(vec));
   }
 
   bool set_node_velocity(Utils::Vector3i const &node,
@@ -890,7 +890,8 @@ public:
         bc->block->template getData<VectorField>(m_velocity_field_id);
     auto force_field =
         bc->block->template getData<VectorField>(m_last_applied_force_field_id);
-    auto const vel = to_vector3<FloatType>(v);
+    auto vel = to_vector3<FloatType>(v);
+    vel = zero_centered_conversion_value_get(vel);
     lbm::accessor::Velocity::set(pdf_field, vel_field, force_field, vel,
                                  bc->cell);
 
@@ -953,7 +954,8 @@ public:
                                                 block_offset, block)) {
           auto const field =
               block.template getData<VectorField>(m_velocity_field_id);
-          auto const values = lbm::accessor::Vector::get(field, *bci);
+          auto values = lbm::accessor::Vector::get(field, *bci);
+          values = zero_centered_conversion_vector_set(values);
           assert(values.size() == 3u * bci->numCells());
           values_size += 3u * bci->numCells();
 
@@ -989,6 +991,7 @@ public:
     if (auto const ci = get_interval(lower_corner, upper_corner)) {
       assert(velocity.size() == 3u * ci->numCells());
       auto const &lattice = get_lattice();
+      auto velocity_set = zero_centered_conversion_vector_get(velocity);
       for (auto &block : *lattice.get_blocks()) {
         auto const block_offset = lattice.get_block_corner(block, true);
         if (auto const bci = get_block_interval(lower_corner, upper_corner,
@@ -1000,12 +1003,12 @@ public:
               block.template getData<VectorField>(m_velocity_field_id);
           std::vector<FloatType> values(3u * bci->numCells());
 
-          auto kernel = [&values, &velocity](unsigned const block_index,
-                                             unsigned const local_index,
-                                             Utils::Vector3i const &node) {
+          auto kernel = [&values, &velocity_set](unsigned const block_index,
+                                                 unsigned const local_index,
+                                                 Utils::Vector3i const &node) {
             for (uint_t f = 0u; f < 3u; ++f) {
               values[3u * block_index + f] =
-                  numeric_cast<FloatType>(velocity[3u * local_index + f]);
+                  numeric_cast<FloatType>(velocity_set[3u * local_index + f]);
             }
           };
 
@@ -1096,9 +1099,9 @@ public:
       auto const res = lbm::accessor::Interpolation::get(field, host_pos, gl);
       vel.reserve(res.size() / 3ul);
       for (auto it = res.begin(); it != res.end(); it += 3) {
-        vel.emplace_back(Utils::Vector3d{static_cast<double>(*(it + 0)),
-                                         static_cast<double>(*(it + 1)),
-                                         static_cast<double>(*(it + 2))});
+        vel.emplace_back(zero_centered_conversion_value_set(Utils::Vector3d{
+            static_cast<double>(*(it + 0)), static_cast<double>(*(it + 1)),
+            static_cast<double>(*(it + 2))}));
       }
     }
 #endif
