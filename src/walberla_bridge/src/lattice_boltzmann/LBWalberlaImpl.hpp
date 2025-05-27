@@ -851,7 +851,7 @@ public:
   }
 
   template <typename T> T zero_centered_conversion_value_set(T values) const {
-    return values * (1.0 / m_density);
+    return values * (FloatType_c(1.0) / m_density);
   }
 
   // Velocity
