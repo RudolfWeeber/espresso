@@ -429,7 +429,6 @@ BOOST_DATA_TEST_CASE(total_momentum, bdata::make(all_lbs()), lb_generator) {
   auto const mom_local = lb->get_momentum();
   auto const mom_exp = params.density * (v1 + v2);
   auto mom = boost::mpi::all_reduce(world, mom_local, std::plus<Vector3d>());
-  mom *= params.density;
   BOOST_CHECK_SMALL((mom - mom_exp).norm(), 1E-10);
 }
 
