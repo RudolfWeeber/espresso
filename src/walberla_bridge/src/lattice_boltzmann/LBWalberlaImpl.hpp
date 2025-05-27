@@ -1500,7 +1500,9 @@ public:
     if (!bc or !m_boundary->node_is_boundary(node))
       return std::nullopt;
 
-    return {to_vector3d(m_boundary->get_node_value_at_boundary(node))};
+    auto vel = to_vector3d(m_boundary->get_node_value_at_boundary(node));
+    vel = zero_centered_conversion_value_set(vel);
+    return {vel};
   }
 
   bool set_node_velocity_at_boundary(Utils::Vector3i const &node,
@@ -1512,8 +1514,9 @@ public:
       bc = get_block_and_cell(get_lattice(), node, true);
     }
     if (bc) {
-      m_boundary->set_node_value_at_boundary(
-          node, to_vector3<FloatType>(velocity), *bc);
+      auto velocity_set = to_vector3<FloatType>(velocity);
+      velocity_set = zero_centered_conversion_value_get(velocity_set);
+      m_boundary->set_node_value_at_boundary(node, velocity_set, *bc);
     }
     return bc.has_value();
   }
@@ -1533,8 +1536,8 @@ public:
           auto kernel = [&out, this](unsigned const, unsigned const local_index,
                                      Utils::Vector3i const &node) {
             if (m_boundary->node_is_boundary(node)) {
-              out[local_index] =
-                  to_vector3d(m_boundary->get_node_value_at_boundary(node));
+              out[local_index] = to_vector3d(zero_centered_conversion_value_set(
+                  m_boundary->get_node_value_at_boundary(node)));
             } else {
               out[local_index] = std::nullopt;
             }
@@ -1569,7 +1572,10 @@ public:
             auto const &opt = velocity[local_index];
             if (opt) {
               m_boundary->set_node_value_at_boundary(
-                  node, to_vector3<FloatType>(*opt), *bc);
+                  node,
+                  zero_centered_conversion_value_get(
+                      to_vector3<FloatType>(*opt)),
+                  *bc);
             } else {
               m_boundary->remove_node_from_boundary(node, *bc);
             }
@@ -1661,7 +1667,8 @@ public:
     on_boundary_add();
     m_pending_ghost_comm.set(GhostComm::UBB);
     auto const grid_size = get_lattice().get_grid_dimensions();
-    auto const data = fill_3D_vector_array(data_flat, grid_size);
+    auto data_flat_set = zero_centered_conversion_vector_get(data_flat);
+    auto data = fill_3D_vector_array(data_flat_set, grid_size);
     set_boundary_from_grid(*m_boundary, get_lattice(), raster_flat, data);
     ghost_communication();
     reallocate_ubb_field();
