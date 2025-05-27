@@ -77,7 +77,7 @@ BOOST_DATA_TEST_CASE(velocity_fluctuation, bdata::make(thermalized_lbs()),
         for (int z = static_cast<int>(my_left[2]);
              z < static_cast<int>(my_right[2]); z++) {
           const Vector3i node{{x, y, z}};
-          auto v = *(lb->get_node_velocity(node)) * params.density;
+          auto v = *(lb->get_node_velocity(node));
           auto rho = *(lb->get_node_density(node));
           step_v += v * rho;
           step_v_square += rho * hadamard_product(v, v);

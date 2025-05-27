@@ -747,7 +747,7 @@ public:
     m_seed = seed;
     auto obj = StreamCollisionModelThermalized(
         m_last_applied_force_field_id, m_pdf_field_id,
-        zero_centered_conversion_value_set(m_kT), omega, omega, omega_odd,
+        zero_centered_conversion_value_get(m_kT), omega, omega, omega_odd,
         omega, seed, uint32_t{0u});
     m_collision_model = std::make_shared<CollisionModel>(std::move(obj));
     m_run_stream_collide_sweep = StreamCollideSweepVisitor(blocks);
