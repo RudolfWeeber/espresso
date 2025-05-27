@@ -955,7 +955,6 @@ public:
           auto const field =
               block.template getData<VectorField>(m_velocity_field_id);
           auto values = lbm::accessor::Vector::get(field, *bci);
-          values = zero_centered_conversion_vector_set(values);
           assert(values.size() == 3u * bci->numCells());
           values_size += 3u * bci->numCells();
 
@@ -979,6 +978,7 @@ public:
         }
       }
       assert(values_size == 3u * ci->numCells());
+      out = zero_centered_conversion_vector_set(out);
     }
     return out;
   }
