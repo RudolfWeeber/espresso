@@ -94,7 +94,7 @@ System::System(Private) {
   min_global_cut = INACTIVE_CUTOFF;
 }
 
-System::~System() { 
+System::~System() {
 #ifdef SHARED_MEMORY_PARALLELISM
   cell_structure->reset_cabana_data();
 #endif
