@@ -170,6 +170,12 @@ inline ParticleForce calc_opposing_force(ParticleForce const &pf,
   return out;
 }
 
+
+#ifdef SHARED_MEMORY_PARALLELISM
+using ReturnType = ParticleForce;
+#else
+using ReturnType = void;
+#endif
 /** Calculate non-bonded forces between a pair of particles and update their
  *  forces and torques.
  *  @param[in,out] p1      particle 1.
@@ -186,7 +192,7 @@ inline ParticleForce calc_opposing_force(ParticleForce const &pf,
  *  @param[in] elc_kernel      ELC force correction kernel.
  *  @param[in] coulomb_u_kernel Coulomb energy kernel.
  */
-inline void add_non_bonded_pair_force(
+inline ReturnType add_non_bonded_pair_force(
     Particle &p1, Particle &p2, Utils::Vector3d const &d, double dist,
     double dist2, IA_parameters const &ia_params,
     Thermostat::Thermostat const &thermostat, BoxGeometry const &box_geo,
@@ -275,8 +281,12 @@ inline void add_non_bonded_pair_force(
   /* add total non-bonded forces to particles    */
   /***********************************************/
 
+#ifdef SHARED_MEMORY_PARALLELISM
+  return pf;
+#else
   p1.force_and_torque() += pf;
   p2.force_and_torque() += calc_opposing_force(pf, d);
+#endif
 }
 
 /** Compute the bonded interaction force between particle pairs.

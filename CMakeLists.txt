@@ -538,7 +538,8 @@ if(ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM)
     FetchContent_Declare(
       kokkos
       GIT_REPOSITORY https://github.com/kokkos/kokkos.git
-      GIT_TAG        18b830e # version 4.6.1 with patches
+      GIT_TAG        aba6e3caf2b8814fe6764a5d27b7b181253df14f # version 4.5.1
+      #GIT_TAG        18b830e # version 4.6.1 with patches
       OVERRIDE_FIND_PACKAGE
     )
     # cmake-format: on

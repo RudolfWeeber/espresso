@@ -54,6 +54,17 @@
 #include <stdexcept>
 #include <utility>
 #include <vector>
+#include <any>
+
+// forward declaration to not have to import cabana
+#ifdef SHARED_MEMORY_PARALLELISM
+class CabanaData;
+#endif
+
+template <typename Callable>
+concept ParticleCallback = requires(Callable c, Particle &p) {
+  { c(p) } -> std::same_as<void>;
+};
 
 using ParticleUnaryOp = std::function<void(Particle &)>;
 
@@ -147,6 +158,7 @@ private:
    */
   unsigned m_resort_particles = Cells::RESORT_NONE;
   bool m_rebuild_verlet_list = true;
+  bool m_rebuild_cabana_verlet_list = true;
   std::vector<std::pair<Particle *, Particle *>> m_verlet_list;
   double m_le_pos_offset_at_last_resort = 0.;
   /** @brief Verlet list skin. */
@@ -278,6 +290,7 @@ public:
   ParticleRange ghost_particles() const {
     return Cells::particles(decomposition().ghost_cells());
   }
+ 
   /** @brief whether to use parallel version of @ref for_each_local_particle */
   bool use_parallel_for_each_local_particle() const {
 #ifdef SHARED_MEMORY_PARALLELISM
@@ -646,6 +659,51 @@ private:
     }
   }
 
+#ifdef SHARED_MEMORY_PARALLELISM
+private:
+    std::unique_ptr<CabanaData> m_cabana_data;
+
+public:
+  void set_cabana_data(std::unique_ptr<CabanaData> data);
+  CabanaData& get_cabana_data();
+  void reset_cabana_data();
+
+  virtual ~CellStructure();
+
+  bool get_rebuild_verlet_list() const { return m_rebuild_verlet_list; }
+  bool get_rebuild_cabana_verlet_list() const { return m_rebuild_cabana_verlet_list; }
+
+  template <class Kernel>
+  void cabana_link_cell(Kernel kernel) {
+    auto const local_cells_span = decomposition().local_cells();
+    auto const first = boost::make_indirect_iterator(local_cells_span.begin());
+    auto const last = boost::make_indirect_iterator(local_cells_span.end());
+
+    Algorithm::link_cell(first, last, [&kernel](Particle &p1, Particle &p2) {
+      kernel(p1, p2);
+    });
+  }
+
+  template <class Kernel, class VerletCriterion>
+  void cabana_verlet_list_loop(Kernel kernel,
+                               const VerletCriterion &verlet_criterion) {
+    if (m_rebuild_cabana_verlet_list) {
+      m_verlet_list.clear();
+      
+      link_cell([&](Particle &p1, Particle &p2, Distance const &d) {
+        if (verlet_criterion(p1, p2, d)) {
+          m_verlet_list.emplace_back(&p1, &p2);
+        }
+      });
+      m_rebuild_cabana_verlet_list = false;
+    } 
+    for (auto const &pair : m_verlet_list) {
+      kernel(*pair.first, *pair.second);
+    } 
+  }
+#endif
+
+private:
   /** Non-bonded pair loop with verlet lists.
    *
    * @param pair_kernel Kernel to apply

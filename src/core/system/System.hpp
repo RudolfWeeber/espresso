@@ -86,6 +86,8 @@ public:
 
   static std::shared_ptr<System> create();
 
+  virtual ~System();
+
 #ifdef CUDA
   GpuParticleData gpu;
 #endif
@@ -165,6 +167,7 @@ public:
   void npt_add_virial_contribution(double energy);
   void npt_add_virial_contribution(Utils::Vector3d const &force,
                                    Utils::Vector3d const &d);
+  void npt_add_virial_contribution(Utils::Vector3d const &virial);
 #endif // NPT
 
   /** @brief Calculate all forces. */

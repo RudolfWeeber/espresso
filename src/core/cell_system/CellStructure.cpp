@@ -52,8 +52,41 @@
 #include <vector>
 
 #ifdef SHARED_MEMORY_PARALLELISM
+#include <Cabana_Core.hpp>
+#include "custom_verlet_list.hpp"
+#include "cabana_data.hpp"
 #include <Kokkos_Core.hpp>
 #endif
+
+#ifdef SHARED_MEMORY_PARALLELISM
+
+using data_types = Cabana::MemberTypes<double[3], double[3], int, int, int>;
+using memory_space = Kokkos::SharedSpace;
+using execution_space = Kokkos::DefaultExecutionSpace;
+
+using ListAlgorithm = Cabana::HalfNeighborTag;
+using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm, Cabana::VerletLayout2D>;
+
+
+CellStructure::~CellStructure() {
+  m_cabana_data.reset();
+}
+
+void CellStructure::set_cabana_data(std::unique_ptr<CabanaData> data) {
+  m_cabana_data = std::move(data);
+}
+
+CabanaData& CellStructure::get_cabana_data() {
+  return *m_cabana_data;
+}
+
+void CellStructure::reset_cabana_data() {
+  m_rebuild_verlet_list = true;
+  m_cabana_data.reset();
+}
+
+#endif
+
 
 CellStructure::CellStructure(BoxGeometry const &box)
     : m_decomposition{std::make_unique<AtomDecomposition>(box)} {}
@@ -234,6 +267,7 @@ void CellStructure::resort_particles(bool global_flag) {
 
   auto const &lebc = get_system().box_geo->lees_edwards_bc();
   m_rebuild_verlet_list = true;
+  m_rebuild_cabana_verlet_list = true;
   m_le_pos_offset_at_last_resort = lebc.pos_offset;
 
 #ifdef ADDITIONAL_CHECKS

@@ -94,6 +94,10 @@ System::System(Private) {
   min_global_cut = INACTIVE_CUTOFF;
 }
 
+System::~System() {
+  cell_structure->reset_cabana_data();
+}
+
 void System::initialize() {
   auto handle = shared_from_this();
   cell_structure->bind_system(handle);
