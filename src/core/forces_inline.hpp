@@ -170,7 +170,6 @@ inline ParticleForce calc_opposing_force(ParticleForce const &pf,
   return out;
 }
 
-
 #ifdef SHARED_MEMORY_PARALLELISM
 using ReturnType = ParticleForce;
 #else

@@ -32,10 +32,10 @@
 #endif
 
 #ifdef SHARED_MEMORY_PARALLELISM
+#include "cell_system/CellStructure.hpp"
+#include "system/System.hpp"
 #include <Cabana_Core.hpp>
 #include <Kokkos_Core.hpp>
-#include "system/System.hpp"
-#include "cell_system/CellStructure.hpp"
 #endif
 
 #include <utils/Vector.hpp>

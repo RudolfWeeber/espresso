@@ -86,5 +86,3 @@ def skipIfExistingFeatures(*args):
     if espressomd.has_features(*args):
         return unittest.skip("Skipping test: existing feature")
     return no_skip
-
-

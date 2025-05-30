@@ -149,7 +149,8 @@ void System::System::npt_add_virial_contribution(Utils::Vector3d const &force,
   }
 }
 
-void System::System::npt_add_virial_contribution(Utils::Vector3d const &virial) {
+void System::System::npt_add_virial_contribution(
+    Utils::Vector3d const &virial) {
   if ((propagation->integ_switch == INTEG_METHOD_NPT_ISO_AND) or
       (propagation->integ_switch == INTEG_METHOD_NPT_ISO_MTK)) {
     npt_inst_pressure->p_vir += virial;

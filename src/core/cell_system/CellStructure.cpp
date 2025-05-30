@@ -52,9 +52,9 @@
 #include <vector>
 
 #ifdef SHARED_MEMORY_PARALLELISM
-#include <Cabana_Core.hpp>
-#include "custom_verlet_list.hpp"
 #include "cabana_data.hpp"
+#include "custom_verlet_list.hpp"
+#include <Cabana_Core.hpp>
 #include <Kokkos_Core.hpp>
 #endif
 
@@ -65,20 +65,16 @@ using memory_space = Kokkos::SharedSpace;
 using execution_space = Kokkos::DefaultExecutionSpace;
 
 using ListAlgorithm = Cabana::HalfNeighborTag;
-using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm, Cabana::VerletLayout2D>;
+using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm,
+                                          Cabana::VerletLayout2D>;
 
-
-CellStructure::~CellStructure() {
-  m_cabana_data.reset();
-}
+CellStructure::~CellStructure() { m_cabana_data.reset(); }
 
 void CellStructure::set_cabana_data(std::unique_ptr<CabanaData> data) {
   m_cabana_data = std::move(data);
 }
 
-CabanaData& CellStructure::get_cabana_data() {
-  return *m_cabana_data;
-}
+CabanaData &CellStructure::get_cabana_data() { return *m_cabana_data; }
 
 void CellStructure::reset_cabana_data() {
   m_rebuild_verlet_list = true;
@@ -86,7 +82,6 @@ void CellStructure::reset_cabana_data() {
 }
 
 #endif
-
 
 CellStructure::CellStructure(BoxGeometry const &box)
     : m_decomposition{std::make_unique<AtomDecomposition>(box)} {}

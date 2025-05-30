@@ -21,8 +21,8 @@
 
 #ifdef SHARED_MEMORY_PARALLELISM
 
-#include <Cabana_Core.hpp>
 #include "custom_verlet_list.hpp"
+#include <Cabana_Core.hpp>
 #include <unordered_map>
 #include <vector>
 
@@ -31,24 +31,27 @@ using memory_space = Kokkos::SharedSpace;
 using execution_space = Kokkos::DefaultExecutionSpace;
 
 using ListAlgorithm = Cabana::HalfNeighborTag;
-using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm, Cabana::VerletLayout2D>;
+using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm,
+                                          Cabana::VerletLayout2D>;
 
 class CabanaData {
-    ListType verlet_list;
-    std::unordered_map<int, int> id_to_index;
-    std::vector<int> index_to_id;
+  ListType verlet_list;
+  std::unordered_map<int, int> id_to_index;
+  std::vector<int> index_to_id;
 
 public:
-    CabanaData() = default;
-    CabanaData(ListType verlet_list, std::unordered_map<int, int> id_to_index)
+  CabanaData() = default;
+  CabanaData(ListType verlet_list, std::unordered_map<int, int> id_to_index)
       : verlet_list(verlet_list), id_to_index(id_to_index) {}
-    CabanaData(ListType verlet_list, std::unordered_map<int, int> id_to_index, std::vector<int> index_to_id)
-      : verlet_list(verlet_list), id_to_index(id_to_index), index_to_id(index_to_id) {}
+  CabanaData(ListType verlet_list, std::unordered_map<int, int> id_to_index,
+             std::vector<int> index_to_id)
+      : verlet_list(verlet_list), id_to_index(id_to_index),
+        index_to_id(index_to_id) {}
 
-    ListType get_verlet_list() const { return verlet_list; }
-    std::unordered_map<int, int> get_id_to_index() const { return id_to_index; }
-    std::vector<int> get_index_to_id() const { return index_to_id; }
+  ListType get_verlet_list() const { return verlet_list; }
+  std::unordered_map<int, int> get_id_to_index() const { return id_to_index; }
+  std::vector<int> get_index_to_id() const { return index_to_id; }
 
-    ~CabanaData() {};
+  ~CabanaData() {};
 };
-#endif 
+#endif
