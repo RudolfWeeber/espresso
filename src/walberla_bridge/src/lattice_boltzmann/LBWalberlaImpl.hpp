@@ -834,9 +834,8 @@ public:
 
   template <typename T> T zero_centered_conversion_vector_get(T vector) const {
     T result = vector;
-    std::transform(
-        vector.begin(), vector.end(), result.begin(),
-        [this](auto value){return value * m_density;});
+    std::transform(vector.begin(), vector.end(), result.begin(),
+                   [this](auto value) { return value * m_density; });
     return result;
   }
 
@@ -846,8 +845,9 @@ public:
 
   template <typename T> T zero_centered_conversion_vector_set(T vector) const {
     T result = vector;
-    std::transform(vector.begin(), vector.end(), result.begin(),
-                   [this](auto value){return value * (FloatType_c(1.0) / m_density);});
+    std::transform(
+        vector.begin(), vector.end(), result.begin(),
+        [this](auto value) { return value * (FloatType_c(1.0) / m_density); });
     return result;
   }
 
@@ -1678,7 +1678,8 @@ public:
       return std::nullopt;
 
     auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
-    auto tensor = lbm::accessor::PressureTensor::get(pdf_field, m_density, bc->cell);
+    auto tensor =
+        lbm::accessor::PressureTensor::get(pdf_field, m_density, bc->cell);
     pressure_tensor_correction(tensor);
     return to_vector9d(tensor);
   }
@@ -1696,7 +1697,8 @@ public:
                                                 block_offset, block)) {
           auto const pdf_field =
               block.template getData<PdfField>(m_pdf_field_id);
-          auto values = lbm::accessor::PressureTensor::get(pdf_field, m_density, *bci);
+          auto values =
+              lbm::accessor::PressureTensor::get(pdf_field, m_density, *bci);
           assert(values.size() == 9u * bci->numCells());
 
           auto kernel = [&values, &out, this](unsigned const block_index,
@@ -1869,8 +1871,8 @@ protected:
     OutputType evaluate(cell_idx_t const x, cell_idx_t const y,
                         cell_idx_t const z, cell_idx_t const f) override {
       WALBERLA_ASSERT_NOT_NULLPTR(this->m_field);
-      auto const pressure =
-          lbm::accessor::PressureTensor::get(this->m_field, 1.0, {x, y, z}); // TODO
+      auto const pressure = lbm::accessor::PressureTensor::get(
+          this->m_field, 1.0, {x, y, z}); // TODO
       auto const revert_factor =
           (f == 0 or f == 4 or f == 8) ? FloatType{1} : m_off_diag_factor;
       return numeric_cast<OutputType>(this->m_conversion * revert_factor *
