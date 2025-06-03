@@ -210,7 +210,7 @@ def generate_macroscopic_values_accessors(ctx, config, lb_method, templates):
         pdfs_sym, {"moment2": second_momentum_symbols})
     density_getter_assignments = cqc.output_equations_from_pdfs(
         pdfs_sym, {"density": rho_sym})
-    for i, assignment in enumerate(density_getter_assignments):
+    for assignment in density_getter_assignments:
         if (assignment.lhs == sp.Symbol("rho")):
             new_rho = ps.Assignment(
                 assignment.lhs, assignment.rhs * sp.Symbol("density"))
