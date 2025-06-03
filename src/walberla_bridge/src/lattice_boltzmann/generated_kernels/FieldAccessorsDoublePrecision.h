@@ -1175,7 +1175,7 @@ inline auto reduce(GhostLayerField<double, uint_t{19u}> const *pdf_field,
 
 namespace PressureTensor {
 inline auto get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
-                Cell const &cell) {
+                const double density, Cell const &cell) {
   const double &xyz0 = pdf_field->get(cell, uint_t{0u});
   const int x = cell[0];
   const int y = cell[1];
@@ -1225,11 +1225,11 @@ inline auto get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
   pressureTensor[7u] = p_7;
   pressureTensor[8u] = p_8;
 
-  return pressureTensor;
+  return pressureTensor * density;
 }
 
 inline auto get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
-                CellInterval const &ci) {
+                const double density, CellInterval const &ci) {
   std::vector<double> out;
   out.reserve(ci.numCells() * uint_t(9u));
   for (auto x = ci.xMin(); x <= ci.xMax(); ++x) {
@@ -1268,24 +1268,25 @@ inline auto get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
         const double p_8 = f_11 + f_12 + f_13 + f_14 + f_15 + f_16 + f_17 +
                            f_18 + f_5 + f_6 + 0.33333333333333333;
 
-        out.emplace_back(p_0);
-        out.emplace_back(p_1);
-        out.emplace_back(p_2);
+        out.emplace_back(p_0 * density);
+        out.emplace_back(p_1 * density);
+        out.emplace_back(p_2 * density);
 
-        out.emplace_back(p_3);
-        out.emplace_back(p_4);
-        out.emplace_back(p_5);
+        out.emplace_back(p_3 * density);
+        out.emplace_back(p_4 * density);
+        out.emplace_back(p_5 * density);
 
-        out.emplace_back(p_6);
-        out.emplace_back(p_7);
-        out.emplace_back(p_8);
+        out.emplace_back(p_6 * density);
+        out.emplace_back(p_7 * density);
+        out.emplace_back(p_8 * density);
       }
     }
   }
   return out;
 }
 
-inline auto reduce(GhostLayerField<double, uint_t{19u}> const *pdf_field) {
+inline auto reduce(GhostLayerField<double, uint_t{19u}> const *pdf_field,
+                   const double density) {
   Matrix3<double> pressureTensor(double{0});
   for (auto z = 0; z < pdf_field->zSize(); ++z) {
     for (auto y = 0; y < pdf_field->ySize(); ++y) {
@@ -1337,7 +1338,7 @@ inline auto reduce(GhostLayerField<double, uint_t{19u}> const *pdf_field) {
       }
     }
   }
-  return pressureTensor;
+  return pressureTensor * density;
 }
 } // namespace PressureTensor
 

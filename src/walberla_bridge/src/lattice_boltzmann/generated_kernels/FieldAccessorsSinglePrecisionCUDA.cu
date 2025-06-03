@@ -1208,6 +1208,7 @@ __global__ void kernel_get(
 
 Matrix3<float> get(
     gpu::GPUField<float> const *pdf_field,
+    const float density,
     Cell const &cell) {
   CellInterval ci(cell, cell);
   thrust::device_vector<float> dev_data(9u);
@@ -1218,11 +1219,12 @@ Matrix3<float> get(
   kernel();
   Matrix3<float> out;
   thrust::copy(dev_data.begin(), dev_data.end(), out.data());
-  return out;
+  return out * density;
 }
 
 std::vector<float> get(
     gpu::GPUField<float> const *pdf_field,
+    const float density,
     CellInterval const &ci) {
   thrust::device_vector<float> dev_data(9u * ci.numCells());
   auto const dev_data_ptr = thrust::raw_pointer_cast(dev_data.data());
@@ -1231,12 +1233,14 @@ std::vector<float> get(
   kernel.addParam(dev_data_ptr);
   kernel();
   std::vector<float> out(dev_data.size());
-  thrust::copy(dev_data.begin(), dev_data.end(), out.data());
+  std::transform(dev_data.begin(), dev_data.end(), out.begin(),
+                 [&density](auto value) { return value * density; });
   return out;
 }
 
 Matrix3<float> reduce(
-    gpu::GPUField<float> const *pdf_field) {
+    gpu::GPUField<float> const *pdf_field,
+    const float density) {
   auto const ci = pdf_field->xyzSize();
   thrust::device_vector<float> dev_data(9u * ci.numCells());
   auto const dev_data_ptr = thrust::raw_pointer_cast(dev_data.data());
@@ -1260,7 +1264,7 @@ Matrix3<float> reduce(
     pressureTensor[7u] += out[i + 7u];
     pressureTensor[8u] += out[i + 8u];
   }
-  return pressureTensor;
+  return pressureTensor * density;
 }
 } // namespace PressureTensor
 

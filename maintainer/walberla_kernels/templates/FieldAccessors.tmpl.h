@@ -618,7 +618,7 @@ namespace PressureTensor
 {
     inline auto
     get( GhostLayerField< {{dtype}}, uint_t{ {{Q}}u } > const * pdf_field,
-         Cell const & cell )
+         const {{dtype}} density, Cell const & cell )
    {
         const {{dtype}} & xyz0 = pdf_field->get(cell, uint_t{ 0u });
         const int x = cell[0];
@@ -639,12 +639,12 @@ namespace PressureTensor
                 pressureTensor[{{i*D+j}}u] = p_{{i*D+j}};
             {% endfor %}
         {% endfor %}
-        return pressureTensor;
+        return pressureTensor * density;
    }
 
     inline auto
     get( GhostLayerField< {{dtype}}, uint_t{ {{Q}}u } > const * pdf_field,
-         CellInterval const & ci )
+         const {{dtype}} density, CellInterval const & ci )
     {
         std::vector< {{dtype}} > out;
         out.reserve(ci.numCells() * uint_t({{D**2}}u));
@@ -663,7 +663,7 @@ namespace PressureTensor
 
                     {% for i in range(D) -%}
                         {% for j in range(D) -%}
-                            out.emplace_back(p_{{i*D+j}});
+                            out.emplace_back(p_{{i*D+j}} * density);
                         {% endfor %}
                     {% endfor %}
                 }
@@ -673,7 +673,8 @@ namespace PressureTensor
     }
 
     inline auto
-    reduce( GhostLayerField< {{dtype}}, uint_t{ {{Q}}u } > const * pdf_field)
+    reduce( GhostLayerField< {{dtype}}, uint_t{ {{Q}}u } > const * pdf_field,
+            const {{dtype}} density )
     {
         Matrix{{D}}< {{dtype}} > pressureTensor({{dtype}} {0});
         for(auto z = 0; z < pdf_field->zSize(); ++z) {
@@ -697,7 +698,7 @@ namespace PressureTensor
                 }
             }
         }
-        return pressureTensor;
+        return pressureTensor * density;
     }
 } // namespace PressureTensor
 

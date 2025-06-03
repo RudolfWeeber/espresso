@@ -1007,6 +1007,7 @@ namespace PressureTensor
 
     Matrix{{D}}< {{dtype}} > get(
         gpu::GPUField< {{dtype}} > const * pdf_field,
+        const {{dtype}} density,
         Cell const & cell )
     {
         CellInterval ci ( cell, cell );
@@ -1018,11 +1019,12 @@ namespace PressureTensor
         kernel();
         Matrix{{D}}< {{dtype}} > out;
         thrust::copy(dev_data.begin(), dev_data.end(), out.data());
-        return out;
+        return out * density;
     }
 
     std::vector< {{dtype}} > get(
         gpu::GPUField< {{dtype}} > const * pdf_field,
+        const {{dtype}} density,
         CellInterval const & ci )
     {
         thrust::device_vector< {{dtype}} > dev_data({{D**2}}u * ci.numCells());
@@ -1032,12 +1034,14 @@ namespace PressureTensor
         kernel.addParam( dev_data_ptr );
         kernel();
         std::vector< {{dtype}} > out(dev_data.size());
-        thrust::copy(dev_data.begin(), dev_data.end(), out.data());
+        std::transform(dev_data.begin(), dev_data.end(), out.begin(),
+                       [&density](auto value){return value * density;});
         return out;
     }
 
     Matrix{{D}}< {{dtype}} > reduce(
-        gpu::GPUField< {{dtype}} > const * pdf_field)
+        gpu::GPUField< {{dtype}} > const * pdf_field,
+        const {{dtype}} density)
     {
         auto const ci = pdf_field->xyzSize();
         thrust::device_vector< {{dtype}} > dev_data({{D**2}}u * ci.numCells());
@@ -1056,7 +1060,7 @@ namespace PressureTensor
                 {% endfor %}
             {% endfor %}
         }
-        return pressureTensor;
+        return pressureTensor * density;
     }
 } // namespace PressureTensor
 

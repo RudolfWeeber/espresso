@@ -222,12 +222,15 @@ namespace MomentumDensity {
 namespace PressureTensor {
     Matrix{{D}}< {{dtype}} >
     get( gpu::GPUField< {{dtype}} > const * pdf_field,
+         const {{dtype}} density,
          Cell const & cell );
     std::vector< {{dtype}} >
     get( gpu::GPUField< {{dtype}} > const * pdf_field,
+        const {{dtype}} density,
          CellInterval const & ci );
     Matrix{{D}}< {{dtype}} >
-    reduce( gpu::GPUField< {{dtype}} > const * pdf_field );
+    reduce( gpu::GPUField< {{dtype}} > const * pdf_field,
+            const {{dtype}} density);
 } // namespace PressureTensor
 
 } // namespace accessor

@@ -163,10 +163,12 @@ Vector3<float> reduce(gpu::GPUField<float> const *pdf_field,
 } // namespace MomentumDensity
 
 namespace PressureTensor {
-Matrix3<float> get(gpu::GPUField<float> const *pdf_field, Cell const &cell);
+Matrix3<float> get(gpu::GPUField<float> const *pdf_field, const float density,
+                   Cell const &cell);
 std::vector<float> get(gpu::GPUField<float> const *pdf_field,
-                       CellInterval const &ci);
-Matrix3<float> reduce(gpu::GPUField<float> const *pdf_field);
+                       const float density, CellInterval const &ci);
+Matrix3<float> reduce(gpu::GPUField<float> const *pdf_field,
+                      const float density);
 } // namespace PressureTensor
 
 } // namespace accessor

@@ -253,7 +253,8 @@ private:
   }
 
   FloatType pressure_tensor_correction_factor() const {
-    return m_viscosity / (m_viscosity + FloatType{1} / FloatType{6});
+    FloatType res = m_viscosity / (m_viscosity + FloatType{1} / FloatType{6});
+    return zero_centered_conversion_value_set(res);
   }
 
   void pressure_tensor_correction(Matrix3<FloatType> &tensor) const {
@@ -835,7 +836,7 @@ public:
     T result = vector;
     std::transform(
         vector.begin(), vector.end(), result.begin(),
-        std::bind(std::multiplies<double>(), std::placeholders::_1, m_density));
+        [this](auto value){return value * m_density;});
     return result;
   }
 
@@ -846,8 +847,7 @@ public:
   template <typename T> T zero_centered_conversion_vector_set(T vector) const {
     T result = vector;
     std::transform(vector.begin(), vector.end(), result.begin(),
-                   std::bind(std::multiplies<double>(), std::placeholders::_1,
-                             1.0 / m_density));
+                   [this](auto value){return value * (FloatType_c(1.0) / m_density);});
     return result;
   }
 
@@ -1678,9 +1678,8 @@ public:
       return std::nullopt;
 
     auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
-    auto tensor = lbm::accessor::PressureTensor::get(pdf_field, bc->cell);
+    auto tensor = lbm::accessor::PressureTensor::get(pdf_field, m_density, bc->cell);
     pressure_tensor_correction(tensor);
-    tensor = zero_centered_conversion_value_get(tensor);
     return to_vector9d(tensor);
   }
 
@@ -1697,8 +1696,7 @@ public:
                                                 block_offset, block)) {
           auto const pdf_field =
               block.template getData<PdfField>(m_pdf_field_id);
-          auto values = lbm::accessor::PressureTensor::get(pdf_field, *bci);
-          values = zero_centered_conversion_vector_get(values);
+          auto values = lbm::accessor::PressureTensor::get(pdf_field, m_density, *bci);
           assert(values.size() == 9u * bci->numCells());
 
           auto kernel = [&values, &out, this](unsigned const block_index,
@@ -1723,9 +1721,8 @@ public:
     Matrix3<FloatType> tensor(FloatType{0});
     for (auto const &block : *get_lattice().get_blocks()) {
       auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
-      tensor += lbm::accessor::PressureTensor::reduce(pdf_field);
+      tensor += lbm::accessor::PressureTensor::reduce(pdf_field, m_density);
     }
-    tensor = zero_centered_conversion_value_get(tensor);
     auto const grid_size = get_lattice().get_grid_dimensions();
     auto const number_of_nodes = Utils::product(grid_size);
     pressure_tensor_correction(tensor);
@@ -1873,7 +1870,7 @@ protected:
                         cell_idx_t const z, cell_idx_t const f) override {
       WALBERLA_ASSERT_NOT_NULLPTR(this->m_field);
       auto const pressure =
-          lbm::accessor::PressureTensor::get(this->m_field, {x, y, z});
+          lbm::accessor::PressureTensor::get(this->m_field, 1.0, {x, y, z}); // TODO
       auto const revert_factor =
           (f == 0 or f == 4 or f == 8) ? FloatType{1} : m_off_diag_factor;
       return numeric_cast<OutputType>(this->m_conversion * revert_factor *
@@ -1898,8 +1895,7 @@ public:
         };
 #endif
     if (flag_observables & static_cast<int>(OutputVTK::density)) {
-      auto const unit_conversion =
-          zero_centered_conversion_value_get(FloatType_c(units.at("density")));
+      auto const unit_conversion = FloatType_c(units.at("density"));
 #if defined(__CUDACC__)
       if constexpr (Architecture == lbmpy::Arch::GPU) {
         auto const &blocks = m_lattice->get_blocks();
@@ -1928,8 +1924,7 @@ public:
           m_velocity_field_id, "velocity_vector", unit_conversion));
     }
     if (flag_observables & static_cast<int>(OutputVTK::pressure_tensor)) {
-      auto const unit_conversion =
-          zero_centered_conversion_value_get(FloatType_c(units.at("pressure")));
+      auto const unit_conversion = FloatType_c(units.at("pressure"));
 #if defined(__CUDACC__)
       if constexpr (Architecture == lbmpy::Arch::GPU) {
         auto const &blocks = m_lattice->get_blocks();
