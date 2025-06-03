@@ -113,7 +113,8 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
 inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
                 GhostLayerField<double, uint_t{3u}> *velocity_field,
                 GhostLayerField<double, uint_t{3u}> const *force_field,
-                std::array<double, 19u> const &pop, Cell const &cell) {
+                std::array<double, 19u> const &pop, const double density,
+                Cell const &cell) {
   auto &xyz0 = pdf_field->get(cell, uint_t{0u});
   const double f_0 = pdf_field->getF(&xyz0, uint_t{0u}) = pop[0u];
   const double f_1 = pdf_field->getF(&xyz0, uint_t{1u}) = pop[1u];
@@ -153,7 +154,7 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
       force_field->get(x, y, z, 1) * 0.50000000000000000 + momdensity_1;
   const double md_2 =
       force_field->get(x, y, z, 2) * 0.50000000000000000 + momdensity_2;
-  const auto rho_inv = double{1} / rho;
+  const auto rho_inv = double{1} / rho / density;
   velocity_field->get(cell, uint_t{0u}) = md_0 * rho_inv;
   velocity_field->get(cell, uint_t{1u}) = md_1 * rho_inv;
   velocity_field->get(cell, uint_t{2u}) = md_2 * rho_inv;
@@ -254,7 +255,8 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
 inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
                 GhostLayerField<double, uint_t{3u}> *velocity_field,
                 GhostLayerField<double, uint_t{3u}> const *force_field,
-                std::vector<double> const &values, CellInterval const &ci) {
+                std::vector<double> const &values, const double density,
+                CellInterval const &ci) {
   assert(uint_c(values.size()) == ci.numCells() * uint_t(19u));
   auto pop = values.data();
   for (auto x = ci.xMin(); x <= ci.xMax(); ++x) {
@@ -297,7 +299,7 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
             force_field->get(x, y, z, 1) * 0.50000000000000000 + momdensity_1;
         const double md_2 =
             force_field->get(x, y, z, 2) * 0.50000000000000000 + momdensity_2;
-        const auto rho_inv = double{1} / rho;
+        const auto rho_inv = double{1} / rho / density;
         velocity_field->get(x, y, z, uint_t{0u}) = md_0 * rho_inv;
         velocity_field->get(x, y, z, uint_t{1u}) = md_1 * rho_inv;
         velocity_field->get(x, y, z, uint_t{2u}) = md_2 * rho_inv;
@@ -617,7 +619,7 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
 
 namespace Density {
 inline double get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
-                  Cell const &cell) {
+                  const double density, Cell const &cell) {
   const double &xyz0 = pdf_field->get(cell, uint_t{0u});
   const double f_0 = pdf_field->getF(&xyz0, uint_t{0u});
   const double f_1 = pdf_field->getF(&xyz0, uint_t{1u});
@@ -643,12 +645,12 @@ inline double get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
   const double vel2Term = f_12 + f_13 + f_5;
   const double delta_rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 +
                            vel0Term + vel1Term + vel2Term;
-  const double rho = delta_rho + 1;
+  const double rho = density * (delta_rho + 1);
   return rho;
 }
 
 inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
-                double const rho_in, Cell const &cell) {
+                double const rho_in, const double density, Cell const &cell) {
   const double &xyz0 = pdf_field->get(cell, uint_t{0u});
   const double f_0 = pdf_field->getF(&xyz0, uint_t{0u});
   const double f_1 = pdf_field->getF(&xyz0, uint_t{1u});
@@ -687,11 +689,11 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
   velocity[1u] = momdensity_1 * conversion;
   velocity[2u] = momdensity_2 * conversion;
 
-  Equilibrium::set(pdf_field, velocity, rho_in, cell);
+  Equilibrium::set(pdf_field, velocity, rho_in / density, cell);
 }
 
 inline std::vector<double>
-get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
+get(GhostLayerField<double, uint_t{19u}> const *pdf_field, const double density,
     CellInterval const &ci) {
   std::vector<double> out;
   out.reserve(ci.numCells());
@@ -723,7 +725,7 @@ get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
         const double vel2Term = f_12 + f_13 + f_5;
         const double delta_rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 +
                                  vel0Term + vel1Term + vel2Term;
-        const double rho = delta_rho + 1;
+        const double rho = density * (delta_rho + 1);
         out.emplace_back(rho);
       }
     }
@@ -732,7 +734,8 @@ get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
 }
 
 inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
-                std::vector<double> const &values, CellInterval const &ci) {
+                std::vector<double> const &values, const double density,
+                CellInterval const &ci) {
   assert(uint_c(values.size()) == ci.numCells());
   auto values_it = values.begin();
   for (auto x = ci.xMin(); x <= ci.xMax(); ++x) {
@@ -777,7 +780,8 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
         velocity[1u] = momdensity_1 * conversion;
         velocity[2u] = momdensity_2 * conversion;
 
-        Equilibrium::set(pdf_field, velocity, *values_it, Cell{x, y, z});
+        Equilibrium::set(pdf_field, velocity, *values_it / density,
+                         Cell{x, y, z});
         ++values_it;
       }
     }
@@ -788,7 +792,7 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
 namespace Velocity {
 inline auto get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
                 GhostLayerField<double, uint_t{3u}> const *force_field,
-                Cell const &cell) {
+                const double density, Cell const &cell) {
   const double &xyz0 = pdf_field->get(cell, uint_t{0u});
   const double f_0 = pdf_field->getF(&xyz0, uint_t{0u});
   const double f_1 = pdf_field->getF(&xyz0, uint_t{1u});
@@ -828,14 +832,14 @@ inline auto get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
       force_field->get(x, y, z, 1) * 0.50000000000000000 + momdensity_1;
   const double md_2 =
       force_field->get(x, y, z, 2) * 0.50000000000000000 + momdensity_2;
-  const double rho_inv = double{1} / rho;
+  const double rho_inv = double{1} / rho / density;
 
   return Vector3<double>(md_0 * rho_inv, md_1 * rho_inv, md_2 * rho_inv);
 }
 
 inline auto get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
                 GhostLayerField<double, uint_t{3u}> const *force_field,
-                CellInterval const &ci) {
+                const double density, CellInterval const &ci) {
   std::vector<double> out;
   out.reserve(ci.numCells() * uint_t(3u));
   for (auto x = ci.xMin(); x <= ci.xMax(); ++x) {
@@ -878,7 +882,7 @@ inline auto get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
             force_field->get(x, y, z, 1) * 0.50000000000000000 + momdensity_1;
         const double md_2 =
             force_field->get(x, y, z, 2) * 0.50000000000000000 + momdensity_2;
-        const double rho_inv = double{1} / rho;
+        const double rho_inv = double{1} / rho / density;
         out.emplace_back(md_0 * rho_inv);
         out.emplace_back(md_1 * rho_inv);
         out.emplace_back(md_2 * rho_inv);
@@ -891,7 +895,8 @@ inline auto get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
 inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
                 GhostLayerField<double, uint_t{3u}> *velocity_field,
                 GhostLayerField<double, uint_t{3u}> const *force_field,
-                Vector3<double> const &u, Cell const &cell) {
+                Vector3<double> const &u, const double density,
+                Cell const &cell) {
   const double &xyz0 = pdf_field->get(cell, uint_t{0u});
   const double f_0 = pdf_field->getF(&xyz0, uint_t{0u});
   const double f_1 = pdf_field->getF(&xyz0, uint_t{1u});
@@ -917,7 +922,7 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
   const double vel2Term = f_12 + f_13 + f_5;
   const double delta_rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 +
                            vel0Term + vel1Term + vel2Term;
-  const double rho = delta_rho + 1;
+  const double rho = density * (delta_rho + 1);
 
   const auto x = cell.x();
   const auto y = cell.y();
@@ -932,13 +937,16 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
   velocity_field->get(x, y, z, uint_t{1u}) = u[1u];
   velocity_field->get(x, y, z, uint_t{2u}) = u[2u];
 
-  Equilibrium::set(pdf_field, Vector3<double>(u_0, u_1, u_2), rho, cell);
+  Equilibrium::set(pdf_field,
+                   Vector3<double>(u_0 * density, u_1 * density, u_2 * density),
+                   rho / density, cell);
 }
 
 inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
                 GhostLayerField<double, uint_t{3u}> *velocity_field,
                 GhostLayerField<double, uint_t{3u}> const *force_field,
-                std::vector<double> const &values, CellInterval const &ci) {
+                std::vector<double> const &values, const double density,
+                CellInterval const &ci) {
   assert(uint_c(values.size()) == ci.numCells() * uint_t(3u));
   auto u = values.data();
   for (auto x = ci.xMin(); x <= ci.xMax(); ++x) {
@@ -970,7 +978,7 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
         const double vel2Term = f_12 + f_13 + f_5;
         const double delta_rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 +
                                  vel0Term + vel1Term + vel2Term;
-        const double rho = delta_rho + 1;
+        const double rho = density * (delta_rho + 1);
 
         const double u_0 =
             -force_field->get(x, y, z, 0) * 0.50000000000000000 / rho + u[0];
@@ -984,8 +992,10 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
 
         std::advance(u, 3);
 
-        Equilibrium::set(pdf_field, Vector3<double>(u_0, u_1, u_2), rho,
-                         Cell{x, y, z});
+        Equilibrium::set(
+            pdf_field,
+            Vector3<double>(u_0 * density, u_1 * density, u_2 * density),
+            rho / density, Cell{x, y, z});
       }
     }
   }
@@ -996,7 +1006,8 @@ namespace Force {
 inline void set(GhostLayerField<double, uint_t{19u}> const *pdf_field,
                 GhostLayerField<double, uint_t{3u}> *velocity_field,
                 GhostLayerField<double, uint_t{3u}> *force_field,
-                Vector3<double> const &force, Cell const &cell) {
+                Vector3<double> const &force, const double density,
+                Cell const &cell) {
   double const &pdf_xyz0 = pdf_field->get(cell, uint_t{0u});
   double &vel_xyz0 = velocity_field->get(cell, uint_t{0u});
   double &laf_xyz0 = force_field->get(cell, uint_t{0u});
@@ -1032,7 +1043,7 @@ inline void set(GhostLayerField<double, uint_t{19u}> const *pdf_field,
   const double md_0 = force[0u] * 0.50000000000000000 + momdensity_0;
   const double md_1 = force[1u] * 0.50000000000000000 + momdensity_1;
   const double md_2 = force[2u] * 0.50000000000000000 + momdensity_2;
-  auto const rho_inv = double{1} / rho;
+  auto const rho_inv = double{1} / rho / density;
 
   force_field->getF(&laf_xyz0, uint_t{0u}) = force[0u];
   force_field->getF(&laf_xyz0, uint_t{1u}) = force[1u];
@@ -1046,7 +1057,8 @@ inline void set(GhostLayerField<double, uint_t{19u}> const *pdf_field,
 inline void set(GhostLayerField<double, uint_t{19u}> const *pdf_field,
                 GhostLayerField<double, uint_t{3u}> *velocity_field,
                 GhostLayerField<double, uint_t{3u}> *force_field,
-                std::vector<double> const &values, CellInterval const &ci) {
+                std::vector<double> const &values, const double density,
+                CellInterval const &ci) {
   assert(uint_c(values.size()) == ci.numCells() * uint_t(3u));
   auto force = values.data();
   for (auto x = ci.xMin(); x <= ci.xMax(); ++x) {
@@ -1088,7 +1100,7 @@ inline void set(GhostLayerField<double, uint_t{19u}> const *pdf_field,
         const double md_0 = force[0u] * 0.50000000000000000 + momdensity_0;
         const double md_1 = force[1u] * 0.50000000000000000 + momdensity_1;
         const double md_2 = force[2u] * 0.50000000000000000 + momdensity_2;
-        auto const rho_inv = double{1} / rho;
+        auto const rho_inv = double{1} / rho / density;
 
         force_field->getF(&laf_xyz0, uint_t{0u}) = force[0u];
         force_field->getF(&laf_xyz0, uint_t{1u}) = force[1u];
@@ -1107,7 +1119,8 @@ inline void set(GhostLayerField<double, uint_t{19u}> const *pdf_field,
 
 namespace MomentumDensity {
 inline auto reduce(GhostLayerField<double, uint_t{19u}> const *pdf_field,
-                   GhostLayerField<double, uint_t{3u}> const *force_field) {
+                   GhostLayerField<double, uint_t{3u}> const *force_field,
+                   double const density) {
   Vector3<double> momentumDensity(double{0});
   for (auto z = 0; z < pdf_field->zSize(); ++z) {
     for (auto y = 0; y < pdf_field->ySize(); ++y) {

@@ -574,7 +574,8 @@ public:
 
     // Instantiate velocity update sweep
     m_update_velocities_from_pdf = std::make_shared<UpdateVelFromPDF>(
-        m_last_applied_force_field_id, m_pdf_field_id, m_velocity_field_id);
+        m_last_applied_force_field_id, m_pdf_field_id, m_velocity_field_id,
+        m_density);
   }
 
 private:
@@ -873,7 +874,7 @@ public:
     auto field = bc->block->template uncheckedFastGetData<VectorField>(
         m_velocity_field_id);
     auto const vec = lbm::accessor::Vector::get(field, bc->cell);
-    return to_vector3d(zero_centered_conversion_value_set(vec));
+    return to_vector3d(vec);
   }
 
   bool set_node_velocity(Utils::Vector3i const &node,
@@ -891,9 +892,8 @@ public:
     auto force_field =
         bc->block->template getData<VectorField>(m_last_applied_force_field_id);
     auto vel = to_vector3<FloatType>(v);
-    vel = zero_centered_conversion_value_get(vel);
     lbm::accessor::Velocity::set(pdf_field, vel_field, force_field, vel,
-                                 bc->cell);
+                                 m_density, bc->cell);
 
     return true;
   }
@@ -978,7 +978,6 @@ public:
         }
       }
       assert(values_size == 3u * ci->numCells());
-      out = zero_centered_conversion_vector_set(out);
     }
     return out;
   }
@@ -991,7 +990,6 @@ public:
     if (auto const ci = get_interval(lower_corner, upper_corner)) {
       assert(velocity.size() == 3u * ci->numCells());
       auto const &lattice = get_lattice();
-      auto velocity_set = zero_centered_conversion_vector_get(velocity);
       for (auto &block : *lattice.get_blocks()) {
         auto const block_offset = lattice.get_block_corner(block, true);
         if (auto const bci = get_block_interval(lower_corner, upper_corner,
@@ -1003,18 +1001,18 @@ public:
               block.template getData<VectorField>(m_velocity_field_id);
           std::vector<FloatType> values(3u * bci->numCells());
 
-          auto kernel = [&values, &velocity_set](unsigned const block_index,
-                                                 unsigned const local_index,
-                                                 Utils::Vector3i const &node) {
+          auto kernel = [&values, &velocity](unsigned const block_index,
+                                             unsigned const local_index,
+                                             Utils::Vector3i const &node) {
             for (uint_t f = 0u; f < 3u; ++f) {
               values[3u * block_index + f] =
-                  numeric_cast<FloatType>(velocity_set[3u * local_index + f]);
+                  numeric_cast<FloatType>(velocity[3u * local_index + f]);
             }
           };
 
           copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
           lbm::accessor::Velocity::set(pdf_field, vel_field, force_field,
-                                       values, *bci);
+                                       values, m_density, *bci);
         }
       }
     }
@@ -1099,9 +1097,9 @@ public:
       auto const res = lbm::accessor::Interpolation::get(field, host_pos, gl);
       vel.reserve(res.size() / 3ul);
       for (auto it = res.begin(); it != res.end(); it += 3) {
-        vel.emplace_back(zero_centered_conversion_value_set(Utils::Vector3d{
-            static_cast<double>(*(it + 0)), static_cast<double>(*(it + 1)),
-            static_cast<double>(*(it + 2))}));
+        vel.emplace_back(Utils::Vector3d{static_cast<double>(*(it + 0)),
+                                         static_cast<double>(*(it + 1)),
+                                         static_cast<double>(*(it + 2))});
       }
     }
 #endif
@@ -1221,7 +1219,8 @@ public:
     auto vel_field =
         bc->block->template getData<VectorField>(m_velocity_field_id);
     auto const vec = to_vector3<FloatType>(force);
-    lbm::accessor::Force::set(pdf_field, vel_field, force_field, vec, bc->cell);
+    lbm::accessor::Force::set(pdf_field, vel_field, force_field, vec, m_density,
+                              bc->cell);
 
     return true;
   }
@@ -1287,7 +1286,7 @@ public:
 
           copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
           lbm::accessor::Force::set(pdf_field, vel_field, force_field, values,
-                                    *bci);
+                                    m_density, *bci);
         }
       }
     }
@@ -1330,7 +1329,7 @@ public:
       pop[f] = FloatType_c(population[f]);
     }
     lbm::accessor::Population::set(pdf_field, vel_field, force_field, pop,
-                                   bc->cell);
+                                   m_density, bc->cell);
 
     return true;
   }
@@ -1397,7 +1396,7 @@ public:
 
           copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
           lbm::accessor::Population::set(pdf_field, vel_field, force_field,
-                                         values, *bci);
+                                         values, m_density, *bci);
         }
       }
     }
@@ -1414,8 +1413,8 @@ public:
 
     auto pdf_field =
         bc->block->template uncheckedFastGetData<PdfField>(m_pdf_field_id);
-    auto const density = zero_centered_conversion_value_get(
-        lbm::accessor::Density::get(pdf_field, bc->cell));
+    auto const density =
+        lbm::accessor::Density::get(pdf_field, m_density, bc->cell);
     return {double_c(density)};
   }
 
@@ -1426,9 +1425,8 @@ public:
       return false;
 
     auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
-    lbm::accessor::Density::set(
-        pdf_field, FloatType_c(zero_centered_conversion_value_set(density)),
-        bc->cell);
+    lbm::accessor::Density::set(pdf_field, FloatType_c(density), m_density,
+                                bc->cell);
 
     return true;
   }
@@ -1446,8 +1444,8 @@ public:
                                                 block_offset, block)) {
           auto const pdf_field =
               block.template getData<PdfField>(m_pdf_field_id);
-          auto values = lbm::accessor::Density::get(pdf_field, *bci);
-          values = zero_centered_conversion_vector_get(values);
+          auto const values =
+              lbm::accessor::Density::get(pdf_field, m_density, *bci);
           assert(values.size() == bci->numCells());
 
           auto kernel = [&values, &out](unsigned const block_index,
@@ -1470,7 +1468,6 @@ public:
     if (auto const ci = get_interval(lower_corner, upper_corner)) {
       assert(density.size() == ci->numCells());
       auto const &lattice = get_lattice();
-      auto density_set = zero_centered_conversion_vector_set(density);
       for (auto &block : *lattice.get_blocks()) {
         auto const block_offset = lattice.get_block_corner(block, true);
         if (auto const bci = get_block_interval(lower_corner, upper_corner,
@@ -1478,15 +1475,14 @@ public:
           auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
           std::vector<FloatType> values(bci->numCells());
 
-          auto kernel = [&values, &density_set](unsigned const block_index,
-                                                unsigned const local_index,
-                                                Utils::Vector3i const &node) {
-            values[block_index] =
-                numeric_cast<FloatType>(density_set[local_index]);
+          auto kernel = [&values, &density](unsigned const block_index,
+                                            unsigned const local_index,
+                                            Utils::Vector3i const &node) {
+            values[block_index] = numeric_cast<FloatType>(density[local_index]);
           };
 
           copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
-          lbm::accessor::Density::set(pdf_field, values, *bci);
+          lbm::accessor::Density::set(pdf_field, values, m_density, *bci);
         }
       }
     }
@@ -1743,7 +1739,8 @@ public:
       auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
       auto force_field =
           block.template getData<VectorField>(m_last_applied_force_field_id);
-      mom += lbm::accessor::MomentumDensity::reduce(pdf_field, force_field);
+      mom += lbm::accessor::MomentumDensity::reduce(pdf_field, force_field,
+                                                    m_density);
     }
     return to_vector3d(mom);
   }
@@ -1836,7 +1833,7 @@ protected:
                         cell_idx_t const z, cell_idx_t const) override {
       WALBERLA_ASSERT_NOT_NULLPTR(this->m_field);
       auto const density =
-          lbm::accessor::Density::get(this->m_field, {x, y, z});
+          lbm::accessor::Density::get(this->m_field, 1.0, {x, y, z}); // TODO
       return numeric_cast<OutputType>(this->m_conversion * density);
     }
   };

@@ -208,6 +208,15 @@ def generate_macroscopic_values_accessors(ctx, config, lb_method, templates):
             del unshifted_momentum_density_getter.main_assignments[i]
     second_momentum_getter = cqc.output_equations_from_pdfs(
         pdfs_sym, {"moment2": second_momentum_symbols})
+    density_getter_assignments = cqc.output_equations_from_pdfs(
+        pdfs_sym, {"density": rho_sym})
+    for i, assignment in enumerate(density_getter_assignments):
+        if (assignment.lhs == sp.Symbol("rho")):
+            new_rho = ps.Assignment(
+                assignment.lhs, assignment.rhs * sp.Symbol("density"))
+            break
+    density_getter_assignments = density_getter_assignments.new_with_substitutions(
+        {assignment.rhs: new_rho.rhs})
 
     jinja_context = {
         "stencil_name": stencil_name,
@@ -223,6 +232,9 @@ def generate_macroscopic_values_accessors(ctx, config, lb_method, templates):
 
         "density_getters": equations_to_code(
             cqc.output_equations_from_pdfs(pdfs_sym, {"density": rho_sym}),
+            variables_without_prefix=[e.name for e in pdfs_sym], **kwargs),
+        "density_getters_adjust": equations_to_code(
+            density_getter_assignments,
             variables_without_prefix=[e.name for e in pdfs_sym], **kwargs),
         "momentum_density_getter": equations_to_code(
             momentum_density_getter, variables_without_prefix=pdfs_sym, **kwargs),

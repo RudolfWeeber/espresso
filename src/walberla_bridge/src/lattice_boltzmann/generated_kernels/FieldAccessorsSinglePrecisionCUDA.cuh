@@ -57,7 +57,8 @@ void set(gpu::GPUField<float> *pdf_field, std::array<float, 19u> const &pop,
 /** @brief Set populations and recalculate velocities on a single cell. */
 void set(gpu::GPUField<float> *pdf_field, gpu::GPUField<float> *velocity_field,
          gpu::GPUField<float> const *force_field,
-         std::array<float, 19u> const &pop, Cell const &cell);
+         std::array<float, 19u> const &pop, float const density,
+         Cell const &cell);
 /** @brief Initialize all cells with the same value. */
 void initialize(gpu::GPUField<float> *pdf_field,
                 std::array<float, 19u> const &pop);
@@ -70,7 +71,8 @@ void set(gpu::GPUField<float> *pdf_field, std::vector<float> const &values,
 /** @brief Set populations and recalculate velocities on a cell interval. */
 void set(gpu::GPUField<float> *pdf_field, gpu::GPUField<float> *velocity_field,
          gpu::GPUField<float> const *force_field,
-         std::vector<float> const &values, CellInterval const &ci);
+         std::vector<float> const &values, float const density,
+         CellInterval const &ci);
 } // namespace Population
 
 namespace Vector {
@@ -103,37 +105,41 @@ void set(gpu::GPUField<float> const *vec_field, std::vector<float> const &pos,
 } // namespace Interpolation
 
 namespace Density {
-float get(gpu::GPUField<float> const *pdf_field, Cell const &cell);
-void set(gpu::GPUField<float> *pdf_field, float const rho, Cell const &cell);
+float get(gpu::GPUField<float> const *pdf_field, const float density,
+          Cell const &cell);
+void set(gpu::GPUField<float> *pdf_field, float const rho, const float density,
+         Cell const &cell);
 std::vector<float> get(gpu::GPUField<float> const *pdf_field,
-                       CellInterval const &ci);
+                       const float density, CellInterval const &ci);
 void set(gpu::GPUField<float> *pdf_field, std::vector<float> const &values,
-         CellInterval const &ci);
+         const float density, CellInterval const &ci);
 } // namespace Density
 
 namespace Velocity {
 Vector3<float> get(gpu::GPUField<float> const *pdf_field,
-                   gpu::GPUField<float> const *force_field, Cell const &cell);
+                   gpu::GPUField<float> const *force_field, const float density,
+                   Cell const &cell);
 std::vector<float> get(gpu::GPUField<float> const *pdf_field,
                        gpu::GPUField<float> const *force_field,
-                       CellInterval const &ci);
+                       const float density, CellInterval const &ci);
 void set(gpu::GPUField<float> *pdf_field, gpu::GPUField<float> *velocity_field,
          gpu::GPUField<float> const *force_field, Vector3<float> const &u,
-         Cell const &cell);
+         const float density, Cell const &cell);
 void set(gpu::GPUField<float> *pdf_field, gpu::GPUField<float> *velocity_field,
          gpu::GPUField<float> const *force_field,
-         std::vector<float> const &values, CellInterval const &ci);
+         std::vector<float> const &values, const float density,
+         CellInterval const &ci);
 } // namespace Velocity
 
 namespace Force {
 void set(gpu::GPUField<float> const *pdf_field,
          gpu::GPUField<float> *velocity_field,
          gpu::GPUField<float> *force_field, Vector3<float> const &u,
-         Cell const &cell);
+         const float density, Cell const &cell);
 void set(gpu::GPUField<float> const *pdf_field,
          gpu::GPUField<float> *velocity_field,
          gpu::GPUField<float> *force_field, std::vector<float> const &values,
-         CellInterval const &ci);
+         const float density, CellInterval const &ci);
 } // namespace Force
 
 namespace DensityAndVelocity {
@@ -152,7 +158,8 @@ std::tuple<float, Vector3<float>> get(gpu::GPUField<float> const *pdf_field,
 
 namespace MomentumDensity {
 Vector3<float> reduce(gpu::GPUField<float> const *pdf_field,
-                      gpu::GPUField<float> const *force_field);
+                      gpu::GPUField<float> const *force_field,
+                      float const density);
 } // namespace MomentumDensity
 
 namespace PressureTensor {

@@ -57,8 +57,9 @@ namespace pystencils {
 class UpdateVelFromPDFDoublePrecisionCUDA {
 public:
   UpdateVelFromPDFDoublePrecisionCUDA(BlockDataID forceID_, BlockDataID pdfsID_,
-                                      BlockDataID velocityID_)
-      : forceID(forceID_), pdfsID(pdfsID_), velocityID(velocityID_) {}
+                                      BlockDataID velocityID_, double density)
+      : forceID(forceID_), pdfsID(pdfsID_), velocityID(velocityID_),
+        density_(density) {}
 
   void run(IBlock *block, gpuStream_t stream = nullptr);
 
@@ -105,10 +106,14 @@ public:
   void configure(const shared_ptr<StructuredBlockStorage> & /*blocks*/,
                  IBlock * /*block*/) {}
 
+  inline double getDensity() const { return density_; }
+  inline void setDensity(const double value) { density_ = value; }
+
 private:
   BlockDataID forceID;
   BlockDataID pdfsID;
   BlockDataID velocityID;
+  double density_;
 };
 
 } // namespace pystencils

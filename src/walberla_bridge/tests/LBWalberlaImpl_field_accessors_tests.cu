@@ -241,18 +241,16 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
       auto const old_pop = lbm::accessor::Population::get(pdf_field, it);
       // auto const old_pre = lbm::accessor::PressureTensor::get(pdf_field, it);
       auto const old_laf = lbm::accessor::Vector::get(force_field, it);
-      auto old_rho = to_number(lbm::accessor::Density::get(pdf_field, it));
-      // Multiplication by the density due to zero centered accessor
-      old_rho *= density;
+      auto const old_rho =
+          to_number(lbm::accessor::Density::get(pdf_field, density, it));
       auto ref_pop = old_pop;
       std::ranges::transform(old_pop, ref_pop.begin(),
                              [](auto const &f) { return FT{2} * f; });
       lbm::accessor::Population::set(pdf_field, ref_pop, it);
       auto const new_pop = lbm::accessor::Population::get(pdf_field, it);
       // auto const new_pre = lbm::accessor::PressureTensor::get(pdf_field, it);
-      auto new_rho = to_number(lbm::accessor::Density::get(pdf_field, it));
-      // As the pop increased by factor 2 the density does the same
-      new_rho *= FT{2} * density;
+      auto const new_rho = to_number(
+          lbm::accessor::Density::get(pdf_field, FT{2} * density, it));
       BOOST_CHECK(almost_equal(new_pop, ref_pop, exact));
       // clang-format off
       // TODO: The pressure tensor is calculated in the pull scheme from the 
@@ -284,8 +282,8 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
       lbm::accessor::Vector::set(force_field, old_laf_ref, it);
       cur_laf = lbm::accessor::Vector::get(force_field, it);
       BOOST_CHECK(almost_equal(cur_laf, old_laf_ref, exact));
-      lbm::accessor::Density::set(pdf_field, {FT{7} * density}, it);
-      auto const cur_rho = lbm::accessor::Density::get(pdf_field, it);
+      lbm::accessor::Density::set(pdf_field, {FT{7} * density}, density, it);
+      auto const cur_rho = lbm::accessor::Density::get(pdf_field, density, it);
       BOOST_CHECK(
           almost_equal(to_number(old_rho), density * FT{1}, FT{20} * epsilon));
       BOOST_CHECK(
@@ -300,60 +298,64 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
       auto const old_vel = lbm::accessor::Vector::get(velocity_field, it);
       auto const ref_vel = make_ref_vector({FT(0.001), FT(0.002), FT(0.003)});
       lbm::accessor::Velocity::set(pdf_field, velocity_field, force_field,
-                                   ref_vel, it);
+                                   ref_vel, density, it);
       auto const new_pop = lbm::accessor::Population::get(pdf_field, it);
       auto const new_vel = lbm::accessor::Vector::get(velocity_field, it);
       BOOST_CHECK(almost_equal(new_vel, ref_vel, epsilon));
-      auto const new_mom =
-          lbm::accessor::MomentumDensity::reduce(pdf_field, force_field) *
-          density;
+      auto const new_mom = lbm::accessor::MomentumDensity::reduce(
+          pdf_field, force_field, density);
       auto const ref_mom = Vector3<FT>(
           ref_vel[0u] * density, ref_vel[1u] * density, ref_vel[2u] * density);
       BOOST_CHECK(almost_equal(new_mom, ref_mom, FT{20} * epsilon));
       // update populations and recalculate cached velocities in a single step
       lbm::accessor::Population::set(pdf_field, velocity_field, force_field,
-                                     old_pop, it);
+                                     old_pop, density, it);
       cur_pop = lbm::accessor::Population::get(pdf_field, it);
       cur_vel = lbm::accessor::Vector::get(velocity_field, it);
       BOOST_CHECK(almost_equal(cur_pop, old_pop, exact));
       BOOST_CHECK(almost_equal(cur_vel, old_vel, epsilon));
-      cur_vel = lbm::accessor::Velocity::get(pdf_field, force_field, it);
+      cur_vel =
+          lbm::accessor::Velocity::get(pdf_field, force_field, density, it);
       BOOST_CHECK(almost_equal(cur_vel, old_vel, epsilon));
       lbm::accessor::Population::set(pdf_field, velocity_field, force_field,
-                                     new_pop, it);
+                                     new_pop, density, it);
       cur_pop = lbm::accessor::Population::get(pdf_field, it);
       cur_vel = lbm::accessor::Vector::get(velocity_field, it);
       BOOST_CHECK(almost_equal(cur_pop, new_pop, exact));
       BOOST_CHECK(almost_equal(cur_vel, new_vel, epsilon));
-      cur_vel = lbm::accessor::Velocity::get(pdf_field, force_field, it);
+      cur_vel =
+          lbm::accessor::Velocity::get(pdf_field, force_field, density, it);
       BOOST_CHECK(almost_equal(cur_vel, new_vel, epsilon));
       // update forces and recalculate cached velocities in a single step
-      auto const ref_laf = make_ref_vector(
-          {ref_vel[0u] * FT{2}, ref_vel[1u] * FT{2}, ref_vel[2u] * FT{2}});
+      auto const ref_laf = make_ref_vector({ref_vel[0u] * FT{2} * density,
+                                            ref_vel[1u] * FT{2} * density,
+                                            ref_vel[2u] * FT{2} * density});
       lbm::accessor::Population::set(pdf_field, velocity_field, force_field,
-                                     old_pop, it);
+                                     old_pop, density, it);
       lbm::accessor::Force::set(pdf_field, velocity_field, force_field, ref_laf,
-                                it);
+                                density, it);
       cur_pop = lbm::accessor::Population::get(pdf_field, it);
       cur_vel = lbm::accessor::Vector::get(velocity_field, it);
       cur_laf = lbm::accessor::Vector::get(force_field, it);
       BOOST_CHECK(almost_equal(cur_pop, old_pop, exact));
       BOOST_CHECK(almost_equal(cur_vel, new_vel, epsilon));
       BOOST_CHECK(almost_equal(cur_laf, ref_laf, epsilon));
-      cur_vel = lbm::accessor::Velocity::get(pdf_field, force_field, it);
+      cur_vel =
+          lbm::accessor::Velocity::get(pdf_field, force_field, density, it);
       BOOST_CHECK(almost_equal(cur_vel, new_vel, epsilon));
       // update velocities and recalculate populations in a single step
       lbm::accessor::Population::set(pdf_field, velocity_field, force_field,
-                                     old_pop, it);
+                                     old_pop, density, it);
       lbm::accessor::Velocity::set(pdf_field, velocity_field, force_field,
-                                   ref_vel, it);
+                                   ref_vel, density, it);
       cur_pop = lbm::accessor::Population::get(pdf_field, it);
       cur_vel = lbm::accessor::Vector::get(velocity_field, it);
       cur_laf = lbm::accessor::Vector::get(force_field, it);
       BOOST_CHECK(almost_equal(cur_pop, old_pop, epsilon));
       BOOST_CHECK(almost_equal(cur_vel, new_vel, epsilon));
       BOOST_CHECK(almost_equal(cur_laf, ref_laf, epsilon));
-      cur_vel = lbm::accessor::Velocity::get(pdf_field, force_field, it);
+      cur_vel =
+          lbm::accessor::Velocity::get(pdf_field, force_field, density, it);
       BOOST_CHECK(almost_equal(cur_vel, new_vel, epsilon));
     }
     reset_fields();

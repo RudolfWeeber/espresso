@@ -216,14 +216,22 @@ def generate_stream_collide_kernels(ctx, method, data_type):
 
 def generate_macroscopic_value_getter_kernels(ctx, method, fields):
     precision_prefix = pystencils_espresso.precision_prefix[ctx.double_accuracy]
+    assignments = lbmpy.macroscopic_value_kernels.macroscopic_values_getter(
+        method, None, fields["velocity"], fields["pdfs"],
+        use_pre_collision_pdfs=True)
+    for i, assignment in enumerate(assignments):
+        if (assignment.lhs == sp.Symbol("rho")):
+            new_rho = ps.Assignment(
+                assignment.lhs, assignment.rhs * sp.Symbol("density"))
+            break
+    assignments = assignments.new_with_substitutions(
+        {assignment.rhs: new_rho.rhs})
     for params, target_suffix in paramlist(parameters, ("GPU", "CPU", "AVX")):
         kernel_name = f"UpdateVelFromPDF{precision_prefix}{target_suffix}"
         pystencils_walberla.generate_sweep(
             ctx,
             kernel_name,
-            lbmpy.macroscopic_value_kernels.macroscopic_values_getter(
-                method, None, fields["velocity"], fields["pdfs"],
-                use_pre_collision_pdfs=True),
+            assignments,
             **params)
         ctx.patch_file(kernel_name, get_ext_source(target_suffix),
                        patch_openmp_kernels)
