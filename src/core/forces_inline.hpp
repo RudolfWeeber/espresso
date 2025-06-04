@@ -171,7 +171,7 @@ inline ParticleForce calc_opposing_force(ParticleForce const &pf,
 }
 
 #ifdef SHARED_MEMORY_PARALLELISM
-using ReturnType = ParticleForce;
+using ReturnType = std::pair<ParticleForce, Utils::Vector3d>;
 #else
 using ReturnType = void;
 #endif
@@ -228,7 +228,11 @@ inline ReturnType add_non_bonded_pair_force(
   /* electrostatic is calculated by energy                             */
   /*********************************************************************/
 #ifdef NPT
+#ifdef SHARED_MEMORY_PARALLELISM
+  auto virial = hadamard_product(pf.f, d);
+#else
   npt_add_virial_force_contribution(pf.f, d);
+#endif
 #endif
 
   /***********************************************/
@@ -241,9 +245,13 @@ inline ReturnType add_non_bonded_pair_force(
   if (q1q2 != 0. and coulomb_kernel != nullptr) {
     pf.f += (*coulomb_kernel)(q1q2, d, dist);
 #ifdef NPT
+#ifdef SHARED_MEMORY_PARALLELISM
+    virial[0] += (*coulomb_u_kernel)(p1, p2, q1q2, d, dist);
+#else
     npt_add_virial_diagonalSum_contribution(
         (*coulomb_u_kernel)(p1, p2, q1q2, d, dist));
-#endif
+#endif //SHARED_MEMORY_PARALLELISM
+#endif //NPT
 #ifdef P3M
     if (elc_kernel)
       (*elc_kernel)(p1, p2, q1q2);
@@ -260,8 +268,12 @@ inline ReturnType add_non_bonded_pair_force(
   if (thermostat.thermo_switch & THERMO_DPD) {
     auto const force = dpd_pair_force(p1, p2, *thermostat.dpd, box_geo,
                                       ia_params, d, dist, dist2);
+#ifdef SHARED_MEMORY_PARALLELISM
+    pf += force;
+#else
     p1.force() += force;
     p2.force() -= force;
+#endif
   }
 #endif
 
@@ -281,7 +293,7 @@ inline ReturnType add_non_bonded_pair_force(
   /***********************************************/
 
 #ifdef SHARED_MEMORY_PARALLELISM
-  return pf;
+  return std::pair{pf, virial};
 #else
   p1.force_and_torque() += pf;
   p2.force_and_torque() += calc_opposing_force(pf, d);

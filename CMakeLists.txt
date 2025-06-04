@@ -545,8 +545,10 @@ if(ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM)
     # cmake-format: on
     set(BUILD_SHARED_LIBS ON)
     set(CMAKE_SHARED_LIBRARY_PREFIX "lib")
-    set(Kokkos_ENABLE_SERIAL ON)
-    set(Kokkos_ENABLE_OPENMP ON)
+    #set(Kokkos_ENABLE_SERIAL ON)
+    #set(Kokkos_ENABLE_OPENMP ON)
+    set(Kokkos_ENABLE_SERIAL ON CACHE BOOL "")
+    set(Kokkos_ENABLE_OPENMP ON CACHE BOOL "")
     FetchContent_MakeAvailable(kokkos)
     set(BUILD_SHARED_LIBS ${ESPRESSO_BUILD_SHARED_LIBS_DEFAULT})
     set(CMAKE_SHARED_LIBRARY_PREFIX "${ESPRESSO_SHARED_LIBRARY_PREFIX}")
@@ -572,6 +574,7 @@ if(ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM)
       cabana
       GIT_REPOSITORY https://github.com/ECP-copa/Cabana.git
       GIT_TAG        ebfaa51 # 0.7.0 with patches
+      #GIT_TAG        e76c1a15e1d68ce203d686bb68b0dfe41b2e1ad1 # latest
       PATCH_COMMAND  patch -p0 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cabana.patch
     )
     # cmake-format: on
@@ -922,6 +925,7 @@ if(ESPRESSO_BUILD_WITH_CALIPER)
   set(CALIPER_WITH_MPI on CACHE BOOL "")
   set(CALIPER_WITH_NVTX off CACHE BOOL "")
   set(CALIPER_WITH_CUPTI off CACHE BOOL "")
+  #set(CALIPER_WITH_OMPT on CACHE BOOL "")
   set(CALIPER_INSTALL_CONFIG off CACHE BOOL "")
   set(CALIPER_INSTALL_HEADERS off CACHE BOOL "")
   set(BUILD_SHARED_LIBS ON)
