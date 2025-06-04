@@ -254,7 +254,7 @@ private:
 
   FloatType pressure_tensor_correction_factor() const {
     FloatType res = m_viscosity / (m_viscosity + FloatType{1} / FloatType{6});
-    return zero_centered_conversion_value_set(res);
+    return zero_centered_conversion_value_divide(res);
   }
 
   void pressure_tensor_correction(Matrix3<FloatType> &tensor) const {
@@ -749,7 +749,7 @@ public:
     m_seed = seed;
     auto obj = StreamCollisionModelThermalized(
         m_last_applied_force_field_id, m_pdf_field_id,
-        zero_centered_conversion_value_get(m_kT), omega, omega, omega_odd,
+        zero_centered_conversion_value_multiply(m_kT), omega, omega, omega_odd,
         omega, seed, uint32_t{0u});
     m_collision_model = std::make_shared<CollisionModel>(std::move(obj));
     m_run_stream_collide_sweep = StreamCollideSweepVisitor(blocks);
@@ -832,18 +832,21 @@ public:
     return numeric_cast<double>(m_density);
   }
 
-  template <typename T> T zero_centered_conversion_vector_get(T vector) const {
+  template <typename T>
+  T zero_centered_conversion_vector_multiply(T vector) const {
     T result = vector;
     std::transform(vector.begin(), vector.end(), result.begin(),
                    [this](auto value) { return value * m_density; });
     return result;
   }
 
-  template <typename T> T zero_centered_conversion_value_get(T values) const {
+  template <typename T>
+  T zero_centered_conversion_value_multiply(T values) const {
     return values * m_density;
   }
 
-  template <typename T> T zero_centered_conversion_vector_set(T vector) const {
+  template <typename T>
+  T zero_centered_conversion_vector_divide(T vector) const {
     T result = vector;
     std::transform(
         vector.begin(), vector.end(), result.begin(),
@@ -851,7 +854,8 @@ public:
     return result;
   }
 
-  template <typename T> T zero_centered_conversion_value_set(T values) const {
+  template <typename T>
+  T zero_centered_conversion_value_divide(T values) const {
     return values * (FloatType_c(1.0) / m_density);
   }
 
@@ -964,7 +968,8 @@ public:
             if (m_boundary->node_is_boundary(node)) {
               auto const &vec = m_boundary->get_node_value_at_boundary(node);
               for (uint_t f = 0u; f < 3u; ++f) {
-                out[3u * local_index + f] = double_c(vec[f]);
+                out[3u * local_index + f] =
+                    zero_centered_conversion_value_divide(vec[f]);
               }
             } else {
               for (uint_t f = 0u; f < 3u; ++f) {
@@ -1497,7 +1502,7 @@ public:
       return std::nullopt;
 
     auto vel = to_vector3d(m_boundary->get_node_value_at_boundary(node));
-    vel = zero_centered_conversion_value_set(vel);
+    vel = zero_centered_conversion_value_divide(vel);
     return {vel};
   }
 
@@ -1511,7 +1516,7 @@ public:
     }
     if (bc) {
       auto velocity_set = to_vector3<FloatType>(velocity);
-      velocity_set = zero_centered_conversion_value_get(velocity_set);
+      velocity_set = zero_centered_conversion_value_multiply(velocity_set);
       m_boundary->set_node_value_at_boundary(node, velocity_set, *bc);
     }
     return bc.has_value();
@@ -1532,8 +1537,9 @@ public:
           auto kernel = [&out, this](unsigned const, unsigned const local_index,
                                      Utils::Vector3i const &node) {
             if (m_boundary->node_is_boundary(node)) {
-              out[local_index] = to_vector3d(zero_centered_conversion_value_set(
-                  m_boundary->get_node_value_at_boundary(node)));
+              out[local_index] =
+                  to_vector3d(zero_centered_conversion_value_divide(
+                      m_boundary->get_node_value_at_boundary(node)));
             } else {
               out[local_index] = std::nullopt;
             }
@@ -1569,7 +1575,7 @@ public:
             if (opt) {
               m_boundary->set_node_value_at_boundary(
                   node,
-                  zero_centered_conversion_value_get(
+                  zero_centered_conversion_value_multiply(
                       to_vector3<FloatType>(*opt)),
                   *bc);
             } else {
@@ -1663,7 +1669,7 @@ public:
     on_boundary_add();
     m_pending_ghost_comm.set(GhostComm::UBB);
     auto const grid_size = get_lattice().get_grid_dimensions();
-    auto data_flat_set = zero_centered_conversion_vector_get(data_flat);
+    auto data_flat_set = zero_centered_conversion_vector_multiply(data_flat);
     auto data = fill_3D_vector_array(data_flat_set, grid_size);
     set_boundary_from_grid(*m_boundary, get_lattice(), raster_flat, data);
     ghost_communication();
