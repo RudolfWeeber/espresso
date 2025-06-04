@@ -833,7 +833,7 @@ public:
   }
 
   template <typename T>
-  T zero_centered_conversion_vector_multiply(T vector) const {
+  T zero_centered_conversion_vector_multiply(T const &vector) const {
     T result = vector;
     std::transform(vector.begin(), vector.end(), result.begin(),
                    [this](auto value) { return value * m_density; });
@@ -841,12 +841,12 @@ public:
   }
 
   template <typename T>
-  T zero_centered_conversion_value_multiply(T values) const {
+  T zero_centered_conversion_value_multiply(T const &values) const {
     return values * m_density;
   }
 
   template <typename T>
-  T zero_centered_conversion_vector_divide(T vector) const {
+  T zero_centered_conversion_vector_divide(T const &vector) const {
     T result = vector;
     std::transform(
         vector.begin(), vector.end(), result.begin(),
@@ -855,7 +855,7 @@ public:
   }
 
   template <typename T>
-  T zero_centered_conversion_value_divide(T values) const {
+  T zero_centered_conversion_value_divide(T const &values) const {
     return values * (FloatType_c(1.0) / m_density);
   }
 
@@ -1903,7 +1903,8 @@ public:
         };
 #endif
     if (flag_observables & static_cast<int>(OutputVTK::density)) {
-      auto const unit_conversion = FloatType_c(units.at("density"));
+      auto const unit_conversion = zero_centered_conversion_value_multiply(
+          FloatType_c(units.at("density")));
 #if defined(__CUDACC__)
       if constexpr (Architecture == lbmpy::Arch::GPU) {
         auto const &blocks = m_lattice->get_blocks();
@@ -1932,7 +1933,8 @@ public:
           m_velocity_field_id, "velocity_vector", unit_conversion));
     }
     if (flag_observables & static_cast<int>(OutputVTK::pressure_tensor)) {
-      auto const unit_conversion = FloatType_c(units.at("pressure"));
+      auto const unit_conversion = zero_centered_conversion_value_multiply(
+          FloatType_c(units.at("pressure")));
 #if defined(__CUDACC__)
       if constexpr (Architecture == lbmpy::Arch::GPU) {
         auto const &blocks = m_lattice->get_blocks();
