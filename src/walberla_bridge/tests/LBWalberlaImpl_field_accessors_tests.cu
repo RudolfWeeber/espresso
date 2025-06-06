@@ -211,6 +211,14 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
         return value[0u];
       }
     };
+    auto const mult_by = [](auto &value, FT const &multiplier) {
+      if constexpr (is_interval) {
+        std::transform(value.begin(), value.end(), value.begin(),
+                       [multiplier](auto v) { return v * multiplier; });
+      } else {
+        value *= multiplier;
+      }
+    };
 
     auto const density = lbfluid->m_density;
     auto pdf_field = block.template getData<PdfField>(lbfluid->m_pdf_field_id);
@@ -337,6 +345,10 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
       cur_pop = lbm::accessor::Population::get(pdf_field, it);
       cur_vel = lbm::accessor::Vector::get(velocity_field, it);
       cur_laf = lbm::accessor::Vector::get(force_field, it);
+      // Due to the rescaled LB with density=1 the force_field is rescaled when
+      // setting it. Accessing it via Vector::get can not retrive the unscaled
+      // value.
+      mult_by(cur_laf, density);
       BOOST_CHECK(almost_equal(cur_pop, old_pop, exact));
       BOOST_CHECK(almost_equal(cur_vel, new_vel, epsilon));
       BOOST_CHECK(almost_equal(cur_laf, ref_laf, epsilon));
@@ -351,6 +363,7 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
       cur_pop = lbm::accessor::Population::get(pdf_field, it);
       cur_vel = lbm::accessor::Vector::get(velocity_field, it);
       cur_laf = lbm::accessor::Vector::get(force_field, it);
+      mult_by(cur_laf, density);
       BOOST_CHECK(almost_equal(cur_pop, old_pop, epsilon));
       BOOST_CHECK(almost_equal(cur_vel, new_vel, epsilon));
       BOOST_CHECK(almost_equal(cur_laf, ref_laf, epsilon));

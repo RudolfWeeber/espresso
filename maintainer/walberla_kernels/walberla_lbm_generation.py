@@ -200,6 +200,15 @@ def generate_macroscopic_values_accessors(ctx, config, lb_method, templates):
         velocity_getters, variables_without_prefix=["rho", "u"], **kwargs)
     momentum_density_getter = cqc.output_equations_from_pdfs(
         pdfs_sym, {"density": rho_sym, "momentum_density": momentum_density_symbols})
+    force_field = lb_method.force_model.symbolic_force_vector
+    substitution_dict = {}
+    for field_symbol in force_field:
+        for assignment in momentum_density_getter:
+            if (field_symbol in assignment.rhs.atoms()):
+                substitution_dict[assignment.rhs] = assignment.rhs.xreplace(
+                    {field_symbol: field_symbol / sp.Symbol("density")})
+    momentum_density_getter_force_setter = momentum_density_getter.new_with_substitutions(
+        substitution_dict)
     unshifted_momentum_density_getter = cqc.output_equations_from_pdfs(
         pdfs_sym, {"density": rho_sym, "momentum_density": momentum_density_symbols})
     for i, eq in reversed(
@@ -238,6 +247,8 @@ def generate_macroscopic_values_accessors(ctx, config, lb_method, templates):
             variables_without_prefix=[e.name for e in pdfs_sym], **kwargs),
         "momentum_density_getter": equations_to_code(
             momentum_density_getter, variables_without_prefix=pdfs_sym, **kwargs),
+        "momentum_density_getter_force_setter": equations_to_code(
+            momentum_density_getter_force_setter, variables_without_prefix=pdfs_sym, **kwargs),
         "second_momentum_getter": equations_to_code(
             second_momentum_getter, variables_without_prefix=pdfs_sym, **kwargs),
         "density_velocity_setter_macroscopic_values": density_velocity_setter_macroscopic_values,

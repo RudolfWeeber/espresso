@@ -55,9 +55,8 @@ namespace pystencils {
 class UpdateVelFromPDFSinglePrecisionAVX {
 public:
   UpdateVelFromPDFSinglePrecisionAVX(BlockDataID forceID_, BlockDataID pdfsID_,
-                                     BlockDataID velocityID_, float density)
-      : forceID(forceID_), pdfsID(pdfsID_), velocityID(velocityID_),
-        density_(density) {}
+                                     BlockDataID velocityID_)
+      : forceID(forceID_), pdfsID(pdfsID_), velocityID(velocityID_) {}
 
   void run(IBlock *block);
 
@@ -97,14 +96,10 @@ public:
   void configure(const shared_ptr<StructuredBlockStorage> & /*blocks*/,
                  IBlock * /*block*/) {}
 
-  inline float getDensity() const { return density_; }
-  inline void setDensity(const float value) { density_ = value; }
-
 private:
   BlockDataID forceID;
   BlockDataID pdfsID;
   BlockDataID velocityID;
-  float density_;
 };
 
 } // namespace pystencils

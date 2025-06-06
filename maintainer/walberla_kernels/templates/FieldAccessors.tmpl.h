@@ -97,7 +97,7 @@ namespace Population
             const auto {{c}} = cell.{{c}}();
         {% endfor -%}
         {{momentum_density_getter | substitute_force_getter_cpp | indent(8) }}
-        const auto rho_inv = {{dtype}} {1} / rho / density;
+        const auto rho_inv = {{dtype}} {1} / rho;
         {% for i in range(D) -%}
             velocity_field->get(cell, uint_t{ {{i}}u }) = md_{{i}} * rho_inv;
         {% endfor -%}
@@ -172,7 +172,7 @@ namespace Population
                         const {{dtype}} f_{{i}} = pdf_field->getF( &xyz0, uint_t{ {{i}}u }) = pop[{{i}}u];
                     {% endfor -%}
                     {{momentum_density_getter | substitute_force_getter_cpp | indent(12) }}
-                    const auto rho_inv = {{dtype}} {1} / rho / density;
+                    const auto rho_inv = {{dtype}} {1} / rho;
                     {% for i in range(D) -%}
                         velocity_field->get(x, y, z, uint_t{ {{i}}u }) = md_{{i}} * rho_inv;
                     {% endfor -%}
@@ -430,7 +430,7 @@ namespace Velocity
             const auto {{c}} = cell.{{c}}();
         {% endfor -%}
         {{momentum_density_getter | substitute_force_getter_cpp | indent(8) }}
-        const {{dtype}} rho_inv = {{dtype}} {1} / rho / density;
+        const {{dtype}} rho_inv = {{dtype}} {1} / rho;
 
         return Vector3<{{dtype}}>(md_0 * rho_inv, md_1 * rho_inv, md_2 * rho_inv);
     }
@@ -451,7 +451,7 @@ namespace Velocity
                         const {{dtype}} f_{{i}} = pdf_field->getF( &xyz0, uint_t{ {{i}}u });
                     {% endfor -%}
                     {{momentum_density_getter | substitute_force_getter_cpp | indent(12) }}
-                    const {{dtype}} rho_inv = {{dtype}} {1} / rho / density;
+                    const {{dtype}} rho_inv = {{dtype}} {1} / rho;
                     {% for i in range(D) -%}
                         out.emplace_back(md_{{i}} * rho_inv);
                     {% endfor -%}
@@ -473,7 +473,7 @@ namespace Velocity
         {% for i in range(Q) -%}
             const {{dtype}} f_{{i}} = pdf_field->getF( &xyz0, uint_t{ {{i}}u });
         {% endfor -%}
-        {{density_getters_adjust | indent(8)}}
+        {{density_getters | indent(8)}}
 
         {% for c in "xyz" -%}
             const auto {{c}} = cell.{{c}}();
@@ -483,7 +483,7 @@ namespace Velocity
             velocity_field->get(x, y, z, uint_t{ {{i}}u }) = u[{{i}}u];
         {% endfor %}
 
-        Equilibrium::set(pdf_field, Vector{{D}}<{{dtype}}>({% for i in range(D) %}u_{{i}} * density {% if not loop.last %}, {% endif %}{% endfor %}), rho / density {%if not compressible %} + {{dtype}} {1} {%endif%}, cell);
+        Equilibrium::set(pdf_field, Vector{{D}}<{{dtype}}>({% for i in range(D) %}u_{{i}}{% if not loop.last %}, {% endif %}{% endfor %}), rho {%if not compressible %} + {{dtype}} {1} {%endif%}, cell);
     }
 
     inline void
@@ -504,7 +504,7 @@ namespace Velocity
                     {% for i in range(Q) -%}
                         const {{dtype}} f_{{i}} = pdf_field->getF( &pdf_xyz0, uint_t{ {{i}}u });
                     {% endfor -%}
-                    {{density_getters_adjust | indent(8)}}
+                    {{density_getters | indent(8)}}
 
                     {{density_velocity_setter_macroscopic_values | substitute_force_getter_cpp | indent(8)}}
                     {% for i in range(D) -%}
@@ -512,7 +512,7 @@ namespace Velocity
                     {% endfor %}
                     std::advance(u, {{D}});
 
-                    Equilibrium::set(pdf_field, Vector{{D}}<{{dtype}}>({% for i in range(D) %}u_{{i}} * density{% if not loop.last %}, {% endif %}{% endfor %}), rho / density {%if not compressible %} + {{dtype}} {1} {%endif%}, Cell{x, y, z});
+                    Equilibrium::set(pdf_field, Vector{{D}}<{{dtype}}>({% for i in range(D) %}u_{{i}}{% if not loop.last %}, {% endif %}{% endfor %}), rho {%if not compressible %} + {{dtype}} {1} {%endif%}, Cell{x, y, z});
                 }
             }
         }
@@ -536,11 +536,11 @@ namespace Force
             const {{dtype}} f_{{i}} = pdf_field->getF( &pdf_xyz0, uint_t{ {{i}}u });
         {% endfor -%}
 
-        {{momentum_density_getter | substitute_force_getter_pattern("force->get\(x, ?y, ?z, ?([0-9])u?\)", "force[\g<1>u]") | indent(8) }}
-        auto const rho_inv = {{dtype}} {1} / rho / density;
+        {{momentum_density_getter_force_setter | substitute_force_getter_pattern("force->get\(x, ?y, ?z, ?([0-9])u?\)", "force[\g<1>u]") | indent(8) }}
+        auto const rho_inv = {{dtype}} {1} / rho;
 
         {% for i in range(D) -%}
-            force_field->getF( &laf_xyz0, uint_t{ {{i}}u }) = force[{{i}}u];
+            force_field->getF( &laf_xyz0, uint_t{ {{i}}u }) = force[{{i}}u] / density;
         {% endfor %}
 
         {% for i in range(D) -%}
@@ -568,11 +568,11 @@ namespace Force
                         const {{dtype}} f_{{i}} = pdf_field->getF( &pdf_xyz0, uint_t{ {{i}}u });
                     {% endfor -%}
 
-                    {{momentum_density_getter | substitute_force_getter_pattern("force->get\(x, ?y, ?z, ?([0-9])u?\)", "force[\g<1>u]") | indent(12) }}
-                    auto const rho_inv = {{dtype}} {1} / rho / density;
+                    {{momentum_density_getter_force_setter | substitute_force_getter_pattern("force->get\(x, ?y, ?z, ?([0-9])u?\)", "force[\g<1>u]") | indent(12) }}
+                    auto const rho_inv = {{dtype}} {1} / rho;
 
                     {% for i in range(D) -%}
-                        force_field->getF( &laf_xyz0, uint_t{ {{i}}u }) = force[{{i}}u];
+                        force_field->getF( &laf_xyz0, uint_t{ {{i}}u }) = force[{{i}}u] / density;
                     {% endfor %}
 
                     {% for i in range(D) -%}
@@ -605,7 +605,7 @@ namespace MomentumDensity
                     {{momentum_density_getter | substitute_force_getter_cpp | indent(8) }}
 
                     {% for i in range(D) -%}
-                        momentumDensity[{{i}}u] += md_{{i}};
+                        momentumDensity[{{i}}u] += md_{{i}} * density;
                     {% endfor %}
                 }
             }

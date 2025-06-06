@@ -253,8 +253,7 @@ private:
   }
 
   FloatType pressure_tensor_correction_factor() const {
-    FloatType res = m_viscosity / (m_viscosity + FloatType{1} / FloatType{6});
-    return zero_centered_conversion_value_divide(res);
+    return m_viscosity / (m_viscosity + FloatType{1} / FloatType{6});
   }
 
   void pressure_tensor_correction(Matrix3<FloatType> &tensor) const {
@@ -575,8 +574,7 @@ public:
 
     // Instantiate velocity update sweep
     m_update_velocities_from_pdf = std::make_shared<UpdateVelFromPDF>(
-        m_last_applied_force_field_id, m_pdf_field_id, m_velocity_field_id,
-        m_density);
+        m_last_applied_force_field_id, m_pdf_field_id, m_velocity_field_id);
   }
 
 private:
@@ -749,7 +747,7 @@ public:
     m_seed = seed;
     auto obj = StreamCollisionModelThermalized(
         m_last_applied_force_field_id, m_pdf_field_id,
-        zero_centered_conversion_value_multiply(m_kT), omega, omega, omega_odd,
+        zero_centered_conversion_value_divide(m_kT), omega, omega, omega_odd,
         omega, seed, uint32_t{0u});
     m_collision_model = std::make_shared<CollisionModel>(std::move(obj));
     m_run_stream_collide_sweep = StreamCollideSweepVisitor(blocks);
@@ -1060,6 +1058,7 @@ public:
           host_force.emplace_back(static_cast<FloatType>(vec[i]));
         }
       }
+      host_force = zero_centered_conversion_vector_divide(host_force);
       auto const gl = lattice.get_ghost_layers();
       auto field = block.template uncheckedFastGetData<VectorField>(
           m_force_to_be_applied_id);
@@ -1173,7 +1172,8 @@ public:
       }
 
       if (bc) {
-        auto const weighted_force = to_vector3<FloatType>(weight * force);
+        auto const weighted_force = zero_centered_conversion_value_divide(
+            to_vector3<FloatType>(weight * force));
         auto force_field =
             bc->block->template uncheckedFastGetData<VectorField>(
                 m_force_to_be_applied_id);
@@ -1193,7 +1193,8 @@ public:
     auto field =
         bc->block->template getData<VectorField>(m_force_to_be_applied_id);
     auto const vec = lbm::accessor::Vector::get(field, bc->cell);
-    return to_vector3d(vec);
+
+    return zero_centered_conversion_value_multiply(to_vector3d(vec));
   }
 
   std::optional<Utils::Vector3d>
@@ -1207,7 +1208,7 @@ public:
     auto const field =
         bc->block->template getData<VectorField>(m_last_applied_force_field_id);
     auto const vec = lbm::accessor::Vector::get(field, bc->cell);
-    return to_vector3d(vec);
+    return zero_centered_conversion_value_multiply(to_vector3d(vec));
   }
 
   bool set_node_last_applied_force(Utils::Vector3i const &node,
@@ -1258,7 +1259,7 @@ public:
         }
       }
     }
-    return out;
+    return zero_centered_conversion_vector_multiply(out);
   }
 
   void set_slice_last_applied_force(Utils::Vector3i const &lower_corner,
@@ -1501,9 +1502,7 @@ public:
     if (!bc or !m_boundary->node_is_boundary(node))
       return std::nullopt;
 
-    auto vel = to_vector3d(m_boundary->get_node_value_at_boundary(node));
-    vel = zero_centered_conversion_value_divide(vel);
-    return {vel};
+    return {to_vector3d(m_boundary->get_node_value_at_boundary(node))};
   }
 
   bool set_node_velocity_at_boundary(Utils::Vector3i const &node,
@@ -1515,9 +1514,8 @@ public:
       bc = get_block_and_cell(get_lattice(), node, true);
     }
     if (bc) {
-      auto velocity_set = to_vector3<FloatType>(velocity);
-      velocity_set = zero_centered_conversion_value_multiply(velocity_set);
-      m_boundary->set_node_value_at_boundary(node, velocity_set, *bc);
+      m_boundary->set_node_value_at_boundary(
+          node, to_vector3<FloatType>(velocity), *bc);
     }
     return bc.has_value();
   }
@@ -1538,8 +1536,7 @@ public:
                                      Utils::Vector3i const &node) {
             if (m_boundary->node_is_boundary(node)) {
               out[local_index] =
-                  to_vector3d(zero_centered_conversion_value_divide(
-                      m_boundary->get_node_value_at_boundary(node)));
+                  to_vector3d(m_boundary->get_node_value_at_boundary(node));
             } else {
               out[local_index] = std::nullopt;
             }
@@ -1574,10 +1571,7 @@ public:
             auto const &opt = velocity[local_index];
             if (opt) {
               m_boundary->set_node_value_at_boundary(
-                  node,
-                  zero_centered_conversion_value_multiply(
-                      to_vector3<FloatType>(*opt)),
-                  *bc);
+                  node, to_vector3<FloatType>(*opt), *bc);
             } else {
               m_boundary->remove_node_from_boundary(node, *bc);
             }
@@ -1669,8 +1663,7 @@ public:
     on_boundary_add();
     m_pending_ghost_comm.set(GhostComm::UBB);
     auto const grid_size = get_lattice().get_grid_dimensions();
-    auto data_flat_set = zero_centered_conversion_vector_multiply(data_flat);
-    auto data = fill_3D_vector_array(data_flat_set, grid_size);
+    auto data = fill_3D_vector_array(data_flat, grid_size);
     set_boundary_from_grid(*m_boundary, get_lattice(), raster_flat, data);
     ghost_communication();
     reallocate_ubb_field();
@@ -1733,8 +1726,9 @@ public:
     }
     auto const grid_size = get_lattice().get_grid_dimensions();
     auto const number_of_nodes = Utils::product(grid_size);
+    tensor *= (1. / static_cast<double>(number_of_nodes));
     pressure_tensor_correction(tensor);
-    return to_vector9d(tensor) * (1. / static_cast<double>(number_of_nodes));
+    return to_vector9d(tensor);
   }
 
   // Global momentum
@@ -1752,11 +1746,13 @@ public:
 
   // Global external force
   void set_external_force(Utils::Vector3d const &ext_force) override {
-    m_reset_force->set_ext_force(ext_force);
+    m_reset_force->set_ext_force(
+        zero_centered_conversion_value_divide(ext_force));
   }
 
   [[nodiscard]] Utils::Vector3d get_external_force() const noexcept override {
-    return m_reset_force->get_ext_force();
+    return zero_centered_conversion_value_multiply(
+        m_reset_force->get_ext_force());
   }
 
   [[nodiscard]] double get_kT() const noexcept override {

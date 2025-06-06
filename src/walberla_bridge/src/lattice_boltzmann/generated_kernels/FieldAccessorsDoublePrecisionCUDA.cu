@@ -222,7 +222,7 @@ __global__ void kernel_set_vel(
     const double md_0 = force.get(0) * 0.50000000000000000 + momdensity_0;
     const double md_1 = force.get(1) * 0.50000000000000000 + momdensity_1;
     const double md_2 = force.get(2) * 0.50000000000000000 + momdensity_2;
-    const double rho_inv = double{1} / rho / density;
+    const double rho_inv = double{1} / rho;
     velocity.get(0u) = md_0 * rho_inv;
     velocity.get(1u) = md_1 * rho_inv;
     velocity.get(2u) = md_2 * rho_inv;
@@ -858,7 +858,7 @@ __global__ void kernel_get(
     const double md_0 = force.get(0) * 0.50000000000000000 + momdensity_0;
     const double md_1 = force.get(1) * 0.50000000000000000 + momdensity_1;
     const double md_2 = force.get(2) * 0.50000000000000000 + momdensity_2;
-    auto const rho_inv = double{1} / rho / density;
+    auto const rho_inv = double{1} / rho;
     u_out[0u] = md_0 * rho_inv;
     u_out[1u] = md_1 * rho_inv;
     u_out[2u] = md_2 * rho_inv;
@@ -901,7 +901,7 @@ __global__ void kernel_set(
     const double vel1Term = f_1 + f_11 + f_15 + f_7;
     const double vel2Term = f_12 + f_13 + f_5;
     const double delta_rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
-    const double rho = density * (delta_rho + 1);
+    const double rho = delta_rho + 1;
     const double u_0 = -force.get(0) * 0.50000000000000000 / rho + u[0];
     const double u_1 = -force.get(1) * 0.50000000000000000 / rho + u[1];
     const double u_2 = -force.get(2) * 0.50000000000000000 / rho + u[2];
@@ -909,9 +909,9 @@ __global__ void kernel_set(
     velocity.get(1u) = u_in[1u];
     velocity.get(2u) = u_in[2u];
 
-    double u_new[3] = {u_0 * density, u_1 * density, u_2 * density};
+    double u_new[3] = {u_0, u_1, u_2};
 
-    Equilibrium::kernel_set_device(pdf, u_new, rho / density);
+    Equilibrium::kernel_set_device(pdf, u_new, rho);
   }
 }
 // LCOV_EXCL_STOP
@@ -1032,14 +1032,14 @@ __global__ void kernel_set(
     const double delta_rho = f_0 + f_16 + f_17 + f_2 + f_3 + f_6 + f_9 + vel0Term + vel1Term + vel2Term;
     const double momdensity_2 = f_11 + f_14 - f_15 - f_16 - f_17 - f_18 - f_6 + vel2Term;
     const double rho = delta_rho + 1;
-    const double md_0 = f_in[0u] * 0.50000000000000000 + momdensity_0;
-    const double md_1 = f_in[1u] * 0.50000000000000000 + momdensity_1;
-    const double md_2 = f_in[2u] * 0.50000000000000000 + momdensity_2;
-    auto const rho_inv = double{1} / rho / density;
+    const double md_0 = momdensity_0 + f_in[0u] * 0.50000000000000000 / density;
+    const double md_1 = momdensity_1 + f_in[1u] * 0.50000000000000000 / density;
+    const double md_2 = momdensity_2 + f_in[2u] * 0.50000000000000000 / density;
+    auto const rho_inv = double{1} / rho;
 
-    force.get(0u) = f_in[0u];
-    force.get(1u) = f_in[1u];
-    force.get(2u) = f_in[2u];
+    force.get(0u) = f_in[0u] / density;
+    force.get(1u) = f_in[1u] / density;
+    force.get(2u) = f_in[2u] / density;
 
     velocity.get(0u) = md_0 * rho_inv;
     velocity.get(1u) = md_1 * rho_inv;
@@ -1089,7 +1089,8 @@ namespace MomentumDensity {
 __global__ void kernel_get(
     gpu::FieldAccessor<double> pdf,
     gpu::FieldAccessor<double> force,
-    double *RESTRICT out) {
+    double *RESTRICT out,
+    const double density) {
   auto const offset = getLinearIndex(blockIdx, threadIdx, gridDim, blockDim, 3u);
   pdf.set(blockIdx, threadIdx);
   force.set(blockIdx, threadIdx);
@@ -1125,9 +1126,9 @@ __global__ void kernel_get(
     const double md_0 = force.get(0) * 0.50000000000000000 + momdensity_0;
     const double md_1 = force.get(1) * 0.50000000000000000 + momdensity_1;
     const double md_2 = force.get(2) * 0.50000000000000000 + momdensity_2;
-    out[0u] = md_0;
-    out[1u] = md_1;
-    out[2u] = md_2;
+    out[0u] = md_0 * density;
+    out[1u] = md_1 * density;
+    out[2u] = md_2 * density;
   }
 }
 // LCOV_EXCL_STOP
@@ -1143,6 +1144,7 @@ Vector3<double> reduce(
   kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::interval(*pdf_field, ci));
   kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::interval(*force_field, ci));
   kernel.addParam(dev_data_ptr);
+  kernel.addParam(density);
   kernel();
   std::vector<double> out(dev_data.size());
   thrust::copy(dev_data.begin(), dev_data.end(), out.data());

@@ -151,7 +151,7 @@ namespace Population
                 const {{dtype}} f_{{i}} = pdf.get({{i}}u) = pop[{{i}}u];
             {% endfor -%}
             {{momentum_density_getter | substitute_force_getter_cu | indent(8) }}
-            const {{dtype}} rho_inv = {{dtype}} {1} / rho /density;
+            const {{dtype}} rho_inv = {{dtype}} {1} / rho;
             {% for i in range(D) -%}
                 velocity.get({{i}}u) = md_{{i}} * rho_inv;
             {% endfor %}
@@ -742,7 +742,7 @@ namespace Velocity
                 {{dtype}} const f_{{i}} = pdf.get({{i}}u);
             {% endfor -%}
             {{momentum_density_getter | substitute_force_getter_cu | indent(8) }}
-            auto const rho_inv = {{dtype}} {1} / rho / density;
+            auto const rho_inv = {{dtype}} {1} / rho;
             {% for i in range(D) -%}
                 u_out[{{i}}u] = md_{{i}} * rho_inv;
             {% endfor %}
@@ -766,14 +766,14 @@ namespace Velocity
                 {{dtype}} const f_{{i}} = pdf.get({{i}}u);
             {% endfor -%}
             {{dtype}} const * RESTRICT const u = u_in;
-            {{density_getters_adjust | indent(8)}}
+            {{density_getters | indent(8)}}
             {{density_velocity_setter_macroscopic_values | substitute_force_getter_cu | indent(8)}}
             {% for i in range(D) -%}
                 velocity.get({{i}}u) = u_in[{{i}}u];
             {% endfor %}
-            {{dtype}} u_new[{{D}}] = { {% for i in range(D) %}u_{{i}} * density {% if not loop.last %}, {% endif %}{% endfor %} };
+            {{dtype}} u_new[{{D}}] = { {% for i in range(D) %}u_{{i}}{% if not loop.last %}, {% endif %}{% endfor %} };
 
-            Equilibrium::kernel_set_device(pdf, u_new, rho / density {%if not compressible %} + {{dtype}}(1) {%endif%});
+            Equilibrium::kernel_set_device(pdf, u_new, rho {%if not compressible %} + {{dtype}}(1) {%endif%});
         }
     }
 // LCOV_EXCL_STOP
@@ -876,11 +876,11 @@ namespace Force {
                 {{dtype}} const f_{{i}} = pdf.get({{i}}u);
             {% endfor -%}
 
-            {{momentum_density_getter | substitute_force_getter_pattern("force->get\(x, ?y, ?z, ?([0-9])u?\)", "f_in[\g<1>u]") | indent(8) }}
-            auto const rho_inv = {{dtype}} {1} / rho / density;
+            {{momentum_density_getter_force_setter | substitute_force_getter_pattern("force->get\(x, ?y, ?z, ?([0-9])u?\)", "f_in[\g<1>u]") | indent(8) }}
+            auto const rho_inv = {{dtype}} {1} / rho;
 
             {% for i in range(D) -%}
-                force.get({{i}}u) = f_in[{{i}}u];
+                force.get({{i}}u) = f_in[{{i}}u] / density;
             {% endfor %}
 
             {% for i in range(D) -%}
@@ -936,7 +936,8 @@ namespace MomentumDensity
     __global__ void kernel_get(
         gpu::FieldAccessor< {{dtype}} > pdf,
         gpu::FieldAccessor< {{dtype}} > force,
-        {{dtype}} * RESTRICT out )
+        {{dtype}} * RESTRICT out,
+        const {{dtype}} density )
     {
         auto const offset = getLinearIndex(blockIdx, threadIdx, gridDim, blockDim, {{D}}u);
         pdf.set( blockIdx, threadIdx );
@@ -948,7 +949,7 @@ namespace MomentumDensity
             {% endfor -%}
             {{momentum_density_getter | substitute_force_getter_cu | indent(8) }}
             {% for i in range(D) -%}
-                out[{{i}}u] = md_{{i}};
+                out[{{i}}u] = md_{{i}} * density;
             {% endfor %}
         }
     }
@@ -966,6 +967,7 @@ namespace MomentumDensity
         kernel.addFieldIndexingParam( gpu::FieldIndexing< {{dtype}} >::interval( *pdf_field, ci) );
         kernel.addFieldIndexingParam( gpu::FieldIndexing< {{dtype}} >::interval( *force_field, ci ) );
         kernel.addParam( dev_data_ptr );
+        kernel.addParam( density );
         kernel();
         std::vector< {{dtype}} > out(dev_data.size());
         thrust::copy(dev_data.begin(), dev_data.end(), out.data());

@@ -219,13 +219,6 @@ def generate_macroscopic_value_getter_kernels(ctx, method, fields):
     assignments = lbmpy.macroscopic_value_kernels.macroscopic_values_getter(
         method, None, fields["velocity"], fields["pdfs"],
         use_pre_collision_pdfs=True)
-    for assignment in assignments:
-        if (assignment.lhs == sp.Symbol("rho")):
-            new_rho = ps.Assignment(
-                assignment.lhs, assignment.rhs * sp.Symbol("density"))
-            break
-    assignments = assignments.new_with_substitutions(
-        {assignment.rhs: new_rho.rhs})
     for params, target_suffix in paramlist(parameters, ("GPU", "CPU", "AVX")):
         kernel_name = f"UpdateVelFromPDF{precision_prefix}{target_suffix}"
         pystencils_walberla.generate_sweep(
