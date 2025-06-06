@@ -144,8 +144,8 @@ def generate_collide_lees_edwards_kernels(ctx, data_type, fields):
     lbm_opt = lbmpy.LBMOptimisation(symbolic_field=fields["pdfs"])
     shear_dir_normal = 1  # y-axis
     le_config = lbmpy.LBMConfig(stencil=stencil,
-                                method=lbmpy.Method.TRT,
-                                relaxation_rate=sp.Symbol("omega_shear"),
+                                method=lbmpy.Method.MRT,
+                                relaxation_rates=relaxation_rates.rr_getter,
                                 compressible=True,
                                 zero_centered=False,
                                 force_model=lbmpy.ForceModel.GUO,
@@ -165,6 +165,48 @@ def generate_collide_lees_edwards_kernels(ctx, data_type, fields):
             le_config,
             data_type,
             le_collision_rule_unthermalized,
+            stem,
+            params
+        )
+        ctx.patch_file(stem, get_ext_source(target_suffix),
+                       patch_openmp_kernels)
+
+
+def generate_collide_lees_edwards_kernels_thermalized(ctx, data_type, fields):
+    precision_prefix = pystencils_espresso.precision_prefix[ctx.double_accuracy]
+    precision_rng = pystencils_espresso.precision_rng[ctx.double_accuracy]
+    block_offsets = tuple(
+        ps.TypedSymbol(f"block_offset_{i}", np.uint32)
+        for i in range(3))
+    lbm_opt = lbmpy.LBMOptimisation(symbolic_field=fields["pdfs"])
+    shear_dir_normal = 1  # y-axis
+    le_config = lbmpy.LBMConfig(stencil=stencil,
+                                method=lbmpy.Method.MRT,
+                                relaxation_rates=relaxation_rates.rr_getter,
+                                compressible=True,
+                                zero_centered=False,
+                                fluctuating={
+                                    "temperature": kT,
+                                    "block_offsets": block_offsets,
+                                    "rng_node": precision_rng},
+                                force_model=lbmpy.ForceModel.GUO,
+                                force=fields["force"].center_vector,
+                                kernel_type="collide_only")
+    le_update_rule_thermalized = lbmpy.create_lb_update_rule(
+        lbm_config=le_config,
+        lbm_optimisation=lbm_opt)
+    le_collision_rule_thermalized = lees_edwards.add_lees_edwards_to_collision(
+        config, le_update_rule_thermalized, fields["pdfs"], stencil,
+        shear_dir_normal)
+
+    for params, target_suffix in paramlist(parameters, ("GPU", "CPU", "AVX")):
+        stem = f"CollideSweep{
+            precision_prefix}LeesEdwardsThermalized{target_suffix}"
+        pystencils_espresso.generate_collision_sweep(
+            ctx,
+            le_config,
+            data_type,
+            le_collision_rule_thermalized,
             stem,
             params
         )
@@ -340,6 +382,8 @@ with code_generation_context.CodeGeneration() as ctx:
     if "collide" in args.kernels:
         generate_collide_kernels(ctx, method, data_type)
         generate_collide_lees_edwards_kernels(ctx, data_type, fields)
+        generate_collide_lees_edwards_kernels_thermalized(
+            ctx, data_type, fields)
     if "accessors" in args.kernels:
         generate_accessors_kernels(ctx, method)
     if "packinfo" in args.kernels:

@@ -19,7 +19,7 @@
 
 // kernel generated with pystencils v1.3.7, lbmpy v1.3.7, sympy v1.12.1,
 // lbmpy_walberla/pystencils_walberla from waLBerla commit
-// f36fa0a68bae59f0b516f6587ea8fa7c24a41141
+// 59c9b8b185782eba184e0fdfb2144793343213f0
 
 #pragma once
 #include "core/DataTypes.h"
@@ -56,9 +56,12 @@ class CollideSweepDoublePrecisionLeesEdwards {
 public:
   CollideSweepDoublePrecisionLeesEdwards(BlockDataID forceID_,
                                          BlockDataID pdfsID_, double grid_size,
-                                         double omega_shear, double v_s)
+                                         double omega_bulk, double omega_even,
+                                         double omega_odd, double omega_shear,
+                                         double rho, double v_s)
       : forceID(forceID_), pdfsID(pdfsID_), grid_size_(grid_size),
-        omega_shear_(omega_shear), v_s_(v_s) {}
+        omega_bulk_(omega_bulk), omega_even_(omega_even), omega_odd_(omega_odd),
+        omega_shear_(omega_shear), rho_(rho), v_s_(v_s) {}
 
   void run(IBlock *block);
 
@@ -99,17 +102,29 @@ public:
                  IBlock * /*block*/) {}
 
   inline double getGrid_size() const { return grid_size_; }
+  inline double getOmega_bulk() const { return omega_bulk_; }
+  inline double getOmega_even() const { return omega_even_; }
+  inline double getOmega_odd() const { return omega_odd_; }
   inline double getOmega_shear() const { return omega_shear_; }
+  inline double getRho() const { return rho_; }
   inline double getV_s() const { return v_s_; }
   inline void setGrid_size(const double value) { grid_size_ = value; }
+  inline void setOmega_bulk(const double value) { omega_bulk_ = value; }
+  inline void setOmega_even(const double value) { omega_even_ = value; }
+  inline void setOmega_odd(const double value) { omega_odd_ = value; }
   inline void setOmega_shear(const double value) { omega_shear_ = value; }
+  inline void setRho(const double value) { rho_ = value; }
   inline void setV_s(const double value) { v_s_ = value; }
 
 private:
   BlockDataID forceID;
   BlockDataID pdfsID;
   double grid_size_;
+  double omega_bulk_;
+  double omega_even_;
+  double omega_odd_;
   double omega_shear_;
+  double rho_;
   double v_s_;
 };
 

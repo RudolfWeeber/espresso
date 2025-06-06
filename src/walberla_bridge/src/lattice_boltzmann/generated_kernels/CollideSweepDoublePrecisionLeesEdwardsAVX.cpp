@@ -17,29 +17,33 @@
 //! \\author pystencils
 //======================================================================================================================
 
-// kernel generated with pystencils v1.3.3, lbmpy v1.3.3, lbmpy_walberla/pystencils_walberla from waLBerla commit b0842e1a493ce19ef1bbb8d2cf382fc343970a7f
+// kernel generated with pystencils v1.3.7, lbmpy v1.3.7, sympy v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit 59c9b8b185782eba184e0fdfb2144793343213f0
+
 
 #include <cmath>
 
-#include "CollideSweepDoublePrecisionLeesEdwardsAVX.h"
 #include "core/DataTypes.h"
 #include "core/Macros.h"
+#include "CollideSweepDoublePrecisionLeesEdwardsAVX.h"
+
 
 #include <immintrin.h>
 
+
+
 #define FUNC_PREFIX
 
-#if (defined WALBERLA_CXX_COMPILER_IS_GNU) || (defined WALBERLA_CXX_COMPILER_IS_CLANG)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wfloat-equal"
-#pragma GCC diagnostic ignored "-Wshadow"
-#pragma GCC diagnostic ignored "-Wconversion"
-#pragma GCC diagnostic ignored "-Wunused-variable"
+#if ( defined WALBERLA_CXX_COMPILER_IS_GNU ) || ( defined WALBERLA_CXX_COMPILER_IS_CLANG )
+#   pragma GCC diagnostic push
+#   pragma GCC diagnostic ignored "-Wfloat-equal"
+#   pragma GCC diagnostic ignored "-Wshadow"
+#   pragma GCC diagnostic ignored "-Wconversion"
+#   pragma GCC diagnostic ignored "-Wunused-variable"
 #endif
 
-#if (defined WALBERLA_CXX_COMPILER_IS_INTEL)
+#if ( defined WALBERLA_CXX_COMPILER_IS_INTEL )
 #pragma warning push
-#pragma warning(disable : 1599)
+#pragma warning( disable :  1599 )
 #endif
 
 using namespace std;
@@ -47,318 +51,510 @@ using namespace std;
 namespace walberla {
 namespace pystencils {
 
+
 namespace internal_f11a519921c681cbc9d0b2f51454c920 {
-static FUNC_PREFIX void collidesweepdoubleprecisionleesedwardsavx_collidesweepdoubleprecisionleesedwardsavx(double *RESTRICT const _data_force, double *RESTRICT _data_pdfs, int64_t const _size_force_0, int64_t const _size_force_1, int64_t const _size_force_2, int64_t const _stride_force_1, int64_t const _stride_force_2, int64_t const _stride_force_3, int64_t const _stride_pdfs_1, int64_t const _stride_pdfs_2, int64_t const _stride_pdfs_3, double grid_size, double omega_shear, double v_s) {
+static FUNC_PREFIX void collidesweepdoubleprecisionleesedwardsavx_collidesweepdoubleprecisionleesedwardsavx(double * RESTRICT const _data_force, double * RESTRICT  _data_pdfs, int64_t const _size_force_0, int64_t const _size_force_1, int64_t const _size_force_2, int64_t const _stride_force_1, int64_t const _stride_force_2, int64_t const _stride_force_3, int64_t const _stride_pdfs_1, int64_t const _stride_pdfs_2, int64_t const _stride_pdfs_3, double grid_size, double omega_bulk, double omega_even, double omega_odd, double omega_shear, double rho, double v_s)
+{
 #ifdef _OPENMP
-#pragma omp parallel
+   #pragma omp parallel
 #endif
-  {
-    const double xi_0 = ((1.0) / (omega_shear * -0.25 + 2.0));
-    const double rr_0 = xi_0 * (omega_shear * -2.0 + 4.0);
+   {
+      const double xi_2 = 0.50000000000000000;
+      const int64_t xi_3 = 2;
+      const int64_t xi_4 = 3;
+      const int64_t xi_5 = 6;
+      const int64_t xi_6 = 18;
+      const int64_t xi_7 = 4;
+      const int64_t xi_8 = 14;
+      const int64_t xi_9 = 10;
+      const double xi_10 = 0.66666666666666663;
+      const double xi_11 = 2.3333333333333335;
+      const double xi_12 = 1.6666666666666667;
+      const double xi_13 = 0.33333333333333331;
+      const double xi_14 = 0.16666666666666666;
+      const double xi_15 = 0.25000000000000000;
+      const double xi_16 = 0.1111111111111111;
+      const double xi_17 = 0.083333333333333329;
+      const double xi_18 = 0.055555555555555552;
+      const double xi_19 = 0.015873015873015872;
+      const double xi_20 = 0.071428571428571425;
+      const double xi_21 = 0.028571428571428571;
+      const double xi_22 = 0.10000000000000001;
 #ifdef _OPENMP
-#pragma omp for schedule(static)
+      #pragma omp for schedule(static)
 #endif
-    for (int64_t ctr_2 = 0; ctr_2 < _size_force_2; ctr_2 += 1) {
-      for (int64_t ctr_1 = 0; ctr_1 < _size_force_1; ctr_1 += 1) {
-        {
-          for (int64_t ctr_0 = 0; ctr_0 < (int64_t)((_size_force_0) / (4)) * (4); ctr_0 += 4) {
-            const __m256d xi_25 = _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_26 = _mm256_load_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_27 = _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 18 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_28 = _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_29 = _mm256_load_pd(&_data_force[_stride_force_1 * ctr_1 + _stride_force_2 * ctr_2 + ctr_0]);
-            const __m256d xi_30 = _mm256_load_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 4 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_31 = _mm256_loadu_pd(&_data_force[_stride_force_1 * ctr_1 + _stride_force_2 * ctr_2 + _stride_force_3 + ctr_0]);
-            const __m256d xi_32 = _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 14 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_33 = _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 13 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_34 = _mm256_load_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 16 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_35 = _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_36 = _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 15 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_37 = _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 3 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_38 = _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_39 = _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 5 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_40 = _mm256_loadu_pd(&_data_force[_stride_force_1 * ctr_1 + _stride_force_2 * ctr_2 + 2 * _stride_force_3 + ctr_0]);
-            const __m256d xi_41 = _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 2 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_42 = _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 17 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_43 = _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 6 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_44 = _mm256_loadu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 11 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_45 = _mm256_load_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + ctr_0]);
-            const __m256d xi_46 = _mm256_load_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 12 * _stride_pdfs_3 + ctr_0]);
-            const __m256d xi_3 = xi_40;
-            const __m256d xi_4 = xi_44;
-            const __m256d xi_5 = xi_37;
-            const __m256d xi_6 = xi_35;
-            const __m256d xi_7 = xi_46;
-            const __m256d xi_8 = xi_43;
-            const __m256d xi_9 = xi_28;
-            const __m256d xi_10 = xi_30;
-            const __m256d xi_11 = xi_41;
-            const __m256d xi_12 = xi_29;
-            const __m256d xi_13 = xi_45;
-            const __m256d xi_14 = xi_38;
-            const __m256d xi_15 = xi_42;
-            const __m256d xi_16 = xi_39;
-            const __m256d xi_17 = xi_34;
-            const __m256d xi_18 = xi_36;
-            const __m256d xi_19 = xi_27;
-            const __m256d xi_20 = xi_31;
-            const __m256d xi_21 = xi_32;
-            const __m256d xi_22 = xi_26;
-            const __m256d xi_23 = xi_33;
-            const __m256d xi_24 = xi_25;
-            const __m256d vel0Term = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(xi_10, xi_19), xi_21), xi_22), xi_9);
-            const __m256d vel1Term = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(xi_18, xi_24), xi_4), xi_6);
-            const __m256d vel2Term = _mm256_add_pd(_mm256_add_pd(xi_16, xi_23), xi_7);
-            const __m256d rho = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(vel0Term, vel1Term), vel2Term), xi_11), xi_13), xi_14), xi_15), xi_17), xi_5), xi_8);
-            const __m256d xi_1 = _mm256_div_pd(_mm256_set_pd(1.0, 1.0, 1.0, 1.0), rho);
-            const __m256d u_0 = _mm256_add_pd(_mm256_mul_pd(xi_1, _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_14, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0)), _mm256_mul_pd(xi_15, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), _mm256_mul_pd(xi_23, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), _mm256_mul_pd(xi_5, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), _mm256_mul_pd(xi_6, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), vel0Term)), _mm256_mul_pd(_mm256_mul_pd(xi_1, xi_12), _mm256_set_pd(0.5, 0.5, 0.5, 0.5)));
-            const __m256d u_1 = _mm256_add_pd(_mm256_mul_pd(xi_1, _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_11, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0)), _mm256_mul_pd(xi_14, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), _mm256_mul_pd(xi_17, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), _mm256_mul_pd(xi_7, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), _mm256_mul_pd(xi_9, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), vel1Term), xi_22)), _mm256_mul_pd(_mm256_mul_pd(xi_1, xi_20), _mm256_set_pd(0.5, 0.5, 0.5, 0.5)));
-            const __m256d u_2 = _mm256_add_pd(_mm256_mul_pd(xi_1, _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_15, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0)), _mm256_mul_pd(xi_17, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), _mm256_mul_pd(xi_18, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), _mm256_mul_pd(xi_19, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), _mm256_mul_pd(xi_8, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), vel2Term), xi_21), xi_4)), _mm256_mul_pd(_mm256_mul_pd(xi_1, xi_3), _mm256_set_pd(0.5, 0.5, 0.5, 0.5)));
-            const __m256d forceTerm_0 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-1.0, -1.0, -1.0, -1.0)), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_1 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666)), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.33333333333333331, 0.33333333333333331, 0.33333333333333331, 0.33333333333333331))), _mm256_mul_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_2 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666)), _mm256_mul_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.33333333333333331, 0.33333333333333331, 0.33333333333333331, 0.33333333333333331))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_3 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666)), _mm256_mul_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.33333333333333331, 0.33333333333333331, 0.33333333333333331, 0.33333333333333331))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_4 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666)), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.33333333333333331, 0.33333333333333331, 0.33333333333333331, 0.33333333333333331))), _mm256_mul_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_5 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_3, _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666)), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.33333333333333331, 0.33333333333333331, 0.33333333333333331, 0.33333333333333331))), _mm256_mul_pd(_mm256_mul_pd(xi_3, _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_6 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_3, _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666)), _mm256_mul_pd(_mm256_mul_pd(xi_3, _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.33333333333333331, 0.33333333333333331, 0.33333333333333331, 0.33333333333333331))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_7 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_mul_pd(xi_12, _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_20), _mm256_set_pd(-0.25, -0.25, -0.25, -0.25))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_12), _mm256_set_pd(-0.25, -0.25, -0.25, -0.25))), _mm256_mul_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(-0.041666666666666664, -0.041666666666666664, -0.041666666666666664, -0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_20), _mm256_set_pd(0.125, 0.125, 0.125, 0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_12), _mm256_set_pd(0.125, 0.125, 0.125, 0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_8 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_mul_pd(xi_20, _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_20), _mm256_set_pd(0.25, 0.25, 0.25, 0.25))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_12), _mm256_set_pd(0.25, 0.25, 0.25, 0.25))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(-0.041666666666666664, -0.041666666666666664, -0.041666666666666664, -0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(-0.041666666666666664, -0.041666666666666664, -0.041666666666666664, -0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_20), _mm256_set_pd(-0.125, -0.125, -0.125, -0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_12), _mm256_set_pd(-0.125, -0.125, -0.125, -0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_9 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_mul_pd(xi_20, _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_20), _mm256_set_pd(0.25, 0.25, 0.25, 0.25))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_12), _mm256_set_pd(0.25, 0.25, 0.25, 0.25))), _mm256_mul_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_20), _mm256_set_pd(-0.125, -0.125, -0.125, -0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_12), _mm256_set_pd(-0.125, -0.125, -0.125, -0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_10 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_mul_pd(xi_20, _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_20), _mm256_set_pd(-0.25, -0.25, -0.25, -0.25))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_12), _mm256_set_pd(-0.25, -0.25, -0.25, -0.25))), _mm256_mul_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(-0.041666666666666664, -0.041666666666666664, -0.041666666666666664, -0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_20), _mm256_set_pd(0.125, 0.125, 0.125, 0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_12), _mm256_set_pd(0.125, 0.125, 0.125, 0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_11 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_mul_pd(xi_3, _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_3), _mm256_set_pd(0.25, 0.25, 0.25, 0.25))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_20), _mm256_set_pd(0.25, 0.25, 0.25, 0.25))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(-0.041666666666666664, -0.041666666666666664, -0.041666666666666664, -0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(xi_3, _mm256_set_pd(-0.041666666666666664, -0.041666666666666664, -0.041666666666666664, -0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_3), _mm256_set_pd(-0.125, -0.125, -0.125, -0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_20), _mm256_set_pd(-0.125, -0.125, -0.125, -0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_12 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_3, _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_mul_pd(xi_20, _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_3), _mm256_set_pd(-0.25, -0.25, -0.25, -0.25))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_20), _mm256_set_pd(-0.25, -0.25, -0.25, -0.25))), _mm256_mul_pd(_mm256_mul_pd(xi_3, _mm256_set_pd(-0.041666666666666664, -0.041666666666666664, -0.041666666666666664, -0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_3), _mm256_set_pd(0.125, 0.125, 0.125, 0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_20), _mm256_set_pd(0.125, 0.125, 0.125, 0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_13 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_3, _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_mul_pd(xi_12, _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_3), _mm256_set_pd(-0.25, -0.25, -0.25, -0.25))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_12), _mm256_set_pd(-0.25, -0.25, -0.25, -0.25))), _mm256_mul_pd(_mm256_mul_pd(xi_3, _mm256_set_pd(-0.041666666666666664, -0.041666666666666664, -0.041666666666666664, -0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_3), _mm256_set_pd(0.125, 0.125, 0.125, 0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_12), _mm256_set_pd(0.125, 0.125, 0.125, 0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_14 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_mul_pd(xi_3, _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_3), _mm256_set_pd(0.25, 0.25, 0.25, 0.25))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_12), _mm256_set_pd(0.25, 0.25, 0.25, 0.25))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(-0.041666666666666664, -0.041666666666666664, -0.041666666666666664, -0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(xi_3, _mm256_set_pd(-0.041666666666666664, -0.041666666666666664, -0.041666666666666664, -0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_3), _mm256_set_pd(-0.125, -0.125, -0.125, -0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_12), _mm256_set_pd(-0.125, -0.125, -0.125, -0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_15 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_mul_pd(xi_3, _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(xi_3, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_3), _mm256_set_pd(-0.25, -0.25, -0.25, -0.25))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_20), _mm256_set_pd(-0.25, -0.25, -0.25, -0.25))), _mm256_mul_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(-0.041666666666666664, -0.041666666666666664, -0.041666666666666664, -0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_3), _mm256_set_pd(0.125, 0.125, 0.125, 0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_20), _mm256_set_pd(0.125, 0.125, 0.125, 0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_16 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_mul_pd(xi_3, _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_3), _mm256_set_pd(0.25, 0.25, 0.25, 0.25))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_20), _mm256_set_pd(0.25, 0.25, 0.25, 0.25))), _mm256_mul_pd(_mm256_mul_pd(xi_20, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(xi_3, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_3), _mm256_set_pd(-0.125, -0.125, -0.125, -0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_20), _mm256_set_pd(-0.125, -0.125, -0.125, -0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_17 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_mul_pd(xi_3, _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_3), _mm256_set_pd(0.25, 0.25, 0.25, 0.25))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_12), _mm256_set_pd(0.25, 0.25, 0.25, 0.25))), _mm256_mul_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(xi_3, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_3), _mm256_set_pd(-0.125, -0.125, -0.125, -0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_12), _mm256_set_pd(-0.125, -0.125, -0.125, -0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d forceTerm_18 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_mul_pd(xi_3, _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(xi_3, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_mul_pd(_mm256_mul_pd(u_0, xi_3), _mm256_set_pd(-0.25, -0.25, -0.25, -0.25))), _mm256_mul_pd(_mm256_mul_pd(u_2, xi_12), _mm256_set_pd(-0.25, -0.25, -0.25, -0.25))), _mm256_mul_pd(_mm256_mul_pd(xi_12, _mm256_set_pd(-0.041666666666666664, -0.041666666666666664, -0.041666666666666664, -0.041666666666666664)), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0))), _mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_3), _mm256_set_pd(0.125, 0.125, 0.125, 0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_12), _mm256_set_pd(0.125, 0.125, 0.125, 0.125)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1, xi_20), _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0, xi_12), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear))), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2, xi_3), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)));
-            const __m256d u0Mu1 = _mm256_add_pd(_mm256_mul_pd(u_1, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0)), u_0);
-            const __m256d u0Pu1 = _mm256_add_pd(u_0, u_1);
-            const __m256d u1Pu2 = _mm256_add_pd(u_1, u_2);
-            const __m256d u1Mu2 = _mm256_add_pd(_mm256_mul_pd(u_2, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0)), u_1);
-            const __m256d u0Mu2 = _mm256_add_pd(_mm256_mul_pd(u_2, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0)), u_0);
-            const __m256d u0Pu2 = _mm256_add_pd(u_0, u_2);
-            const __m256d f_eq_common = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(rho, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0)), _mm256_mul_pd(u_0, u_0)), _mm256_mul_pd(_mm256_mul_pd(rho, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0)), _mm256_mul_pd(u_1, u_1))), _mm256_mul_pd(_mm256_mul_pd(rho, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0)), _mm256_mul_pd(u_2, u_2))), rho);
-            _mm256_store_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.33333333333333331, 0.33333333333333331, 0.33333333333333331, 0.33333333333333331)), _mm256_mul_pd(xi_13, _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), _mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear)), forceTerm_0), xi_13));
-            _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_11, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_24, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u_1), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666)), _mm256_mul_pd(xi_11, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_24, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.33333333333333331, 0.33333333333333331, 0.33333333333333331, 0.33333333333333331), _mm256_mul_pd(u_1, u_1)), _mm256_set_pd(-0.1111111111111111, -0.1111111111111111, -0.1111111111111111, -0.1111111111111111)))))), _mm256_blendv_pd(_mm256_set_pd(0.0, 0.0, 0.0, 0.0), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(rho, _mm256_add_pd(_mm256_mul_pd(u_0, _mm256_set_pd(2.0, 2.0, 2.0, 2.0)), _mm256_set_pd(v_s, v_s, v_s, v_s))), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666)), _mm256_set_pd(v_s, v_s, v_s, v_s)), _mm256_cmp_pd(_mm256_set_pd(-1.0, -1.0, -1.0, -1.0), _mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0, -1.0, -1.0, -1.0), _mm256_set_pd(grid_size, grid_size, grid_size, grid_size)), _mm256_set_pd(((double)(ctr_1)), ((double)(ctr_1)), ((double)(ctr_1)), ((double)(ctr_1)))), _CMP_LE_OQ))), forceTerm_1), xi_24));
-            _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 2 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_24, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_11, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u_1), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666)), _mm256_mul_pd(xi_11, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_24, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.33333333333333331, 0.33333333333333331, 0.33333333333333331, 0.33333333333333331), _mm256_mul_pd(u_1, u_1)), _mm256_set_pd(-0.1111111111111111, -0.1111111111111111, -0.1111111111111111, -0.1111111111111111)))))), _mm256_blendv_pd(_mm256_set_pd(0.0, 0.0, 0.0, 0.0), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(rho, _mm256_add_pd(_mm256_mul_pd(u_0, _mm256_set_pd(-2.0, -2.0, -2.0, -2.0)), _mm256_set_pd(v_s, v_s, v_s, v_s))), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666)), _mm256_set_pd(v_s, v_s, v_s, v_s)), _mm256_cmp_pd(_mm256_set_pd(0.0, 0.0, 0.0, 0.0), _mm256_set_pd(((double)(ctr_1)), ((double)(ctr_1)), ((double)(ctr_1)), ((double)(ctr_1))), _CMP_GE_OQ))), forceTerm_2), xi_11));
-            _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 3 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_10, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_5, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u_0), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666)), _mm256_mul_pd(xi_10, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_5, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.33333333333333331, 0.33333333333333331, 0.33333333333333331, 0.33333333333333331), _mm256_mul_pd(u_0, u_0)), _mm256_set_pd(-0.1111111111111111, -0.1111111111111111, -0.1111111111111111, -0.1111111111111111)))))), forceTerm_3), xi_5));
-            _mm256_store_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 4 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_5, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_10, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u_0), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666)), _mm256_mul_pd(xi_10, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_5, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.33333333333333331, 0.33333333333333331, 0.33333333333333331, 0.33333333333333331), _mm256_mul_pd(u_0, u_0)), _mm256_set_pd(-0.1111111111111111, -0.1111111111111111, -0.1111111111111111, -0.1111111111111111)))))), forceTerm_4), xi_10));
-            _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 5 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_8, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_16, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u_2), _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666)), _mm256_mul_pd(xi_16, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_8, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.33333333333333331, 0.33333333333333331, 0.33333333333333331, 0.33333333333333331), _mm256_mul_pd(u_2, u_2)), _mm256_set_pd(-0.1111111111111111, -0.1111111111111111, -0.1111111111111111, -0.1111111111111111)))))), forceTerm_5), xi_16));
-            _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 6 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_16, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_8, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u_2), _mm256_set_pd(-0.16666666666666666, -0.16666666666666666, -0.16666666666666666, -0.16666666666666666))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.16666666666666666, 0.16666666666666666, 0.16666666666666666, 0.16666666666666666)), _mm256_mul_pd(xi_16, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_8, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.33333333333333331, 0.33333333333333331, 0.33333333333333331, 0.33333333333333331), _mm256_mul_pd(u_2, u_2)), _mm256_set_pd(-0.1111111111111111, -0.1111111111111111, -0.1111111111111111, -0.1111111111111111)))))), forceTerm_6), xi_8));
-            _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_9, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_6, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u0Mu1), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_mul_pd(xi_6, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_9, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.125, 0.125, 0.125, 0.125), _mm256_mul_pd(u0Mu1, u0Mu1)), _mm256_mul_pd(_mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664), _mm256_mul_pd(u_2, u_2))), _mm256_set_pd(-0.013888888888888888, -0.013888888888888888, -0.013888888888888888, -0.013888888888888888)))))), _mm256_blendv_pd(_mm256_set_pd(0.0, 0.0, 0.0, 0.0), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0, -1.0, -1.0, -1.0), _mm256_set_pd(v_s, v_s, v_s, v_s)), _mm256_mul_pd(u_1, _mm256_set_pd(3.0, 3.0, 3.0, 3.0))), _mm256_mul_pd(u_0, _mm256_set_pd(-2.0, -2.0, -2.0, -2.0))), _mm256_set_pd(1.0, 1.0, 1.0, 1.0))), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(v_s, v_s, v_s, v_s)), _mm256_cmp_pd(_mm256_set_pd(-1.0, -1.0, -1.0, -1.0), _mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0, -1.0, -1.0, -1.0), _mm256_set_pd(grid_size, grid_size, grid_size, grid_size)), _mm256_set_pd(((double)(ctr_1)), ((double)(ctr_1)), ((double)(ctr_1)), ((double)(ctr_1)))), _CMP_LE_OQ))), forceTerm_7), xi_6));
-            _mm256_store_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_14, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_22, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u0Pu1), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_mul_pd(xi_14, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_22, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.125, 0.125, 0.125, 0.125), _mm256_mul_pd(u0Pu1, u0Pu1)), _mm256_mul_pd(_mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664), _mm256_mul_pd(u_2, u_2))), _mm256_set_pd(-0.013888888888888888, -0.013888888888888888, -0.013888888888888888, -0.013888888888888888)))))), _mm256_blendv_pd(_mm256_set_pd(0.0, 0.0, 0.0, 0.0), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(u_0, _mm256_set_pd(2.0, 2.0, 2.0, 2.0)), _mm256_mul_pd(u_1, _mm256_set_pd(3.0, 3.0, 3.0, 3.0))), _mm256_set_pd(1.0, 1.0, 1.0, 1.0)), _mm256_set_pd(v_s, v_s, v_s, v_s))), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329)), _mm256_set_pd(v_s, v_s, v_s, v_s)), _mm256_cmp_pd(_mm256_set_pd(-1.0, -1.0, -1.0, -1.0), _mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0, -1.0, -1.0, -1.0), _mm256_set_pd(grid_size, grid_size, grid_size, grid_size)), _mm256_set_pd(((double)(ctr_1)), ((double)(ctr_1)), ((double)(ctr_1)), ((double)(ctr_1)))), _CMP_LE_OQ))), forceTerm_8), xi_22));
-            _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_22, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_14, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u0Pu1), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_mul_pd(xi_14, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_22, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.125, 0.125, 0.125, 0.125), _mm256_mul_pd(u0Pu1, u0Pu1)), _mm256_mul_pd(_mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664), _mm256_mul_pd(u_2, u_2))), _mm256_set_pd(-0.013888888888888888, -0.013888888888888888, -0.013888888888888888, -0.013888888888888888)))))), _mm256_blendv_pd(_mm256_set_pd(0.0, 0.0, 0.0, 0.0), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0, -1.0, -1.0, -1.0), _mm256_set_pd(v_s, v_s, v_s, v_s)), _mm256_mul_pd(u_0, _mm256_set_pd(2.0, 2.0, 2.0, 2.0))), _mm256_mul_pd(u_1, _mm256_set_pd(3.0, 3.0, 3.0, 3.0))), _mm256_set_pd(-1.0, -1.0, -1.0, -1.0))), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(v_s, v_s, v_s, v_s)), _mm256_cmp_pd(_mm256_set_pd(0.0, 0.0, 0.0, 0.0), _mm256_set_pd(((double)(ctr_1)), ((double)(ctr_1)), ((double)(ctr_1)), ((double)(ctr_1))), _CMP_GE_OQ))), forceTerm_9), xi_14));
-            _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_6, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_9, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u0Mu1), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_mul_pd(xi_6, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_9, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.125, 0.125, 0.125, 0.125), _mm256_mul_pd(u0Mu1, u0Mu1)), _mm256_mul_pd(_mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664), _mm256_mul_pd(u_2, u_2))), _mm256_set_pd(-0.013888888888888888, -0.013888888888888888, -0.013888888888888888, -0.013888888888888888)))))), _mm256_blendv_pd(_mm256_set_pd(0.0, 0.0, 0.0, 0.0), _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0, -1.0, -1.0, -1.0), _mm256_set_pd(v_s, v_s, v_s, v_s)), _mm256_mul_pd(u_0, _mm256_set_pd(2.0, 2.0, 2.0, 2.0))), _mm256_mul_pd(u_1, _mm256_set_pd(-3.0, -3.0, -3.0, -3.0))), _mm256_set_pd(1.0, 1.0, 1.0, 1.0))), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329)), _mm256_set_pd(v_s, v_s, v_s, v_s)), _mm256_cmp_pd(_mm256_set_pd(0.0, 0.0, 0.0, 0.0), _mm256_set_pd(((double)(ctr_1)), ((double)(ctr_1)), ((double)(ctr_1)), ((double)(ctr_1))), _CMP_GE_OQ))), forceTerm_10), xi_9));
-            _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 11 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_17, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_4, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u1Pu2), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_mul_pd(xi_17, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_4, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.125, 0.125, 0.125, 0.125), _mm256_mul_pd(u1Pu2, u1Pu2)), _mm256_mul_pd(_mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664), _mm256_mul_pd(u_0, u_0))), _mm256_set_pd(-0.013888888888888888, -0.013888888888888888, -0.013888888888888888, -0.013888888888888888)))))), forceTerm_11), xi_4));
-            _mm256_store_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 12 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_18, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_7, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u1Mu2), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_mul_pd(xi_18, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_7, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.125, 0.125, 0.125, 0.125), _mm256_mul_pd(u1Mu2, u1Mu2)), _mm256_mul_pd(_mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664), _mm256_mul_pd(u_0, u_0))), _mm256_set_pd(-0.013888888888888888, -0.013888888888888888, -0.013888888888888888, -0.013888888888888888)))))), forceTerm_12), xi_7));
-            _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 13 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_19, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_23, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u0Mu2), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_mul_pd(xi_19, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_23, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.125, 0.125, 0.125, 0.125), _mm256_mul_pd(u0Mu2, u0Mu2)), _mm256_mul_pd(_mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664), _mm256_mul_pd(u_1, u_1))), _mm256_set_pd(-0.013888888888888888, -0.013888888888888888, -0.013888888888888888, -0.013888888888888888)))))), forceTerm_13), xi_23));
-            _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 14 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_15, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_21, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u0Pu2), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_mul_pd(xi_15, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_21, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.125, 0.125, 0.125, 0.125), _mm256_mul_pd(u0Pu2, u0Pu2)), _mm256_mul_pd(_mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664), _mm256_mul_pd(u_1, u_1))), _mm256_set_pd(-0.013888888888888888, -0.013888888888888888, -0.013888888888888888, -0.013888888888888888)))))), forceTerm_14), xi_21));
-            _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 15 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_7, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_18, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u1Mu2), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_mul_pd(xi_18, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_7, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.125, 0.125, 0.125, 0.125), _mm256_mul_pd(u1Mu2, u1Mu2)), _mm256_mul_pd(_mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664), _mm256_mul_pd(u_0, u_0))), _mm256_set_pd(-0.013888888888888888, -0.013888888888888888, -0.013888888888888888, -0.013888888888888888)))))), forceTerm_15), xi_18));
-            _mm256_store_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 16 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_4, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_17, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u1Pu2), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_mul_pd(xi_17, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_4, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.125, 0.125, 0.125, 0.125), _mm256_mul_pd(u1Pu2, u1Pu2)), _mm256_mul_pd(_mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664), _mm256_mul_pd(u_0, u_0))), _mm256_set_pd(-0.013888888888888888, -0.013888888888888888, -0.013888888888888888, -0.013888888888888888)))))), forceTerm_16), xi_17));
-            _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 17 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_21, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_15, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u0Pu2), _mm256_set_pd(-0.083333333333333329, -0.083333333333333329, -0.083333333333333329, -0.083333333333333329))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_mul_pd(xi_15, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_21, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.125, 0.125, 0.125, 0.125), _mm256_mul_pd(u0Pu2, u0Pu2)), _mm256_mul_pd(_mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664), _mm256_mul_pd(u_1, u_1))), _mm256_set_pd(-0.013888888888888888, -0.013888888888888888, -0.013888888888888888, -0.013888888888888888)))))), forceTerm_17), xi_15));
-            _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 18 * _stride_pdfs_3 + ctr_0], _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(xi_23, _mm256_set_pd(0.5, 0.5, 0.5, 0.5)), _mm256_mul_pd(xi_19, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(_mm256_mul_pd(rho, u0Mu2), _mm256_set_pd(0.083333333333333329, 0.083333333333333329, 0.083333333333333329, 0.083333333333333329))), _mm256_set_pd(rr_0, rr_0, rr_0, rr_0)), _mm256_mul_pd(_mm256_set_pd(omega_shear, omega_shear, omega_shear, omega_shear), _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(f_eq_common, _mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664)), _mm256_mul_pd(xi_19, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(xi_23, _mm256_set_pd(-0.5, -0.5, -0.5, -0.5))), _mm256_mul_pd(rho, _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.125, 0.125, 0.125, 0.125), _mm256_mul_pd(u0Mu2, u0Mu2)), _mm256_mul_pd(_mm256_set_pd(0.041666666666666664, 0.041666666666666664, 0.041666666666666664, 0.041666666666666664), _mm256_mul_pd(u_1, u_1))), _mm256_set_pd(-0.013888888888888888, -0.013888888888888888, -0.013888888888888888, -0.013888888888888888)))))), forceTerm_18), xi_19));
-          }
-          for (int64_t ctr_0 = (int64_t)((_size_force_0) / (4)) * (4); ctr_0 < _size_force_0; ctr_0 += 1) {
-            const double xi_25 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_3 + ctr_0];
-            const double xi_26 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3 + ctr_0];
-            const double xi_27 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 18 * _stride_pdfs_3 + ctr_0];
-            const double xi_28 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3 + ctr_0];
-            const double xi_29 = _data_force[_stride_force_1 * ctr_1 + _stride_force_2 * ctr_2 + ctr_0];
-            const double xi_30 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 4 * _stride_pdfs_3 + ctr_0];
-            const double xi_31 = _data_force[_stride_force_1 * ctr_1 + _stride_force_2 * ctr_2 + _stride_force_3 + ctr_0];
-            const double xi_32 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 14 * _stride_pdfs_3 + ctr_0];
-            const double xi_33 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 13 * _stride_pdfs_3 + ctr_0];
-            const double xi_34 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 16 * _stride_pdfs_3 + ctr_0];
-            const double xi_35 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3 + ctr_0];
-            const double xi_36 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 15 * _stride_pdfs_3 + ctr_0];
-            const double xi_37 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 3 * _stride_pdfs_3 + ctr_0];
-            const double xi_38 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3 + ctr_0];
-            const double xi_39 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 5 * _stride_pdfs_3 + ctr_0];
-            const double xi_40 = _data_force[_stride_force_1 * ctr_1 + _stride_force_2 * ctr_2 + 2 * _stride_force_3 + ctr_0];
-            const double xi_41 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 2 * _stride_pdfs_3 + ctr_0];
-            const double xi_42 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 17 * _stride_pdfs_3 + ctr_0];
-            const double xi_43 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 6 * _stride_pdfs_3 + ctr_0];
-            const double xi_44 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 11 * _stride_pdfs_3 + ctr_0];
-            const double xi_45 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + ctr_0];
-            const double xi_46 = _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 12 * _stride_pdfs_3 + ctr_0];
-            const double xi_3 = xi_40;
-            const double xi_4 = xi_44;
-            const double xi_5 = xi_37;
-            const double xi_6 = xi_35;
-            const double xi_7 = xi_46;
-            const double xi_8 = xi_43;
-            const double xi_9 = xi_28;
-            const double xi_10 = xi_30;
-            const double xi_11 = xi_41;
-            const double xi_12 = xi_29;
-            const double xi_13 = xi_45;
-            const double xi_14 = xi_38;
-            const double xi_15 = xi_42;
-            const double xi_16 = xi_39;
-            const double xi_17 = xi_34;
-            const double xi_18 = xi_36;
-            const double xi_19 = xi_27;
-            const double xi_20 = xi_31;
-            const double xi_21 = xi_32;
-            const double xi_22 = xi_26;
-            const double xi_23 = xi_33;
-            const double xi_24 = xi_25;
-            const double vel0Term = xi_10 + xi_19 + xi_21 + xi_22 + xi_9;
-            const double vel1Term = xi_18 + xi_24 + xi_4 + xi_6;
-            const double vel2Term = xi_16 + xi_23 + xi_7;
-            const double rho = vel0Term + vel1Term + vel2Term + xi_11 + xi_13 + xi_14 + xi_15 + xi_17 + xi_5 + xi_8;
-            const double xi_1 = ((1.0) / (rho));
-            const double u_0 = xi_1 * xi_12 * 0.5 + xi_1 * (vel0Term - xi_14 - xi_15 - xi_23 - xi_5 - xi_6);
-            const double u_1 = xi_1 * xi_20 * 0.5 + xi_1 * (vel1Term - xi_11 - xi_14 - xi_17 + xi_22 - xi_7 - xi_9);
-            const double u_2 = xi_1 * xi_3 * 0.5 + xi_1 * (vel2Term - xi_15 - xi_17 - xi_18 - xi_19 + xi_21 + xi_4 - xi_8);
-            const double forceTerm_0 = omega_shear * u_0 * xi_12 * 0.5 + omega_shear * u_1 * xi_20 * 0.5 + omega_shear * u_2 * xi_3 * 0.5 - u_0 * xi_12 - u_1 * xi_20 - u_2 * xi_3;
-            const double forceTerm_1 = omega_shear * u_0 * xi_12 * 0.083333333333333329 + omega_shear * u_1 * xi_20 * -0.16666666666666666 + omega_shear * u_2 * xi_3 * 0.083333333333333329 + rr_0 * xi_20 * -0.083333333333333329 + u_0 * xi_12 * -0.16666666666666666 + u_1 * xi_20 * 0.33333333333333331 + u_2 * xi_3 * -0.16666666666666666 + xi_20 * 0.16666666666666666;
-            const double forceTerm_2 = omega_shear * u_0 * xi_12 * 0.083333333333333329 + omega_shear * u_1 * xi_20 * -0.16666666666666666 + omega_shear * u_2 * xi_3 * 0.083333333333333329 + rr_0 * xi_20 * 0.083333333333333329 + u_0 * xi_12 * -0.16666666666666666 + u_1 * xi_20 * 0.33333333333333331 + u_2 * xi_3 * -0.16666666666666666 + xi_20 * -0.16666666666666666;
-            const double forceTerm_3 = omega_shear * u_0 * xi_12 * -0.16666666666666666 + omega_shear * u_1 * xi_20 * 0.083333333333333329 + omega_shear * u_2 * xi_3 * 0.083333333333333329 + rr_0 * xi_12 * 0.083333333333333329 + u_0 * xi_12 * 0.33333333333333331 + u_1 * xi_20 * -0.16666666666666666 + u_2 * xi_3 * -0.16666666666666666 + xi_12 * -0.16666666666666666;
-            const double forceTerm_4 = omega_shear * u_0 * xi_12 * -0.16666666666666666 + omega_shear * u_1 * xi_20 * 0.083333333333333329 + omega_shear * u_2 * xi_3 * 0.083333333333333329 + rr_0 * xi_12 * -0.083333333333333329 + u_0 * xi_12 * 0.33333333333333331 + u_1 * xi_20 * -0.16666666666666666 + u_2 * xi_3 * -0.16666666666666666 + xi_12 * 0.16666666666666666;
-            const double forceTerm_5 = omega_shear * u_0 * xi_12 * 0.083333333333333329 + omega_shear * u_1 * xi_20 * 0.083333333333333329 + omega_shear * u_2 * xi_3 * -0.16666666666666666 + rr_0 * xi_3 * -0.083333333333333329 + u_0 * xi_12 * -0.16666666666666666 + u_1 * xi_20 * -0.16666666666666666 + u_2 * xi_3 * 0.33333333333333331 + xi_3 * 0.16666666666666666;
-            const double forceTerm_6 = omega_shear * u_0 * xi_12 * 0.083333333333333329 + omega_shear * u_1 * xi_20 * 0.083333333333333329 + omega_shear * u_2 * xi_3 * -0.16666666666666666 + rr_0 * xi_3 * 0.083333333333333329 + u_0 * xi_12 * -0.16666666666666666 + u_1 * xi_20 * -0.16666666666666666 + u_2 * xi_3 * 0.33333333333333331 + xi_3 * -0.16666666666666666;
-            const double forceTerm_7 = omega_shear * u_0 * xi_12 * -0.083333333333333329 + omega_shear * u_0 * xi_20 * 0.125 + omega_shear * u_1 * xi_12 * 0.125 + omega_shear * u_1 * xi_20 * -0.083333333333333329 + omega_shear * u_2 * xi_3 * 0.041666666666666664 + rr_0 * xi_12 * 0.041666666666666664 + rr_0 * xi_20 * -0.041666666666666664 + u_0 * xi_12 * 0.16666666666666666 + u_0 * xi_20 * -0.25 + u_1 * xi_12 * -0.25 + u_1 * xi_20 * 0.16666666666666666 + u_2 * xi_3 * -0.083333333333333329 + xi_12 * -0.083333333333333329 + xi_20 * 0.083333333333333329;
-            const double forceTerm_8 = omega_shear * u_0 * xi_12 * -0.083333333333333329 + omega_shear * u_0 * xi_20 * -0.125 + omega_shear * u_1 * xi_12 * -0.125 + omega_shear * u_1 * xi_20 * -0.083333333333333329 + omega_shear * u_2 * xi_3 * 0.041666666666666664 + rr_0 * xi_12 * -0.041666666666666664 + rr_0 * xi_20 * -0.041666666666666664 + u_0 * xi_12 * 0.16666666666666666 + u_0 * xi_20 * 0.25 + u_1 * xi_12 * 0.25 + u_1 * xi_20 * 0.16666666666666666 + u_2 * xi_3 * -0.083333333333333329 + xi_12 * 0.083333333333333329 + xi_20 * 0.083333333333333329;
-            const double forceTerm_9 = omega_shear * u_0 * xi_12 * -0.083333333333333329 + omega_shear * u_0 * xi_20 * -0.125 + omega_shear * u_1 * xi_12 * -0.125 + omega_shear * u_1 * xi_20 * -0.083333333333333329 + omega_shear * u_2 * xi_3 * 0.041666666666666664 + rr_0 * xi_12 * 0.041666666666666664 + rr_0 * xi_20 * 0.041666666666666664 + u_0 * xi_12 * 0.16666666666666666 + u_0 * xi_20 * 0.25 + u_1 * xi_12 * 0.25 + u_1 * xi_20 * 0.16666666666666666 + u_2 * xi_3 * -0.083333333333333329 + xi_12 * -0.083333333333333329 + xi_20 * -0.083333333333333329;
-            const double forceTerm_10 = omega_shear * u_0 * xi_12 * -0.083333333333333329 + omega_shear * u_0 * xi_20 * 0.125 + omega_shear * u_1 * xi_12 * 0.125 + omega_shear * u_1 * xi_20 * -0.083333333333333329 + omega_shear * u_2 * xi_3 * 0.041666666666666664 + rr_0 * xi_12 * -0.041666666666666664 + rr_0 * xi_20 * 0.041666666666666664 + u_0 * xi_12 * 0.16666666666666666 + u_0 * xi_20 * -0.25 + u_1 * xi_12 * -0.25 + u_1 * xi_20 * 0.16666666666666666 + u_2 * xi_3 * -0.083333333333333329 + xi_12 * 0.083333333333333329 + xi_20 * -0.083333333333333329;
-            const double forceTerm_11 = omega_shear * u_0 * xi_12 * 0.041666666666666664 + omega_shear * u_1 * xi_20 * -0.083333333333333329 + omega_shear * u_1 * xi_3 * -0.125 + omega_shear * u_2 * xi_20 * -0.125 + omega_shear * u_2 * xi_3 * -0.083333333333333329 + rr_0 * xi_20 * -0.041666666666666664 + rr_0 * xi_3 * -0.041666666666666664 + u_0 * xi_12 * -0.083333333333333329 + u_1 * xi_20 * 0.16666666666666666 + u_1 * xi_3 * 0.25 + u_2 * xi_20 * 0.25 + u_2 * xi_3 * 0.16666666666666666 + xi_20 * 0.083333333333333329 + xi_3 * 0.083333333333333329;
-            const double forceTerm_12 = omega_shear * u_0 * xi_12 * 0.041666666666666664 + omega_shear * u_1 * xi_20 * -0.083333333333333329 + omega_shear * u_1 * xi_3 * 0.125 + omega_shear * u_2 * xi_20 * 0.125 + omega_shear * u_2 * xi_3 * -0.083333333333333329 + rr_0 * xi_20 * 0.041666666666666664 + rr_0 * xi_3 * -0.041666666666666664 + u_0 * xi_12 * -0.083333333333333329 + u_1 * xi_20 * 0.16666666666666666 + u_1 * xi_3 * -0.25 + u_2 * xi_20 * -0.25 + u_2 * xi_3 * 0.16666666666666666 + xi_20 * -0.083333333333333329 + xi_3 * 0.083333333333333329;
-            const double forceTerm_13 = omega_shear * u_0 * xi_12 * -0.083333333333333329 + omega_shear * u_0 * xi_3 * 0.125 + omega_shear * u_1 * xi_20 * 0.041666666666666664 + omega_shear * u_2 * xi_12 * 0.125 + omega_shear * u_2 * xi_3 * -0.083333333333333329 + rr_0 * xi_12 * 0.041666666666666664 + rr_0 * xi_3 * -0.041666666666666664 + u_0 * xi_12 * 0.16666666666666666 + u_0 * xi_3 * -0.25 + u_1 * xi_20 * -0.083333333333333329 + u_2 * xi_12 * -0.25 + u_2 * xi_3 * 0.16666666666666666 + xi_12 * -0.083333333333333329 + xi_3 * 0.083333333333333329;
-            const double forceTerm_14 = omega_shear * u_0 * xi_12 * -0.083333333333333329 + omega_shear * u_0 * xi_3 * -0.125 + omega_shear * u_1 * xi_20 * 0.041666666666666664 + omega_shear * u_2 * xi_12 * -0.125 + omega_shear * u_2 * xi_3 * -0.083333333333333329 + rr_0 * xi_12 * -0.041666666666666664 + rr_0 * xi_3 * -0.041666666666666664 + u_0 * xi_12 * 0.16666666666666666 + u_0 * xi_3 * 0.25 + u_1 * xi_20 * -0.083333333333333329 + u_2 * xi_12 * 0.25 + u_2 * xi_3 * 0.16666666666666666 + xi_12 * 0.083333333333333329 + xi_3 * 0.083333333333333329;
-            const double forceTerm_15 = omega_shear * u_0 * xi_12 * 0.041666666666666664 + omega_shear * u_1 * xi_20 * -0.083333333333333329 + omega_shear * u_1 * xi_3 * 0.125 + omega_shear * u_2 * xi_20 * 0.125 + omega_shear * u_2 * xi_3 * -0.083333333333333329 + rr_0 * xi_20 * -0.041666666666666664 + rr_0 * xi_3 * 0.041666666666666664 + u_0 * xi_12 * -0.083333333333333329 + u_1 * xi_20 * 0.16666666666666666 + u_1 * xi_3 * -0.25 + u_2 * xi_20 * -0.25 + u_2 * xi_3 * 0.16666666666666666 + xi_20 * 0.083333333333333329 + xi_3 * -0.083333333333333329;
-            const double forceTerm_16 = omega_shear * u_0 * xi_12 * 0.041666666666666664 + omega_shear * u_1 * xi_20 * -0.083333333333333329 + omega_shear * u_1 * xi_3 * -0.125 + omega_shear * u_2 * xi_20 * -0.125 + omega_shear * u_2 * xi_3 * -0.083333333333333329 + rr_0 * xi_20 * 0.041666666666666664 + rr_0 * xi_3 * 0.041666666666666664 + u_0 * xi_12 * -0.083333333333333329 + u_1 * xi_20 * 0.16666666666666666 + u_1 * xi_3 * 0.25 + u_2 * xi_20 * 0.25 + u_2 * xi_3 * 0.16666666666666666 + xi_20 * -0.083333333333333329 + xi_3 * -0.083333333333333329;
-            const double forceTerm_17 = omega_shear * u_0 * xi_12 * -0.083333333333333329 + omega_shear * u_0 * xi_3 * -0.125 + omega_shear * u_1 * xi_20 * 0.041666666666666664 + omega_shear * u_2 * xi_12 * -0.125 + omega_shear * u_2 * xi_3 * -0.083333333333333329 + rr_0 * xi_12 * 0.041666666666666664 + rr_0 * xi_3 * 0.041666666666666664 + u_0 * xi_12 * 0.16666666666666666 + u_0 * xi_3 * 0.25 + u_1 * xi_20 * -0.083333333333333329 + u_2 * xi_12 * 0.25 + u_2 * xi_3 * 0.16666666666666666 + xi_12 * -0.083333333333333329 + xi_3 * -0.083333333333333329;
-            const double forceTerm_18 = omega_shear * u_0 * xi_12 * -0.083333333333333329 + omega_shear * u_0 * xi_3 * 0.125 + omega_shear * u_1 * xi_20 * 0.041666666666666664 + omega_shear * u_2 * xi_12 * 0.125 + omega_shear * u_2 * xi_3 * -0.083333333333333329 + rr_0 * xi_12 * -0.041666666666666664 + rr_0 * xi_3 * 0.041666666666666664 + u_0 * xi_12 * 0.16666666666666666 + u_0 * xi_3 * -0.25 + u_1 * xi_20 * -0.083333333333333329 + u_2 * xi_12 * -0.25 + u_2 * xi_3 * 0.16666666666666666 + xi_12 * 0.083333333333333329 + xi_3 * -0.083333333333333329;
-            const double u0Mu1 = u_0 - u_1;
-            const double u0Pu1 = u_0 + u_1;
-            const double u1Pu2 = u_1 + u_2;
-            const double u1Mu2 = u_1 - u_2;
-            const double u0Mu2 = u_0 - u_2;
-            const double u0Pu2 = u_0 + u_2;
-            const double f_eq_common = rho - rho * (u_0 * u_0) - rho * (u_1 * u_1) - rho * (u_2 * u_2);
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + ctr_0] = forceTerm_0 + omega_shear * (f_eq_common * 0.33333333333333331 - xi_13) + xi_13;
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + _stride_pdfs_3 + ctr_0] = forceTerm_1 + omega_shear * (f_eq_common * 0.16666666666666666 + rho * (-0.1111111111111111 + 0.33333333333333331 * (u_1 * u_1)) + xi_11 * -0.5 + xi_24 * -0.5) + rr_0 * (rho * u_1 * 0.16666666666666666 + xi_11 * 0.5 + xi_24 * -0.5) + xi_24 + ((-1.0 <= -grid_size + ((double)(ctr_1))) ? (rho * v_s * (u_0 * 2.0 + v_s) * 0.16666666666666666) : (0.0));
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 2 * _stride_pdfs_3 + ctr_0] = forceTerm_2 + omega_shear * (f_eq_common * 0.16666666666666666 + rho * (-0.1111111111111111 + 0.33333333333333331 * (u_1 * u_1)) + xi_11 * -0.5 + xi_24 * -0.5) + rr_0 * (rho * u_1 * -0.16666666666666666 + xi_11 * -0.5 + xi_24 * 0.5) + xi_11 + ((0.0 >= ((double)(ctr_1))) ? (rho * v_s * (u_0 * -2.0 + v_s) * 0.16666666666666666) : (0.0));
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 3 * _stride_pdfs_3 + ctr_0] = forceTerm_3 + omega_shear * (f_eq_common * 0.16666666666666666 + rho * (-0.1111111111111111 + 0.33333333333333331 * (u_0 * u_0)) + xi_10 * -0.5 + xi_5 * -0.5) + rr_0 * (rho * u_0 * -0.16666666666666666 + xi_10 * 0.5 + xi_5 * -0.5) + xi_5;
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 4 * _stride_pdfs_3 + ctr_0] = forceTerm_4 + omega_shear * (f_eq_common * 0.16666666666666666 + rho * (-0.1111111111111111 + 0.33333333333333331 * (u_0 * u_0)) + xi_10 * -0.5 + xi_5 * -0.5) + rr_0 * (rho * u_0 * 0.16666666666666666 + xi_10 * -0.5 + xi_5 * 0.5) + xi_10;
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 5 * _stride_pdfs_3 + ctr_0] = forceTerm_5 + omega_shear * (f_eq_common * 0.16666666666666666 + rho * (-0.1111111111111111 + 0.33333333333333331 * (u_2 * u_2)) + xi_16 * -0.5 + xi_8 * -0.5) + rr_0 * (rho * u_2 * 0.16666666666666666 + xi_16 * -0.5 + xi_8 * 0.5) + xi_16;
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 6 * _stride_pdfs_3 + ctr_0] = forceTerm_6 + omega_shear * (f_eq_common * 0.16666666666666666 + rho * (-0.1111111111111111 + 0.33333333333333331 * (u_2 * u_2)) + xi_16 * -0.5 + xi_8 * -0.5) + rr_0 * (rho * u_2 * -0.16666666666666666 + xi_16 * 0.5 + xi_8 * -0.5) + xi_8;
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 7 * _stride_pdfs_3 + ctr_0] = forceTerm_7 + omega_shear * (f_eq_common * 0.041666666666666664 + rho * (-0.013888888888888888 + 0.041666666666666664 * (u_2 * u_2) + 0.125 * (u0Mu1 * u0Mu1)) + xi_6 * -0.5 + xi_9 * -0.5) + rr_0 * (rho * u0Mu1 * -0.083333333333333329 + xi_6 * -0.5 + xi_9 * 0.5) + xi_6 + ((-1.0 <= -grid_size + ((double)(ctr_1))) ? (rho * v_s * (u_0 * -2.0 + u_1 * 3.0 - v_s + 1.0) * 0.083333333333333329) : (0.0));
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 8 * _stride_pdfs_3 + ctr_0] = forceTerm_8 + omega_shear * (f_eq_common * 0.041666666666666664 + rho * (-0.013888888888888888 + 0.041666666666666664 * (u_2 * u_2) + 0.125 * (u0Pu1 * u0Pu1)) + xi_14 * -0.5 + xi_22 * -0.5) + rr_0 * (rho * u0Pu1 * 0.083333333333333329 + xi_14 * 0.5 + xi_22 * -0.5) + xi_22 + ((-1.0 <= -grid_size + ((double)(ctr_1))) ? (rho * v_s * (u_0 * 2.0 + u_1 * 3.0 + v_s + 1.0) * -0.083333333333333329) : (0.0));
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 9 * _stride_pdfs_3 + ctr_0] = forceTerm_9 + omega_shear * (f_eq_common * 0.041666666666666664 + rho * (-0.013888888888888888 + 0.041666666666666664 * (u_2 * u_2) + 0.125 * (u0Pu1 * u0Pu1)) + xi_14 * -0.5 + xi_22 * -0.5) + rr_0 * (rho * u0Pu1 * -0.083333333333333329 + xi_14 * -0.5 + xi_22 * 0.5) + xi_14 + ((0.0 >= ((double)(ctr_1))) ? (rho * v_s * (u_0 * 2.0 + u_1 * 3.0 - v_s - 1.0) * 0.083333333333333329) : (0.0));
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 10 * _stride_pdfs_3 + ctr_0] = forceTerm_10 + omega_shear * (f_eq_common * 0.041666666666666664 + rho * (-0.013888888888888888 + 0.041666666666666664 * (u_2 * u_2) + 0.125 * (u0Mu1 * u0Mu1)) + xi_6 * -0.5 + xi_9 * -0.5) + rr_0 * (rho * u0Mu1 * 0.083333333333333329 + xi_6 * 0.5 + xi_9 * -0.5) + xi_9 + ((0.0 >= ((double)(ctr_1))) ? (rho * v_s * (u_0 * 2.0 + u_1 * -3.0 - v_s + 1.0) * 0.083333333333333329) : (0.0));
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 11 * _stride_pdfs_3 + ctr_0] = forceTerm_11 + omega_shear * (f_eq_common * 0.041666666666666664 + rho * (-0.013888888888888888 + 0.041666666666666664 * (u_0 * u_0) + 0.125 * (u1Pu2 * u1Pu2)) + xi_17 * -0.5 + xi_4 * -0.5) + rr_0 * (rho * u1Pu2 * 0.083333333333333329 + xi_17 * 0.5 + xi_4 * -0.5) + xi_4;
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 12 * _stride_pdfs_3 + ctr_0] = forceTerm_12 + omega_shear * (f_eq_common * 0.041666666666666664 + rho * (-0.013888888888888888 + 0.041666666666666664 * (u_0 * u_0) + 0.125 * (u1Mu2 * u1Mu2)) + xi_18 * -0.5 + xi_7 * -0.5) + rr_0 * (rho * u1Mu2 * -0.083333333333333329 + xi_18 * 0.5 + xi_7 * -0.5) + xi_7;
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 13 * _stride_pdfs_3 + ctr_0] = forceTerm_13 + omega_shear * (f_eq_common * 0.041666666666666664 + rho * (-0.013888888888888888 + 0.041666666666666664 * (u_1 * u_1) + 0.125 * (u0Mu2 * u0Mu2)) + xi_19 * -0.5 + xi_23 * -0.5) + rr_0 * (rho * u0Mu2 * -0.083333333333333329 + xi_19 * 0.5 + xi_23 * -0.5) + xi_23;
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 14 * _stride_pdfs_3 + ctr_0] = forceTerm_14 + omega_shear * (f_eq_common * 0.041666666666666664 + rho * (-0.013888888888888888 + 0.041666666666666664 * (u_1 * u_1) + 0.125 * (u0Pu2 * u0Pu2)) + xi_15 * -0.5 + xi_21 * -0.5) + rr_0 * (rho * u0Pu2 * 0.083333333333333329 + xi_15 * 0.5 + xi_21 * -0.5) + xi_21;
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 15 * _stride_pdfs_3 + ctr_0] = forceTerm_15 + omega_shear * (f_eq_common * 0.041666666666666664 + rho * (-0.013888888888888888 + 0.041666666666666664 * (u_0 * u_0) + 0.125 * (u1Mu2 * u1Mu2)) + xi_18 * -0.5 + xi_7 * -0.5) + rr_0 * (rho * u1Mu2 * 0.083333333333333329 + xi_18 * -0.5 + xi_7 * 0.5) + xi_18;
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 16 * _stride_pdfs_3 + ctr_0] = forceTerm_16 + omega_shear * (f_eq_common * 0.041666666666666664 + rho * (-0.013888888888888888 + 0.041666666666666664 * (u_0 * u_0) + 0.125 * (u1Pu2 * u1Pu2)) + xi_17 * -0.5 + xi_4 * -0.5) + rr_0 * (rho * u1Pu2 * -0.083333333333333329 + xi_17 * -0.5 + xi_4 * 0.5) + xi_17;
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 17 * _stride_pdfs_3 + ctr_0] = forceTerm_17 + omega_shear * (f_eq_common * 0.041666666666666664 + rho * (-0.013888888888888888 + 0.041666666666666664 * (u_1 * u_1) + 0.125 * (u0Pu2 * u0Pu2)) + xi_15 * -0.5 + xi_21 * -0.5) + rr_0 * (rho * u0Pu2 * -0.083333333333333329 + xi_15 * -0.5 + xi_21 * 0.5) + xi_15;
-            _data_pdfs[_stride_pdfs_1 * ctr_1 + _stride_pdfs_2 * ctr_2 + 18 * _stride_pdfs_3 + ctr_0] = forceTerm_18 + omega_shear * (f_eq_common * 0.041666666666666664 + rho * (-0.013888888888888888 + 0.041666666666666664 * (u_1 * u_1) + 0.125 * (u0Mu2 * u0Mu2)) + xi_19 * -0.5 + xi_23 * -0.5) + rr_0 * (rho * u0Mu2 * 0.083333333333333329 + xi_19 * -0.5 + xi_23 * 0.5) + xi_19;
-          }
-        }
+      for (int64_t ctr_2 = 0; ctr_2 < _size_force_2; ctr_2 += 1)
+      {
+         for (int64_t ctr_1 = 0; ctr_1 < _size_force_1; ctr_1 += 1)
+         {
+            {
+               for (int64_t ctr_0 = 0; ctr_0 < (int64_t)((_size_force_0) / (4)) * (4); ctr_0 += 4)
+               {
+                  const __m256d xi_45 = _mm256_loadu_pd(& _data_force[_stride_force_1*ctr_1 + _stride_force_2*ctr_2 + 2*_stride_force_3 + ctr_0]);
+                  const __m256d xi_46 = _mm256_loadu_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 15*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_47 = _mm256_loadu_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 9*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_48 = _mm256_loadu_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 7*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_49 = _mm256_loadu_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 6*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_50 = _mm256_loadu_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 13*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_51 = _mm256_load_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 8*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_52 = _mm256_loadu_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + _stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_53 = _mm256_loadu_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 11*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_54 = _mm256_load_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + ctr_0]);
+                  const __m256d xi_55 = _mm256_load_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 4*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_56 = _mm256_loadu_pd(& _data_force[_stride_force_1*ctr_1 + _stride_force_2*ctr_2 + _stride_force_3 + ctr_0]);
+                  const __m256d xi_57 = _mm256_loadu_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 17*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_58 = _mm256_load_pd(& _data_force[_stride_force_1*ctr_1 + _stride_force_2*ctr_2 + ctr_0]);
+                  const __m256d xi_59 = _mm256_loadu_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 18*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_60 = _mm256_loadu_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 14*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_61 = _mm256_loadu_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 5*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_62 = _mm256_load_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 16*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_63 = _mm256_loadu_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 10*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_64 = _mm256_loadu_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 3*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_65 = _mm256_load_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 12*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_66 = _mm256_loadu_pd(& _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 2*_stride_pdfs_3 + ctr_0]);
+                  const __m256d xi_23 = xi_56;
+                  const __m256d xi_24 = xi_66;
+                  const __m256d xi_25 = xi_65;
+                  const __m256d xi_26 = xi_53;
+                  const __m256d xi_27 = xi_45;
+                  const __m256d xi_28 = xi_52;
+                  const __m256d xi_29 = xi_64;
+                  const __m256d xi_30 = xi_47;
+                  const __m256d xi_31 = xi_59;
+                  const __m256d xi_32 = xi_51;
+                  const __m256d xi_33 = xi_63;
+                  const __m256d xi_34 = xi_54;
+                  const __m256d xi_35 = xi_61;
+                  const __m256d xi_36 = xi_49;
+                  const __m256d xi_37 = xi_57;
+                  const __m256d xi_38 = xi_48;
+                  const __m256d xi_39 = xi_58;
+                  const __m256d xi_40 = xi_62;
+                  const __m256d xi_41 = xi_55;
+                  const __m256d xi_42 = xi_50;
+                  const __m256d xi_43 = xi_46;
+                  const __m256d xi_44 = xi_60;
+                  const __m256d partial_m_m1_0_e_0 = _mm256_add_pd(_mm256_add_pd(xi_29,xi_37),xi_42);
+                  const __m256d partial_m_m1_e_0_0 = _mm256_add_pd(_mm256_add_pd(partial_m_m1_0_e_0,xi_30),xi_38);
+                  const __m256d partial_m_0_m1_e_0 = _mm256_add_pd(_mm256_add_pd(xi_24,xi_25),xi_40);
+                  const __m256d partial_m_0_0_e_0 = _mm256_add_pd(_mm256_add_pd(xi_34,xi_35),xi_36);
+                  const __m256d partial_m_0_1_e_0 = _mm256_add_pd(_mm256_add_pd(xi_26,xi_28),xi_43);
+                  const __m256d partial_m_0_e_0_0 = _mm256_add_pd(_mm256_add_pd(partial_m_0_0_e_0,partial_m_0_1_e_0),partial_m_0_m1_e_0);
+                  const __m256d partial_m_1_0_e_0 = _mm256_add_pd(_mm256_add_pd(xi_31,xi_41),xi_44);
+                  const __m256d partial_m_1_e_0_0 = _mm256_add_pd(_mm256_add_pd(partial_m_1_0_e_0,xi_32),xi_33);
+                  const __m256d partial_m_m1_e_1_0 = _mm256_add_pd(_mm256_mul_pd(xi_30,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),xi_38);
+                  const __m256d partial_m_0_e_1_0 = _mm256_add_pd(_mm256_mul_pd(partial_m_0_m1_e_0,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),partial_m_0_1_e_0);
+                  const __m256d partial_m_1_e_1_0 = _mm256_add_pd(_mm256_mul_pd(xi_33,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),xi_32);
+                  const __m256d partial_m_m1_0_e_1 = _mm256_add_pd(_mm256_mul_pd(xi_37,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),xi_42);
+                  const __m256d partial_m_0_m1_e_1 = _mm256_add_pd(_mm256_mul_pd(xi_40,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),xi_25);
+                  const __m256d partial_m_0_0_e_1 = _mm256_add_pd(_mm256_mul_pd(xi_36,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),xi_35);
+                  const __m256d partial_m_0_1_e_1 = _mm256_add_pd(_mm256_mul_pd(xi_43,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),xi_26);
+                  const __m256d partial_m_0_e_0_1 = _mm256_add_pd(_mm256_add_pd(partial_m_0_0_e_1,partial_m_0_1_e_1),partial_m_0_m1_e_1);
+                  const __m256d partial_m_1_0_e_1 = _mm256_add_pd(_mm256_mul_pd(xi_31,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),xi_44);
+                  const __m256d partial_m_m1_e_2_0 = _mm256_add_pd(xi_30,xi_38);
+                  const __m256d partial_m_0_e_2_0 = _mm256_add_pd(partial_m_0_1_e_0,partial_m_0_m1_e_0);
+                  const __m256d partial_m_1_e_2_0 = _mm256_add_pd(xi_32,xi_33);
+                  const __m256d partial_m_m1_0_e_2 = _mm256_add_pd(xi_37,xi_42);
+                  const __m256d partial_m_0_m1_e_2 = _mm256_add_pd(xi_25,xi_40);
+                  const __m256d partial_m_0_0_e_2 = _mm256_add_pd(xi_35,xi_36);
+                  const __m256d partial_m_0_1_e_2 = _mm256_add_pd(xi_26,xi_43);
+                  const __m256d partial_m_0_e_0_2 = _mm256_add_pd(_mm256_add_pd(partial_m_0_0_e_2,partial_m_0_1_e_2),partial_m_0_m1_e_2);
+                  const __m256d partial_m_1_0_e_2 = _mm256_add_pd(xi_31,xi_44);
+                  const __m256d partial_m_0_e_1_1 = _mm256_add_pd(_mm256_mul_pd(partial_m_0_m1_e_1,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),partial_m_0_1_e_1);
+                  const __m256d partial_m_0_e_2_1 = _mm256_add_pd(partial_m_0_1_e_1,partial_m_0_m1_e_1);
+                  const __m256d partial_m_0_e_1_2 = _mm256_add_pd(_mm256_mul_pd(partial_m_0_m1_e_2,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),partial_m_0_1_e_2);
+                  const __m256d partial_m_0_e_2_2 = _mm256_add_pd(partial_m_0_1_e_2,partial_m_0_m1_e_2);
+                  const __m256d m_000 = _mm256_add_pd(_mm256_add_pd(partial_m_0_e_0_0,partial_m_1_e_0_0),partial_m_m1_e_0_0);
+                  const __m256d xi_0 = _mm256_div_pd(_mm256_set_pd(1.0,1.0,1.0,1.0),m_000);
+                  const __m256d m_100 = _mm256_add_pd(_mm256_mul_pd(partial_m_m1_e_0_0,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),partial_m_1_e_0_0);
+                  const __m256d m_010 = _mm256_add_pd(_mm256_add_pd(partial_m_0_e_1_0,partial_m_1_e_1_0),partial_m_m1_e_1_0);
+                  const __m256d m_001 = _mm256_add_pd(_mm256_add_pd(partial_m_0_e_0_1,partial_m_1_0_e_1),partial_m_m1_0_e_1);
+                  const __m256d m_200 = _mm256_add_pd(partial_m_1_e_0_0,partial_m_m1_e_0_0);
+                  const __m256d m_020 = _mm256_add_pd(_mm256_add_pd(partial_m_0_e_2_0,partial_m_1_e_2_0),partial_m_m1_e_2_0);
+                  const __m256d m_002 = _mm256_add_pd(_mm256_add_pd(partial_m_0_e_0_2,partial_m_1_0_e_2),partial_m_m1_0_e_2);
+                  const __m256d m_110 = _mm256_add_pd(_mm256_mul_pd(partial_m_m1_e_1_0,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),partial_m_1_e_1_0);
+                  const __m256d m_101 = _mm256_add_pd(_mm256_mul_pd(partial_m_m1_0_e_1,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),partial_m_1_0_e_1);
+                  const __m256d m_210 = _mm256_add_pd(partial_m_1_e_1_0,partial_m_m1_e_1_0);
+                  const __m256d m_201 = _mm256_add_pd(partial_m_1_0_e_1,partial_m_m1_0_e_1);
+                  const __m256d m_120 = _mm256_add_pd(_mm256_mul_pd(partial_m_m1_e_2_0,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),partial_m_1_e_2_0);
+                  const __m256d m_102 = _mm256_add_pd(_mm256_mul_pd(partial_m_m1_0_e_2,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),partial_m_1_0_e_2);
+                  const __m256d m_220 = _mm256_add_pd(partial_m_1_e_2_0,partial_m_m1_e_2_0);
+                  const __m256d m_202 = _mm256_add_pd(partial_m_1_0_e_2,partial_m_m1_0_e_2);
+                  const __m256d u_0 = _mm256_add_pd(_mm256_mul_pd(m_100,xi_0),_mm256_mul_pd(_mm256_mul_pd(xi_0,xi_39),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2)));
+                  const __m256d u_1 = _mm256_add_pd(_mm256_mul_pd(m_010,xi_0),_mm256_mul_pd(_mm256_mul_pd(xi_0,xi_23),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2)));
+                  const __m256d u_2 = _mm256_add_pd(_mm256_mul_pd(m_001,xi_0),_mm256_mul_pd(_mm256_mul_pd(xi_0,xi_27),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2)));
+                  const __m256d M_4 = _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(m_002,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_mul_pd(m_020,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0))),_mm256_mul_pd(m_200,_mm256_set_pd(((double)(xi_3)),((double)(xi_3)),((double)(xi_3)),((double)(xi_3)))));
+                  const __m256d M_5 = _mm256_add_pd(_mm256_mul_pd(m_002,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),m_020);
+                  const __m256d M_9 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(m_000,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),m_002),m_020),m_200);
+                  const __m256d M_10 = _mm256_add_pd(_mm256_mul_pd(m_010,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_mul_pd(m_210,_mm256_set_pd(((double)(xi_4)),((double)(xi_4)),((double)(xi_4)),((double)(xi_4)))));
+                  const __m256d M_11 = _mm256_add_pd(_mm256_mul_pd(m_001,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_mul_pd(m_201,_mm256_set_pd(((double)(xi_4)),((double)(xi_4)),((double)(xi_4)),((double)(xi_4)))));
+                  const __m256d M_12 = _mm256_add_pd(_mm256_mul_pd(m_100,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_mul_pd(m_120,_mm256_set_pd(((double)(xi_4)),((double)(xi_4)),((double)(xi_4)),((double)(xi_4)))));
+                  const __m256d M_13 = _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(m_100,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_mul_pd(m_102,_mm256_set_pd(((double)(xi_3)),((double)(xi_3)),((double)(xi_3)),((double)(xi_3))))),m_120);
+                  const __m256d M_14 = _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(m_001,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_mul_pd(partial_m_0_e_2_1,_mm256_set_pd(((double)(xi_3)),((double)(xi_3)),((double)(xi_3)),((double)(xi_3))))),m_201);
+                  const __m256d M_15 = _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(m_010,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_mul_pd(partial_m_0_e_1_2,_mm256_set_pd(((double)(xi_3)),((double)(xi_3)),((double)(xi_3)),((double)(xi_3))))),m_210);
+                  const __m256d M_16 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(m_020,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_mul_pd(m_200,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0))),_mm256_set_pd(((double)(xi_5)),((double)(xi_5)),((double)(xi_5)),((double)(xi_5)))),_mm256_mul_pd(m_002,_mm256_set_pd(((double)(xi_4)),((double)(xi_4)),((double)(xi_4)),((double)(xi_4))))),_mm256_mul_pd(m_220,_mm256_set_pd(((double)(xi_6)),((double)(xi_6)),((double)(xi_6)),((double)(xi_6))))),m_000);
+                  const __m256d M_17 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(m_002,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),m_220),_mm256_set_pd(((double)(xi_7)),((double)(xi_7)),((double)(xi_7)),((double)(xi_7)))),_mm256_mul_pd(m_202,_mm256_set_pd(((double)(xi_8)),((double)(xi_8)),((double)(xi_8)),((double)(xi_8))))),_mm256_mul_pd(_mm256_mul_pd(m_200,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(((double)(xi_5)),((double)(xi_5)),((double)(xi_5)),((double)(xi_5))))),m_000),m_020);
+                  const __m256d M_18 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(m_002,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_mul_pd(m_020,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0))),m_202),m_220),_mm256_set_pd(((double)(xi_7)),((double)(xi_7)),((double)(xi_7)),((double)(xi_7)))),_mm256_mul_pd(m_200,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0))),_mm256_mul_pd(partial_m_0_e_2_2,_mm256_set_pd(((double)(xi_9)),((double)(xi_9)),((double)(xi_9)),((double)(xi_9))))),m_000);
+                  const __m256d M_post_1 = _mm256_add_pd(m_100,xi_39);
+                  const __m256d M_post_2 = _mm256_add_pd(m_010,xi_23);
+                  const __m256d M_post_3 = _mm256_add_pd(m_001,xi_27);
+                  const __m256d M_post_4 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(u_0,xi_39),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0,xi_39),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear)),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2))),_mm256_set_pd(((double)(xi_7)),((double)(xi_7)),((double)(xi_7)),((double)(xi_7)))),_mm256_mul_pd(_mm256_set_pd(((double)(xi_3)),((double)(xi_3)),((double)(xi_3)),((double)(xi_3))),_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(u_1,xi_23),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear)),_mm256_mul_pd(_mm256_mul_pd(u_2,xi_27),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear))),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2)),_mm256_mul_pd(_mm256_mul_pd(u_1,xi_23),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0))),_mm256_mul_pd(_mm256_mul_pd(u_2,xi_27),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0))),_mm256_mul_pd(_mm256_mul_pd(m_000,_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear)),_mm256_mul_pd(u_0,u_0))))),_mm256_mul_pd(_mm256_mul_pd(M_4,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear))),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(m_000,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear)),_mm256_mul_pd(u_1,u_1))),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(m_000,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear)),_mm256_mul_pd(u_2,u_2))),M_4);
+                  const __m256d M_post_5 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(u_2,xi_27),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear)),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1,xi_23),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear))),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2)),_mm256_mul_pd(u_1,xi_23)),_mm256_mul_pd(_mm256_mul_pd(u_2,xi_27),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0))),_mm256_set_pd(((double)(xi_3)),((double)(xi_3)),((double)(xi_3)),((double)(xi_3)))),_mm256_mul_pd(_mm256_mul_pd(M_5,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear))),_mm256_mul_pd(_mm256_mul_pd(m_000,_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear)),_mm256_mul_pd(u_1,u_1))),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(m_000,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear)),_mm256_mul_pd(u_2,u_2))),M_5);
+                  const __m256d M_post_6 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0,xi_23),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear)),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1,xi_39),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear))),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2)),_mm256_mul_pd(u_0,xi_23)),_mm256_mul_pd(u_1,xi_39)),_mm256_mul_pd(_mm256_mul_pd(m_110,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear))),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(m_000,u_0),u_1),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear))),m_110);
+                  const __m256d M_post_7 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0,xi_27),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear)),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2,xi_39),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear))),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2)),_mm256_mul_pd(u_0,xi_27)),_mm256_mul_pd(u_2,xi_39)),_mm256_mul_pd(_mm256_mul_pd(m_101,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear))),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(m_000,u_0),u_2),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear))),m_101);
+                  const __m256d M_post_8 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1,xi_27),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear)),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2,xi_23),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear))),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2)),_mm256_mul_pd(u_1,xi_27)),_mm256_mul_pd(u_2,xi_23)),_mm256_mul_pd(_mm256_mul_pd(partial_m_0_e_1_1,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear))),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(m_000,u_1),u_2),_mm256_set_pd(omega_shear,omega_shear,omega_shear,omega_shear))),partial_m_0_e_1_1);
+                  const __m256d M_post_9 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_0,xi_39),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_bulk,omega_bulk,omega_bulk,omega_bulk)),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_1,xi_23),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_bulk,omega_bulk,omega_bulk,omega_bulk))),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(u_2,xi_27),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_bulk,omega_bulk,omega_bulk,omega_bulk))),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2)),_mm256_mul_pd(u_0,xi_39)),_mm256_mul_pd(u_1,xi_23)),_mm256_mul_pd(u_2,xi_27)),_mm256_set_pd(((double)(xi_3)),((double)(xi_3)),((double)(xi_3)),((double)(xi_3)))),_mm256_mul_pd(_mm256_mul_pd(M_9,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_bulk,omega_bulk,omega_bulk,omega_bulk))),_mm256_mul_pd(_mm256_mul_pd(m_000,_mm256_set_pd(omega_bulk,omega_bulk,omega_bulk,omega_bulk)),_mm256_mul_pd(u_0,u_0))),_mm256_mul_pd(_mm256_mul_pd(m_000,_mm256_set_pd(omega_bulk,omega_bulk,omega_bulk,omega_bulk)),_mm256_mul_pd(u_1,u_1))),_mm256_mul_pd(_mm256_mul_pd(m_000,_mm256_set_pd(omega_bulk,omega_bulk,omega_bulk,omega_bulk)),_mm256_mul_pd(u_2,u_2))),M_9);
+                  const __m256d M_post_10 = _mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(M_10,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_odd,omega_odd,omega_odd,omega_odd)),M_10);
+                  const __m256d M_post_11 = _mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(M_11,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_odd,omega_odd,omega_odd,omega_odd)),M_11);
+                  const __m256d M_post_12 = _mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(M_12,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_odd,omega_odd,omega_odd,omega_odd)),M_12);
+                  const __m256d M_post_13 = _mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(M_13,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_odd,omega_odd,omega_odd,omega_odd)),M_13);
+                  const __m256d M_post_14 = _mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(M_14,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_odd,omega_odd,omega_odd,omega_odd)),M_14);
+                  const __m256d M_post_15 = _mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(M_15,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_odd,omega_odd,omega_odd,omega_odd)),M_15);
+                  const __m256d M_post_16 = _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(M_16,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_even,omega_even,omega_even,omega_even)),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(m_000,_mm256_set_pd(omega_even,omega_even,omega_even,omega_even)),_mm256_set_pd(((double)(xi_4)),((double)(xi_4)),((double)(xi_4)),((double)(xi_4)))),_mm256_mul_pd(u_2,u_2))),M_16);
+                  const __m256d M_post_17 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(M_17,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_even,omega_even,omega_even,omega_even)),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(m_000,_mm256_set_pd(omega_even,omega_even,omega_even,omega_even)),_mm256_set_pd(xi_10,xi_10,xi_10,xi_10)),_mm256_mul_pd(u_2,u_2))),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(m_000,_mm256_set_pd(omega_even,omega_even,omega_even,omega_even)),_mm256_set_pd(xi_11,xi_11,xi_11,xi_11)),_mm256_mul_pd(u_1,u_1))),M_17);
+                  const __m256d M_post_18 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(xi_10,xi_10,xi_10,xi_10),_mm256_add_pd(_mm256_mul_pd(_mm256_mul_pd(m_000,_mm256_set_pd(omega_even,omega_even,omega_even,omega_even)),_mm256_mul_pd(u_1,u_1)),_mm256_mul_pd(_mm256_mul_pd(m_000,_mm256_set_pd(omega_even,omega_even,omega_even,omega_even)),_mm256_mul_pd(u_2,u_2)))),_mm256_mul_pd(_mm256_mul_pd(M_18,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(omega_even,omega_even,omega_even,omega_even))),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(m_000,_mm256_set_pd(omega_even,omega_even,omega_even,omega_even)),_mm256_set_pd(xi_12,xi_12,xi_12,xi_12)),_mm256_mul_pd(u_0,u_0))),M_18);
+                  const __m256d m_post_200 = _mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(M_post_4,M_post_9),m_000),_mm256_set_pd(xi_13,xi_13,xi_13,xi_13));
+                  const __m256d m_post_020 = _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(M_post_9,m_000),_mm256_set_pd(xi_13,xi_13,xi_13,xi_13)),_mm256_mul_pd(M_post_5,_mm256_set_pd(xi_2,xi_2,xi_2,xi_2))),_mm256_mul_pd(_mm256_mul_pd(M_post_4,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(xi_14,xi_14,xi_14,xi_14)));
+                  const __m256d m_post_002 = _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(M_post_9,m_000),_mm256_set_pd(xi_13,xi_13,xi_13,xi_13)),_mm256_mul_pd(_mm256_mul_pd(M_post_4,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(xi_14,xi_14,xi_14,xi_14))),_mm256_mul_pd(_mm256_mul_pd(M_post_5,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2)));
+                  const __m256d m_post_210 = _mm256_mul_pd(_mm256_add_pd(M_post_10,M_post_2),_mm256_set_pd(xi_13,xi_13,xi_13,xi_13));
+                  const __m256d m_post_201 = _mm256_mul_pd(_mm256_add_pd(M_post_11,M_post_3),_mm256_set_pd(xi_13,xi_13,xi_13,xi_13));
+                  const __m256d m_post_120 = _mm256_mul_pd(_mm256_add_pd(M_post_1,M_post_12),_mm256_set_pd(xi_13,xi_13,xi_13,xi_13));
+                  const __m256d m_post_102 = _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(M_post_1,_mm256_set_pd(xi_13,xi_13,xi_13,xi_13)),_mm256_mul_pd(M_post_13,_mm256_set_pd(xi_2,xi_2,xi_2,xi_2))),_mm256_mul_pd(_mm256_mul_pd(M_post_12,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(xi_14,xi_14,xi_14,xi_14)));
+                  const __m256d m_post_021 = _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(M_post_3,_mm256_set_pd(xi_13,xi_13,xi_13,xi_13)),_mm256_mul_pd(M_post_14,_mm256_set_pd(xi_2,xi_2,xi_2,xi_2))),_mm256_mul_pd(_mm256_mul_pd(M_post_11,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(xi_14,xi_14,xi_14,xi_14)));
+                  const __m256d m_post_012 = _mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(M_post_2,_mm256_set_pd(xi_13,xi_13,xi_13,xi_13)),_mm256_mul_pd(M_post_15,_mm256_set_pd(xi_2,xi_2,xi_2,xi_2))),_mm256_mul_pd(_mm256_mul_pd(M_post_10,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(xi_14,xi_14,xi_14,xi_14)));
+                  const __m256d m_post_220 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(M_post_9,_mm256_set_pd(xi_14,xi_14,xi_14,xi_14)),_mm256_mul_pd(M_post_5,_mm256_set_pd(xi_15,xi_15,xi_15,xi_15))),_mm256_mul_pd(m_000,_mm256_set_pd(xi_16,xi_16,xi_16,xi_16))),_mm256_mul_pd(M_post_4,_mm256_set_pd(xi_17,xi_17,xi_17,xi_17))),_mm256_mul_pd(M_post_16,_mm256_set_pd(xi_18,xi_18,xi_18,xi_18)));
+                  const __m256d m_post_202 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(M_post_9,_mm256_set_pd(xi_14,xi_14,xi_14,xi_14)),_mm256_mul_pd(m_000,_mm256_set_pd(xi_16,xi_16,xi_16,xi_16))),_mm256_mul_pd(M_post_4,_mm256_set_pd(xi_17,xi_17,xi_17,xi_17))),_mm256_mul_pd(M_post_17,_mm256_set_pd(xi_20,xi_20,xi_20,xi_20))),_mm256_mul_pd(_mm256_mul_pd(M_post_5,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(xi_15,xi_15,xi_15,xi_15))),_mm256_mul_pd(_mm256_mul_pd(M_post_16,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(xi_19,xi_19,xi_19,xi_19)));
+                  const __m256d m_post_022 = _mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(M_post_4,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),M_post_9),_mm256_set_pd(xi_14,xi_14,xi_14,xi_14)),_mm256_mul_pd(m_000,_mm256_set_pd(xi_16,xi_16,xi_16,xi_16))),_mm256_mul_pd(M_post_18,_mm256_set_pd(xi_22,xi_22,xi_22,xi_22))),_mm256_mul_pd(_mm256_mul_pd(M_post_16,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(xi_19,xi_19,xi_19,xi_19))),_mm256_mul_pd(_mm256_mul_pd(M_post_17,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(xi_21,xi_21,xi_21,xi_21)));
+                  const __m256d sub_k_to_f_20 = _mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(m_post_022,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_mul_pd(m_post_220,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0))),m_post_020),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2));
+                  const __m256d sub_k_to_f_21 = _mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(m_post_012,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_mul_pd(m_post_210,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0))),M_post_2),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2));
+                  const __m256d sub_k_to_f_22 = _mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(m_post_202,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_mul_pd(m_post_220,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0))),m_post_200),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2));
+                  const __m256d sub_k_to_f_23 = _mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(M_post_1,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),m_post_102),m_post_120),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2));
+                  const __m256d sub_k_to_f_24 = _mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(m_post_022,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_mul_pd(m_post_202,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0))),m_post_002),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2));
+                  const __m256d sub_k_to_f_25 = _mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(m_post_021,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_mul_pd(m_post_201,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0))),M_post_3),_mm256_set_pd(xi_2,xi_2,xi_2,xi_2));
+                  const __m256d sub_k_to_f_26 = _mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(M_post_6,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),m_post_220),_mm256_set_pd(xi_15,xi_15,xi_15,xi_15));
+                  const __m256d sub_k_to_f_27 = _mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(m_post_120,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),m_post_210),_mm256_set_pd(xi_15,xi_15,xi_15,xi_15));
+                  const __m256d sub_k_to_f_28 = _mm256_mul_pd(_mm256_add_pd(M_post_6,m_post_220),_mm256_set_pd(xi_15,xi_15,xi_15,xi_15));
+                  const __m256d sub_k_to_f_29 = _mm256_mul_pd(_mm256_add_pd(m_post_120,m_post_210),_mm256_set_pd(xi_15,xi_15,xi_15,xi_15));
+                  const __m256d sub_k_to_f_30 = _mm256_mul_pd(_mm256_add_pd(M_post_8,m_post_022),_mm256_set_pd(xi_15,xi_15,xi_15,xi_15));
+                  const __m256d sub_k_to_f_31 = _mm256_mul_pd(_mm256_add_pd(m_post_012,m_post_021),_mm256_set_pd(xi_15,xi_15,xi_15,xi_15));
+                  const __m256d sub_k_to_f_32 = _mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(M_post_8,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),m_post_022),_mm256_set_pd(xi_15,xi_15,xi_15,xi_15));
+                  const __m256d sub_k_to_f_33 = _mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(m_post_012,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),m_post_021),_mm256_set_pd(xi_15,xi_15,xi_15,xi_15));
+                  const __m256d sub_k_to_f_34 = _mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(M_post_7,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),m_post_202),_mm256_set_pd(xi_15,xi_15,xi_15,xi_15));
+                  const __m256d sub_k_to_f_35 = _mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(m_post_102,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),m_post_201),_mm256_set_pd(xi_15,xi_15,xi_15,xi_15));
+                  const __m256d sub_k_to_f_36 = _mm256_mul_pd(_mm256_add_pd(M_post_7,m_post_202),_mm256_set_pd(xi_15,xi_15,xi_15,xi_15));
+                  const __m256d sub_k_to_f_37 = _mm256_mul_pd(_mm256_add_pd(m_post_102,m_post_201),_mm256_set_pd(xi_15,xi_15,xi_15,xi_15));
+                  _mm256_store_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + ctr_0],_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(m_post_002,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_mul_pd(m_post_020,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0))),_mm256_mul_pd(m_post_200,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0))),m_000),m_post_022),m_post_202),m_post_220));
+                  _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + _stride_pdfs_3 + ctr_0],_mm256_add_pd(_mm256_add_pd(_mm256_blendv_pd(_mm256_set_pd(0.0,0.0,0.0,0.0),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(u_0,_mm256_set_pd(2.0,2.0,2.0,2.0)),_mm256_set_pd(v_s,v_s,v_s,v_s)),_mm256_set_pd(0.16666666666666666,0.16666666666666666,0.16666666666666666,0.16666666666666666)),_mm256_set_pd(rho,rho,rho,rho)),_mm256_set_pd(v_s,v_s,v_s,v_s)),_mm256_cmp_pd(_mm256_set_pd(-1.0,-1.0,-1.0,-1.0),_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0,-1.0,-1.0,-1.0),_mm256_set_pd(grid_size,grid_size,grid_size,grid_size)),_mm256_set_pd(((double)(ctr_1)),((double)(ctr_1)),((double)(ctr_1)),((double)(ctr_1)))),_CMP_LE_OQ)),sub_k_to_f_20),sub_k_to_f_21));
+                  _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 2*_stride_pdfs_3 + ctr_0],_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(sub_k_to_f_21,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_blendv_pd(_mm256_set_pd(0.0,0.0,0.0,0.0),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_mul_pd(u_0,_mm256_set_pd(-2.0,-2.0,-2.0,-2.0)),_mm256_set_pd(v_s,v_s,v_s,v_s)),_mm256_set_pd(0.16666666666666666,0.16666666666666666,0.16666666666666666,0.16666666666666666)),_mm256_set_pd(rho,rho,rho,rho)),_mm256_set_pd(v_s,v_s,v_s,v_s)),_mm256_cmp_pd(_mm256_set_pd(0.0,0.0,0.0,0.0),_mm256_set_pd(((double)(ctr_1)),((double)(ctr_1)),((double)(ctr_1)),((double)(ctr_1))),_CMP_GE_OQ))),sub_k_to_f_20));
+                  _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 3*_stride_pdfs_3 + ctr_0],_mm256_add_pd(sub_k_to_f_22,sub_k_to_f_23));
+                  _mm256_store_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 4*_stride_pdfs_3 + ctr_0],_mm256_add_pd(_mm256_mul_pd(sub_k_to_f_23,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),sub_k_to_f_22));
+                  _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 5*_stride_pdfs_3 + ctr_0],_mm256_add_pd(sub_k_to_f_24,sub_k_to_f_25));
+                  _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 6*_stride_pdfs_3 + ctr_0],_mm256_add_pd(_mm256_mul_pd(sub_k_to_f_25,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),sub_k_to_f_24));
+                  _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 7*_stride_pdfs_3 + ctr_0],_mm256_add_pd(_mm256_add_pd(_mm256_blendv_pd(_mm256_set_pd(0.0,0.0,0.0,0.0),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0,-1.0,-1.0,-1.0),_mm256_set_pd(v_s,v_s,v_s,v_s)),_mm256_mul_pd(u_1,_mm256_set_pd(3.0,3.0,3.0,3.0))),_mm256_mul_pd(u_0,_mm256_set_pd(-2.0,-2.0,-2.0,-2.0))),_mm256_set_pd(1.0,1.0,1.0,1.0)),_mm256_set_pd(0.083333333333333329,0.083333333333333329,0.083333333333333329,0.083333333333333329)),_mm256_set_pd(rho,rho,rho,rho)),_mm256_set_pd(v_s,v_s,v_s,v_s)),_mm256_cmp_pd(_mm256_set_pd(-1.0,-1.0,-1.0,-1.0),_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0,-1.0,-1.0,-1.0),_mm256_set_pd(grid_size,grid_size,grid_size,grid_size)),_mm256_set_pd(((double)(ctr_1)),((double)(ctr_1)),((double)(ctr_1)),((double)(ctr_1)))),_CMP_LE_OQ)),sub_k_to_f_26),sub_k_to_f_27));
+                  _mm256_store_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 8*_stride_pdfs_3 + ctr_0],_mm256_add_pd(_mm256_add_pd(_mm256_blendv_pd(_mm256_set_pd(0.0,0.0,0.0,0.0),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0,-1.0,-1.0,-1.0),_mm256_set_pd(v_s,v_s,v_s,v_s)),_mm256_mul_pd(u_0,_mm256_set_pd(-2.0,-2.0,-2.0,-2.0))),_mm256_mul_pd(u_1,_mm256_set_pd(-3.0,-3.0,-3.0,-3.0))),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(0.083333333333333329,0.083333333333333329,0.083333333333333329,0.083333333333333329)),_mm256_set_pd(rho,rho,rho,rho)),_mm256_set_pd(v_s,v_s,v_s,v_s)),_mm256_cmp_pd(_mm256_set_pd(-1.0,-1.0,-1.0,-1.0),_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0,-1.0,-1.0,-1.0),_mm256_set_pd(grid_size,grid_size,grid_size,grid_size)),_mm256_set_pd(((double)(ctr_1)),((double)(ctr_1)),((double)(ctr_1)),((double)(ctr_1)))),_CMP_LE_OQ)),sub_k_to_f_28),sub_k_to_f_29));
+                  _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 9*_stride_pdfs_3 + ctr_0],_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(sub_k_to_f_29,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_blendv_pd(_mm256_set_pd(0.0,0.0,0.0,0.0),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0,-1.0,-1.0,-1.0),_mm256_set_pd(v_s,v_s,v_s,v_s)),_mm256_mul_pd(u_0,_mm256_set_pd(2.0,2.0,2.0,2.0))),_mm256_mul_pd(u_1,_mm256_set_pd(3.0,3.0,3.0,3.0))),_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_set_pd(0.083333333333333329,0.083333333333333329,0.083333333333333329,0.083333333333333329)),_mm256_set_pd(rho,rho,rho,rho)),_mm256_set_pd(v_s,v_s,v_s,v_s)),_mm256_cmp_pd(_mm256_set_pd(0.0,0.0,0.0,0.0),_mm256_set_pd(((double)(ctr_1)),((double)(ctr_1)),((double)(ctr_1)),((double)(ctr_1))),_CMP_GE_OQ))),sub_k_to_f_28));
+                  _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 10*_stride_pdfs_3 + ctr_0],_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(sub_k_to_f_27,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),_mm256_blendv_pd(_mm256_set_pd(0.0,0.0,0.0,0.0),_mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(-1.0,-1.0,-1.0,-1.0),_mm256_set_pd(v_s,v_s,v_s,v_s)),_mm256_mul_pd(u_0,_mm256_set_pd(2.0,2.0,2.0,2.0))),_mm256_mul_pd(u_1,_mm256_set_pd(-3.0,-3.0,-3.0,-3.0))),_mm256_set_pd(1.0,1.0,1.0,1.0)),_mm256_set_pd(0.083333333333333329,0.083333333333333329,0.083333333333333329,0.083333333333333329)),_mm256_set_pd(rho,rho,rho,rho)),_mm256_set_pd(v_s,v_s,v_s,v_s)),_mm256_cmp_pd(_mm256_set_pd(0.0,0.0,0.0,0.0),_mm256_set_pd(((double)(ctr_1)),((double)(ctr_1)),((double)(ctr_1)),((double)(ctr_1))),_CMP_GE_OQ))),sub_k_to_f_26));
+                  _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 11*_stride_pdfs_3 + ctr_0],_mm256_add_pd(sub_k_to_f_30,sub_k_to_f_31));
+                  _mm256_store_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 12*_stride_pdfs_3 + ctr_0],_mm256_add_pd(sub_k_to_f_32,sub_k_to_f_33));
+                  _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 13*_stride_pdfs_3 + ctr_0],_mm256_add_pd(sub_k_to_f_34,sub_k_to_f_35));
+                  _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 14*_stride_pdfs_3 + ctr_0],_mm256_add_pd(sub_k_to_f_36,sub_k_to_f_37));
+                  _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 15*_stride_pdfs_3 + ctr_0],_mm256_add_pd(_mm256_mul_pd(sub_k_to_f_33,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),sub_k_to_f_32));
+                  _mm256_store_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 16*_stride_pdfs_3 + ctr_0],_mm256_add_pd(_mm256_mul_pd(sub_k_to_f_31,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),sub_k_to_f_30));
+                  _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 17*_stride_pdfs_3 + ctr_0],_mm256_add_pd(_mm256_mul_pd(sub_k_to_f_37,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),sub_k_to_f_36));
+                  _mm256_storeu_pd(&_data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 18*_stride_pdfs_3 + ctr_0],_mm256_add_pd(_mm256_mul_pd(sub_k_to_f_35,_mm256_set_pd(-1.0,-1.0,-1.0,-1.0)),sub_k_to_f_34));
+               }
+               for (int64_t ctr_0 = (int64_t)((_size_force_0) / (4)) * (4); ctr_0 < _size_force_0; ctr_0 += 1)
+               {
+                  const double xi_45 = _data_force[_stride_force_1*ctr_1 + _stride_force_2*ctr_2 + 2*_stride_force_3 + ctr_0];
+                  const double xi_46 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 15*_stride_pdfs_3 + ctr_0];
+                  const double xi_47 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 9*_stride_pdfs_3 + ctr_0];
+                  const double xi_48 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 7*_stride_pdfs_3 + ctr_0];
+                  const double xi_49 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 6*_stride_pdfs_3 + ctr_0];
+                  const double xi_50 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 13*_stride_pdfs_3 + ctr_0];
+                  const double xi_51 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 8*_stride_pdfs_3 + ctr_0];
+                  const double xi_52 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + _stride_pdfs_3 + ctr_0];
+                  const double xi_53 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 11*_stride_pdfs_3 + ctr_0];
+                  const double xi_54 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + ctr_0];
+                  const double xi_55 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 4*_stride_pdfs_3 + ctr_0];
+                  const double xi_56 = _data_force[_stride_force_1*ctr_1 + _stride_force_2*ctr_2 + _stride_force_3 + ctr_0];
+                  const double xi_57 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 17*_stride_pdfs_3 + ctr_0];
+                  const double xi_58 = _data_force[_stride_force_1*ctr_1 + _stride_force_2*ctr_2 + ctr_0];
+                  const double xi_59 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 18*_stride_pdfs_3 + ctr_0];
+                  const double xi_60 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 14*_stride_pdfs_3 + ctr_0];
+                  const double xi_61 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 5*_stride_pdfs_3 + ctr_0];
+                  const double xi_62 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 16*_stride_pdfs_3 + ctr_0];
+                  const double xi_63 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 10*_stride_pdfs_3 + ctr_0];
+                  const double xi_64 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 3*_stride_pdfs_3 + ctr_0];
+                  const double xi_65 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 12*_stride_pdfs_3 + ctr_0];
+                  const double xi_66 = _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 2*_stride_pdfs_3 + ctr_0];
+                  const double xi_23 = xi_56;
+                  const double xi_24 = xi_66;
+                  const double xi_25 = xi_65;
+                  const double xi_26 = xi_53;
+                  const double xi_27 = xi_45;
+                  const double xi_28 = xi_52;
+                  const double xi_29 = xi_64;
+                  const double xi_30 = xi_47;
+                  const double xi_31 = xi_59;
+                  const double xi_32 = xi_51;
+                  const double xi_33 = xi_63;
+                  const double xi_34 = xi_54;
+                  const double xi_35 = xi_61;
+                  const double xi_36 = xi_49;
+                  const double xi_37 = xi_57;
+                  const double xi_38 = xi_48;
+                  const double xi_39 = xi_58;
+                  const double xi_40 = xi_62;
+                  const double xi_41 = xi_55;
+                  const double xi_42 = xi_50;
+                  const double xi_43 = xi_46;
+                  const double xi_44 = xi_60;
+                  const double partial_m_m1_0_e_0 = xi_29 + xi_37 + xi_42;
+                  const double partial_m_m1_e_0_0 = partial_m_m1_0_e_0 + xi_30 + xi_38;
+                  const double partial_m_0_m1_e_0 = xi_24 + xi_25 + xi_40;
+                  const double partial_m_0_0_e_0 = xi_34 + xi_35 + xi_36;
+                  const double partial_m_0_1_e_0 = xi_26 + xi_28 + xi_43;
+                  const double partial_m_0_e_0_0 = partial_m_0_0_e_0 + partial_m_0_1_e_0 + partial_m_0_m1_e_0;
+                  const double partial_m_1_0_e_0 = xi_31 + xi_41 + xi_44;
+                  const double partial_m_1_e_0_0 = partial_m_1_0_e_0 + xi_32 + xi_33;
+                  const double partial_m_m1_e_1_0 = -xi_30 + xi_38;
+                  const double partial_m_0_e_1_0 = partial_m_0_1_e_0 - partial_m_0_m1_e_0;
+                  const double partial_m_1_e_1_0 = xi_32 - xi_33;
+                  const double partial_m_m1_0_e_1 = -xi_37 + xi_42;
+                  const double partial_m_0_m1_e_1 = xi_25 - xi_40;
+                  const double partial_m_0_0_e_1 = xi_35 - xi_36;
+                  const double partial_m_0_1_e_1 = xi_26 - xi_43;
+                  const double partial_m_0_e_0_1 = partial_m_0_0_e_1 + partial_m_0_1_e_1 + partial_m_0_m1_e_1;
+                  const double partial_m_1_0_e_1 = -xi_31 + xi_44;
+                  const double partial_m_m1_e_2_0 = xi_30 + xi_38;
+                  const double partial_m_0_e_2_0 = partial_m_0_1_e_0 + partial_m_0_m1_e_0;
+                  const double partial_m_1_e_2_0 = xi_32 + xi_33;
+                  const double partial_m_m1_0_e_2 = xi_37 + xi_42;
+                  const double partial_m_0_m1_e_2 = xi_25 + xi_40;
+                  const double partial_m_0_0_e_2 = xi_35 + xi_36;
+                  const double partial_m_0_1_e_2 = xi_26 + xi_43;
+                  const double partial_m_0_e_0_2 = partial_m_0_0_e_2 + partial_m_0_1_e_2 + partial_m_0_m1_e_2;
+                  const double partial_m_1_0_e_2 = xi_31 + xi_44;
+                  const double partial_m_0_e_1_1 = partial_m_0_1_e_1 - partial_m_0_m1_e_1;
+                  const double partial_m_0_e_2_1 = partial_m_0_1_e_1 + partial_m_0_m1_e_1;
+                  const double partial_m_0_e_1_2 = partial_m_0_1_e_2 - partial_m_0_m1_e_2;
+                  const double partial_m_0_e_2_2 = partial_m_0_1_e_2 + partial_m_0_m1_e_2;
+                  const double m_000 = partial_m_0_e_0_0 + partial_m_1_e_0_0 + partial_m_m1_e_0_0;
+                  const double xi_0 = ((1.0) / (m_000));
+                  const double m_100 = partial_m_1_e_0_0 - partial_m_m1_e_0_0;
+                  const double m_010 = partial_m_0_e_1_0 + partial_m_1_e_1_0 + partial_m_m1_e_1_0;
+                  const double m_001 = partial_m_0_e_0_1 + partial_m_1_0_e_1 + partial_m_m1_0_e_1;
+                  const double m_200 = partial_m_1_e_0_0 + partial_m_m1_e_0_0;
+                  const double m_020 = partial_m_0_e_2_0 + partial_m_1_e_2_0 + partial_m_m1_e_2_0;
+                  const double m_002 = partial_m_0_e_0_2 + partial_m_1_0_e_2 + partial_m_m1_0_e_2;
+                  const double m_110 = partial_m_1_e_1_0 - partial_m_m1_e_1_0;
+                  const double m_101 = partial_m_1_0_e_1 - partial_m_m1_0_e_1;
+                  const double m_210 = partial_m_1_e_1_0 + partial_m_m1_e_1_0;
+                  const double m_201 = partial_m_1_0_e_1 + partial_m_m1_0_e_1;
+                  const double m_120 = partial_m_1_e_2_0 - partial_m_m1_e_2_0;
+                  const double m_102 = partial_m_1_0_e_2 - partial_m_m1_0_e_2;
+                  const double m_220 = partial_m_1_e_2_0 + partial_m_m1_e_2_0;
+                  const double m_202 = partial_m_1_0_e_2 + partial_m_m1_0_e_2;
+                  const double u_0 = m_100*xi_0 + xi_0*xi_2*xi_39;
+                  const double u_1 = m_010*xi_0 + xi_0*xi_2*xi_23;
+                  const double u_2 = m_001*xi_0 + xi_0*xi_2*xi_27;
+                  const double M_4 = -m_002 - m_020 + m_200*((double)(xi_3));
+                  const double M_5 = -m_002 + m_020;
+                  const double M_9 = -m_000 + m_002 + m_020 + m_200;
+                  const double M_10 = -m_010 + m_210*((double)(xi_4));
+                  const double M_11 = -m_001 + m_201*((double)(xi_4));
+                  const double M_12 = -m_100 + m_120*((double)(xi_4));
+                  const double M_13 = -m_100 + m_102*((double)(xi_3)) + m_120;
+                  const double M_14 = -m_001 + m_201 + partial_m_0_e_2_1*((double)(xi_3));
+                  const double M_15 = -m_010 + m_210 + partial_m_0_e_1_2*((double)(xi_3));
+                  const double M_16 = m_000 + m_002*((double)(xi_4)) + m_220*((double)(xi_6)) + (-m_020 - m_200)*((double)(xi_5));
+                  const double M_17 = m_000 + m_020 - m_200*((double)(xi_5)) + m_202*((double)(xi_8)) + (-m_002 + m_220)*((double)(xi_7));
+                  const double M_18 = m_000 - m_200 + partial_m_0_e_2_2*((double)(xi_9)) + (-m_002 - m_020 + m_202 + m_220)*((double)(xi_7));
+                  const double M_post_1 = m_100 + xi_39;
+                  const double M_post_2 = m_010 + xi_23;
+                  const double M_post_3 = m_001 + xi_27;
+                  const double M_post_4 = -M_4*omega_shear + M_4 - m_000*omega_shear*(u_1*u_1) - m_000*omega_shear*(u_2*u_2) + (-omega_shear*u_0*xi_2*xi_39 + u_0*xi_39)*((double)(xi_7)) + ((double)(xi_3))*(m_000*omega_shear*(u_0*u_0) - u_1*xi_23 - u_2*xi_27 + xi_2*(omega_shear*u_1*xi_23 + omega_shear*u_2*xi_27));
+                  const double M_post_5 = -M_5*omega_shear + M_5 + m_000*omega_shear*(u_1*u_1) - m_000*omega_shear*(u_2*u_2) + (u_1*xi_23 - u_2*xi_27 + xi_2*(-omega_shear*u_1*xi_23 + omega_shear*u_2*xi_27))*((double)(xi_3));
+                  const double M_post_6 = m_000*omega_shear*u_0*u_1 - m_110*omega_shear + m_110 + u_0*xi_23 + u_1*xi_39 + xi_2*(-omega_shear*u_0*xi_23 - omega_shear*u_1*xi_39);
+                  const double M_post_7 = m_000*omega_shear*u_0*u_2 - m_101*omega_shear + m_101 + u_0*xi_27 + u_2*xi_39 + xi_2*(-omega_shear*u_0*xi_27 - omega_shear*u_2*xi_39);
+                  const double M_post_8 = m_000*omega_shear*u_1*u_2 - omega_shear*partial_m_0_e_1_1 + partial_m_0_e_1_1 + u_1*xi_27 + u_2*xi_23 + xi_2*(-omega_shear*u_1*xi_27 - omega_shear*u_2*xi_23);
+                  const double M_post_9 = -M_9*omega_bulk + M_9 + m_000*omega_bulk*(u_0*u_0) + m_000*omega_bulk*(u_1*u_1) + m_000*omega_bulk*(u_2*u_2) + (u_0*xi_39 + u_1*xi_23 + u_2*xi_27 + xi_2*(-omega_bulk*u_0*xi_39 - omega_bulk*u_1*xi_23 - omega_bulk*u_2*xi_27))*((double)(xi_3));
+                  const double M_post_10 = -M_10*omega_odd + M_10;
+                  const double M_post_11 = -M_11*omega_odd + M_11;
+                  const double M_post_12 = -M_12*omega_odd + M_12;
+                  const double M_post_13 = -M_13*omega_odd + M_13;
+                  const double M_post_14 = -M_14*omega_odd + M_14;
+                  const double M_post_15 = -M_15*omega_odd + M_15;
+                  const double M_post_16 = -M_16*omega_even + M_16 + m_000*omega_even*((double)(xi_4))*(u_2*u_2);
+                  const double M_post_17 = -M_17*omega_even + M_17 + m_000*omega_even*xi_10*(u_2*u_2) + m_000*omega_even*xi_11*(u_1*u_1);
+                  const double M_post_18 = -M_18*omega_even + M_18 + m_000*omega_even*xi_12*(u_0*u_0) + xi_10*(m_000*omega_even*(u_1*u_1) + m_000*omega_even*(u_2*u_2));
+                  const double m_post_200 = xi_13*(M_post_4 + M_post_9 + m_000);
+                  const double m_post_020 = -M_post_4*xi_14 + M_post_5*xi_2 + xi_13*(M_post_9 + m_000);
+                  const double m_post_002 = -M_post_4*xi_14 - M_post_5*xi_2 + xi_13*(M_post_9 + m_000);
+                  const double m_post_210 = xi_13*(M_post_10 + M_post_2);
+                  const double m_post_201 = xi_13*(M_post_11 + M_post_3);
+                  const double m_post_120 = xi_13*(M_post_1 + M_post_12);
+                  const double m_post_102 = M_post_1*xi_13 - M_post_12*xi_14 + M_post_13*xi_2;
+                  const double m_post_021 = -M_post_11*xi_14 + M_post_14*xi_2 + M_post_3*xi_13;
+                  const double m_post_012 = -M_post_10*xi_14 + M_post_15*xi_2 + M_post_2*xi_13;
+                  const double m_post_220 = M_post_16*xi_18 + M_post_4*xi_17 + M_post_5*xi_15 + M_post_9*xi_14 + m_000*xi_16;
+                  const double m_post_202 = -M_post_16*xi_19 + M_post_17*xi_20 + M_post_4*xi_17 - M_post_5*xi_15 + M_post_9*xi_14 + m_000*xi_16;
+                  const double m_post_022 = -M_post_16*xi_19 - M_post_17*xi_21 + M_post_18*xi_22 + m_000*xi_16 + xi_14*(-M_post_4 + M_post_9);
+                  const double sub_k_to_f_20 = xi_2*(m_post_020 - m_post_022 - m_post_220);
+                  const double sub_k_to_f_21 = xi_2*(M_post_2 - m_post_012 - m_post_210);
+                  const double sub_k_to_f_22 = xi_2*(m_post_200 - m_post_202 - m_post_220);
+                  const double sub_k_to_f_23 = xi_2*(-M_post_1 + m_post_102 + m_post_120);
+                  const double sub_k_to_f_24 = xi_2*(m_post_002 - m_post_022 - m_post_202);
+                  const double sub_k_to_f_25 = xi_2*(M_post_3 - m_post_021 - m_post_201);
+                  const double sub_k_to_f_26 = xi_15*(-M_post_6 + m_post_220);
+                  const double sub_k_to_f_27 = xi_15*(-m_post_120 + m_post_210);
+                  const double sub_k_to_f_28 = xi_15*(M_post_6 + m_post_220);
+                  const double sub_k_to_f_29 = xi_15*(m_post_120 + m_post_210);
+                  const double sub_k_to_f_30 = xi_15*(M_post_8 + m_post_022);
+                  const double sub_k_to_f_31 = xi_15*(m_post_012 + m_post_021);
+                  const double sub_k_to_f_32 = xi_15*(-M_post_8 + m_post_022);
+                  const double sub_k_to_f_33 = xi_15*(-m_post_012 + m_post_021);
+                  const double sub_k_to_f_34 = xi_15*(-M_post_7 + m_post_202);
+                  const double sub_k_to_f_35 = xi_15*(-m_post_102 + m_post_201);
+                  const double sub_k_to_f_36 = xi_15*(M_post_7 + m_post_202);
+                  const double sub_k_to_f_37 = xi_15*(m_post_102 + m_post_201);
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + ctr_0] = m_000 - m_post_002 - m_post_020 + m_post_022 - m_post_200 + m_post_202 + m_post_220;
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + _stride_pdfs_3 + ctr_0] = sub_k_to_f_20 + sub_k_to_f_21 + ((-1.0 <= -grid_size + ((double)(ctr_1))) ? (rho*v_s*(u_0*2.0 + v_s)*0.16666666666666666): (0.0));
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 2*_stride_pdfs_3 + ctr_0] = sub_k_to_f_20 - sub_k_to_f_21 + ((0.0 >= ((double)(ctr_1))) ? (rho*v_s*(u_0*-2.0 + v_s)*0.16666666666666666): (0.0));
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 3*_stride_pdfs_3 + ctr_0] = sub_k_to_f_22 + sub_k_to_f_23;
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 4*_stride_pdfs_3 + ctr_0] = sub_k_to_f_22 - sub_k_to_f_23;
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 5*_stride_pdfs_3 + ctr_0] = sub_k_to_f_24 + sub_k_to_f_25;
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 6*_stride_pdfs_3 + ctr_0] = sub_k_to_f_24 - sub_k_to_f_25;
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 7*_stride_pdfs_3 + ctr_0] = sub_k_to_f_26 + sub_k_to_f_27 + ((-1.0 <= -grid_size + ((double)(ctr_1))) ? (rho*v_s*(u_0*-2.0 + u_1*3.0 - v_s + 1.0)*0.083333333333333329): (0.0));
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 8*_stride_pdfs_3 + ctr_0] = sub_k_to_f_28 + sub_k_to_f_29 + ((-1.0 <= -grid_size + ((double)(ctr_1))) ? (rho*v_s*(u_0*-2.0 + u_1*-3.0 - v_s - 1.0)*0.083333333333333329): (0.0));
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 9*_stride_pdfs_3 + ctr_0] = sub_k_to_f_28 - sub_k_to_f_29 + ((0.0 >= ((double)(ctr_1))) ? (rho*v_s*(u_0*2.0 + u_1*3.0 - v_s - 1.0)*0.083333333333333329): (0.0));
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 10*_stride_pdfs_3 + ctr_0] = sub_k_to_f_26 - sub_k_to_f_27 + ((0.0 >= ((double)(ctr_1))) ? (rho*v_s*(u_0*2.0 + u_1*-3.0 - v_s + 1.0)*0.083333333333333329): (0.0));
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 11*_stride_pdfs_3 + ctr_0] = sub_k_to_f_30 + sub_k_to_f_31;
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 12*_stride_pdfs_3 + ctr_0] = sub_k_to_f_32 + sub_k_to_f_33;
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 13*_stride_pdfs_3 + ctr_0] = sub_k_to_f_34 + sub_k_to_f_35;
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 14*_stride_pdfs_3 + ctr_0] = sub_k_to_f_36 + sub_k_to_f_37;
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 15*_stride_pdfs_3 + ctr_0] = sub_k_to_f_32 - sub_k_to_f_33;
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 16*_stride_pdfs_3 + ctr_0] = sub_k_to_f_30 - sub_k_to_f_31;
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 17*_stride_pdfs_3 + ctr_0] = sub_k_to_f_36 - sub_k_to_f_37;
+                  _data_pdfs[_stride_pdfs_1*ctr_1 + _stride_pdfs_2*ctr_2 + 18*_stride_pdfs_3 + ctr_0] = sub_k_to_f_34 - sub_k_to_f_35;
+               }
+            }
+         }
       }
-    }
-  }
+   }
 }
-} // namespace internal_f11a519921c681cbc9d0b2f51454c920
-
-void CollideSweepDoublePrecisionLeesEdwardsAVX::run(IBlock *block) {
-
-  auto force = block->getData<field::GhostLayerField<double, 3>>(forceID);
-  auto pdfs = block->getData<field::GhostLayerField<double, 19>>(pdfsID);
-
-  auto &grid_size = this->grid_size_;
-  auto &v_s = this->v_s_;
-  auto &omega_shear = this->omega_shear_;
-  WALBERLA_ASSERT_GREATER_EQUAL(0, -int_c(force->nrOfGhostLayers()))
-  double *RESTRICT const _data_force = force->dataAt(0, 0, 0, 0);
-  WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
-  WALBERLA_ASSERT_EQUAL((uintptr_t)force->dataAt(0, 0, 0, 0) % 32, 0)
-  WALBERLA_ASSERT_GREATER_EQUAL(0, -int_c(pdfs->nrOfGhostLayers()))
-  double *RESTRICT _data_pdfs = pdfs->dataAt(0, 0, 0, 0);
-  WALBERLA_ASSERT_EQUAL(pdfs->layout(), field::fzyx)
-  WALBERLA_ASSERT_EQUAL((uintptr_t)pdfs->dataAt(0, 0, 0, 0) % 32, 0)
-  WALBERLA_ASSERT_GREATER_EQUAL(force->xSizeWithGhostLayer(), int64_t(int64_c(force->xSize()) + 0))
-  const int64_t _size_force_0 = int64_t(int64_c(force->xSize()) + 0);
-  WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
-  WALBERLA_ASSERT_EQUAL((uintptr_t)force->dataAt(0, 0, 0, 0) % 32, 0)
-  WALBERLA_ASSERT_GREATER_EQUAL(force->ySizeWithGhostLayer(), int64_t(int64_c(force->ySize()) + 0))
-  const int64_t _size_force_1 = int64_t(int64_c(force->ySize()) + 0);
-  WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
-  WALBERLA_ASSERT_EQUAL((uintptr_t)force->dataAt(0, 0, 0, 0) % 32, 0)
-  WALBERLA_ASSERT_GREATER_EQUAL(force->zSizeWithGhostLayer(), int64_t(int64_c(force->zSize()) + 0))
-  const int64_t _size_force_2 = int64_t(int64_c(force->zSize()) + 0);
-  WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
-  WALBERLA_ASSERT_EQUAL((uintptr_t)force->dataAt(0, 0, 0, 0) % 32, 0)
-  const int64_t _stride_force_1 = int64_t(force->yStride());
-  const int64_t _stride_force_2 = int64_t(force->zStride());
-  const int64_t _stride_force_3 = int64_t(1 * int64_t(force->fStride()));
-  const int64_t _stride_pdfs_1 = int64_t(pdfs->yStride());
-  const int64_t _stride_pdfs_2 = int64_t(pdfs->zStride());
-  const int64_t _stride_pdfs_3 = int64_t(1 * int64_t(pdfs->fStride()));
-  internal_f11a519921c681cbc9d0b2f51454c920::collidesweepdoubleprecisionleesedwardsavx_collidesweepdoubleprecisionleesedwardsavx(_data_force, _data_pdfs, _size_force_0, _size_force_1, _size_force_2, _stride_force_1, _stride_force_2, _stride_force_3, _stride_pdfs_1, _stride_pdfs_2, _stride_pdfs_3, grid_size, omega_shear, v_s);
 }
 
-void CollideSweepDoublePrecisionLeesEdwardsAVX::runOnCellInterval(const shared_ptr<StructuredBlockStorage> &blocks, const CellInterval &globalCellInterval, cell_idx_t ghostLayers, IBlock *block) {
 
-  CellInterval ci = globalCellInterval;
-  CellInterval blockBB = blocks->getBlockCellBB(*block);
-  blockBB.expand(ghostLayers);
-  ci.intersect(blockBB);
-  blocks->transformGlobalToBlockLocalCellInterval(ci, *block);
-  if (ci.empty())
-    return;
+void CollideSweepDoublePrecisionLeesEdwardsAVX::run(IBlock * block)
+{
+   
+    auto force = block->getData< field::GhostLayerField<double, 3> >(forceID);
+    auto pdfs = block->getData< field::GhostLayerField<double, 19> >(pdfsID);
 
-  auto force = block->getData<field::GhostLayerField<double, 3>>(forceID);
-  auto pdfs = block->getData<field::GhostLayerField<double, 19>>(pdfsID);
-
-  auto &grid_size = this->grid_size_;
-  auto &v_s = this->v_s_;
-  auto &omega_shear = this->omega_shear_;
-  WALBERLA_ASSERT_GREATER_EQUAL(ci.xMin(), -int_c(force->nrOfGhostLayers()))
-  WALBERLA_ASSERT_GREATER_EQUAL(ci.yMin(), -int_c(force->nrOfGhostLayers()))
-  WALBERLA_ASSERT_GREATER_EQUAL(ci.zMin(), -int_c(force->nrOfGhostLayers()))
-  double *RESTRICT const _data_force = force->dataAt(ci.xMin(), ci.yMin(), ci.zMin(), 0);
-  WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
-  WALBERLA_ASSERT_EQUAL((uintptr_t)force->dataAt(0, 0, 0, 0) % 32, 0)
-  WALBERLA_ASSERT_GREATER_EQUAL(ci.xMin(), -int_c(pdfs->nrOfGhostLayers()))
-  WALBERLA_ASSERT_GREATER_EQUAL(ci.yMin(), -int_c(pdfs->nrOfGhostLayers()))
-  WALBERLA_ASSERT_GREATER_EQUAL(ci.zMin(), -int_c(pdfs->nrOfGhostLayers()))
-  double *RESTRICT _data_pdfs = pdfs->dataAt(ci.xMin(), ci.yMin(), ci.zMin(), 0);
-  WALBERLA_ASSERT_EQUAL(pdfs->layout(), field::fzyx)
-  WALBERLA_ASSERT_EQUAL((uintptr_t)pdfs->dataAt(0, 0, 0, 0) % 32, 0)
-  WALBERLA_ASSERT_GREATER_EQUAL(force->xSizeWithGhostLayer(), int64_t(int64_c(ci.xSize()) + 0))
-  const int64_t _size_force_0 = int64_t(int64_c(ci.xSize()) + 0);
-  WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
-  WALBERLA_ASSERT_EQUAL((uintptr_t)force->dataAt(0, 0, 0, 0) % 32, 0)
-  WALBERLA_ASSERT_GREATER_EQUAL(force->ySizeWithGhostLayer(), int64_t(int64_c(ci.ySize()) + 0))
-  const int64_t _size_force_1 = int64_t(int64_c(ci.ySize()) + 0);
-  WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
-  WALBERLA_ASSERT_EQUAL((uintptr_t)force->dataAt(0, 0, 0, 0) % 32, 0)
-  WALBERLA_ASSERT_GREATER_EQUAL(force->zSizeWithGhostLayer(), int64_t(int64_c(ci.zSize()) + 0))
-  const int64_t _size_force_2 = int64_t(int64_c(ci.zSize()) + 0);
-  WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
-  WALBERLA_ASSERT_EQUAL((uintptr_t)force->dataAt(0, 0, 0, 0) % 32, 0)
-  const int64_t _stride_force_1 = int64_t(force->yStride());
-  const int64_t _stride_force_2 = int64_t(force->zStride());
-  const int64_t _stride_force_3 = int64_t(1 * int64_t(force->fStride()));
-  const int64_t _stride_pdfs_1 = int64_t(pdfs->yStride());
-  const int64_t _stride_pdfs_2 = int64_t(pdfs->zStride());
-  const int64_t _stride_pdfs_3 = int64_t(1 * int64_t(pdfs->fStride()));
-  internal_f11a519921c681cbc9d0b2f51454c920::collidesweepdoubleprecisionleesedwardsavx_collidesweepdoubleprecisionleesedwardsavx(_data_force, _data_pdfs, _size_force_0, _size_force_1, _size_force_2, _stride_force_1, _stride_force_2, _stride_force_3, _stride_pdfs_1, _stride_pdfs_2, _stride_pdfs_3, grid_size, omega_shear, v_s);
+    auto & omega_shear = this->omega_shear_;
+    auto & rho = this->rho_;
+    auto & v_s = this->v_s_;
+    auto & omega_odd = this->omega_odd_;
+    auto & grid_size = this->grid_size_;
+    auto & omega_bulk = this->omega_bulk_;
+    auto & omega_even = this->omega_even_;
+    WALBERLA_ASSERT_GREATER_EQUAL(0, -int_c(force->nrOfGhostLayers()))
+    double * RESTRICT const _data_force = force->dataAt(0, 0, 0, 0);
+    WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) force->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(0, -int_c(pdfs->nrOfGhostLayers()))
+    double * RESTRICT  _data_pdfs = pdfs->dataAt(0, 0, 0, 0);
+    WALBERLA_ASSERT_EQUAL(pdfs->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) pdfs->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(force->xSizeWithGhostLayer(), int64_t(int64_c(force->xSize()) + 0))
+    const int64_t _size_force_0 = int64_t(int64_c(force->xSize()) + 0);
+    WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) force->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(force->ySizeWithGhostLayer(), int64_t(int64_c(force->ySize()) + 0))
+    const int64_t _size_force_1 = int64_t(int64_c(force->ySize()) + 0);
+    WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) force->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(force->zSizeWithGhostLayer(), int64_t(int64_c(force->zSize()) + 0))
+    const int64_t _size_force_2 = int64_t(int64_c(force->zSize()) + 0);
+    WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) force->dataAt(0, 0, 0, 0) %32, 0)
+    const int64_t _stride_force_1 = int64_t(force->yStride());
+    const int64_t _stride_force_2 = int64_t(force->zStride());
+    const int64_t _stride_force_3 = int64_t(1 * int64_t(force->fStride()));
+    const int64_t _stride_pdfs_1 = int64_t(pdfs->yStride());
+    const int64_t _stride_pdfs_2 = int64_t(pdfs->zStride());
+    const int64_t _stride_pdfs_3 = int64_t(1 * int64_t(pdfs->fStride()));
+    internal_f11a519921c681cbc9d0b2f51454c920::collidesweepdoubleprecisionleesedwardsavx_collidesweepdoubleprecisionleesedwardsavx(_data_force, _data_pdfs, _size_force_0, _size_force_1, _size_force_2, _stride_force_1, _stride_force_2, _stride_force_3, _stride_pdfs_1, _stride_pdfs_2, _stride_pdfs_3, grid_size, omega_bulk, omega_even, omega_odd, omega_shear, rho, v_s);
+    
 }
+
+
+void CollideSweepDoublePrecisionLeesEdwardsAVX::runOnCellInterval(const shared_ptr<StructuredBlockStorage> & blocks, const CellInterval & globalCellInterval, cell_idx_t ghostLayers, IBlock * block)
+{
+   
+    CellInterval ci = globalCellInterval;
+    CellInterval blockBB = blocks->getBlockCellBB( *block);
+    blockBB.expand( ghostLayers );
+    ci.intersect( blockBB );
+    blocks->transformGlobalToBlockLocalCellInterval( ci, *block );
+    if( ci.empty() )
+        return;
+
+    auto force = block->getData< field::GhostLayerField<double, 3> >(forceID);
+    auto pdfs = block->getData< field::GhostLayerField<double, 19> >(pdfsID);
+
+    auto & omega_shear = this->omega_shear_;
+    auto & rho = this->rho_;
+    auto & v_s = this->v_s_;
+    auto & omega_odd = this->omega_odd_;
+    auto & grid_size = this->grid_size_;
+    auto & omega_bulk = this->omega_bulk_;
+    auto & omega_even = this->omega_even_;
+    WALBERLA_ASSERT_GREATER_EQUAL(ci.xMin(), -int_c(force->nrOfGhostLayers()))
+    WALBERLA_ASSERT_GREATER_EQUAL(ci.yMin(), -int_c(force->nrOfGhostLayers()))
+    WALBERLA_ASSERT_GREATER_EQUAL(ci.zMin(), -int_c(force->nrOfGhostLayers()))
+    double * RESTRICT const _data_force = force->dataAt(ci.xMin(), ci.yMin(), ci.zMin(), 0);
+    WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) force->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(ci.xMin(), -int_c(pdfs->nrOfGhostLayers()))
+    WALBERLA_ASSERT_GREATER_EQUAL(ci.yMin(), -int_c(pdfs->nrOfGhostLayers()))
+    WALBERLA_ASSERT_GREATER_EQUAL(ci.zMin(), -int_c(pdfs->nrOfGhostLayers()))
+    double * RESTRICT  _data_pdfs = pdfs->dataAt(ci.xMin(), ci.yMin(), ci.zMin(), 0);
+    WALBERLA_ASSERT_EQUAL(pdfs->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) pdfs->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(force->xSizeWithGhostLayer(), int64_t(int64_c(ci.xSize()) + 0))
+    const int64_t _size_force_0 = int64_t(int64_c(ci.xSize()) + 0);
+    WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) force->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(force->ySizeWithGhostLayer(), int64_t(int64_c(ci.ySize()) + 0))
+    const int64_t _size_force_1 = int64_t(int64_c(ci.ySize()) + 0);
+    WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) force->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(force->zSizeWithGhostLayer(), int64_t(int64_c(ci.zSize()) + 0))
+    const int64_t _size_force_2 = int64_t(int64_c(ci.zSize()) + 0);
+    WALBERLA_ASSERT_EQUAL(force->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) force->dataAt(0, 0, 0, 0) %32, 0)
+    const int64_t _stride_force_1 = int64_t(force->yStride());
+    const int64_t _stride_force_2 = int64_t(force->zStride());
+    const int64_t _stride_force_3 = int64_t(1 * int64_t(force->fStride()));
+    const int64_t _stride_pdfs_1 = int64_t(pdfs->yStride());
+    const int64_t _stride_pdfs_2 = int64_t(pdfs->zStride());
+    const int64_t _stride_pdfs_3 = int64_t(1 * int64_t(pdfs->fStride()));
+    internal_f11a519921c681cbc9d0b2f51454c920::collidesweepdoubleprecisionleesedwardsavx_collidesweepdoubleprecisionleesedwardsavx(_data_force, _data_pdfs, _size_force_0, _size_force_1, _size_force_2, _stride_force_1, _stride_force_2, _stride_force_3, _stride_pdfs_1, _stride_pdfs_2, _stride_pdfs_3, grid_size, omega_bulk, omega_even, omega_odd, omega_shear, rho, v_s);
+    
+}
+
+
 
 } // namespace pystencils
 } // namespace walberla
 
-#if (defined WALBERLA_CXX_COMPILER_IS_GNU) || (defined WALBERLA_CXX_COMPILER_IS_CLANG)
-#pragma GCC diagnostic pop
+
+#if ( defined WALBERLA_CXX_COMPILER_IS_GNU ) || ( defined WALBERLA_CXX_COMPILER_IS_CLANG )
+#   pragma GCC diagnostic pop
 #endif
 
-#if (defined WALBERLA_CXX_COMPILER_IS_INTEL)
+#if ( defined WALBERLA_CXX_COMPILER_IS_INTEL )
 #pragma warning pop
 #endif
