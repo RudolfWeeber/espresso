@@ -783,48 +783,54 @@ public:
       throw std::runtime_error("Lees-Edwards LB doesn't support GPU yet");
     }
 #endif
-    auto const shear_direction = lees_edwards_pack->shear_direction;
-    auto const shear_plane_normal = lees_edwards_pack->shear_plane_normal;
-    auto const shear_vel = FloatType_c(lees_edwards_pack->get_shear_velocity());
-    auto const omega = shear_mode_relaxation_rate();
-    if (shear_plane_normal != 1u) {
-      throw std::domain_error(
-          "Lees-Edwards LB only supports shear_plane_normal=\"y\"");
+    if constexpr (Architecture != lbmpy::Arch::GPU) {
+      auto const shear_direction = lees_edwards_pack->shear_direction;
+      auto const shear_plane_normal = lees_edwards_pack->shear_plane_normal;
+      auto const shear_vel =
+          FloatType_c(lees_edwards_pack->get_shear_velocity());
+      auto const omega = shear_mode_relaxation_rate();
+      auto const omega_odd = odd_mode_relaxation_rate(omega);
+      if (shear_plane_normal != 1u) {
+        throw std::domain_error(
+            "Lees-Edwards LB only supports shear_plane_normal=\"y\"");
+      }
+      auto const &lattice = get_lattice();
+      auto const n_ghost_layers = lattice.get_ghost_layers();
+      auto const blocks = lattice.get_blocks();
+      if (lattice.get_node_grid()[shear_direction] != 1 or
+          lattice.get_node_grid()[shear_plane_normal] != 1 or
+          blocks->getSize(shear_direction) != 1ul or
+          blocks->getSize(shear_plane_normal) != 1ul) {
+        throw std::domain_error("LB LEbc doesn't support domain decomposition "
+                                "along the shear and normal directions.");
+      }
+      auto const agrid =
+          FloatType_c(lattice.get_grid_dimensions()[shear_plane_normal]);
+      auto obj = CollisionModelLeesEdwards(
+          m_last_applied_force_field_id, m_pdf_field_id, agrid, omega, omega,
+          omega_odd, omega, get_density(), shear_vel);
+      m_collision_model = std::make_shared<CollisionModel>(std::move(obj));
+      m_lees_edwards_callbacks = std::move(lees_edwards_pack);
+      m_run_collide_sweep =
+          CollideSweepVisitor(blocks, m_lees_edwards_callbacks);
+      m_lees_edwards_pdf_interpol_sweep =
+          std::make_shared<InterpolateAndShiftAtBoundary<_PdfField, FloatType>>(
+              blocks, m_pdf_field_id, m_pdf_tmp_field_id, n_ghost_layers,
+              shear_direction, shear_plane_normal,
+              m_lees_edwards_callbacks->get_pos_offset);
+      m_lees_edwards_vel_interpol_sweep = std::make_shared<
+          InterpolateAndShiftAtBoundary<_VectorField, FloatType>>(
+          blocks, m_velocity_field_id, m_vel_tmp_field_id, n_ghost_layers,
+          shear_direction, shear_plane_normal,
+          m_lees_edwards_callbacks->get_pos_offset,
+          m_lees_edwards_callbacks->get_shear_velocity);
+      m_lees_edwards_last_applied_force_interpol_sweep = std::make_shared<
+          InterpolateAndShiftAtBoundary<_VectorField, FloatType>>(
+          blocks, m_last_applied_force_field_id, m_vel_tmp_field_id,
+          n_ghost_layers, shear_direction, shear_plane_normal,
+          m_lees_edwards_callbacks->get_pos_offset);
+      setup_streaming_communicator();
     }
-    auto const &lattice = get_lattice();
-    auto const n_ghost_layers = lattice.get_ghost_layers();
-    auto const blocks = lattice.get_blocks();
-    if (lattice.get_node_grid()[shear_direction] != 1 or
-        lattice.get_node_grid()[shear_plane_normal] != 1 or
-        blocks->getSize(shear_direction) != 1ul or
-        blocks->getSize(shear_plane_normal) != 1ul) {
-      throw std::domain_error("LB LEbc doesn't support domain decomposition "
-                              "along the shear and normal directions.");
-    }
-    auto const agrid =
-        FloatType_c(lattice.get_grid_dimensions()[shear_plane_normal]);
-    auto obj = CollisionModelLeesEdwards(
-        m_last_applied_force_field_id, m_pdf_field_id, agrid, omega, shear_vel);
-    m_collision_model = std::make_shared<CollisionModel>(std::move(obj));
-    m_lees_edwards_callbacks = std::move(lees_edwards_pack);
-    m_run_collide_sweep = CollideSweepVisitor(blocks, m_lees_edwards_callbacks);
-    m_lees_edwards_pdf_interpol_sweep =
-        std::make_shared<InterpolateAndShiftAtBoundary<_PdfField, FloatType>>(
-            blocks, m_pdf_field_id, m_pdf_tmp_field_id, n_ghost_layers,
-            shear_direction, shear_plane_normal,
-            m_lees_edwards_callbacks->get_pos_offset);
-    m_lees_edwards_vel_interpol_sweep = std::make_shared<
-        InterpolateAndShiftAtBoundary<_VectorField, FloatType>>(
-        blocks, m_velocity_field_id, m_vel_tmp_field_id, n_ghost_layers,
-        shear_direction, shear_plane_normal,
-        m_lees_edwards_callbacks->get_pos_offset,
-        m_lees_edwards_callbacks->get_shear_velocity);
-    m_lees_edwards_last_applied_force_interpol_sweep = std::make_shared<
-        InterpolateAndShiftAtBoundary<_VectorField, FloatType>>(
-        blocks, m_last_applied_force_field_id, m_vel_tmp_field_id,
-        n_ghost_layers, shear_direction, shear_plane_normal,
-        m_lees_edwards_callbacks->get_pos_offset);
-    setup_streaming_communicator();
   }
 
   void check_lebc(unsigned int shear_direction,
