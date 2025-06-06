@@ -34,15 +34,19 @@
 
 #ifdef __AVX2__
 #include "generated_kernels/CollideSweepDoublePrecisionLeesEdwardsAVX.h"
+#include "generated_kernels/CollideSweepDoublePrecisionLeesEdwardsThermalizedAVX.h"
 #include "generated_kernels/CollideSweepDoublePrecisionThermalizedAVX.h"
 #include "generated_kernels/CollideSweepSinglePrecisionLeesEdwardsAVX.h"
+#include "generated_kernels/CollideSweepSinglePrecisionLeesEdwardsThermalizedAVX.h"
 #include "generated_kernels/CollideSweepSinglePrecisionThermalizedAVX.h"
 #include "generated_kernels/StreamSweepDoublePrecisionAVX.h"
 #include "generated_kernels/StreamSweepSinglePrecisionAVX.h"
 #else
 #include "generated_kernels/CollideSweepDoublePrecisionLeesEdwards.h"
+#include "generated_kernels/CollideSweepDoublePrecisionLeesEdwardsThermalized.h"
 #include "generated_kernels/CollideSweepDoublePrecisionThermalized.h"
 #include "generated_kernels/CollideSweepSinglePrecisionLeesEdwards.h"
+#include "generated_kernels/CollideSweepSinglePrecisionLeesEdwardsThermalized.h"
 #include "generated_kernels/CollideSweepSinglePrecisionThermalized.h"
 #include "generated_kernels/StreamSweepDoublePrecision.h"
 #include "generated_kernels/StreamSweepSinglePrecision.h"
@@ -57,12 +61,16 @@ template <typename FT = double, Arch AT = Arch::CPU> struct KernelTrait {
 #ifdef __AVX2__
   using CollisionModelThermalized =
       pystencils::CollideSweepDoublePrecisionThermalizedAVX;
+  using CollisionModelLeesEdwardsThermalized =
+      pystencils::CollideSweepDoublePrecisionLeesEdwardsThermalizedAVX;
   using CollisionModelLeesEdwards =
       pystencils::CollideSweepDoublePrecisionLeesEdwardsAVX;
   using StreamSweep = pystencils::StreamSweepDoublePrecisionAVX;
 #else
   using CollisionModelThermalized =
       pystencils::CollideSweepDoublePrecisionThermalized;
+  using CollisionModelLeesEdwardsThermalized =
+      pystencils::CollideSweepDoublePrecisionLeesEdwardsThermalized;
   using CollisionModelLeesEdwards =
       pystencils::CollideSweepDoublePrecisionLeesEdwards;
   using StreamSweep = pystencils::StreamSweepDoublePrecision;
@@ -76,12 +84,16 @@ template <> struct KernelTrait<float, Arch::CPU> {
 #ifdef __AVX2__
   using CollisionModelThermalized =
       pystencils::CollideSweepSinglePrecisionThermalizedAVX;
+  using CollisionModelLeesEdwardsThermalized =
+      pystencils::CollideSweepSinglePrecisionLeesEdwardsThermalizedAVX;
   using CollisionModelLeesEdwards =
       pystencils::CollideSweepSinglePrecisionLeesEdwardsAVX;
   using StreamSweep = pystencils::StreamSweepSinglePrecisionAVX;
 #else
   using CollisionModelThermalized =
       pystencils::CollideSweepSinglePrecisionThermalized;
+  using CollisionModelLeesEdwardsThermalized =
+      pystencils::CollideSweepSinglePrecisionLeesEdwardsThermalized;
   using CollisionModelLeesEdwards =
       pystencils::CollideSweepSinglePrecisionLeesEdwards;
   using StreamSweep = pystencils::StreamSweepSinglePrecision;
