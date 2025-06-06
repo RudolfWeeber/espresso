@@ -19,7 +19,7 @@
 
 // kernel generated with pystencils v1.3.7, lbmpy v1.3.7, sympy v1.12.1,
 // lbmpy_walberla/pystencils_walberla from waLBerla commit
-// f36fa0a68bae59f0b516f6587ea8fa7c24a41141
+// 59c9b8b185782eba184e0fdfb2144793343213f0
 
 #pragma once
 #include "core/DataTypes.h"
@@ -58,10 +58,13 @@ class CollideSweepSinglePrecisionLeesEdwardsCUDA {
 public:
   CollideSweepSinglePrecisionLeesEdwardsCUDA(BlockDataID forceID_,
                                              BlockDataID pdfsID_,
-                                             float grid_size, float omega_shear,
+                                             float grid_size, float omega_bulk,
+                                             float omega_even, float omega_odd,
+                                             float omega_shear, float rho,
                                              float v_s)
       : forceID(forceID_), pdfsID(pdfsID_), grid_size_(grid_size),
-        omega_shear_(omega_shear), v_s_(v_s) {}
+        omega_bulk_(omega_bulk), omega_even_(omega_even), omega_odd_(omega_odd),
+        omega_shear_(omega_shear), rho_(rho), v_s_(v_s) {}
 
   void run(IBlock *block, gpuStream_t stream = nullptr);
 
@@ -109,17 +112,29 @@ public:
                  IBlock * /*block*/) {}
 
   inline float getGrid_size() const { return grid_size_; }
+  inline float getOmega_bulk() const { return omega_bulk_; }
+  inline float getOmega_even() const { return omega_even_; }
+  inline float getOmega_odd() const { return omega_odd_; }
   inline float getOmega_shear() const { return omega_shear_; }
+  inline float getRho() const { return rho_; }
   inline float getV_s() const { return v_s_; }
   inline void setGrid_size(const float value) { grid_size_ = value; }
+  inline void setOmega_bulk(const float value) { omega_bulk_ = value; }
+  inline void setOmega_even(const float value) { omega_even_ = value; }
+  inline void setOmega_odd(const float value) { omega_odd_ = value; }
   inline void setOmega_shear(const float value) { omega_shear_ = value; }
+  inline void setRho(const float value) { rho_ = value; }
   inline void setV_s(const float value) { v_s_ = value; }
 
 private:
   BlockDataID forceID;
   BlockDataID pdfsID;
   float grid_size_;
+  float omega_bulk_;
+  float omega_even_;
+  float omega_odd_;
   float omega_shear_;
+  float rho_;
   float v_s_;
 };
 

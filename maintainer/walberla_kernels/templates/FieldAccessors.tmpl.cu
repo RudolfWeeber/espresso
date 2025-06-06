@@ -912,7 +912,7 @@ namespace MomentumDensity
             {% for i in range(1, Q) -%}
                 {{dtype}} const f_{{i}} = pdf.get({{i}}u);
             {% endfor -%}
-            {{momentum_density_getter | substitute_force_getter_cu | remove_rho_intermediate | indent(8) }}
+            {{momentum_density_getter | substitute_force_getter_cu | remove_intermediate_variable("rho") | indent(8) }}
             {% for i in range(D) -%}
                 out[{{i}}u] = md_{{i}};
             {% endfor %}

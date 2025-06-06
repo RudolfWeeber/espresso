@@ -13,7 +13,7 @@
 //  You should have received a copy of the GNU General Public License along
 //  with waLBerla (see COPYING.txt). If not, see <http://www.gnu.org/licenses/>.
 //
-//! \\file CollideSweepDoublePrecisionLeesEdwardsCUDA.h
+//! \\file CollideSweepSinglePrecisionLeesEdwardsThermalizedCUDA.h
 //! \\author pystencils
 //======================================================================================================================
 
@@ -54,15 +54,19 @@
 namespace walberla {
 namespace pystencils {
 
-class CollideSweepDoublePrecisionLeesEdwardsCUDA {
+class CollideSweepSinglePrecisionLeesEdwardsThermalizedCUDA {
 public:
-  CollideSweepDoublePrecisionLeesEdwardsCUDA(
-      BlockDataID forceID_, BlockDataID pdfsID_, double grid_size,
-      double omega_bulk, double omega_even, double omega_odd,
-      double omega_shear, double rho, double v_s)
-      : forceID(forceID_), pdfsID(pdfsID_), grid_size_(grid_size),
-        omega_bulk_(omega_bulk), omega_even_(omega_even), omega_odd_(omega_odd),
-        omega_shear_(omega_shear), rho_(rho), v_s_(v_s) {}
+  CollideSweepSinglePrecisionLeesEdwardsThermalizedCUDA(
+      BlockDataID forceID_, BlockDataID pdfsID_, uint32_t block_offset_0,
+      uint32_t block_offset_1, uint32_t block_offset_2, float grid_size,
+      float kT, float omega_bulk, float omega_even, float omega_odd,
+      float omega_shear, uint32_t seed, uint32_t time_step, float v_s)
+      : forceID(forceID_), pdfsID(pdfsID_), block_offset_0_(block_offset_0),
+        block_offset_1_(block_offset_1), block_offset_2_(block_offset_2),
+        grid_size_(grid_size), kT_(kT), omega_bulk_(omega_bulk),
+        omega_even_(omega_even), omega_odd_(omega_odd),
+        omega_shear_(omega_shear), seed_(seed), time_step_(time_step),
+        v_s_(v_s) {}
 
   void run(IBlock *block, gpuStream_t stream = nullptr);
 
@@ -76,12 +80,14 @@ public:
   }
 
   static std::function<void(IBlock *)> getSweep(
-      const shared_ptr<CollideSweepDoublePrecisionLeesEdwardsCUDA> &kernel) {
+      const shared_ptr<CollideSweepSinglePrecisionLeesEdwardsThermalizedCUDA>
+          &kernel) {
     return [kernel](IBlock *b) { kernel->run(b); };
   }
 
   static std::function<void(IBlock *, gpuStream_t)> getSweepOnCellInterval(
-      const shared_ptr<CollideSweepDoublePrecisionLeesEdwardsCUDA> &kernel,
+      const shared_ptr<CollideSweepSinglePrecisionLeesEdwardsThermalizedCUDA>
+          &kernel,
       const shared_ptr<StructuredBlockStorage> &blocks,
       const CellInterval &globalCellInterval, cell_idx_t ghostLayers = 1) {
     return [kernel, blocks, globalCellInterval,
@@ -109,31 +115,52 @@ public:
   void configure(const shared_ptr<StructuredBlockStorage> & /*blocks*/,
                  IBlock * /*block*/) {}
 
-  inline double getGrid_size() const { return grid_size_; }
-  inline double getOmega_bulk() const { return omega_bulk_; }
-  inline double getOmega_even() const { return omega_even_; }
-  inline double getOmega_odd() const { return omega_odd_; }
-  inline double getOmega_shear() const { return omega_shear_; }
-  inline double getRho() const { return rho_; }
-  inline double getV_s() const { return v_s_; }
-  inline void setGrid_size(const double value) { grid_size_ = value; }
-  inline void setOmega_bulk(const double value) { omega_bulk_ = value; }
-  inline void setOmega_even(const double value) { omega_even_ = value; }
-  inline void setOmega_odd(const double value) { omega_odd_ = value; }
-  inline void setOmega_shear(const double value) { omega_shear_ = value; }
-  inline void setRho(const double value) { rho_ = value; }
-  inline void setV_s(const double value) { v_s_ = value; }
+  inline uint32_t getBlock_offset_0() const { return block_offset_0_; }
+  inline uint32_t getBlock_offset_1() const { return block_offset_1_; }
+  inline uint32_t getBlock_offset_2() const { return block_offset_2_; }
+  inline float getGrid_size() const { return grid_size_; }
+  inline float getKt() const { return kT_; }
+  inline float getOmega_bulk() const { return omega_bulk_; }
+  inline float getOmega_even() const { return omega_even_; }
+  inline float getOmega_odd() const { return omega_odd_; }
+  inline float getOmega_shear() const { return omega_shear_; }
+  inline uint32_t getSeed() const { return seed_; }
+  inline uint32_t getTime_step() const { return time_step_; }
+  inline float getV_s() const { return v_s_; }
+  inline void setBlock_offset_0(const uint32_t value) {
+    block_offset_0_ = value;
+  }
+  inline void setBlock_offset_1(const uint32_t value) {
+    block_offset_1_ = value;
+  }
+  inline void setBlock_offset_2(const uint32_t value) {
+    block_offset_2_ = value;
+  }
+  inline void setGrid_size(const float value) { grid_size_ = value; }
+  inline void setKt(const float value) { kT_ = value; }
+  inline void setOmega_bulk(const float value) { omega_bulk_ = value; }
+  inline void setOmega_even(const float value) { omega_even_ = value; }
+  inline void setOmega_odd(const float value) { omega_odd_ = value; }
+  inline void setOmega_shear(const float value) { omega_shear_ = value; }
+  inline void setSeed(const uint32_t value) { seed_ = value; }
+  inline void setTime_step(const uint32_t value) { time_step_ = value; }
+  inline void setV_s(const float value) { v_s_ = value; }
 
 private:
   BlockDataID forceID;
   BlockDataID pdfsID;
-  double grid_size_;
-  double omega_bulk_;
-  double omega_even_;
-  double omega_odd_;
-  double omega_shear_;
-  double rho_;
-  double v_s_;
+  uint32_t block_offset_0_;
+  uint32_t block_offset_1_;
+  uint32_t block_offset_2_;
+  float grid_size_;
+  float kT_;
+  float omega_bulk_;
+  float omega_even_;
+  float omega_odd_;
+  float omega_shear_;
+  uint32_t seed_;
+  uint32_t time_step_;
+  float v_s_;
 };
 
 } // namespace pystencils

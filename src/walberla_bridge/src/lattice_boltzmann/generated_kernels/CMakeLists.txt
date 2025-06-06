@@ -26,19 +26,21 @@ foreach(precision DoublePrecision SinglePrecision)
     target_sources(
       espresso_walberla_codegen
       PRIVATE CollideSweep${precision}LeesEdwardsAVX.cpp
+              CollideSweep${precision}LeesEdwardsThermalizedAVX.cpp
               CollideSweep${precision}ThermalizedAVX.cpp
               StreamSweep${precision}AVX.cpp)
   else()
     target_sources(
       espresso_walberla_codegen
       PRIVATE CollideSweep${precision}LeesEdwards.cpp
-              CollideSweep${precision}Thermalized.cpp
+              CollideSweep${precision}LeesEdwardsThermalized.cpp
               StreamSweep${precision}.cpp)
   endif()
   if(WALBERLA_BUILD_WITH_CUDA)
     target_sources(
       espresso_walberla_codegen_cuda
       PRIVATE CollideSweep${precision}LeesEdwardsCUDA.cu
+      PRIVATE CollideSweep${precision}LeesEdwardsThermalizedCUDA.cu
               CollideSweep${precision}ThermalizedCUDA.cu
               FieldAccessors${precision}CUDA.cu StreamSweep${precision}CUDA.cu
               InitialPDFsSetter${precision}CUDA.cu
