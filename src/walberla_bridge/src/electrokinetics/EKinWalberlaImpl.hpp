@@ -407,10 +407,10 @@ private:
     }
   }
 
-  void kernel_friction_coupling(const std::size_t &force_id) {
+  void kernel_friction_coupling(const std::size_t &force_id, const double &lb_density) {
     auto kernel = FrictionCouplingKernel(
         BlockDataID(force_id), m_flux_field_flattened_id,
-        FloatType_c(get_diffusion()), FloatType_c(get_kT()));
+        FloatType_c(get_diffusion()), FloatType_c(get_kT()), FloatType(lb_density));
     for (auto &block : *m_lattice->get_blocks()) {
       kernel.run(&block);
     }
@@ -458,7 +458,7 @@ protected:
 
 public:
   void integrate(std::size_t potential_id, std::size_t velocity_id,
-                 std::size_t force_id) override {
+                 std::size_t force_id, double lb_density) override {
 
     updated_boundary_fields();
 
@@ -486,7 +486,7 @@ public:
                                  std::to_string(force_id) +
                                  ". Hint: LB may be inactive.");
       }
-      kernel_friction_coupling(force_id);
+      kernel_friction_coupling(force_id, lb_density);
     }
 
     if (get_advection()) {
