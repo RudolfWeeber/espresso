@@ -223,10 +223,10 @@ void System::System::calculate_forces() {
                       &box_geo = *box_geo](Particle &p1, Particle &p2,
                                            Distance const &d) {
     auto const &ia_params = nonbonded_ias.get_ia_param(p1.type(), p2.type());
-    add_non_bonded_pair_force(p1, p2, d.vec21, sqrt(d.dist2), d.dist2, p1.q()*p2.q(),
-                              ia_params, thermostat, box_geo, bonded_ias,
-                              coulomb_kernel_ptr, dipoles_kernel_ptr,
-                              elc_kernel_ptr, coulomb_u_kernel_ptr);
+    add_non_bonded_pair_force(
+        p1, p2, d.vec21, sqrt(d.dist2), d.dist2, p1.q() * p2.q(), ia_params,
+        thermostat, box_geo, bonded_ias, coulomb_kernel_ptr, dipoles_kernel_ptr,
+        elc_kernel_ptr, coulomb_u_kernel_ptr);
 #ifdef COLLISION_DETECTION
     if (not collision_detection.is_off()) {
       collision_detection.detect_collision(p1, p2, d.dist2);

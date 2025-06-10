@@ -66,12 +66,12 @@ public:
         neighbors.extent(0), new_max_neigh);
 
     // Copy existing data to the new view
-    Kokkos::parallel_for(
-        "copy_neighbors", neighbors.extent(0), [=, this](const int i) {
-          for (std::size_t j = 0; j < counts(i); ++j) {
-            new_neighbors(i, j) = neighbors(i, j);
-          }
-        });
+    Kokkos::parallel_for("copy_neighbors", neighbors.extent(0),
+                         [=, this](const int i) {
+                           for (std::size_t j = 0; j < counts(i); ++j) {
+                             new_neighbors(i, j) = neighbors(i, j);
+                           }
+                         });
 
     // Replace the old view with the new view
     neighbors = new_neighbors;

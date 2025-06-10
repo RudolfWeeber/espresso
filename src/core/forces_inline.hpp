@@ -72,10 +72,10 @@
 
 #include <boost/variant.hpp>
 
+#include <iostream>
 #include <optional>
 #include <span>
 #include <tuple>
-#include <iostream>
 
 inline ParticleForce calc_central_radial_force(IA_parameters const &ia_params,
                                                Utils::Vector3d const &d,
@@ -174,11 +174,12 @@ inline ParticleForce calc_opposing_force(ParticleForce const &pf,
 /**
  * For the interaction which need NO particle information
  */
-inline void add_non_bonded_pair_withot_p(ParticleForce &pf, Utils::Vector3d const &d, double dist,
-    double q1q2, IA_parameters const &ia_params, [[maybe_unused]] bool do_nonbonded,
+inline void add_non_bonded_pair_withot_p(
+    ParticleForce &pf, Utils::Vector3d const &d, double dist, double q1q2,
+    IA_parameters const &ia_params, [[maybe_unused]] bool do_nonbonded,
     Coulomb::ShortRangeForceKernel::kernel_type const *coulomb_kernel) {
 
-  //ParticleForce pf{};
+  // ParticleForce pf{};
 
   /***********************************************/
   /* non-bonded pair potentials                  */
@@ -200,21 +201,21 @@ inline void add_non_bonded_pair_withot_p(ParticleForce &pf, Utils::Vector3d cons
 
 #ifdef ELECTROSTATICS
   // real-space electrostatic charge-charge interaction
-  //auto const q1q2 = p1.q() * p2.q();
+  // auto const q1q2 = p1.q() * p2.q();
   if (q1q2 != 0. and coulomb_kernel != nullptr) {
     pf.f += (*coulomb_kernel)(q1q2, d, dist);
   }
 #endif // ELECTROSTATICS
-  //return pf;
+  // return pf;
 }
-
 
 /**
  * For the interaction which need particle information
  */
 inline void add_non_bonded_pair_force_with_p(
-    Particle &p1, Particle &p2, ParticleForce &pf, Utils::Vector3d &virial, Utils::Vector3d const &d, double dist,
-    double dist2, double q1q2, IA_parameters const &ia_params, [[maybe_unused]] bool do_nonbonded,
+    Particle &p1, Particle &p2, ParticleForce &pf, Utils::Vector3d &virial,
+    Utils::Vector3d const &d, double dist, double dist2, double q1q2,
+    IA_parameters const &ia_params, [[maybe_unused]] bool do_nonbonded,
     Thermostat::Thermostat const &thermostat, BoxGeometry const &box_geo,
     [[maybe_unused]] BondedInteractionsMap const &bonded_ias,
     Coulomb::ShortRangeForceKernel::kernel_type const *coulomb_kernel,
@@ -222,8 +223,8 @@ inline void add_non_bonded_pair_force_with_p(
     Coulomb::ShortRangeForceCorrectionsKernel::kernel_type const *elc_kernel,
     Coulomb::ShortRangeEnergyKernel::kernel_type const *coulomb_u_kernel) {
 
-  //ParticleForce pf{};
-  //Utils::Vector3d virial{};
+  // ParticleForce pf{};
+  // Utils::Vector3d virial{};
 
   /***********************************************/
   /* non-bonded pair potentials                  */
@@ -233,7 +234,7 @@ inline void add_non_bonded_pair_force_with_p(
 #ifdef EXCLUSIONS
     if (do_nonbonded) {
 #endif
-      //pf += calc_central_radial_force(ia_params, d, dist);
+      // pf += calc_central_radial_force(ia_params, d, dist);
 #ifdef THOLE
       pf.f += thole_pair_force(p1, p2, ia_params, d, dist, bonded_ias,
                                coulomb_kernel);
@@ -263,17 +264,17 @@ inline void add_non_bonded_pair_force_with_p(
 
 #ifdef ELECTROSTATICS
   // real-space electrostatic charge-charge interaction
-  //auto const q1q2 = p1.q() * p2.q();
+  // auto const q1q2 = p1.q() * p2.q();
   if (q1q2 != 0. and coulomb_kernel != nullptr) {
-    //pf.f += (*coulomb_kernel)(q1q2, d, dist);
+    // pf.f += (*coulomb_kernel)(q1q2, d, dist);
 #ifdef NPT
 #ifdef SHARED_MEMORY_PARALLELISM
     virial[0] += (*coulomb_u_kernel)(p1, p2, q1q2, d, dist);
 #else
     npt_add_virial_diagonalSum_contribution(
         (*coulomb_u_kernel)(p1, p2, q1q2, d, dist));
-#endif //SHARED_MEMORY_PARALLELISM
-#endif //NPT
+#endif // SHARED_MEMORY_PARALLELISM
+#endif // NPT
 #ifdef P3M
     if (elc_kernel)
       (*elc_kernel)(p1, p2, q1q2);
@@ -304,7 +305,7 @@ inline void add_non_bonded_pair_force_with_p(
     pf += (*dipoles_kernel)(p1, p2, d, dist, dist2);
   }
 #endif
-  //return std::pair{pf, virial};
+  // return std::pair{pf, virial};
 }
 
 #ifdef SHARED_MEMORY_PARALLELISM
@@ -348,12 +349,15 @@ inline ReturnType add_non_bonded_pair_force(
   bool do_nonbonded_flag = true;
 #endif
 
-  add_non_bonded_pair_withot_p(pf, d, dist, q1q2, ia_params, do_nonbonded_flag, coulomb_kernel);
+  add_non_bonded_pair_withot_p(pf, d, dist, q1q2, ia_params, do_nonbonded_flag,
+                               coulomb_kernel);
 
-#if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or defined(DPD) or defined(DIPOLES)
-  add_non_bonded_pair_force_with_p( p1, p2, pf, virial, d, dist,
-    dist2, q1q2, ia_params, do_nonbonded_flag, thermostat, box_geo,
-    bonded_ias, coulomb_kernel, dipoles_kernel, elc_kernel, coulomb_u_kernel);
+#if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
+    defined(DPD) or defined(DIPOLES)
+  add_non_bonded_pair_force_with_p(
+      p1, p2, pf, virial, d, dist, dist2, q1q2, ia_params, do_nonbonded_flag,
+      thermostat, box_geo, bonded_ias, coulomb_kernel, dipoles_kernel,
+      elc_kernel, coulomb_u_kernel);
 #endif
 
   /***********************************************/

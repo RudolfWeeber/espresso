@@ -72,8 +72,8 @@ CellStructure::~CellStructure() { m_cabana_data.reset(); }
 
 void CellStructure::set_cabana_data(std::unique_ptr<CabanaData> data) {
   m_cabana_data = std::move(data);
-  //m_rebuild_verlet_list = false;
-  //m_rebuild_cabana_verlet_list = false;
+  // m_rebuild_verlet_list = false;
+  // m_rebuild_cabana_verlet_list = false;
 }
 
 CabanaData &CellStructure::get_cabana_data() { return *m_cabana_data; }
