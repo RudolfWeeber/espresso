@@ -538,17 +538,15 @@ if(ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM)
     FetchContent_Declare(
       kokkos
       GIT_REPOSITORY https://github.com/kokkos/kokkos.git
-      GIT_TAG        aba6e3caf2b8814fe6764a5d27b7b181253df14f # version 4.5.1
-      #GIT_TAG        18b830e # version 4.6.1 with patches
+      GIT_TAG        18b830e # version 4.6.1 with patches
       OVERRIDE_FIND_PACKAGE
     )
     # cmake-format: on
     set(BUILD_SHARED_LIBS ON)
     set(CMAKE_SHARED_LIBRARY_PREFIX "lib")
-    #set(Kokkos_ENABLE_SERIAL ON)
-    #set(Kokkos_ENABLE_OPENMP ON)
     set(Kokkos_ENABLE_SERIAL ON CACHE BOOL "")
     set(Kokkos_ENABLE_OPENMP ON CACHE BOOL "")
+    set(Kokkos_ENABLE_IMPL_VIEW_LEGACY ON CACHE BOOL "")
     FetchContent_MakeAvailable(kokkos)
     set(BUILD_SHARED_LIBS ${ESPRESSO_BUILD_SHARED_LIBS_DEFAULT})
     set(CMAKE_SHARED_LIBRARY_PREFIX "${ESPRESSO_SHARED_LIBRARY_PREFIX}")
@@ -573,8 +571,8 @@ if(ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM)
     FetchContent_Declare(
       cabana
       GIT_REPOSITORY https://github.com/ECP-copa/Cabana.git
-      GIT_TAG        ebfaa51 # 0.7.0 with patches
-      #GIT_TAG        e76c1a15e1d68ce203d686bb68b0dfe41b2e1ad1 # latest
+      #GIT_TAG        ebfaa51 # 0.7.0 with patches
+      GIT_TAG        e76c1a15e1d68ce203d686bb68b0dfe41b2e1ad1 # latest
       PATCH_COMMAND  patch -p0 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cabana.patch
     )
     # cmake-format: on

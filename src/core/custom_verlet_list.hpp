@@ -67,7 +67,7 @@ public:
 
     // Copy existing data to the new view
     Kokkos::parallel_for(
-        "copy_neighbors", neighbors.extent(0), KOKKOS_LAMBDA(const int i) {
+        "copy_neighbors", neighbors.extent(0), [=, this](const int i) {
           for (std::size_t j = 0; j < counts(i); ++j) {
             new_neighbors(i, j) = neighbors(i, j);
           }
@@ -101,10 +101,11 @@ public:
   //! Get the total number of neighbors across all particles.
   KOKKOS_INLINE_FUNCTION
   static std::size_t totalNeighbor(const list_type &list) {
-    std::size_t num_p = list._data.counts.size();
+    std::size_t total_n = 0;
+    std::size_t num_p = list.counts.size();
     for (std::size_t i = 0; i < num_p; ++i)
-      num_p += list.counts(i);
-    return num_p;
+      total_n += list.counts(i);
+    return total_n;
   }
 
   //! Get the maximum number of neighbors per particle.

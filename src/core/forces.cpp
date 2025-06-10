@@ -191,28 +191,6 @@ void System::System::calculate_forces() {
     return add_bonded_force(p1, bond_id, partners, bonded_ias, bond_breakage,
                             box_geo, coulomb_kernel_ptr);
   };
-  auto pair_kernel = [coulomb_kernel_ptr = get_ptr(coulomb_kernel),
-                      dipoles_kernel_ptr = get_ptr(dipoles_kernel),
-                      elc_kernel_ptr = get_ptr(elc_kernel),
-                      coulomb_u_kernel_ptr = get_ptr(coulomb_u_kernel),
-                      &nonbonded_ias = *nonbonded_ias,
-                      &thermostat = *thermostat, &bonded_ias = *bonded_ias,
-#ifdef COLLISION_DETECTION
-                      &collision_detection = *collision_detection,
-#endif
-                      &box_geo = *box_geo](Particle &p1, Particle &p2,
-                                           Distance const &d) {
-    auto const &ia_params = nonbonded_ias.get_ia_param(p1.type(), p2.type());
-    add_non_bonded_pair_force(p1, p2, d.vec21, sqrt(d.dist2), d.dist2,
-                              ia_params, thermostat, box_geo, bonded_ias,
-                              coulomb_kernel_ptr, dipoles_kernel_ptr,
-                              elc_kernel_ptr, coulomb_u_kernel_ptr);
-#ifdef COLLISION_DETECTION
-    if (not collision_detection.is_off()) {
-      collision_detection.detect_collision(p1, p2, d.dist2);
-    }
-#endif
-  };
 
 #ifdef SHARED_MEMORY_PARALLELISM
   auto coulomb_kernel_ptr = get_ptr(coulomb_kernel);
@@ -232,6 +210,30 @@ void System::System::calculate_forces() {
                         get_interaction_range(), coulomb_cutoff, dipole_cutoff,
                         collision_detection_cutoff});
 #else
+
+  auto pair_kernel = [coulomb_kernel_ptr = get_ptr(coulomb_kernel),
+                      dipoles_kernel_ptr = get_ptr(dipoles_kernel),
+                      elc_kernel_ptr = get_ptr(elc_kernel),
+                      coulomb_u_kernel_ptr = get_ptr(coulomb_u_kernel),
+                      &nonbonded_ias = *nonbonded_ias,
+                      &thermostat = *thermostat, &bonded_ias = *bonded_ias,
+#ifdef COLLISION_DETECTION
+                      &collision_detection = *collision_detection,
+#endif
+                      &box_geo = *box_geo](Particle &p1, Particle &p2,
+                                           Distance const &d) {
+    auto const &ia_params = nonbonded_ias.get_ia_param(p1.type(), p2.type());
+    add_non_bonded_pair_force(p1, p2, d.vec21, sqrt(d.dist2), d.dist2, p1.q()*p2.q(),
+                              ia_params, thermostat, box_geo, bonded_ias,
+                              coulomb_kernel_ptr, dipoles_kernel_ptr,
+                              elc_kernel_ptr, coulomb_u_kernel_ptr);
+#ifdef COLLISION_DETECTION
+    if (not collision_detection.is_off()) {
+      collision_detection.detect_collision(p1, p2, d.dist2);
+    }
+#endif
+  };
+
   short_range_loop(bond_kernel, pair_kernel, *cell_structure, maximal_cutoff(),
                    bonded_ias->maximal_cutoff(),
                    VerletCriterion<>{*this, cell_structure->get_verlet_skin(),
