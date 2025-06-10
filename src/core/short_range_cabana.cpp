@@ -513,6 +513,12 @@ void cabana_short_range(
         Utils::Vector3d virial{};
 
 #ifdef EXCLUSIONS
+        auto p1 = cell->get_local_particle(slice_id(i));
+        auto p2 = cell->get_local_particle(slice_id(j));
+
+        if (p1 == nullptr or p2 == nullptr)
+          return;
+
         bool do_nonbonded_flag = do_nonbonded(*p1, *p2);
 #else
         bool do_nonbonded_flag = true;
@@ -523,14 +529,15 @@ void cabana_short_range(
 
 #if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
     defined(DPD) or defined(DIPOLES)
+        auto const dist2 = dist * dist;
+
+#ifndef EXCLUSIONS
         auto p1 = cell->get_local_particle(slice_id(i));
         auto p2 = cell->get_local_particle(slice_id(j));
 
         if (p1 == nullptr or p2 == nullptr)
           return;
-
-        auto const dist2 = dist * dist;
-
+#endif
         add_non_bonded_pair_force_with_p(
             const_cast<Particle &>(*p1), const_cast<Particle &>(*p2), pf,
             virial, d, dist, dist2, q1q2, ia_params, do_nonbonded_flag,
