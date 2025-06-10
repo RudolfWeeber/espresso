@@ -113,8 +113,7 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
 inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
                 GhostLayerField<double, uint_t{3u}> *velocity_field,
                 GhostLayerField<double, uint_t{3u}> const *force_field,
-                std::array<double, 19u> const &pop, const double density,
-                Cell const &cell) {
+                std::array<double, 19u> const &pop, Cell const &cell) {
   auto &xyz0 = pdf_field->get(cell, uint_t{0u});
   const double f_0 = pdf_field->getF(&xyz0, uint_t{0u}) = pop[0u];
   const double f_1 = pdf_field->getF(&xyz0, uint_t{1u}) = pop[1u];
@@ -255,8 +254,7 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
 inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
                 GhostLayerField<double, uint_t{3u}> *velocity_field,
                 GhostLayerField<double, uint_t{3u}> const *force_field,
-                std::vector<double> const &values, const double density,
-                CellInterval const &ci) {
+                std::vector<double> const &values, CellInterval const &ci) {
   assert(uint_c(values.size()) == ci.numCells() * uint_t(19u));
   auto pop = values.data();
   for (auto x = ci.xMin(); x <= ci.xMax(); ++x) {
@@ -792,7 +790,7 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
 namespace Velocity {
 inline auto get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
                 GhostLayerField<double, uint_t{3u}> const *force_field,
-                const double density, Cell const &cell) {
+                Cell const &cell) {
   const double &xyz0 = pdf_field->get(cell, uint_t{0u});
   const double f_0 = pdf_field->getF(&xyz0, uint_t{0u});
   const double f_1 = pdf_field->getF(&xyz0, uint_t{1u});
@@ -839,7 +837,7 @@ inline auto get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
 
 inline auto get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
                 GhostLayerField<double, uint_t{3u}> const *force_field,
-                const double density, CellInterval const &ci) {
+                CellInterval const &ci) {
   std::vector<double> out;
   out.reserve(ci.numCells() * uint_t(3u));
   for (auto x = ci.xMin(); x <= ci.xMax(); ++x) {
@@ -895,8 +893,7 @@ inline auto get(GhostLayerField<double, uint_t{19u}> const *pdf_field,
 inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
                 GhostLayerField<double, uint_t{3u}> *velocity_field,
                 GhostLayerField<double, uint_t{3u}> const *force_field,
-                Vector3<double> const &u, const double density,
-                Cell const &cell) {
+                Vector3<double> const &u, Cell const &cell) {
   const double &xyz0 = pdf_field->get(cell, uint_t{0u});
   const double f_0 = pdf_field->getF(&xyz0, uint_t{0u});
   const double f_1 = pdf_field->getF(&xyz0, uint_t{1u});
@@ -943,8 +940,7 @@ inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
 inline void set(GhostLayerField<double, uint_t{19u}> *pdf_field,
                 GhostLayerField<double, uint_t{3u}> *velocity_field,
                 GhostLayerField<double, uint_t{3u}> const *force_field,
-                std::vector<double> const &values, const double density,
-                CellInterval const &ci) {
+                std::vector<double> const &values, CellInterval const &ci) {
   assert(uint_c(values.size()) == ci.numCells() * uint_t(3u));
   auto u = values.data();
   for (auto x = ci.xMin(); x <= ci.xMax(); ++x) {

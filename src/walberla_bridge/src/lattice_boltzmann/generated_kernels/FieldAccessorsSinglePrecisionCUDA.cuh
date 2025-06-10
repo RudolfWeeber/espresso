@@ -57,8 +57,7 @@ void set(gpu::GPUField<float> *pdf_field, std::array<float, 19u> const &pop,
 /** @brief Set populations and recalculate velocities on a single cell. */
 void set(gpu::GPUField<float> *pdf_field, gpu::GPUField<float> *velocity_field,
          gpu::GPUField<float> const *force_field,
-         std::array<float, 19u> const &pop, float const density,
-         Cell const &cell);
+         std::array<float, 19u> const &pop, Cell const &cell);
 /** @brief Initialize all cells with the same value. */
 void initialize(gpu::GPUField<float> *pdf_field,
                 std::array<float, 19u> const &pop);
@@ -71,8 +70,7 @@ void set(gpu::GPUField<float> *pdf_field, std::vector<float> const &values,
 /** @brief Set populations and recalculate velocities on a cell interval. */
 void set(gpu::GPUField<float> *pdf_field, gpu::GPUField<float> *velocity_field,
          gpu::GPUField<float> const *force_field,
-         std::vector<float> const &values, float const density,
-         CellInterval const &ci);
+         std::vector<float> const &values, CellInterval const &ci);
 } // namespace Population
 
 namespace Vector {
@@ -117,18 +115,16 @@ void set(gpu::GPUField<float> *pdf_field, std::vector<float> const &values,
 
 namespace Velocity {
 Vector3<float> get(gpu::GPUField<float> const *pdf_field,
-                   gpu::GPUField<float> const *force_field, const float density,
-                   Cell const &cell);
+                   gpu::GPUField<float> const *force_field, Cell const &cell);
 std::vector<float> get(gpu::GPUField<float> const *pdf_field,
                        gpu::GPUField<float> const *force_field,
-                       const float density, CellInterval const &ci);
+                       CellInterval const &ci);
 void set(gpu::GPUField<float> *pdf_field, gpu::GPUField<float> *velocity_field,
          gpu::GPUField<float> const *force_field, Vector3<float> const &u,
-         const float density, Cell const &cell);
+         Cell const &cell);
 void set(gpu::GPUField<float> *pdf_field, gpu::GPUField<float> *velocity_field,
          gpu::GPUField<float> const *force_field,
-         std::vector<float> const &values, const float density,
-         CellInterval const &ci);
+         std::vector<float> const &values, CellInterval const &ci);
 } // namespace Velocity
 
 namespace Force {

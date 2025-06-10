@@ -895,7 +895,7 @@ public:
         bc->block->template getData<VectorField>(m_last_applied_force_field_id);
     auto vel = to_vector3<FloatType>(v);
     lbm::accessor::Velocity::set(pdf_field, vel_field, force_field, vel,
-                                 m_density, bc->cell);
+                                 bc->cell);
 
     return true;
   }
@@ -966,8 +966,7 @@ public:
             if (m_boundary->node_is_boundary(node)) {
               auto const &vec = m_boundary->get_node_value_at_boundary(node);
               for (uint_t f = 0u; f < 3u; ++f) {
-                out[3u * local_index + f] =
-                    zero_centered_conversion_value_divide(vec[f]);
+                out[3u * local_index + f] = vec[f];
               }
             } else {
               for (uint_t f = 0u; f < 3u; ++f) {
@@ -1015,7 +1014,7 @@ public:
 
           copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
           lbm::accessor::Velocity::set(pdf_field, vel_field, force_field,
-                                       values, m_density, *bci);
+                                       values, *bci);
         }
       }
     }
@@ -1335,7 +1334,7 @@ public:
       pop[f] = FloatType_c(population[f]);
     }
     lbm::accessor::Population::set(pdf_field, vel_field, force_field, pop,
-                                   m_density, bc->cell);
+                                   bc->cell);
 
     return true;
   }
@@ -1402,7 +1401,7 @@ public:
 
           copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
           lbm::accessor::Population::set(pdf_field, vel_field, force_field,
-                                         values, m_density, *bci);
+                                         values, *bci);
         }
       }
     }
@@ -1726,9 +1725,8 @@ public:
     }
     auto const grid_size = get_lattice().get_grid_dimensions();
     auto const number_of_nodes = Utils::product(grid_size);
-    tensor *= (1. / static_cast<double>(number_of_nodes));
     pressure_tensor_correction(tensor);
-    return to_vector9d(tensor);
+    return to_vector9d(tensor) * (1. / static_cast<double>(number_of_nodes));
   }
 
   // Global momentum

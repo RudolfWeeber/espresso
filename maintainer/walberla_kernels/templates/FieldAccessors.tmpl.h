@@ -85,7 +85,6 @@ namespace Population
          GhostLayerField< {{dtype}}, uint_t{ {{D}}u } > * velocity_field,
          GhostLayerField< {{dtype}}, uint_t{ {{D}}u } > const * force_field,
          std::array<{{dtype}}, {{Q}}u> const & pop,
-         const {{dtype}} density,
          Cell const & cell )
     {
         auto & xyz0 = pdf_field->get(cell, uint_t{ 0u });
@@ -159,7 +158,6 @@ namespace Population
          GhostLayerField< {{dtype}}, uint_t{ {{D}}u } > * velocity_field,
          GhostLayerField< {{dtype}}, uint_t{ {{D}}u } > const * force_field,
          std::vector< {{dtype}} > const & values,
-         const {{dtype}} density,
          CellInterval const & ci )
     {
         assert(uint_c(values.size()) == ci.numCells() * uint_t({{Q}}u));
@@ -418,7 +416,6 @@ namespace Velocity
     inline auto
     get( GhostLayerField< {{dtype}}, uint_t{ {{Q}}u } > const * pdf_field,
          GhostLayerField< {{dtype}}, uint_t{ {{D}}u } > const * force_field,
-         const {{dtype}} density,
          Cell const & cell )
     {
         const {{dtype}} & xyz0 = pdf_field->get(cell, uint_t{ 0u });
@@ -438,7 +435,6 @@ namespace Velocity
     inline auto
     get( GhostLayerField< {{dtype}}, uint_t{ {{Q}}u } > const * pdf_field,
          GhostLayerField< {{dtype}}, uint_t{ {{D}}u } > const * force_field,
-         const {{dtype}} density,
          CellInterval const & ci )
     {
         std::vector< {{dtype}} > out;
@@ -466,7 +462,6 @@ namespace Velocity
          GhostLayerField< {{dtype}}, uint_t{ {{D}}u } > * velocity_field,
          GhostLayerField< {{dtype}}, uint_t{ {{D}}u } > const * force_field,
          Vector{{D}}< {{dtype}} > const & u,
-         const {{dtype}} density,
          Cell const & cell )
     {
         const {{dtype}} & xyz0 = pdf_field->get(cell, uint_t{ 0u });
@@ -491,7 +486,6 @@ namespace Velocity
          GhostLayerField< {{dtype}}, uint_t{ {{D}}u } > * velocity_field,
          GhostLayerField< {{dtype}}, uint_t{ {{D}}u } > const * force_field,
          std::vector< {{dtype}} > const & values,
-         const {{dtype}} density,
          CellInterval const & ci )
     {
         assert(uint_c(values.size()) == ci.numCells() * uint_t({{D}}u));

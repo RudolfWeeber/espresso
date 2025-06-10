@@ -184,8 +184,7 @@ __global__ void kernel_set_vel(
     gpu::FieldAccessor<double> pdf,
     gpu::FieldAccessor<double> velocity,
     gpu::FieldAccessor<double> force,
-    double const *RESTRICT pop,
-    double const density) {
+    double const *RESTRICT pop) {
   auto const offset = getLinearIndex(blockIdx, threadIdx, gridDim, blockDim, 19u);
   pdf.set(blockIdx, threadIdx);
   velocity.set(blockIdx, threadIdx);
@@ -263,7 +262,6 @@ void set(
     gpu::GPUField<double> *velocity_field,
     gpu::GPUField<double> const *force_field,
     std::array<double, 19u> const &pop,
-    double const density,
     Cell const &cell) {
   thrust::device_vector<double> dev_data(pop.begin(), pop.end());
   auto const dev_data_ptr = thrust::raw_pointer_cast(dev_data.data());
@@ -273,7 +271,6 @@ void set(
   kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::interval(*velocity_field, ci));
   kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::interval(*force_field, ci));
   kernel.addParam(const_cast<const double *>(dev_data_ptr));
-  kernel.addParam(density);
   kernel();
 }
 
@@ -320,7 +317,6 @@ void set(
     gpu::GPUField<double> *velocity_field,
     gpu::GPUField<double> const *force_field,
     std::vector<double> const &values,
-    double const density,
     CellInterval const &ci) {
   thrust::device_vector<double> dev_data(values.begin(), values.end());
   auto const dev_data_ptr = thrust::raw_pointer_cast(dev_data.data());
@@ -329,7 +325,6 @@ void set(
   kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::interval(*velocity_field, ci));
   kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::interval(*force_field, ci));
   kernel.addParam(const_cast<const double *>(dev_data_ptr));
-  kernel.addParam(density);
   kernel();
 }
 } // namespace Population
@@ -821,8 +816,7 @@ namespace Velocity {
 __global__ void kernel_get(
     gpu::FieldAccessor<double> pdf,
     gpu::FieldAccessor<double> force,
-    double *RESTRICT u_out,
-    double const density) {
+    double *RESTRICT u_out) {
   auto const offset = getLinearIndex(blockIdx, threadIdx, gridDim, blockDim, 3u);
   pdf.set(blockIdx, threadIdx);
   force.set(blockIdx, threadIdx);
@@ -869,8 +863,7 @@ __global__ void kernel_set(
     gpu::FieldAccessor<double> pdf,
     gpu::FieldAccessor<double> velocity,
     gpu::FieldAccessor<double> force,
-    double const *RESTRICT u_in,
-    double const density) {
+    double const *RESTRICT u_in) {
   auto const offset = getLinearIndex(blockIdx, threadIdx, gridDim, blockDim, 3u);
   pdf.set(blockIdx, threadIdx);
   velocity.set(blockIdx, threadIdx);
@@ -919,7 +912,6 @@ __global__ void kernel_set(
 Vector3<double> get(
     gpu::GPUField<double> const *pdf_field,
     gpu::GPUField<double> const *force_field,
-    const double density,
     Cell const &cell) {
   CellInterval ci(cell, cell);
   thrust::device_vector<double> dev_data(3u);
@@ -928,7 +920,6 @@ Vector3<double> get(
   kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::interval(*pdf_field, ci));
   kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::interval(*force_field, ci));
   kernel.addParam(dev_data_ptr);
-  kernel.addParam(density);
   kernel();
   Vector3<double> vec;
   thrust::copy(dev_data.begin(), dev_data.end(), vec.data());
@@ -938,7 +929,6 @@ Vector3<double> get(
 std::vector<double> get(
     gpu::GPUField<double> const *pdf_field,
     gpu::GPUField<double> const *force_field,
-    const double density,
     CellInterval const &ci) {
   thrust::device_vector<double> dev_data(3u);
   auto const dev_data_ptr = thrust::raw_pointer_cast(dev_data.data());
@@ -946,7 +936,6 @@ std::vector<double> get(
   kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::interval(*pdf_field, ci));
   kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::interval(*force_field, ci));
   kernel.addParam(dev_data_ptr);
-  kernel.addParam(density);
   kernel();
   std::vector<double> out(dev_data.size());
   thrust::copy(dev_data.begin(), dev_data.end(), out.data());
@@ -958,7 +947,6 @@ void set(
     gpu::GPUField<double> *velocity_field,
     gpu::GPUField<double> const *force_field,
     Vector3<double> const &u,
-    double const density,
     Cell const &cell) {
   CellInterval ci(cell, cell);
   thrust::device_vector<double> dev_data(u.data(), u.data() + 3u);
@@ -968,7 +956,6 @@ void set(
   kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::interval(*velocity_field, ci));
   kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::interval(*force_field, ci));
   kernel.addParam(const_cast<const double *>(dev_data_ptr));
-  kernel.addParam(density);
   kernel();
 }
 
@@ -977,7 +964,6 @@ void set(
     gpu::GPUField<double> *velocity_field,
     gpu::GPUField<double> const *force_field,
     std::vector<double> const &values,
-    double const density,
     CellInterval const &ci) {
   thrust::device_vector<double> dev_data(values.begin(), values.end());
   auto const dev_data_ptr = thrust::raw_pointer_cast(dev_data.data());
@@ -986,7 +972,6 @@ void set(
   kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::interval(*velocity_field, ci));
   kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::interval(*force_field, ci));
   kernel.addParam(const_cast<const double *>(dev_data_ptr));
-  kernel.addParam(density);
   kernel();
 }
 } // namespace Velocity

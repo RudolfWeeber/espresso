@@ -59,7 +59,6 @@ namespace Population {
          gpu::GPUField< {{dtype}} > * velocity_field,
          gpu::GPUField< {{dtype}} > const * force_field,
          std::array< {{dtype}}, {{Q}}u > const & pop,
-         {{dtype}} const density,
          Cell const & cell );
     /** @brief Initialize all cells with the same value. */
     void initialize(
@@ -80,7 +79,6 @@ namespace Population {
          gpu::GPUField< {{dtype}} > * velocity_field,
          gpu::GPUField< {{dtype}} > const * force_field,
          std::vector< {{dtype}} > const & values,
-         {{dtype}} const density,
          CellInterval const & ci );
 } // namespace Population
 
@@ -152,26 +150,22 @@ namespace Velocity {
     Vector{{D}}< {{dtype}} >
     get( gpu::GPUField< {{dtype}} > const * pdf_field,
          gpu::GPUField< {{dtype}} > const * force_field,
-         const {{dtype}} density,
          Cell const & cell );
     std::vector< {{dtype}} >
     get( gpu::GPUField< {{dtype}} > const * pdf_field,
          gpu::GPUField< {{dtype}} > const * force_field,
-         const {{dtype}} density,
          CellInterval const & ci );
     void
     set( gpu::GPUField< {{dtype}} > * pdf_field,
          gpu::GPUField< {{dtype}} > * velocity_field,
          gpu::GPUField< {{dtype}} > const * force_field,
          Vector{{D}}< {{dtype}} > const & u,
-         const {{dtype}} density,
          Cell const & cell );
     void
     set( gpu::GPUField< {{dtype}} > * pdf_field,
          gpu::GPUField< {{dtype}} > * velocity_field,
          gpu::GPUField< {{dtype}} > const * force_field,
          std::vector< {{dtype}} > const & values,
-         const {{dtype}} density,
          CellInterval const & ci );
 } // namespace Velocity
 
