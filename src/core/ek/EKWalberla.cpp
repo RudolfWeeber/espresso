@@ -91,8 +91,7 @@ void EKWalberla::propagate() {
     try {
       ek_species->integrate(ek_container->get_potential_field_id(),
                             connector.velocity_field_id,
-                            connector.force_field_id,
-                            connector.lb_density);
+                            connector.force_field_id, connector.lb_density);
     } catch (std::runtime_error const &e) {
       runtimeErrorMsg() << e.what();
     }

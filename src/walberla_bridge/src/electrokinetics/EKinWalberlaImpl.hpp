@@ -407,10 +407,12 @@ private:
     }
   }
 
-  void kernel_friction_coupling(const std::size_t &force_id, const double &lb_density) {
-    auto kernel = FrictionCouplingKernel(
-        BlockDataID(force_id), m_flux_field_flattened_id,
-        FloatType_c(get_diffusion()), FloatType_c(get_kT()), FloatType(lb_density));
+  void kernel_friction_coupling(const std::size_t &force_id,
+                                const double &lb_density) {
+    auto kernel =
+        FrictionCouplingKernel(BlockDataID(force_id), m_flux_field_flattened_id,
+                               FloatType_c(get_diffusion()),
+                               FloatType_c(get_kT()), FloatType(lb_density));
     for (auto &block : *m_lattice->get_blocks()) {
       kernel.run(&block);
     }
