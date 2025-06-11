@@ -227,7 +227,8 @@ void cabana_short_range(
     for (auto const &p : particles) {
       write_particle(p, p_id, slice_position, slice_force, slice_torque,
                      slice_charge, slice_id, slice_type, slice_ghost, box_l);
-      if (p.is_ghost()) std::cout << "WIRED!!!!!!!!!\n";
+      if (p.is_ghost())
+        std::cout << "WIRED!!!!!!!!!\n";
       registered_pid.emplace_back(p.id());
       ++p_id;
     }
@@ -325,31 +326,38 @@ void cabana_short_range(
       }
       auto const particle_bins = cell_list.getParticleBins();
 
-      Kokkos::View<int ***, Kokkos::LayoutRight> bin_offset("bin_offset", cell_num[0], cell_num[1], cell_num[2]);
-      Kokkos::View<int ***, Kokkos::LayoutRight> bin_size("bin_size", cell_num[0], cell_num[1], cell_num[2]);
+      Kokkos::View<int ***, Kokkos::LayoutRight> bin_offset(
+          "bin_offset", cell_num[0], cell_num[1], cell_num[2]);
+      Kokkos::View<int ***, Kokkos::LayoutRight> bin_size(
+          "bin_size", cell_num[0], cell_num[1], cell_num[2]);
       for (int cid = 0; cid < cell_list.totalBins(); ++cid) {
         int dx[3] = {};
         dx[0] = static_cast<int>(cid / (cell_num[1] * cell_num[2]));
-        dx[1] =
-	  static_cast<int>((cid - dx[0] * (cell_num[1] * cell_num[2]))
-			    / cell_num[2] );
+        dx[1] = static_cast<int>((cid - dx[0] * (cell_num[1] * cell_num[2])) /
+                                 cell_num[2]);
         dx[2] = cid % cell_num[2];
-        bin_offset(dx[0], dx[1], dx[2]) = cell_list.binOffset(dx[0], dx[1], dx[2]);
+        bin_offset(dx[0], dx[1], dx[2]) =
+            cell_list.binOffset(dx[0], dx[1], dx[2]);
         bin_size(dx[0], dx[1], dx[2]) = cell_list.binSize(dx[0], dx[1], dx[2]);
       }
-      constexpr int ijkIndexes[27][3] =
-        {{-1, -1, -1}, {-1, -1, 0}, {-1, -1, 1}, {-1, 0, -1}, {-1, 0, 0}, {-1, 0, 1}, {-1, 1, -1}, {-1, 1, 0}, {-1, 1, 1},
-         { 0, -1, -1}, { 0, -1, 0}, { 0, -1, 1}, { 0, 0, -1}, { 0, 0, 0}, { 0, 0, 1}, { 0, 1, -1}, { 0, 1, 0}, { 0, 1, 1},
-         { 1, -1, -1}, { 1, -1, 0}, { 1, -1, 1}, { 1, 0, -1}, { 1, 0, 0}, { 1, 0, 1}, { 1, 1, -1}, { 1, 1, 0}, { 1, 1, 1}};
+      constexpr int ijkIndexes[27][3] = {
+          {-1, -1, -1}, {-1, -1, 0}, {-1, -1, 1}, {-1, 0, -1}, {-1, 0, 0},
+          {-1, 0, 1},   {-1, 1, -1}, {-1, 1, 0},  {-1, 1, 1},  {0, -1, -1},
+          {0, -1, 0},   {0, -1, 1},  {0, 0, -1},  {0, 0, 0},   {0, 0, 1},
+          {0, 1, -1},   {0, 1, 0},   {0, 1, 1},   {1, -1, -1}, {1, -1, 0},
+          {1, -1, 1},   {1, 0, -1},  {1, 0, 0},   {1, 0, 1},   {1, 1, -1},
+          {1, 1, 0},    {1, 1, 1}};
 
       auto const distance_function = detail::MinimalImageDistance{
           std::as_const(cell_structure).decomposition().box()};
 
       auto kernel = [&](const int i) {
-	int id_i = slice_id(i);
-        if (slice_ghost(i)) return;
+        int id_i = slice_id(i);
+        if (slice_ghost(i))
+          return;
         auto p1 = cell_structure.get_local_particle(id_i);
-        if (p1 == nullptr) return;
+        if (p1 == nullptr)
+          return;
         int index[3] = {};
         cell_list.ijkBinIndex(particle_bins(i), index[0], index[1], index[2]);
         int dx[3];
@@ -358,8 +366,8 @@ void cabana_short_range(
             dx[d] = (ijkIndexes[n][d] + index[d] + cell_num[d]) % cell_num[d];
           }
 
-          //int offset = cell_list.binOffset(dx[0], dx[1], dx[2]);
-          //int size = cell_list.binSize(dx[0], dx[1], dx[2]);
+          // int offset = cell_list.binOffset(dx[0], dx[1], dx[2]);
+          // int size = cell_list.binSize(dx[0], dx[1], dx[2]);
           int offset = bin_offset(dx[0], dx[1], dx[2]);
           int size = bin_size(dx[0], dx[1], dx[2]);
 
@@ -371,19 +379,19 @@ void cabana_short_range(
               auto p2 = cell_structure.get_local_particle(id_j);
               if (p2 == nullptr)
                 continue;
-	      if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
-		verlet_list.addNeighbor(i, jj);
-		/*std::cout << "*Cabana* "
-			  << i << " "
-			  << j << " "
-			  << slice_id(i) << " "
-			  << slice_id(j) << " "
-			  << slice_position(i, 0) << " "
-			  << slice_position(i, 1) << " "
-			  << slice_position(i, 2) << " "
-			  << slice_position(j, 0) << " "
-			  << slice_position(j, 1) << " "
-			  << slice_position(j, 2) << "\n";*/
+              if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
+                verlet_list.addNeighbor(i, jj);
+                /*std::cout << "*Cabana* "
+                          << i << " "
+                          << j << " "
+                          << slice_id(i) << " "
+                          << slice_id(j) << " "
+                          << slice_position(i, 0) << " "
+                          << slice_position(i, 1) << " "
+                          << slice_position(i, 2) << " "
+                          << slice_position(j, 0) << " "
+                          << slice_position(j, 1) << " "
+                          << slice_position(j, 2) << "\n";*/
               }
             }
           }
