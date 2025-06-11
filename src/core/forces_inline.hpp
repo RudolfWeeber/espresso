@@ -254,7 +254,7 @@ inline void add_non_bonded_pair_force_with_p(
 #ifdef SHARED_MEMORY_PARALLELISM
   virial += hadamard_product(pf.f, d);
 #else
-  npt_add_virial_force_contribution(pf.f + pf_n.f, d);
+  npt_add_virial_force_contribution(pf.f, d);
 #endif
 #endif
 
