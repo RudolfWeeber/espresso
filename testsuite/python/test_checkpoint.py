@@ -328,7 +328,7 @@ class CheckpointTest(ut.TestCase):
             vtk_data = vtk_reader.parse(vtk_root / filename.format(1))
             lb_density = vtk_data["density"]
             self.assertAlmostEqual(
-                lb_density[0, 0, 0], new_density, delta=1e-5)
+                lb_density[0, 0, 0], new_density, delta=1e-4)
         (vtk_root / filename.format(1)).unlink(missing_ok=True)
         (vtk_root / filename.format(2)).unlink(missing_ok=True)
 

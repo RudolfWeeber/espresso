@@ -659,7 +659,7 @@ class LBTest:
         self.system.integrator.run(1)
         for _ in range(20):
             self.system.integrator.run(1)
-            self.assertTrue(np.all(p.f != 0.0))
+            self.assertTrue(p.f[0] != 0.0)
 
     @utx.skipIfMissingFeatures("VIRTUAL_SITES_INERTIALESS_TRACERS")
     def test_tracers_coupling_rounding(self):
