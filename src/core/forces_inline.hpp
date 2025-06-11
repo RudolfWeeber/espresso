@@ -341,7 +341,10 @@ inline ReturnType add_non_bonded_pair_force(
     Coulomb::ShortRangeEnergyKernel::kernel_type const *coulomb_u_kernel) {
 
   ParticleForce pf{};
+#if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
+    defined(DPD) or defined(DIPOLES) or defined(SHARED_MEMORY_PARALLELISM)
   Utils::Vector3d virial{};
+#endif
 
 #ifdef EXCLUSIONS
   bool do_nonbonded_flag = do_nonbonded(p1, p2);
