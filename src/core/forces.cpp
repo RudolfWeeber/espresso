@@ -60,7 +60,7 @@
 #endif
 
 #ifdef SHARED_MEMORY_PARALLELISM
-#include "short_range_cabana.cpp"
+#include "short_range_cabana.hpp"
 #include <Cabana_Core.hpp>
 #endif
 

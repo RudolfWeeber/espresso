@@ -22,6 +22,7 @@
 #include "config/config.hpp"
 
 #include "cell_system/CellStructure.hpp"
+#include "lees_edwards/lees_edwards.hpp"
 
 #ifdef CALIPER
 #include <caliper/cali.h>
@@ -39,12 +40,7 @@
 #include <unordered_set>
 #include <utility>
 
-inline double wrap1(double x, double L) {
-  auto result = x - std::floor(x / L) * L;
-  return result;
-}
-
-inline double wrap2(double x, double L) {
+inline double wrap(double x, double L) {
   auto result = x - std::floor(x / L) * L;
   if (result >= L)
     result -= std::nextafter(L, 0.);
@@ -62,12 +58,10 @@ inline void write_particle(Particle const &p, int const &id,
                            SliceDouble3 &s_torque, SliceDouble &s_charge,
                            SliceInt &s_id, SliceInt &s_type, SliceBool &s_ghost,
                            Utils::Vector3d &box_l) {
-  // SliceInt &s_id, SliceInt &s_type, SliceBool &s_ghost, BoxGeometry const
-  // &box_geo) {
   auto const pos = p.pos();
-  s_position(id, 0) = wrap2(pos[0], box_l[0]);
-  s_position(id, 1) = wrap2(pos[1], box_l[1]);
-  s_position(id, 2) = wrap2(pos[2], box_l[2]);
+  s_position(id, 0) = wrap(pos[0], box_l[0]);
+  s_position(id, 1) = wrap(pos[1], box_l[1]);
+  s_position(id, 2) = wrap(pos[2], box_l[2]);
   s_id(id) = p.id();
   s_charge(id) = p.q();
   s_type(id) = p.type();
@@ -81,18 +75,6 @@ inline void write_particle(Particle const &p, int const &id,
   assert(s_position(id, 0) >= 0. && s_position(id, 0) < box_l[0]);
   assert(s_position(id, 1) >= 0. && s_position(id, 1) < box_l[1]);
   assert(s_position(id, 2) >= 0. && s_position(id, 2) < box_l[2]);
-  /*if (p.id() == 325) {
-    std::cout << "0 CHECK 325 "
-              << pos[0] << " "
-              << pos[1] << " "
-              << pos[2] << "\n";
-  }
-  if (p.id() == 512) {
-    std::cout << "0 CHECK 512 "
-              << pos[0] << " "
-              << pos[1] << " "
-              << pos[2] << "\n";
-  }*/
 }
 
 template <class BondKernel, class VerletCriterion = detail::True>
@@ -162,7 +144,7 @@ void cabana_short_range(
 #ifdef CALIPER
     CALI_MARK_BEGIN("Cabana - Index map");
 #endif
-    std::unordered_map<int, int> id_to_index{};
+    std::unordered_map<int, int> id_to_index{}; // For DEBUG
     std::vector<int> index_to_id{};
     int index = 0;
 
@@ -180,22 +162,22 @@ void cabana_short_range(
     if (rebuild) {
 
       for (auto const &p : particles) {
-        // id_to_index[p.id()] = index;
-        index_to_id.emplace_back(p.id());
+        id_to_index[p.id()] = index;
+        //index_to_id.emplace_back(p.id());
         index++;
       }
 
       for (auto const &p : ghost_particles) {
-        // if (not id_to_index.contains(p.id())) {
-        //   id_to_index[p.id()] = index;
-        if (not contains(index_to_id, p.id())) {
-          index_to_id.emplace_back(p.id());
+        if (not id_to_index.contains(p.id())) {
+          id_to_index[p.id()] = index;
+        //if (not contains(index_to_id, p.id())) {
+          //index_to_id.emplace_back(p.id());
           index++;
         }
       }
     } else {
       // If we do not rebuild we can use the saved map
-      // id_to_index = saved_data.get_id_to_index();
+      id_to_index = saved_data.get_id_to_index();
       index_to_id = saved_data.get_index_to_id();
       index = id_to_index.size();
     }
@@ -223,7 +205,6 @@ void cabana_short_range(
     auto box_l = box_geo.length();
     int p_id = 0;
     std::vector<int> registered_pid{};
-    // std::vector<int> ghost_pid{};
     for (auto const &p : particles) {
       write_particle(p, p_id, slice_position, slice_force, slice_torque,
                      slice_charge, slice_id, slice_type, slice_ghost, box_l);
@@ -241,7 +222,6 @@ void cabana_short_range(
       write_particle(p, p_id, slice_position, slice_force, slice_torque,
                      slice_charge, slice_id, slice_type, slice_ghost, box_l);
       registered_pid.emplace_back(p.id());
-      // ghost_pid.emplace_back(p.id());
       ++p_id;
     }
 
@@ -272,55 +252,75 @@ void cabana_short_range(
     CALI_MARK_BEGIN("Cabana - Verlet List");
 #endif
     ListType verlet_list;
-    std::vector<std::pair<int, int>> pair_check;
 
     // Rebuild verlet list if needed
+    auto const &system = ::System::get_system();
+    double max_cutoff = system.get_interaction_range();
+    int max_counts = static_cast<int>(27*max_cutoff*max_cutoff*max_cutoff/3);
+    if (max_counts < 64) max_counts = 64;
     if (rebuild) {
-
-      verlet_list = ListType(slice_position, 0, slice_position.size(), 64);
-      /*
-      auto kernel = [&](Particle const &p1, Particle const &p2) {
+      verlet_list = ListType(slice_position, 0, slice_position.size(), max_counts);
+      /*auto kernel = [&](Particle const &p1, Particle const &p2) {
         verlet_list.addNeighbor(id_to_index.at(p1.id()),
                                 id_to_index.at(p2.id()));
-          std::cout << "Cell_structure "
+          //std::cout << "Cell_structure "
                     << id_to_index.at(p1.id()) << " "
                     << id_to_index.at(p2.id()) << " "
                     << p1.id() << " "
                     << p2.id() << " "
                     << p1.pos() << " "
-                    << p2.pos() << "\n";
-        if (p1.id() < p2.id()) {
-          pair_check.emplace_back(std::pair{p1.id(), p2.id()});
-        } else {
-          pair_check.emplace_back(std::pair{p2.id(), p1.id()});
-        }
-      };*/
+                    << p2.pos() << "\n";//
+        //if (p1.id() < p2.id()) {
+        //  pair_check.emplace_back(std::pair{p1.id(), p2.id()});
+        //} else {
+        //  pair_check.emplace_back(std::pair{p2.id(), p1.id()});
+        //}
+      };
 
-      // cell_structure.cabana_verlet_list_loop(kernel, verlet_criterion);
+      cell_structure.cabana_verlet_list_loop(kernel, verlet_criterion);*/
     } else {
       // Else use the saved verlet list
       verlet_list = saved_data.get_verlet_list();
     }
 
     // Creating LinkedCellList and VerletList:
+    // Box Properties
     Cabana::LinkedCellList<memory_space, double> cell_list;
     double grid_min[3] = {0.0, 0.0, 0.0};
     double grid_max[3] = {box_l[0], box_l[1], box_l[2]};
     double grid_delta[3] = {};
     int cell_num[3] = {};
-    double max_cutoff = System::get_system().get_interaction_range();
+    double eff_cutoff;
     for (int d = 0; d < 3; ++d) {
-      cell_num[d] = static_cast<int>(box_l[d] / max_cutoff);
+      eff_cutoff = max_cutoff;
+      if (eff_cutoff > box_l[d])
+	      eff_cutoff = box_l[d];
+      cell_num[d] = static_cast<int>(box_l[d] / eff_cutoff);
       grid_delta[d] = std::nextafter(box_l[d] / cell_num[d], 0);
+    }
+    // Lees-Edwards boundary condition
+    double le_offset;
+    int le_direction;
+    int le_normal;
+    int delta_lebc[3] = {0, 0, 0};
+    auto le_protocol = system.lees_edwards->get_protocol();
+    if (le_protocol == nullptr) {
+      le_offset = 0.;
+      le_direction = -1;
+      le_normal = -1;
+    } else {
+      le_offset = box_geo.lees_edwards_bc().pos_offset;
+      le_direction = box_geo.lees_edwards_bc().shear_direction;
+      le_normal = box_geo.lees_edwards_bc().shear_plane_normal;
+      delta_lebc[le_direction] =
+	static_cast<int>(std::ceil(le_offset/grid_delta[le_direction])) % cell_num[le_direction];
     }
     cell_list = Cabana::createLinkedCellList<memory_space>(
         slice_position, grid_delta, grid_min, grid_max);
     // Now permute the AoSoA (i.e. reorder the data) using the linked cell list.
     // Cabana::permute( cell_list, particle_storage );
-    // ListType s_verlet_list;
     if (rebuild && max_cutoff != INACTIVE_CUTOFF) {
-      // if (max_cutoff != INACTIVE_CUTOFF) {
-      verlet_list = ListType(slice_position, 0, slice_position.size(), 64);
+      verlet_list = ListType(slice_position, 0, slice_position.size(), max_counts);
       for (int cid = 0; cid < cell_list.totalBins(); ++cid) {
         cell_list(cid);
       }
@@ -352,6 +352,8 @@ void cabana_short_range(
           std::as_const(cell_structure).decomposition().box()};
 
       auto kernel = [&](const int i) {
+      //auto kernel = [&slice_id, &slice_ghost, &cell_structure, &particle_bins, &cell_list, &ijkIndexes, &cell_num,
+      //   &le_protocol, &le_direction, &le_normal, &delta_lebc, &bin_offset, &bin_size, &verlet_criterion, &distance_function, &verlet_list](const int i) {
         int id_i = slice_id(i);
         if (slice_ghost(i))
           return;
@@ -362,39 +364,78 @@ void cabana_short_range(
         cell_list.ijkBinIndex(particle_bins(i), index[0], index[1], index[2]);
         int dx[3];
         for (int n = 0; n < 27; ++n) {
+	  bool duplicate_cell = false;
           for (int d = 0; d < 3; ++d) {
             dx[d] = (ijkIndexes[n][d] + index[d] + cell_num[d]) % cell_num[d];
+	    if (cell_num[d] <= 2 && ijkIndexes[n][d] + index[d] != dx[d])
+		    duplicate_cell = true;
           }
+	  if (duplicate_cell) continue;
 
-          // int offset = cell_list.binOffset(dx[0], dx[1], dx[2]);
-          // int size = cell_list.binSize(dx[0], dx[1], dx[2]);
-          int offset = bin_offset(dx[0], dx[1], dx[2]);
-          int size = bin_size(dx[0], dx[1], dx[2]);
+	  //Lees-Edwards BC
+	  int le_crossing = 0;
+	  if (le_protocol != nullptr) { 
+	    le_crossing =
+		  ijkIndexes[n][le_normal] + index[le_normal] - dx[le_normal];
+	    if (le_crossing < 0) {
+		dx[le_direction] = (dx[le_direction] + delta_lebc[le_direction] + cell_num[le_direction]) % cell_num[le_direction];
+	    } else if (le_crossing > 0) {
+		dx[le_direction] = (dx[le_direction] - delta_lebc[le_direction] + cell_num[le_direction]) % cell_num[le_direction];
+	    }
+	  }
 
-          for (int j = offset; j < offset + size; j++) {
-            // int jj = j;
-            int jj = cell_list.permutation(j);
-            int id_j = slice_id(jj);
-            if (id_i < id_j) {
-              auto p2 = cell_structure.get_local_particle(id_j);
-              if (p2 == nullptr)
-                continue;
-              if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
-                verlet_list.addNeighbor(i, jj);
-                /*std::cout << "*Cabana* "
-                          << i << " "
-                          << j << " "
-                          << slice_id(i) << " "
-                          << slice_id(j) << " "
-                          << slice_position(i, 0) << " "
-                          << slice_position(i, 1) << " "
-                          << slice_position(i, 2) << " "
-                          << slice_position(j, 0) << " "
-                          << slice_position(j, 1) << " "
-                          << slice_position(j, 2) << "\n";*/
-              }
-            }
-          }
+          int cell_offset = bin_offset(dx[0], dx[1], dx[2]);
+          int cell_size = bin_size(dx[0], dx[1], dx[2]);
+
+	  auto verlet_kernel = [&] (int offset, int size) {
+	  //auto verlet_kernel = [&i, &id_i, &slice_id, &p1, &cell_list, &cell_structure, &verlet_criterion, &distance_function, &verlet_list] (int offset, int size) {
+	    for (int j = offset; j < offset + size; j++) {
+	      // int jj = j;
+	      int jj = cell_list.permutation(j);
+	      int id_j = slice_id(jj);
+	      if (id_i < id_j) {
+		auto p2 = cell_structure.get_local_particle(id_j);
+		if (p2 == nullptr)
+		  continue;
+		if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
+		  verlet_list.addNeighbor(i, jj);
+		  /*std::cout << "*Cabana* "
+			    << i << " "
+			    << jj << " "
+			    << id_i << " "
+			    << id_j << " "
+			    << slice_position(i, 0) << ", "
+			    << slice_position(i, 1) << ", "
+			    << slice_position(i, 2) << " "
+			    << slice_position(jj, 0) << ", "
+			    << slice_position(jj, 1) << ", "
+			    << slice_position(jj, 2) << "\n";*/
+		  /*std::cout << "CHECK "
+			    << n << " "
+			    << i << " "
+			    << j << " "
+			    << dx[0] << " "
+			    << dx[1] << " "
+			    << dx[2] << "\n";*/
+		}
+	      }
+	    }
+          };
+
+	  verlet_kernel(cell_offset, cell_size);
+
+	  //Lees-Edwards BC
+	  /*if (le_crossing != 0 && index[le_direction] == 1) {
+	    if (le_crossing < 0) {
+		dx[le_direction] = (dx[le_direction] + 1 + cell_num[le_direction]) % cell_num[le_direction];
+	    } else if (le_crossing > 0) {
+		dx[le_direction] = (dx[le_direction] - 1 + cell_num[le_direction]) % cell_num[le_direction];
+	    }
+            cell_offset = bin_offset(dx[0], dx[1], dx[2]);
+            cell_size = bin_size(dx[0], dx[1], dx[2]);
+
+	    verlet_kernel(cell_offset, cell_size);
+	  }*/
         }
       };
 
@@ -558,18 +599,6 @@ void cabana_short_range(
         local_torque(thread_id, j, 1) += opf.torque[1];
         local_torque(thread_id, j, 2) += opf.torque[2];
 
-        /*if (p1->id() == 512 || p2->id() == 512) {
-          std::cout << "2 CHECK FORCE i "
-                    << i << " " << j << " "
-                    << p1->id() << " "
-                    << p2->id() << " "
-                    << dist << " "
-                    << p1->is_ghost() << " "
-                    << p2->is_ghost() << " "
-                    << pf.f[0] << " "
-                    << pf.f[1] << " "
-                    << pf.f[2] << "\n";
-        }*/
 #ifdef NPT
         local_virial(thread_id, 0) += virial[0];
         local_virial(thread_id, 1) += virial[1];
@@ -606,18 +635,14 @@ void cabana_short_range(
         coulomb_kernel, dipoles_kernel, elc_kernel, coulomb_u_kernel,
         num_threads, rank);
 
-    // std::cout << rank << " " << num_threads << " Execute
-    // FirstNeighborKernel\n";
-    //   TODO: Add option to switch "SerialOpTag" Between "TeamOpTag"
-    //   Feels like TeamOpTag is faster, atleast for large particle numbers
     Cabana::neighbor_parallel_for(policy, first_neighbor_kernel, verlet_list,
                                   Cabana::FirstNeighborsTag(),
-                                  Cabana::SerialOpTag()); //, "verlet_list");
+                                  Cabana::SerialOpTag());
     Kokkos::fence();
 
     // Force and Torque reduction
     Kokkos::parallel_for(
-        "reduce", policy, KOKKOS_LAMBDA(const int i) {
+        "reduction", policy, KOKKOS_LAMBDA(const int i) {
           double fx = 0.;
           double fy = 0.;
           double fz = 0.;
@@ -638,14 +663,6 @@ void cabana_short_range(
           slice_torque(i, 0) = tx;
           slice_torque(i, 1) = ty;
           slice_torque(i, 2) = tz;
-
-          /*if (slice_id(i) == 325 || slice_id(i) == 512) {
-            std::cout << "3 CHECK FORCE "
-                      << slice_id(i) << " "
-                      << slice_force(i, 0) << " "
-                      << slice_force(i, 1) << " "
-                      << slice_force(i, 2) << "\n";
-          }*/
         });
     Kokkos::fence();
 

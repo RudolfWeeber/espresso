@@ -58,6 +58,10 @@ public:
   }
 
   // Method to dynamically expand the size of max_neighbors
+  // This function may be vaiolated Kokkos's rule.
+  // Kokkos::View should not be created in Kokkos::parallel.
+  // However, addNeighbor is used in the Kokkos::parallel and
+  // this function is called from addNeighbor.
   KOKKOS_INLINE_FUNCTION
   void expandMaxNeighbors(const std::size_t new_max_neigh) {
     // Create a new view with the larger size
@@ -82,7 +86,8 @@ public:
   void addNeighbor(const int pid, const int nid) {
     std::size_t count = Kokkos::atomic_fetch_add(&counts(pid), 1);
     if (count >= neighbors.extent(1)) {
-      expandMaxNeighbors(neighbors.extent(1) * 2);
+      //expandMaxNeighbors(neighbors.extent(1) * 2);
+      throw std::runtime_error("Number of count is larger than VerletList size.");
     }
     neighbors(pid, count) = nid;
   }
