@@ -163,15 +163,15 @@ void cabana_short_range(
 
       for (auto const &p : particles) {
         id_to_index[p.id()] = index;
-        //index_to_id.emplace_back(p.id());
+        // index_to_id.emplace_back(p.id());
         index++;
       }
 
       for (auto const &p : ghost_particles) {
         if (not id_to_index.contains(p.id())) {
           id_to_index[p.id()] = index;
-        //if (not contains(index_to_id, p.id())) {
-          //index_to_id.emplace_back(p.id());
+          // if (not contains(index_to_id, p.id())) {
+          // index_to_id.emplace_back(p.id());
           index++;
         }
       }
@@ -256,10 +256,13 @@ void cabana_short_range(
     // Rebuild verlet list if needed
     auto const &system = ::System::get_system();
     double max_cutoff = system.get_interaction_range();
-    int max_counts = static_cast<int>(27*max_cutoff*max_cutoff*max_cutoff/3);
-    if (max_counts < 64) max_counts = 64;
+    int max_counts =
+        static_cast<int>(27 * max_cutoff * max_cutoff * max_cutoff / 3);
+    if (max_counts < 64)
+      max_counts = 64;
     if (rebuild) {
-      verlet_list = ListType(slice_position, 0, slice_position.size(), max_counts);
+      verlet_list =
+          ListType(slice_position, 0, slice_position.size(), max_counts);
       /*auto kernel = [&](Particle const &p1, Particle const &p2) {
         verlet_list.addNeighbor(id_to_index.at(p1.id()),
                                 id_to_index.at(p2.id()));
@@ -294,7 +297,7 @@ void cabana_short_range(
     for (int d = 0; d < 3; ++d) {
       eff_cutoff = max_cutoff;
       if (eff_cutoff > box_l[d])
-	      eff_cutoff = box_l[d];
+        eff_cutoff = box_l[d];
       cell_num[d] = static_cast<int>(box_l[d] / eff_cutoff);
       grid_delta[d] = std::nextafter(box_l[d] / cell_num[d], 0);
     }
@@ -313,14 +316,16 @@ void cabana_short_range(
       le_direction = box_geo.lees_edwards_bc().shear_direction;
       le_normal = box_geo.lees_edwards_bc().shear_plane_normal;
       delta_lebc[le_direction] =
-	static_cast<int>(std::ceil(le_offset/grid_delta[le_direction])) % cell_num[le_direction];
+          static_cast<int>(std::ceil(le_offset / grid_delta[le_direction])) %
+          cell_num[le_direction];
     }
     cell_list = Cabana::createLinkedCellList<memory_space>(
         slice_position, grid_delta, grid_min, grid_max);
     // Now permute the AoSoA (i.e. reorder the data) using the linked cell list.
     // Cabana::permute( cell_list, particle_storage );
     if (rebuild && max_cutoff != INACTIVE_CUTOFF) {
-      verlet_list = ListType(slice_position, 0, slice_position.size(), max_counts);
+      verlet_list =
+          ListType(slice_position, 0, slice_position.size(), max_counts);
       for (int cid = 0; cid < cell_list.totalBins(); ++cid) {
         cell_list(cid);
       }
@@ -352,8 +357,11 @@ void cabana_short_range(
           std::as_const(cell_structure).decomposition().box()};
 
       auto kernel = [&](const int i) {
-      //auto kernel = [&slice_id, &slice_ghost, &cell_structure, &particle_bins, &cell_list, &ijkIndexes, &cell_num,
-      //   &le_protocol, &le_direction, &le_normal, &delta_lebc, &bin_offset, &bin_size, &verlet_criterion, &distance_function, &verlet_list](const int i) {
+        // auto kernel = [&slice_id, &slice_ghost, &cell_structure,
+        // &particle_bins, &cell_list, &ijkIndexes, &cell_num,
+        //    &le_protocol, &le_direction, &le_normal, &delta_lebc, &bin_offset,
+        //    &bin_size, &verlet_criterion, &distance_function,
+        //    &verlet_list](const int i) {
         int id_i = slice_id(i);
         if (slice_ghost(i))
           return;
@@ -364,78 +372,86 @@ void cabana_short_range(
         cell_list.ijkBinIndex(particle_bins(i), index[0], index[1], index[2]);
         int dx[3];
         for (int n = 0; n < 27; ++n) {
-	  bool duplicate_cell = false;
+          bool duplicate_cell = false;
           for (int d = 0; d < 3; ++d) {
             dx[d] = (ijkIndexes[n][d] + index[d] + cell_num[d]) % cell_num[d];
-	    if (cell_num[d] <= 2 && ijkIndexes[n][d] + index[d] != dx[d])
-		    duplicate_cell = true;
+            if (cell_num[d] <= 2 && ijkIndexes[n][d] + index[d] != dx[d])
+              duplicate_cell = true;
           }
-	  if (duplicate_cell) continue;
+          if (duplicate_cell)
+            continue;
 
-	  //Lees-Edwards BC
-	  int le_crossing = 0;
-	  if (le_protocol != nullptr) { 
-	    le_crossing =
-		  ijkIndexes[n][le_normal] + index[le_normal] - dx[le_normal];
-	    if (le_crossing < 0) {
-		dx[le_direction] = (dx[le_direction] + delta_lebc[le_direction] + cell_num[le_direction]) % cell_num[le_direction];
-	    } else if (le_crossing > 0) {
-		dx[le_direction] = (dx[le_direction] - delta_lebc[le_direction] + cell_num[le_direction]) % cell_num[le_direction];
-	    }
-	  }
+          // Lees-Edwards BC
+          int le_crossing = 0;
+          if (le_protocol != nullptr) {
+            le_crossing =
+                ijkIndexes[n][le_normal] + index[le_normal] - dx[le_normal];
+            if (le_crossing < 0) {
+              dx[le_direction] = (dx[le_direction] + delta_lebc[le_direction] +
+                                  cell_num[le_direction]) %
+                                 cell_num[le_direction];
+            } else if (le_crossing > 0) {
+              dx[le_direction] = (dx[le_direction] - delta_lebc[le_direction] +
+                                  cell_num[le_direction]) %
+                                 cell_num[le_direction];
+            }
+          }
 
           int cell_offset = bin_offset(dx[0], dx[1], dx[2]);
           int cell_size = bin_size(dx[0], dx[1], dx[2]);
 
-	  auto verlet_kernel = [&] (int offset, int size) {
-	  //auto verlet_kernel = [&i, &id_i, &slice_id, &p1, &cell_list, &cell_structure, &verlet_criterion, &distance_function, &verlet_list] (int offset, int size) {
-	    for (int j = offset; j < offset + size; j++) {
-	      // int jj = j;
-	      int jj = cell_list.permutation(j);
-	      int id_j = slice_id(jj);
-	      if (id_i < id_j) {
-		auto p2 = cell_structure.get_local_particle(id_j);
-		if (p2 == nullptr)
-		  continue;
-		if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
-		  verlet_list.addNeighbor(i, jj);
-		  /*std::cout << "*Cabana* "
-			    << i << " "
-			    << jj << " "
-			    << id_i << " "
-			    << id_j << " "
-			    << slice_position(i, 0) << ", "
-			    << slice_position(i, 1) << ", "
-			    << slice_position(i, 2) << " "
-			    << slice_position(jj, 0) << ", "
-			    << slice_position(jj, 1) << ", "
-			    << slice_position(jj, 2) << "\n";*/
-		  /*std::cout << "CHECK "
-			    << n << " "
-			    << i << " "
-			    << j << " "
-			    << dx[0] << " "
-			    << dx[1] << " "
-			    << dx[2] << "\n";*/
-		}
-	      }
-	    }
+          auto verlet_kernel = [&](int offset, int size) {
+            // auto verlet_kernel = [&i, &id_i, &slice_id, &p1, &cell_list,
+            // &cell_structure, &verlet_criterion, &distance_function,
+            // &verlet_list] (int offset, int size) {
+            for (int j = offset; j < offset + size; j++) {
+              // int jj = j;
+              int jj = cell_list.permutation(j);
+              int id_j = slice_id(jj);
+              if (id_i < id_j) {
+                auto p2 = cell_structure.get_local_particle(id_j);
+                if (p2 == nullptr)
+                  continue;
+                if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
+                  verlet_list.addNeighbor(i, jj);
+                  /*std::cout << "*Cabana* "
+                            << i << " "
+                            << jj << " "
+                            << id_i << " "
+                            << id_j << " "
+                            << slice_position(i, 0) << ", "
+                            << slice_position(i, 1) << ", "
+                            << slice_position(i, 2) << " "
+                            << slice_position(jj, 0) << ", "
+                            << slice_position(jj, 1) << ", "
+                            << slice_position(jj, 2) << "\n";*/
+                  /*std::cout << "CHECK "
+                            << n << " "
+                            << i << " "
+                            << j << " "
+                            << dx[0] << " "
+                            << dx[1] << " "
+                            << dx[2] << "\n";*/
+                }
+              }
+            }
           };
 
-	  verlet_kernel(cell_offset, cell_size);
+          verlet_kernel(cell_offset, cell_size);
 
-	  //Lees-Edwards BC
-	  /*if (le_crossing != 0 && index[le_direction] == 1) {
-	    if (le_crossing < 0) {
-		dx[le_direction] = (dx[le_direction] + 1 + cell_num[le_direction]) % cell_num[le_direction];
-	    } else if (le_crossing > 0) {
-		dx[le_direction] = (dx[le_direction] - 1 + cell_num[le_direction]) % cell_num[le_direction];
-	    }
+          // Lees-Edwards BC
+          /*if (le_crossing != 0 && index[le_direction] == 1) {
+            if (le_crossing < 0) {
+                dx[le_direction] = (dx[le_direction] + 1 +
+          cell_num[le_direction]) % cell_num[le_direction]; } else if
+          (le_crossing > 0) { dx[le_direction] = (dx[le_direction] - 1 +
+          cell_num[le_direction]) % cell_num[le_direction];
+            }
             cell_offset = bin_offset(dx[0], dx[1], dx[2]);
             cell_size = bin_size(dx[0], dx[1], dx[2]);
 
-	    verlet_kernel(cell_offset, cell_size);
-	  }*/
+            verlet_kernel(cell_offset, cell_size);
+          }*/
         }
       };
 

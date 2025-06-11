@@ -86,8 +86,9 @@ public:
   void addNeighbor(const int pid, const int nid) {
     std::size_t count = Kokkos::atomic_fetch_add(&counts(pid), 1);
     if (count >= neighbors.extent(1)) {
-      //expandMaxNeighbors(neighbors.extent(1) * 2);
-      throw std::runtime_error("Number of count is larger than VerletList size.");
+      // expandMaxNeighbors(neighbors.extent(1) * 2);
+      throw std::runtime_error(
+          "Number of count is larger than VerletList size.");
     }
     neighbors(pid, count) = nid;
   }
