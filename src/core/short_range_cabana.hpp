@@ -163,19 +163,19 @@ void cabana_short_range(
     if (rebuild) {
 
       for (auto const &p : particles) {
-        //id_to_index[p.id()] = index;
-	registered_index.insert(p.id());
+        // id_to_index[p.id()] = index;
+        registered_index.insert(p.id());
         // index_to_id.emplace_back(p.id());
         index++;
       }
 
       for (auto const &p : ghost_particles) {
-	if (not registered_index.contains(p.id())) {
-	  registered_index.insert(p.id());
-          //if (not id_to_index.contains(p.id())) {
-          //id_to_index[p.id()] = index;
-          // if (not contains(index_to_id, p.id())) {
-          // index_to_id.emplace_back(p.id());
+        if (not registered_index.contains(p.id())) {
+          registered_index.insert(p.id());
+          // if (not id_to_index.contains(p.id())) {
+          // id_to_index[p.id()] = index;
+          //  if (not contains(index_to_id, p.id())) {
+          //  index_to_id.emplace_back(p.id());
           index++;
         }
       }
@@ -360,8 +360,8 @@ void cabana_short_range(
       auto const distance_function = detail::MinimalImageDistance{
           std::as_const(cell_structure).decomposition().box()};
 
-      // This kernel will be changed to the loop for the pair of intaracted cell id.
-      // Now, per 1 cell, 27 neighbor cell is calculated and it is wasteful.
+      // This kernel will be changed to the loop for the pair of intaracted cell
+      // id. Now, per 1 cell, 27 neighbor cell is calculated and it is wasteful.
       auto kernel = [&](const int i) {
         int id_i = slice_id(i);
         if (slice_ghost(i))

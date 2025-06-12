@@ -102,9 +102,9 @@ target_link_libraries(
 
 target_include_directories(espresso_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 if(ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM)
-	target_include_directories(espresso_core SYSTEM PUBLIC
-		${FETCHCONTENT_BASE_DIR}/cabana-src/core/src
-		${FETCHCONTENT_BASE_DIR}/kokkos-src/core/src)
+  target_include_directories(
+    espresso_core SYSTEM PUBLIC ${FETCHCONTENT_BASE_DIR}/cabana-src/core/src
+                                ${FETCHCONTENT_BASE_DIR}/kokkos-src/core/src)
 endif()
 
 if(ESPRESSO_BUILD_WITH_WALBERLA)
