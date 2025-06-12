@@ -335,6 +335,7 @@ void cabana_short_range(
       }
       auto const particle_bins = cell_list.getParticleBins();
 
+      // Offset particle id and the number of particle in specific cell
       Kokkos::View<int ***, Kokkos::LayoutRight> bin_offset(
           "bin_offset", cell_num[0], cell_num[1], cell_num[2]);
       Kokkos::View<int ***, Kokkos::LayoutRight> bin_size(
@@ -349,6 +350,8 @@ void cabana_short_range(
             cell_list.binOffset(dx[0], dx[1], dx[2]);
         bin_size(dx[0], dx[1], dx[2]) = cell_list.binSize(dx[0], dx[1], dx[2]);
       }
+
+      // Interacting cell
       constexpr int ijkIndexes[27][3] = {
           {-1, -1, -1}, {-1, -1, 0}, {-1, -1, 1}, {-1, 0, -1}, {-1, 0, 0},
           {-1, 0, 1},   {-1, 1, -1}, {-1, 1, 0},  {-1, 1, 1},  {0, -1, -1},
@@ -402,9 +405,6 @@ void cabana_short_range(
           int cell_size = bin_size(dx[0], dx[1], dx[2]);
 
           auto verlet_kernel = [&](int offset, int size) {
-            // auto verlet_kernel = [&i, &id_i, &slice_id, &p1, &cell_list,
-            // &cell_structure, &verlet_criterion, &distance_function,
-            // &verlet_list] (int offset, int size) {
             for (int j = offset; j < offset + size; j++) {
               // int jj = j;
               int jj = cell_list.permutation(j);
