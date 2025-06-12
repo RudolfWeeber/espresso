@@ -163,7 +163,7 @@ void cabana_short_range(
     if (rebuild) {
 
       for (auto const &p : particles) {
-        //id_to_index[p.id()] = index;
+        // id_to_index[p.id()] = index;
         registered_index.insert(p.id());
         // index_to_id.emplace_back(p.id());
         index++;
@@ -173,7 +173,7 @@ void cabana_short_range(
         if (not registered_index.contains(p.id())) {
           registered_index.insert(p.id());
           // if (not id_to_index.contains(p.id())) {
-          //id_to_index[p.id()] = index;
+          // id_to_index[p.id()] = index;
           //  if (not contains(index_to_id, p.id())) {
           //  index_to_id.emplace_back(p.id());
           index++;
@@ -265,7 +265,7 @@ void cabana_short_range(
       max_counts = number_of_unique_particles;
     } else {
       max_counts =
-        static_cast<int>(27 * max_cutoff * max_cutoff * max_cutoff / 3);
+          static_cast<int>(27 * max_cutoff * max_cutoff * max_cutoff / 3);
     }
     if (max_counts < 64)
       max_counts = 64;
@@ -278,8 +278,8 @@ void cabana_short_range(
           std::cout << "Cell_structure "
                     << id_to_index.at(p1.id()) << " "
                     << id_to_index.at(p2.id()) << " "
-		    << p1.is_ghost() << " "
-		    << p2.is_ghost() << " "
+                    << p1.is_ghost() << " "
+                    << p2.is_ghost() << " "
                     << p1.id() << " "
                     << p2.id() << " "
                     << p1.pos() << " "
@@ -344,21 +344,19 @@ void cabana_short_range(
       auto const particle_bins = cell_list.getParticleBins();
 
       // Offset particle id and the number of particle in specific cell
-      Kokkos::View<int *, Kokkos::LayoutRight> bin_offset(
-          "bin_offset", total_bins);
-      Kokkos::View<int *, Kokkos::LayoutRight> bin_size(
-          "bin_size", total_bins);
+      Kokkos::View<int *, Kokkos::LayoutRight> bin_offset("bin_offset",
+                                                          total_bins);
+      Kokkos::View<int *, Kokkos::LayoutRight> bin_size("bin_size", total_bins);
       for (int cid = 0; cid < total_bins; ++cid) {
         int dx[3] = {};
         dx[0] = static_cast<int>(cid / (cell_num[1] * cell_num[2]));
         dx[1] = static_cast<int>((cid - dx[0] * (cell_num[1] * cell_num[2])) /
                                  cell_num[2]);
         dx[2] = cid % cell_num[2];
-        bin_offset(cid) =
-            cell_list.binOffset(dx[0], dx[1], dx[2]);
+        bin_offset(cid) = cell_list.binOffset(dx[0], dx[1], dx[2]);
         bin_size(cid) = cell_list.binSize(dx[0], dx[1], dx[2]);
-	//int cardinal_id = cell_list.cardinalBinIndex(dx[0], dx[1], dx[2]);
-	//std::cout << "COMPARE " << cid << " " << cardinal_id << "\n";
+        // int cardinal_id = cell_list.cardinalBinIndex(dx[0], dx[1], dx[2]);
+        // std::cout << "COMPARE " << cid << " " << cardinal_id << "\n";
       }
 
       // Creating Interacting cell
@@ -371,13 +369,14 @@ void cabana_short_range(
           {1, 1, 0},    {1, 1, 1}};
       int total_pair_cell;
       if (total_bins < 27) {
-	total_pair_cell = (total_bins - 1) * total_bins / 2 + total_bins;
+        total_pair_cell = (total_bins - 1) * total_bins / 2 + total_bins;
       } else {
-	total_pair_cell = 14 * total_bins;
+        total_pair_cell = 14 * total_bins;
       }
-      //std::cout << "TotalBins=" << total_bins << "\n";
-      //std::cout << "TotalPairCell=" << total_pair_cell << "\n";
-      Kokkos::View<int **, Kokkos::LayoutRight> interacting_pair_cell("interacting_pair_cell", total_pair_cell, 2);
+      // std::cout << "TotalBins=" << total_bins << "\n";
+      // std::cout << "TotalPairCell=" << total_pair_cell << "\n";
+      Kokkos::View<int **, Kokkos::LayoutRight> interacting_pair_cell(
+          "interacting_pair_cell", total_pair_cell, 2);
       int pair_cell_id = 0;
       for (int cid_i = 0; cid_i < total_bins; ++cid_i) {
         int index[3] = {};
@@ -405,21 +404,22 @@ void cabana_short_range(
             } else if (le_crossing > 0) {
               dx[le_direction] = (dx[le_direction] - delta_lebc[le_direction] +
                                   cell_num[le_direction]) %
-                                  cell_num[le_direction];
+                                 cell_num[le_direction];
             }
           }
 
-	  int cid_j = cell_list.cardinalBinIndex(dx[0], dx[1], dx[2]);
-	  if (cid_i <= cid_j) {
-	    if (pair_cell_id >= total_pair_cell) {
-	      std::cerr << "ERROR: pair_cell_id exceeds total_pair_cell at " << pair_cell_id << "\n";
-    	      std::terminate(); // or handle safely
-	    }
-	    interacting_pair_cell(pair_cell_id, 0) = cid_i;
-	    interacting_pair_cell(pair_cell_id, 1) = cid_j;
-	    ++pair_cell_id;
-	  }
-	}
+          int cid_j = cell_list.cardinalBinIndex(dx[0], dx[1], dx[2]);
+          if (cid_i <= cid_j) {
+            if (pair_cell_id >= total_pair_cell) {
+              std::cerr << "ERROR: pair_cell_id exceeds total_pair_cell at "
+                        << pair_cell_id << "\n";
+              std::terminate(); // or handle safely
+            }
+            interacting_pair_cell(pair_cell_id, 0) = cid_i;
+            interacting_pair_cell(pair_cell_id, 1) = cid_j;
+            ++pair_cell_id;
+          }
+        }
       }
       // End Creating Interacting cell
 
@@ -428,112 +428,115 @@ void cabana_short_range(
 
       // This kernel used the loop for the pair of interacting cell
       auto kernel = [&](const int pair_cell_i) {
+        int cid_i = interacting_pair_cell(pair_cell_i, 0);
+        int cid_j = interacting_pair_cell(pair_cell_i, 1);
 
-	int cid_i = interacting_pair_cell(pair_cell_i, 0);
-	int cid_j = interacting_pair_cell(pair_cell_i, 1);
-	
-        auto verlet_kernel = [&](Particle *p1, int i, int id_i, int cell_offset, int cell_size) {
-	  for (int j = cell_offset; j < cell_offset + cell_size; ++j) {
-	    // int jj = j;
-	    int ii = cell_list.permutation(i); //debug
-	    int jj = cell_list.permutation(j);
-	    int id_j = slice_id(jj);
-	    if (slice_ghost(ii) && slice_ghost(jj)) continue; // reject both ghost
-	    
-	    if (slice_ghost(ii) || slice_ghost(jj)) {
-	      if (id_i < id_j && slice_ghost(ii)) {
-		continue;
-	      } else if (id_i > id_j && slice_ghost(jj)) {
-		continue;
-	      }
-	    }
-	    /*if (cid_i == cid_j) {
-	      if (id_i < id_j && slice_ghost(ii)) {
-		continue;
-	      } else if (id_i > id_j && slice_ghost(jj)) {
-		continue;
-	      }
-	    }*/
-	    if (1) {
-	      auto p2 = cell_structure.get_local_particle(id_j);
-	      if (p2 == nullptr)
-		continue;
-	      if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
-		verlet_list.addNeighbor(ii, jj);
-		/*std::cout << "*Cabana* "
-			  << i << " "
-			  << j << " "
-			  << id_i << " "
-			  << id_j << " "
-			  << slice_ghost(ii) << " "
-			  << slice_ghost(jj) << " "
-			  << cid_i << " "
-			  << cid_j << " "
-			  << slice_position(ii, 0) << ", "
-			  << slice_position(ii, 1) << ", "
-			  << slice_position(ii, 2) << " "
-			  << slice_position(jj, 0) << ", "
-			  << slice_position(jj, 1) << ", "
-			  << slice_position(jj, 2) << "\n";*/
-		/*std::cout << "CHECK "
-			  << n << " "
-			  << i << " "
-			  << j << " "
-			  << dx[0] << " "
-			  << dx[1] << " "
-			  << dx[2] << "\n";*/
-	      }
-	    }
-	  } // j-loop
-	};
+        auto verlet_kernel = [&](Particle *p1, int i, int id_i, int cell_offset,
+                                 int cell_size) {
+          for (int j = cell_offset; j < cell_offset + cell_size; ++j) {
+            // int jj = j;
+            int ii = cell_list.permutation(i); // debug
+            int jj = cell_list.permutation(j);
+            int id_j = slice_id(jj);
+            if (slice_ghost(ii) && slice_ghost(jj))
+              continue; // reject both ghost
 
-	int offset_i = bin_offset(cid_i);
-	int size_i = bin_size(cid_i);
-
-	for (int i = offset_i; i < offset_i + size_i; ++i) {
-	  // int ii = i;
-	  int ii = cell_list.permutation(i);
-	  int id_i = slice_id(ii);
-	  //if (slice_ghost(ii))
-	  //  continue;
-	  auto p1 = cell_structure.get_local_particle(id_i);
-	  if (p1 == nullptr)
-	    continue;
-
-	  if (cid_i == cid_j) {
-	    //verlet_kernel(p1, ii, id_i, i + 1, size_i + offset_i - i - 1); // j-loop
-	    verlet_kernel(p1, i, id_i, i + 1, size_i + offset_i - i - 1); // j-loop
-	  } else {
-	    int offset_j = bin_offset(cid_j);
-	    int size_j = bin_size(cid_j);
-	    //verlet_kernel(p1, ii, id_i, offset_j, size_j); // j-loop
-	    verlet_kernel(p1, i, id_i, offset_j, size_j); // j-loop
-	  }
-	} // i-loop
-
-          // Lees-Edwards BC
-          /*if (le_crossing != 0 && index[le_direction] == 1) {
-            if (le_crossing < 0) {
-                dx[le_direction] = (dx[le_direction] + 1 +
-          cell_num[le_direction]) % cell_num[le_direction]; } else if
-          (le_crossing > 0) { dx[le_direction] = (dx[le_direction] - 1 +
-          cell_num[le_direction]) % cell_num[le_direction];
+            if (slice_ghost(ii) || slice_ghost(jj)) {
+              if (id_i < id_j && slice_ghost(ii)) {
+                continue;
+              } else if (id_i > id_j && slice_ghost(jj)) {
+                continue;
+              }
             }
-            cell_offset = bin_offset(dx[0], dx[1], dx[2]);
-            cell_size = bin_size(dx[0], dx[1], dx[2]);
+            /*if (cid_i == cid_j) {
+              if (id_i < id_j && slice_ghost(ii)) {
+                continue;
+              } else if (id_i > id_j && slice_ghost(jj)) {
+                continue;
+              }
+            }*/
+            if (1) {
+              auto p2 = cell_structure.get_local_particle(id_j);
+              if (p2 == nullptr)
+                continue;
+              if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
+                verlet_list.addNeighbor(ii, jj);
+                /*std::cout << "*Cabana* "
+                          << i << " "
+                          << j << " "
+                          << id_i << " "
+                          << id_j << " "
+                          << slice_ghost(ii) << " "
+                          << slice_ghost(jj) << " "
+                          << cid_i << " "
+                          << cid_j << " "
+                          << slice_position(ii, 0) << ", "
+                          << slice_position(ii, 1) << ", "
+                          << slice_position(ii, 2) << " "
+                          << slice_position(jj, 0) << ", "
+                          << slice_position(jj, 1) << ", "
+                          << slice_position(jj, 2) << "\n";*/
+                /*std::cout << "CHECK "
+                          << n << " "
+                          << i << " "
+                          << j << " "
+                          << dx[0] << " "
+                          << dx[1] << " "
+                          << dx[2] << "\n";*/
+              }
+            }
+          } // j-loop
+        };
 
-            verlet_kernel(cell_offset, cell_size);
-          }*/
+        int offset_i = bin_offset(cid_i);
+        int size_i = bin_size(cid_i);
+
+        for (int i = offset_i; i < offset_i + size_i; ++i) {
+          // int ii = i;
+          int ii = cell_list.permutation(i);
+          int id_i = slice_id(ii);
+          // if (slice_ghost(ii))
+          //   continue;
+          auto p1 = cell_structure.get_local_particle(id_i);
+          if (p1 == nullptr)
+            continue;
+
+          if (cid_i == cid_j) {
+            // verlet_kernel(p1, ii, id_i, i + 1, size_i + offset_i - i - 1); //
+            // j-loop
+            verlet_kernel(p1, i, id_i, i + 1,
+                          size_i + offset_i - i - 1); // j-loop
+          } else {
+            int offset_j = bin_offset(cid_j);
+            int size_j = bin_size(cid_j);
+            // verlet_kernel(p1, ii, id_i, offset_j, size_j); // j-loop
+            verlet_kernel(p1, i, id_i, offset_j, size_j); // j-loop
+          }
+        } // i-loop
+
+        // Lees-Edwards BC
+        /*if (le_crossing != 0 && index[le_direction] == 1) {
+          if (le_crossing < 0) {
+              dx[le_direction] = (dx[le_direction] + 1 +
+        cell_num[le_direction]) % cell_num[le_direction]; } else if
+        (le_crossing > 0) { dx[le_direction] = (dx[le_direction] - 1 +
+        cell_num[le_direction]) % cell_num[le_direction];
+          }
+          cell_offset = bin_offset(dx[0], dx[1], dx[2]);
+          cell_size = bin_size(dx[0], dx[1], dx[2]);
+
+          verlet_kernel(cell_offset, cell_size);
+        }*/
       };
 
       Kokkos::RangePolicy<execution_space> policy(0, total_pair_cell);
       Kokkos::parallel_for("calc_by_cell_list", policy, kernel);
       Kokkos::fence();
       /*for (int pair_i = 0; pair_i < total_pair_cell; ++pair_i) {
-	std::cout << "CHECK " << total_pair_cell << " "
-	          << pair_i << " "
-	  	  << interacting_pair_cell(pair_i, 0) << " "
-	  	  << interacting_pair_cell(pair_i, 1) << "\n";
+        std::cout << "CHECK " << total_pair_cell << " "
+                  << pair_i << " "
+                  << interacting_pair_cell(pair_i, 0) << " "
+                  << interacting_pair_cell(pair_i, 1) << "\n";
       }*/
     }
 
