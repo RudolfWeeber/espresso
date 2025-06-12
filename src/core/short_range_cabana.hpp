@@ -353,7 +353,7 @@ void cabana_short_range(
         bin_offset(cid) = cell_list.binOffset(dx[0], dx[1], dx[2]);
         bin_size(cid) = cell_list.binSize(dx[0], dx[1], dx[2]);
 
-	// Calculate particle_bins
+        // Calculate particle_bins
         cell_list(cid);
       }
       auto const particle_bins = cell_list.getParticleBins();
@@ -382,14 +382,14 @@ void cabana_short_range(
       int empty_pair_number = 0;
       int pair_cell_id = 0;
       for (int cid_i = 0; cid_i < total_bins; ++cid_i) {
-	// Obtaining 3 dimentional cell index from cid_i
+        // Obtaining 3 dimentional cell index from cid_i
         int index[3] = {};
         cell_list.ijkBinIndex(cid_i, index[0], index[1], index[2]);
         int dx[3];
-	// From 27 neighbor cell, the list of interacting pair cell is created
+        // From 27 neighbor cell, the list of interacting pair cell is created
         for (int n = 0; n < 27; ++n) {
           bool duplicate_cell = false;
-	  // Obtaining 3 dimentional cell index from neighbor cell
+          // Obtaining 3 dimentional cell index from neighbor cell
           for (int d = 0; d < 3; ++d) {
             dx[d] = (ijkIndexes[n][d] + index[d] + cell_num[d]) % cell_num[d];
             if (cell_num[d] <= 2 and ijkIndexes[n][d] + index[d] != dx[d])
@@ -414,22 +414,21 @@ void cabana_short_range(
             }
           }
 
-
           // Interacting pair cell is registered in the list
           int cid_j = cell_list.cardinalBinIndex(dx[0], dx[1], dx[2]);
           if (cid_i <= cid_j) {
-	    if (bin_size(cid_i) != 0 and bin_size(cid_j) !=0) {	    
-	      if (pair_cell_id >= total_pair_cell) {
-		std::cerr << "ERROR: pair_cell_id exceeds total_pair_cell at "
-			  << pair_cell_id << "\n";
-		std::terminate(); // or handle safely
-	      }
-	      interacting_pair_cell(pair_cell_id, 0) = cid_i;
-	      interacting_pair_cell(pair_cell_id, 1) = cid_j;
-	      ++pair_cell_id;
-	    } else {
-	      ++empty_pair_number;
-	    }
+            if (bin_size(cid_i) != 0 and bin_size(cid_j) != 0) {
+              if (pair_cell_id >= total_pair_cell) {
+                std::cerr << "ERROR: pair_cell_id exceeds total_pair_cell at "
+                          << pair_cell_id << "\n";
+                std::terminate(); // or handle safely
+              }
+              interacting_pair_cell(pair_cell_id, 0) = cid_i;
+              interacting_pair_cell(pair_cell_id, 1) = cid_j;
+              ++pair_cell_id;
+            } else {
+              ++empty_pair_number;
+            }
           }
         }
       }
@@ -438,10 +437,10 @@ void cabana_short_range(
       auto const distance_function = detail::MinimalImageDistance{
           std::as_const(cell_structure).decomposition().box()};
 #ifdef CALIPER
-    CALI_MARK_END("Cabana - Verlet List1");
+      CALI_MARK_END("Cabana - Verlet List1");
 #endif
 #ifdef CALIPER
-    CALI_MARK_BEGIN("Cabana - Verlet List2");
+      CALI_MARK_BEGIN("Cabana - Verlet List2");
 #endif
       // This kernel used the loop for the pair of interacting cell
       auto kernel = [&](const int pair_cell_i) {
@@ -457,15 +456,15 @@ void cabana_short_range(
             int id_j = slice_id(jj);
             if (slice_ghost(ii) and slice_ghost(jj)) {
               continue; // reject both ghost
-	    }
+            }
             if (slice_ghost(ii) or slice_ghost(jj)) {
-              //if (cid_i == cid_j) {
-                if (id_i < id_j and slice_ghost(ii)) {
-                  continue;
-                } else if (id_i > id_j and slice_ghost(jj)) {
-                  continue;
-                }
-	      //}
+              // if (cid_i == cid_j) {
+              if (id_i < id_j and slice_ghost(ii)) {
+                continue;
+              } else if (id_i > id_j and slice_ghost(jj)) {
+                continue;
+              }
+              //}
             }
             /*if (cid_i == cid_j) {
               if (id_i < id_j && slice_ghost(ii)) {
@@ -548,7 +547,8 @@ void cabana_short_range(
         }*/
       };
 
-      Kokkos::RangePolicy<execution_space> policy(0, total_pair_cell - empty_pair_number);
+      Kokkos::RangePolicy<execution_space> policy(0, total_pair_cell -
+                                                         empty_pair_number);
       Kokkos::parallel_for("calc_by_cell_list", policy, kernel);
       Kokkos::fence();
     }
@@ -691,8 +691,8 @@ void cabana_short_range(
             virial, d, dist, dist2, q1q2, ia_params, do_nonbonded_flag,
             thermostat, box_geo, bonded_ias, coulomb_kernel, dipoles_kernel,
             elc_kernel, coulomb_u_kernel);
-#endif //ETC
-        //
+#endif // ETC
+       //
         local_force(thread_id, i, 0) += pf.f[0];
         local_force(thread_id, i, 1) += pf.f[1];
         local_force(thread_id, i, 2) += pf.f[2];
