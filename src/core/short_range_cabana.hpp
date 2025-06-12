@@ -145,6 +145,7 @@ void cabana_short_range(
     CALI_MARK_BEGIN("Cabana - Index map");
 #endif
     std::unordered_map<int, int> id_to_index{}; // For DEBUG
+    std::unordered_set<int> registered_index{};
     std::vector<int> index_to_id{};
     int index = 0;
 
@@ -162,14 +163,17 @@ void cabana_short_range(
     if (rebuild) {
 
       for (auto const &p : particles) {
-        id_to_index[p.id()] = index;
+        //id_to_index[p.id()] = index;
+	registered_index.insert(p.id());
         // index_to_id.emplace_back(p.id());
         index++;
       }
 
       for (auto const &p : ghost_particles) {
-        if (not id_to_index.contains(p.id())) {
-          id_to_index[p.id()] = index;
+	if (not registered_index.contains(p.id())) {
+	  registered_index.insert(p.id());
+          //if (not id_to_index.contains(p.id())) {
+          //id_to_index[p.id()] = index;
           // if (not contains(index_to_id, p.id())) {
           // index_to_id.emplace_back(p.id());
           index++;
@@ -179,7 +183,7 @@ void cabana_short_range(
       // If we do not rebuild we can use the saved map
       id_to_index = saved_data.get_id_to_index();
       index_to_id = saved_data.get_index_to_id();
-      index = id_to_index.size();
+      index = registered_index.size();
     }
 
     const int number_of_unique_particles = index;
@@ -204,24 +208,24 @@ void cabana_short_range(
     auto slice_ghost = Cabana::slice<6>(particle_storage);
     auto box_l = box_geo.length();
     int p_id = 0;
-    std::vector<int> registered_pid{};
+    registered_index.clear();
     for (auto const &p : particles) {
       write_particle(p, p_id, slice_position, slice_force, slice_torque,
                      slice_charge, slice_id, slice_type, slice_ghost, box_l);
       if (p.is_ghost())
         std::cout << "WIRED!!!!!!!!!\n";
-      registered_pid.emplace_back(p.id());
+      registered_index.insert(p.id());
       ++p_id;
     }
     for (auto const &p : ghost_particles) {
       // if the ghost is not in the previous map, but mpi moved it to this rank?
       // it will not have neighbors because we did not rebuild the verlet list.
-      if (contains(registered_pid, p.id())) {
+      if (registered_index.contains(p.id())) {
         continue;
       }
       write_particle(p, p_id, slice_position, slice_force, slice_torque,
                      slice_charge, slice_id, slice_type, slice_ghost, box_l);
-      registered_pid.emplace_back(p.id());
+      registered_index.insert(p.id());
       ++p_id;
     }
 
@@ -356,12 +360,9 @@ void cabana_short_range(
       auto const distance_function = detail::MinimalImageDistance{
           std::as_const(cell_structure).decomposition().box()};
 
+      // This kernel will be changed to the loop for the pair of intaracted cell id.
+      // Now, per 1 cell, 27 neighbor cell is calculated and it is wasteful.
       auto kernel = [&](const int i) {
-        // auto kernel = [&slice_id, &slice_ghost, &cell_structure,
-        // &particle_bins, &cell_list, &ijkIndexes, &cell_num,
-        //    &le_protocol, &le_direction, &le_normal, &delta_lebc, &bin_offset,
-        //    &bin_size, &verlet_criterion, &distance_function,
-        //    &verlet_list](const int i) {
         int id_i = slice_id(i);
         if (slice_ghost(i))
           return;
