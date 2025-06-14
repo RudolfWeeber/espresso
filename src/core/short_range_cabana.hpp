@@ -150,20 +150,17 @@ void cabana_short_range(
     int index = 0;
 
     bool const rebuild = cell_structure.get_rebuild_cabana_verlet_list();
+    //std::cout << "For CABANA rebuild " << rebuild << std::endl;
 
     CabanaData saved_data;
 
-    // Load saved data if we do not have to rebuild
-    if (!rebuild) {
-      saved_data = cell_structure.get_cabana_data();
-    }
 
     // If we have to rebuild, we need to count the particles and create a new
     // map
     if (rebuild) {
 
       for (auto const &p : particles) {
-        // id_to_index[p.id()] = index;
+        id_to_index[p.id()] = index;
         registered_index.insert(p.id());
         // index_to_id.emplace_back(p.id());
         index++;
@@ -172,14 +169,13 @@ void cabana_short_range(
       for (auto const &p : ghost_particles) {
         if (not registered_index.contains(p.id())) {
           registered_index.insert(p.id());
-          // if (not id_to_index.contains(p.id())) {
-          // id_to_index[p.id()] = index;
-          //  if (not contains(index_to_id, p.id())) {
-          //  index_to_id.emplace_back(p.id());
+          id_to_index[p.id()] = index;
           index++;
         }
       }
     } else {
+      // Load saved data if we do not have to rebuild
+      saved_data = cell_structure.get_cabana_data();
       // If we do not rebuild we can use the saved map
       id_to_index = saved_data.get_id_to_index();
       index_to_id = saved_data.get_index_to_id();
@@ -212,8 +208,6 @@ void cabana_short_range(
     for (auto const &p : particles) {
       write_particle(p, p_id, slice_position, slice_force, slice_torque,
                      slice_charge, slice_id, slice_type, slice_ghost, box_l);
-      if (p.is_ghost())
-        std::cout << "WIRED!!!!!!!!!\n";
       registered_index.insert(p.id());
       ++p_id;
     }
@@ -248,7 +242,7 @@ void cabana_short_range(
 #ifdef CALIPER
     CALI_MARK_END("Cabana - Fill particle storage");
 #endif
-
+    //  START VERLET_LIST
     // ===================================================
     // Get Verlet Pairs and Fill list
     // ===================================================
@@ -270,20 +264,20 @@ void cabana_short_range(
     if (max_counts < 64)
       max_counts = 64;
     if (rebuild) {
-      /*verlet_list =
+      verlet_list =
           ListType(slice_position, 0, slice_position.size(), max_counts);
       auto kernel = [&](Particle const &p1, Particle const &p2) {
         verlet_list.addNeighbor(id_to_index.at(p1.id()),
                                 id_to_index.at(p2.id()));
-          std::cout << "Cell_structure "
-                    << id_to_index.at(p1.id()) << " "
-                    << id_to_index.at(p2.id()) << " "
-                    << p1.is_ghost() << " "
-                    << p2.is_ghost() << " "
-                    << p1.id() << " "
-                    << p2.id() << " "
-                    << p1.pos() << " "
-                    << p2.pos() << "\n";
+          //std::cout << "WITHSMP "
+                    //<< id_to_index.at(p1.id()) << " "
+                    //<< id_to_index.at(p2.id()) << " "
+                    //<< p1.is_ghost() << " "
+                    //<< p2.is_ghost() << " "
+                    //<< p1.id() << " "
+                    //<< p2.id() << std::endl;
+                    //<< p1.pos() << " "
+                    //<< p2.pos() << "\n";
         //if (p1.id() < p2.id()) {
         //  pair_check.emplace_back(std::pair{p1.id(), p2.id()});
         //} else {
@@ -291,12 +285,15 @@ void cabana_short_range(
         //}
       };
 
-      cell_structure.cabana_verlet_list_loop(kernel, verlet_criterion);*/
+      cell_structure.cabana_verlet_list_loop(kernel, verlet_criterion);//
     } else {
       // Else use the saved verlet list
       verlet_list = saved_data.get_verlet_list();
     }
-
+#ifdef CALIPER
+    CALI_MARK_END("Cabana - Verlet List1");
+#endif
+    /*
     // Creating LinkedCellList and VerletList:
     // Box Properties
     Cabana::LinkedCellList<memory_space, double> cell_list;
@@ -374,9 +371,9 @@ void cabana_short_range(
       }
       // std::cout << "TotalBins=" << total_bins << "\n";
       // std::cout << "TotalPairCell=" << total_pair_cell << "\n";
-      /*
-       * Creating list of interacting pair cell
-       */
+      //
+      // Creating list of interacting pair cell
+      //
       Kokkos::View<int **, Kokkos::LayoutRight> interacting_pair_cell(
           "interacting_pair_cell", total_pair_cell, 2);
       int empty_pair_number = 0;
@@ -466,20 +463,13 @@ void cabana_short_range(
               }
               //}
             }
-            /*if (cid_i == cid_j) {
-              if (id_i < id_j && slice_ghost(ii)) {
-                continue;
-              } else if (id_i > id_j && slice_ghost(jj)) {
-                continue;
-              }
-            }*/
             if (1) {
               auto p2 = cell_structure.get_local_particle(id_j);
               if (p2 == nullptr)
                 continue;
               if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
                 verlet_list.addNeighbor(ii, jj);
-                /*std::cout << "*Cabana* "
+                //std::cout << "*Cabana* "
                           << i << " "
                           << j << " "
                           << id_i << " "
@@ -493,14 +483,14 @@ void cabana_short_range(
                           << slice_position(ii, 2) << " "
                           << slice_position(jj, 0) << ", "
                           << slice_position(jj, 1) << ", "
-                          << slice_position(jj, 2) << "\n";*/
-                /*std::cout << "CHECK "
+                          << slice_position(jj, 2) << "\n";//
+                //std::cout << "CHECK "
                           << n << " "
                           << i << " "
                           << j << " "
                           << dx[0] << " "
                           << dx[1] << " "
-                          << dx[2] << "\n";*/
+                          << dx[2] << "\n";//
               }
             }
           } // j-loop
@@ -533,7 +523,7 @@ void cabana_short_range(
         } // i-loop
 
         // Lees-Edwards BC
-        /*if (le_crossing != 0 && index[le_direction] == 1) {
+        //if (le_crossing != 0 && index[le_direction] == 1) {
           if (le_crossing < 0) {
               dx[le_direction] = (dx[le_direction] + 1 +
         cell_num[le_direction]) % cell_num[le_direction]; } else if
@@ -544,7 +534,7 @@ void cabana_short_range(
           cell_size = bin_size(dx[0], dx[1], dx[2]);
 
           verlet_kernel(cell_offset, cell_size);
-        }*/
+        }//
       };
 
       Kokkos::RangePolicy<execution_space> policy(0, total_pair_cell -
@@ -552,10 +542,12 @@ void cabana_short_range(
       Kokkos::parallel_for("calc_by_cell_list", policy, kernel);
       Kokkos::fence();
     }
+    */ //END VERLET_LIST
 
     // Save data for next iteration if we just rebuilt
     if (rebuild) {
-      CabanaData new_data(verlet_list, id_to_index);
+      CabanaData new_data(particle_storage, verlet_list, id_to_index);
+      //CabanaData new_data(verlet_list, id_to_index);
       cell_structure.set_cabana_data(std::make_unique<CabanaData>(new_data));
     }
 
@@ -586,6 +578,7 @@ void cabana_short_range(
 
       int num_threads;
       int mpi_rank;
+      int particle_number;
 
       FirstNeighborKernel(
           const CellStructure *cell_,
@@ -608,7 +601,7 @@ void cabana_short_range(
           Coulomb::ShortRangeForceCorrectionsKernel::kernel_type const
               *elc_kernel_,
           Coulomb::ShortRangeEnergyKernel::kernel_type const *coulomb_u_kernel_,
-          int num_threads_, int mpi_rank_)
+          int num_threads_, int mpi_rank_, int particle_number_)
           : cell(cell_), bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
             thermostat(thermostat_), box_geo(box_geo_),
             // index_to_id(index_to_id_),
@@ -621,12 +614,17 @@ void cabana_short_range(
 #endif
             coulomb_kernel(coulomb_kernel_), dipoles_kernel(dipoles_kernel_),
             elc_kernel(elc_kernel_), coulomb_u_kernel(coulomb_u_kernel_),
-            num_threads(num_threads_), mpi_rank(mpi_rank_) {
+            num_threads(num_threads_), mpi_rank(mpi_rank_), particle_number(particle_number_) {
       }
 
       KOKKOS_INLINE_FUNCTION
       void operator()(int i, int j) const {
 
+	if (i >= particle_number or j >= particle_number) {
+	  std::cerr << "ERROR: index exceeds number_of_unique_particles "
+		    << i << " " << j << "\n";
+	  std::terminate(); // or handle safely
+	}
         Utils::Vector3d const pi = {slice_position(i, 0), slice_position(i, 1),
                                     slice_position(i, 2)};
         Utils::Vector3d const pj = {slice_position(j, 0), slice_position(j, 1),
@@ -721,9 +719,9 @@ void cabana_short_range(
 #endif
       };
     };
-#ifdef CALIPER
-    CALI_MARK_END("Cabana - Verlet List2");
-#endif
+//#ifdef CALIPER
+//    CALI_MARK_END("Cabana - Verlet List2");
+//#endif
 
     // ===================================================
     // Execute Kernel
@@ -742,7 +740,7 @@ void cabana_short_range(
         *collision_detection,
 #endif
         coulomb_kernel, dipoles_kernel, elc_kernel, coulomb_u_kernel,
-        num_threads, rank);
+        num_threads, rank, number_of_unique_particles);
 
     Cabana::neighbor_parallel_for(policy, first_neighbor_kernel, verlet_list,
                                   Cabana::FirstNeighborsTag(),
@@ -752,6 +750,11 @@ void cabana_short_range(
     // Force and Torque reduction
     Kokkos::parallel_for(
         "reduction", policy, KOKKOS_LAMBDA(const int i) {
+	if (i >= number_of_unique_particles) {
+	  std::cerr << "ERROR: index exceeds number_of_unique_particles "
+		    << i << " " << "\n";
+	  std::terminate(); // or handle safely
+	}
           double fx = 0.;
           double fy = 0.;
           double fz = 0.;
@@ -801,6 +804,9 @@ void cabana_short_range(
         collision_detection->detect_collision(p1, p2, d.dist2);
       }
     };
+    //bool const rebuild_e = cell_structure.get_rebuild_verlet_list();
+    //bool const rebuild_c = cell_structure.get_rebuild_cabana_verlet_list();
+    //std::cout << "Both should be 0 before non_bonded_loop " << rebuild_e << " " << rebuild_c << std::endl;
     cell_structure.non_bonded_loop(collision_kernel, verlet_criterion);
 #endif
 #ifdef CALIPER
@@ -818,6 +824,11 @@ void cabana_short_range(
       if (p == nullptr) {
         return;
       }
+	if (id >= number_of_unique_particles) {
+	  std::cerr << "ERROR: id exceeds number_of_unique_particles "
+		    << id << " " << "\n";
+	  std::terminate(); // or handle safely
+	}
       Utils::Vector3d f_vec{slice_force(id, 0), slice_force(id, 1),
                             slice_force(id, 2)};
       Utils::Vector3d torque_vec{slice_torque(id, 0), slice_torque(id, 1),

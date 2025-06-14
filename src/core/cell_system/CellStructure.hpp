@@ -55,6 +55,7 @@
 #include <stdexcept>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 // forward declaration to not have to import cabana
 #ifdef SHARED_MEMORY_PARALLELISM
@@ -687,19 +688,25 @@ public:
   template <class Kernel, class VerletCriterion>
   void cabana_verlet_list_loop(Kernel kernel,
                                const VerletCriterion &verlet_criterion) {
-    if (m_rebuild_cabana_verlet_list) {
+    //if (m_rebuild_cabana_verlet_list) {
+    if (m_rebuild_verlet_list) {
       m_verlet_list.clear();
 
       link_cell([&](Particle &p1, Particle &p2, Distance const &d) {
         if (verlet_criterion(p1, p2, d)) {
           m_verlet_list.emplace_back(&p1, &p2);
+          //std::cout << "WITHOUT CS "
+          //          << p1.id() << " "
+          //          << p2.id() << std::endl;
         }
       });
-      m_rebuild_cabana_verlet_list = false;
+      m_rebuild_verlet_list = false;
     }
     for (auto const &pair : m_verlet_list) {
       kernel(*pair.first, *pair.second);
     }
+    m_rebuild_cabana_verlet_list = false;
+    //std::cout << "h1.rebuild " << m_rebuild_verlet_list << std::endl;
   }
 #endif
 
@@ -715,6 +722,7 @@ private:
     /* In this case the verlet list update is attached to
      * the pair kernel, and the verlet list is rebuilt as
      * we go. */
+    //std::cout << "In verlet_list_looop " << m_rebuild_verlet_list << " " << m_rebuild_cabana_verlet_list << std::endl;
     if (m_rebuild_verlet_list) {
       m_verlet_list.clear();
 
@@ -722,10 +730,15 @@ private:
         if (verlet_criterion(p1, p2, d)) {
           m_verlet_list.emplace_back(&p1, &p2);
           pair_kernel(p1, p2, d);
+          //std::cout << "WITHOUT CS "
+          //          << p1.id() << " "
+          //          << p2.id() << std::endl;
         }
       });
 
       m_rebuild_verlet_list = false;
+      //std::cout << "h2.rebuild " << m_rebuild_verlet_list << std::endl;
+      m_rebuild_cabana_verlet_list = true;
     } else {
       auto const maybe_box = decomposition().minimum_image_distance();
       /* In this case the pair kernel is just run over the verlet list. */
@@ -771,6 +784,7 @@ public:
   template <class PairKernel, class VerletCriterion>
   void non_bonded_loop(PairKernel pair_kernel,
                        const VerletCriterion &verlet_criterion) {
+    std::cout << "non_bonded_loop " << use_verlet_list << std::endl;
     if (use_verlet_list) {
       verlet_list_loop(pair_kernel, verlet_criterion);
     } else {
