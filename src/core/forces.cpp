@@ -203,7 +203,7 @@ void System::System::calculate_forces() {
 #ifdef COLLISION_DETECTION
       collision_detection,
 #endif
-      *cell_structure, maximal_cutoff(), bonded_ias->maximal_cutoff(),
+      *cell_structure, get_interaction_range(), bonded_ias->maximal_cutoff(),
       *thermostat, *box_geo, *nonbonded_ias, particles,
       cell_structure->ghost_particles(),
       VerletCriterion<>{*this, cell_structure->get_verlet_skin(),

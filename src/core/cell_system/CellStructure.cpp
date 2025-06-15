@@ -60,8 +60,6 @@
 
 #ifdef SHARED_MEMORY_PARALLELISM
 
-using data_types = Cabana::MemberTypes<double[3], double[3], double[3],
-                                           double, int, int, int, bool>;
 using memory_space = Kokkos::SharedSpace;
 using execution_space = Kokkos::DefaultExecutionSpace;
 
@@ -77,7 +75,7 @@ CellStructure::~CellStructure() {
 
 void CellStructure::set_cabana_data(std::unique_ptr<CabanaData> data) {
   m_cabana_data = std::move(data);
-  m_rebuild_verlet_list = false;
+  //m_rebuild_verlet_list = false;
   //std::cout << "c1.rebuild " << m_rebuild_verlet_list << std::endl;
   m_rebuild_cabana_verlet_list = false;
 }
@@ -85,9 +83,9 @@ void CellStructure::set_cabana_data(std::unique_ptr<CabanaData> data) {
 CabanaData &CellStructure::get_cabana_data() { return *m_cabana_data; }
 
 void CellStructure::reset_cabana_data() {
-  //m_rebuild_verlet_list = true;
+  m_rebuild_verlet_list = true;
   //std::cout << "c2.rebuild " << m_rebuild_verlet_list << std::endl;
-  m_rebuild_cabana_verlet_list = true;
+  //m_rebuild_cabana_verlet_list = true;
   if (m_cabana_data) {
     m_cabana_data.reset();
   }

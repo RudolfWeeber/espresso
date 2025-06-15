@@ -701,12 +701,12 @@ public:
         }
       });
       m_rebuild_verlet_list = false;
+      //m_rebuild_cabana_verlet_list = false;
     }
     for (auto const &pair : m_verlet_list) {
       kernel(*pair.first, *pair.second);
     }
     m_rebuild_cabana_verlet_list = false;
-    //std::cout << "h1.rebuild " << m_rebuild_verlet_list << std::endl;
   }
 #endif
 
@@ -784,7 +784,7 @@ public:
   template <class PairKernel, class VerletCriterion>
   void non_bonded_loop(PairKernel pair_kernel,
                        const VerletCriterion &verlet_criterion) {
-    std::cout << "non_bonded_loop " << use_verlet_list << std::endl;
+    //std::cout << "non_bonded_loop " << use_verlet_list << std::endl;
     if (use_verlet_list) {
       verlet_list_loop(pair_kernel, verlet_criterion);
     } else {
