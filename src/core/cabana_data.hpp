@@ -41,8 +41,10 @@ class CabanaData {
 
 public:
   CabanaData() = default;
-  CabanaData(ListType verlet_list, std::unordered_map<int, int> id_to_index, std::vector<int> index_to_id)
-      : verlet_list(verlet_list), id_to_index(id_to_index), index_to_id(index_to_id)  {}
+  CabanaData(ListType verlet_list, std::unordered_map<int, int> id_to_index,
+             std::vector<int> index_to_id)
+      : verlet_list(verlet_list), id_to_index(id_to_index),
+        index_to_id(index_to_id) {}
   CabanaData(ListType verlet_list, std::unordered_map<int, int> id_to_index)
       : verlet_list(verlet_list), id_to_index(id_to_index) {}
   CabanaData(ListType verlet_list, int particle_number)
