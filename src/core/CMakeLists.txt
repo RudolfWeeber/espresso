@@ -109,8 +109,8 @@ endif()
 
 if(ESPRESSO_BUILD_WITH_WALBERLA)
   set_source_files_properties(
-      ${CMAKE_CURRENT_SOURCE_DIR}/forces.cpp
-      PROPERTIES
+    ${CMAKE_CURRENT_SOURCE_DIR}/forces.cpp
+    PROPERTIES
       CMAKE_CXX_CLANG_TIDY
       "/usr/bin/clang-tidy-19;-checks=*,-modernize-use-nullptr,-clang-analyzer-optin.performance.Padding"
   )
