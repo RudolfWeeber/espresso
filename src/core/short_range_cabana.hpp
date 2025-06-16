@@ -90,6 +90,7 @@ inline void set_offset_and_size_indexed_by_cid( int &total_bins, int* cell_num,
     cell_list(cid);
   }
 }
+
 using ActiveProtocol = std::variant<LeesEdwards::Off, LeesEdwards::LinearShear, LeesEdwards::OscillatoryShear>;
 inline int set_interacting_pair_cell( int &total_bins, int total_pair_cell, int* cell_num,
     int* delta_lebc, int le_direction, int le_normal,
@@ -105,11 +106,7 @@ inline int set_interacting_pair_cell( int &total_bins, int total_pair_cell, int*
       {0, 1, -1},   {0, 1, 0},   {0, 1, 1},   {1, -1, -1}, {1, -1, 0},
       {1, -1, 1},   {1, 0, -1},  {1, 0, 0},   {1, 0, 1},   {1, 1, -1},
       {1, 1, 0},    {1, 1, 1}};
-  // std::cout << "TotalBins=" << total_bins << "\n";
-  // std::cout << "TotalPairCell=" << total_pair_cell << "\n";
-  //
-  // Creating list of interacting pair cell
-  //
+
   int empty_pair_number = 0;
   int pair_cell_id = 0;
   for (int cid_i = 0; cid_i < total_bins; ++cid_i) {
@@ -144,16 +141,25 @@ inline int set_interacting_pair_cell( int &total_bins, int total_pair_cell, int*
 			     cell_num[le_direction];
 	}
       }
+      // Additional Cell
+      /*
+      if (le_crossing != 0 && index[le_direction] == 1) {
+	if (le_crossing < 0) {
+	  dx[le_direction] = (dx[le_direction] + 1 +
+                  cell_num[le_direction]) % cell_num[le_direction];
+        } else if (le_crossing > 0) {
+          dx[le_direction] = (dx[le_direction] - 1 +
+            cell_num[le_direction]) % cell_num[le_direction];
+        }
+        cell_offset = bin_offset(dx[0], dx[1], dx[2]);
+        cell_size = bin_size(dx[0], dx[1], dx[2]);
+      }
+      */
 
       // Interacting pair cell is registered in the list
       int cid_j = cell_list.cardinalBinIndex(dx[0], dx[1], dx[2]);
       if (cid_i <= cid_j) {
 	if (bin_size(cid_i) != 0 and bin_size(cid_j) != 0) {
-	  /*if (pair_cell_id >= total_pair_cell) {
-	    std::cerr << "ERROR: pair_cell_id exceeds total_pair_cell at "
-		      << pair_cell_id << "\n";
-	    std::terminate(); // or handle safely
-	  }*/
 	  interacting_pair_cell(pair_cell_id, 0) = cid_i;
 	  interacting_pair_cell(pair_cell_id, 1) = cid_j;
 	  ++pair_cell_id;
@@ -214,7 +220,7 @@ void cabana_short_range(
     // Dont know where to do this better
     using data_types = Cabana::MemberTypes<double[3], double[3], double[3],
                                            double, int, int, int, bool>;
-    using memory_space = Kokkos::SharedSpace;
+    using memory_space = Kokkos::HostSpace; //Kokkos::SharedSpace;
     using execution_space = Kokkos::DefaultExecutionSpace;
 
     using ListAlgorithm = Cabana::HalfNeighborTag;
@@ -224,7 +230,7 @@ void cabana_short_range(
     // Number of threads
     const int num_threads = execution_space().concurrency();
 
-    const int vector_length = 8;
+    const int vector_length = 1;
 #ifdef CALIPER
     CALI_MARK_END("Cabana - Setup");
 #endif
@@ -255,17 +261,21 @@ void cabana_short_range(
     if (rebuild) {
 
       for (auto const &p : particles) {
+	//if (cell_structure.get_local_particle(p.id())) {
         id_to_index[p.id()] = index;
         registered_index.insert(p.id());
         index++;
+        //}
       }
 
       for (auto const &p : ghost_particles) {
         if (not registered_index.contains(p.id())) {
+	  //if (cell_structure.get_local_particle(p.id())) {
           id_to_index[p.id()] = index;
           registered_index.insert(p.id());
           index++;
-        }
+          //}
+	}
       }
     } else {
       // If we do not rebuild we can use the saved map
@@ -297,6 +307,7 @@ void cabana_short_range(
     int p_id = 0;
     registered_index.clear();
     for (auto const &p : particles) {
+      //if (!cell_structure.get_local_particle(p.id())) continue;
       write_particle(p, p_id, slice_position, slice_force, slice_torque,
                      slice_charge, slice_id, slice_type, slice_ghost, box_l);
       registered_index.insert(p.id());
@@ -308,6 +319,7 @@ void cabana_short_range(
       if (registered_index.contains(p.id())) {
         continue;
       }
+      //if (!cell_structure.get_local_particle(p.id())) continue;
       write_particle(p, p_id, slice_position, slice_force, slice_torque,
                      slice_charge, slice_id, slice_type, slice_ghost, box_l);
       registered_index.insert(p.id());
@@ -423,8 +435,8 @@ void cabana_short_range(
         auto p1 = cell->get_local_particle(slice_id(i));
         auto p2 = cell->get_local_particle(slice_id(j));
 
-        if (p1 == nullptr or p2 == nullptr)
-          return;
+        //if (p1 == nullptr or p2 == nullptr)
+        //  return;
 
         auto const dist2 = dist * dist;
         auto[pf, virial] = add_non_bonded_pair_force(
@@ -517,10 +529,10 @@ void cabana_short_range(
       max_counts =
           static_cast<int>(27 * max_cutoff * max_cutoff * max_cutoff / 3);
     }
-    if (max_counts < 128)
-      max_counts = 128;
+    if (max_counts < 256)
+      max_counts = 256;
     if (rebuild) { // Legacy Velert List
-      verlet_list =
+      /*verlet_list =
           ListType(slice_position, 0, slice_position.size(), max_counts);
       auto kernel = [&](Particle const &p1, Particle const &p2) {
         verlet_list.addNeighbor(id_to_index.at(p1.id()),
@@ -536,7 +548,7 @@ void cabana_short_range(
                     //<< p2.pos() << "\n";
       };
 
-      cell_structure.cabana_verlet_list_loop(kernel, verlet_criterion);//
+      cell_structure.cabana_verlet_list_loop(kernel, verlet_criterion);*/
     } else {
       // Else use the saved verlet list
       verlet_list = saved_data.get_verlet_list();
@@ -559,7 +571,7 @@ void cabana_short_range(
         coulomb_kernel, dipoles_kernel, elc_kernel, coulomb_u_kernel,
         num_threads, rank, number_of_unique_particles);
 
-    if (rebuild and max_cutoff != INACTIVE_CUTOFF and 0) { // Shared memory
+    if (rebuild and max_cutoff != INACTIVE_CUTOFF) { // Shared memory
       // Creating LinkedCellList and VerletList:
       // Box Properties
       Cabana::LinkedCellList<memory_space, double> cell_list;
@@ -597,7 +609,7 @@ void cabana_short_range(
 	  slice_position, grid_delta, grid_min, grid_max);
       int total_bins = cell_list.totalBins();
       // Now permute the AoSoA (i.e. reorder the data) using the linked cell list.
-      // Cabana::permute( cell_list, particle_storage );
+      //Cabana::permute( cell_list, particle_storage );
 
       verlet_list =
           ListType(slice_position, 0, slice_position.size(), max_counts);
@@ -623,7 +635,6 @@ void cabana_short_range(
 	      set_interacting_pair_cell(total_bins, total_pair_cell, cell_num,
 			      delta_lebc, le_direction, le_normal, le_protocol,
 			      bin_size, cell_list, interacting_pair_cell);
-      // End Creating Interacting cell
 
       auto const distance_function = detail::MinimalImageDistance{
           std::as_const(cell_structure).decomposition().box()};
@@ -636,52 +647,45 @@ void cabana_short_range(
         auto verlet_kernel = [&](Particle *p1, int ii, int id_i, int cell_offset,
                                  int cell_size) {
           for (int j = cell_offset; j < cell_offset + cell_size; ++j) {
-            // int jj = j;
             //int ii = cell_list.permutation(i); // debug
+            //int jj = j;
             int jj = cell_list.permutation(j);
             int id_j = slice_id(jj);
-            if (slice_ghost(ii) and slice_ghost(jj)) {
+	    if (slice_ghost(ii) or slice_ghost(jj)) {
+	      if ( (id_i < id_j and slice_ghost(ii))
+		or (id_i > id_j and slice_ghost(jj)) ) {
+                continue;
+              }
+	    } else if (slice_ghost(ii) and slice_ghost(jj)) {
               continue; // reject both ghost
             }
-            if (slice_ghost(ii) or slice_ghost(jj)) {
-              // if (cid_i == cid_j) {
-              if (id_i < id_j and slice_ghost(ii)) {
-                continue;
-              } else if (id_i > id_j and slice_ghost(jj)) {
-                continue;
-              }
-              //}
-            }
-            if (1) {
-              auto p2 = cell_structure.get_local_particle(id_j);
-              if (p2 == nullptr)
-                continue;
-              if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
-                verlet_list.addNeighbor(ii, jj);
-                /*std::cout << "*Cabana* "
-                          << i << " "
-                          << j << " "
-                          << id_i << " "
-                          << id_j << " "
-                          << slice_ghost(ii) << " "
-                          << slice_ghost(jj) << " "
-                          << cid_i << " "
-                          << cid_j << " "
-                          << slice_position(ii, 0) << ", "
-                          << slice_position(ii, 1) << ", "
-                          << slice_position(ii, 2) << " "
-                          << slice_position(jj, 0) << ", "
-                          << slice_position(jj, 1) << ", "
-                          << slice_position(jj, 2) << "\n";//
-                //std::cout << "CHECK "
-                          << n << " "
-                          << i << " "
-                          << j << " "
-                          << dx[0] << " "
-                          << dx[1] << " "
-                          << dx[2] << "\n";*/
-		//first_neighbor_kernel(ii, jj);
-              }
+	    auto p2 = cell_structure.get_local_particle(id_j);
+	    if (p2 == nullptr) continue;
+	    if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
+	      verlet_list.addNeighbor(ii, jj);
+	      /*std::cout << "*Cabana* "
+			<< i << " "
+			<< j << " "
+			<< id_i << " "
+			<< id_j << " "
+			<< slice_ghost(ii) << " "
+			<< slice_ghost(jj) << " "
+			<< cid_i << " "
+			<< cid_j << " "
+			<< slice_position(ii, 0) << ", "
+			<< slice_position(ii, 1) << ", "
+			<< slice_position(ii, 2) << " "
+			<< slice_position(jj, 0) << ", "
+			<< slice_position(jj, 1) << ", "
+			<< slice_position(jj, 2) << "\n";//
+	      //std::cout << "CHECK "
+			<< n << " "
+			<< i << " "
+			<< j << " "
+			<< dx[0] << " "
+			<< dx[1] << " "
+			<< dx[2] << "\n";*/
+	      //first_neighbor_kernel(ii, jj);
             }
           } // j-loop
         };
@@ -690,14 +694,11 @@ void cabana_short_range(
         int size_i = bin_size(cid_i);
 
         for (int i = offset_i; i < offset_i + size_i; ++i) {
-          // int ii = i;
+          //int ii = i;
           int ii = cell_list.permutation(i);
           int id_i = slice_id(ii);
-          // if (slice_ghost(ii))
-          //   continue;
           auto p1 = cell_structure.get_local_particle(id_i);
-          if (p1 == nullptr)
-            continue;
+          if (p1 == nullptr) continue;
 
           if (cid_i == cid_j) {
             verlet_kernel(p1, ii, id_i, i + 1, size_i + offset_i - i - 1); // j-loop
@@ -711,19 +712,6 @@ void cabana_short_range(
           }
         } // i-loop
 
-        // Lees-Edwards BC
-        /*if (le_crossing != 0 && index[le_direction] == 1) {
-          if (le_crossing < 0) {
-              dx[le_direction] = (dx[le_direction] + 1 +
-        cell_num[le_direction]) % cell_num[le_direction]; } else if
-        (le_crossing > 0) { dx[le_direction] = (dx[le_direction] - 1 +
-        cell_num[le_direction]) % cell_num[le_direction];
-          }
-          cell_offset = bin_offset(dx[0], dx[1], dx[2]);
-          cell_size = bin_size(dx[0], dx[1], dx[2]);
-
-          verlet_kernel(cell_offset, cell_size);
-        }*/
       };
 
       Kokkos::RangePolicy<execution_space> policy(0, total_pair_cell -
@@ -731,6 +719,13 @@ void cabana_short_range(
       Kokkos::parallel_for("calc_by_cell_list", policy, kernel);
       Kokkos::fence();
     } //else {
+    {
+      Kokkos::RangePolicy<execution_space> policy(0, particle_storage.size());
+      Cabana::neighbor_parallel_for(policy, first_neighbor_kernel, verlet_list,
+				    Cabana::FirstNeighborsTag(),
+				    Cabana::SerialOpTag());
+      Kokkos::fence();
+    }
 #ifdef CALIPER
     CALI_MARK_END("Cabana - Verlet List2");
 #endif
@@ -738,12 +733,6 @@ void cabana_short_range(
 #ifdef CALIPER
     CALI_MARK_BEGIN("Cabana - Calc Forces");
 #endif
-      Kokkos::RangePolicy<execution_space> policy(0, particle_storage.size());
-      Cabana::neighbor_parallel_for(policy, first_neighbor_kernel, verlet_list,
-				    Cabana::FirstNeighborsTag(),
-				    Cabana::SerialOpTag());
-      Kokkos::fence();
-    //}
 
     // Save data for next iteration if we just rebuilt
     if (rebuild) {
@@ -752,14 +741,9 @@ void cabana_short_range(
     }
 
     // Force and Torque reduction
-    //Kokkos::RangePolicy<execution_space> policy(0, particle_storage.size());
+    Kokkos::RangePolicy<execution_space> policy(0, particle_storage.size());
     Kokkos::parallel_for(
         "reduction", policy, KOKKOS_LAMBDA(const int i) {
-	if (i >= number_of_unique_particles) {
-	  std::cerr << "ERROR: index exceeds number_of_unique_particles "
-		    << i << " " << "\n";
-	  std::terminate(); // or handle safely
-	}
           double fx = 0.;
           double fy = 0.;
           double fz = 0.;
@@ -809,9 +793,6 @@ void cabana_short_range(
         collision_detection->detect_collision(p1, p2, d.dist2);
       }
     };
-    //bool const rebuild_e = cell_structure.get_rebuild_verlet_list();
-    //bool const rebuild_c = cell_structure.get_rebuild_cabana_verlet_list();
-    //std::cout << "Both should be 0 before non_bonded_loop " << rebuild_e << " " << rebuild_c << std::endl;
     cell_structure.non_bonded_loop(collision_kernel, verlet_criterion);
 #endif
 #ifdef CALIPER
@@ -829,11 +810,6 @@ void cabana_short_range(
       if (p == nullptr) {
         return;
       }
-	if (id >= number_of_unique_particles) {
-	  std::cerr << "ERROR: id exceeds number_of_unique_particles "
-		    << id << " " << "\n";
-	  std::terminate(); // or handle safely
-	}
       Utils::Vector3d f_vec{slice_force(id, 0), slice_force(id, 1),
                             slice_force(id, 2)};
       Utils::Vector3d torque_vec{slice_torque(id, 0), slice_torque(id, 1),
