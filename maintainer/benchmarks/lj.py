@@ -117,18 +117,13 @@ benchmarks.minimize(system, n_part / 2.)
 
 system.integrator.set_vv()
 system.thermostat.set_langevin(kT=1.0, gamma=1.0, seed=42)
-
+system.integrator.run(1000)
 # tuning and equilibration
 min_skin = 0.2
 max_skin = 1.0
 print("Tune skin: {:.3f}".format(system.cell_system.tune_skin(
-    min_skin=min_skin, max_skin=max_skin, tol=0.05, int_steps=100)))
-print("Equilibration")
-system.integrator.run(min(5 * measurement_steps, 60000))
-print("Tune skin: {:.3f}".format(system.cell_system.tune_skin(
-    min_skin=min_skin, max_skin=max_skin, tol=0.05, int_steps=100)))
-print("Equilibration")
-system.integrator.run(min(10 * measurement_steps, 60000))
+    min_skin=min_skin, max_skin=max_skin, tol=0.025, int_steps=200)))
+system.integrator.run(1000)
 
 
 if args.visualizer:
