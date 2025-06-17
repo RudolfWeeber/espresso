@@ -249,7 +249,8 @@ void cabana_short_range(
     int index = 0;
 
     bool const rebuild = cell_structure.get_rebuild_cabana_verlet_list();
-    //std::cout << "For CABANA rebuild " << rebuild << " " << Kokkos::OpenMP::concurrency() << std::endl;
+    // std::cout << "For CABANA rebuild " << rebuild << " " <<
+    // Kokkos::OpenMP::concurrency() << std::endl;
 
     CabanaData saved_data;
 
@@ -448,7 +449,7 @@ void cabana_short_range(
             dist2, q1q2, ia_params, thermostat, box_geo, bonded_ias,
             coulomb_kernel, dipoles_kernel, elc_kernel, coulomb_u_kernel);
         */
-        
+
         ParticleForce pf{};
 #ifdef NPT
         Utils::Vector3d virial{};
@@ -484,10 +485,10 @@ void cabana_short_range(
             const_cast<Particle &>(*p1), const_cast<Particle &>(*p2), pf,
 #ifdef NPT
             virial,
-#endif //NPT
-	    d, dist, dist2, q1q2, ia_params, do_nonbonded_flag,
-            thermostat, box_geo, bonded_ias, coulomb_kernel, dipoles_kernel,
-            elc_kernel, coulomb_u_kernel);
+#endif // NPT
+            d, dist, dist2, q1q2, ia_params, do_nonbonded_flag, thermostat,
+            box_geo, bonded_ias, coulomb_kernel, dipoles_kernel, elc_kernel,
+            coulomb_u_kernel);
 #endif // ETC
        //
         local_force(thread_id, i, 0) += pf.f[0];
@@ -730,7 +731,7 @@ void cabana_short_range(
       Kokkos::parallel_for("calc_by_cell_list", policy, kernel);
       Kokkos::fence();
     } else {
-    //{
+      //{
       Kokkos::RangePolicy<execution_space> policy(0, particle_storage.size());
       Cabana::neighbor_parallel_for(policy, first_neighbor_kernel, verlet_list,
                                     Cabana::FirstNeighborsTag(),

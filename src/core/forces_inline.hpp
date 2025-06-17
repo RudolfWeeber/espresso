@@ -213,7 +213,7 @@ inline void add_non_bonded_pair_withot_p(
  * For the interaction which need particle information
  */
 inline void add_non_bonded_pair_force_with_p(
-    Particle &p1, Particle &p2, ParticleForce &pf, 
+    Particle &p1, Particle &p2, ParticleForce &pf,
 #ifdef SHARED_MEMORY_PARALLELISM
     Utils::Vector3d &virial,
 #endif
@@ -359,16 +359,15 @@ inline ReturnType add_non_bonded_pair_force(
   add_non_bonded_pair_withot_p(pf, d, dist, q1q2, ia_params, do_nonbonded_flag,
                                coulomb_kernel);
 
-#if defined(NPT) or defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
-    defined(DPD) or defined(DIPOLES)
+#if defined(NPT) or defined(THOLE) or defined(ELECTROSTATICS) or               \
+    defined(P3M) or defined(DPD) or defined(DIPOLES)
   add_non_bonded_pair_force_with_p(
       p1, p2, pf,
 #if defined(NPT) and defined(SHARED_MEMORY_PARALLELISM)
       virial,
 #endif
-      d, dist, dist2, q1q2, ia_params, do_nonbonded_flag,
-      thermostat, box_geo, bonded_ias, coulomb_kernel, dipoles_kernel,
-      elc_kernel, coulomb_u_kernel);
+      d, dist, dist2, q1q2, ia_params, do_nonbonded_flag, thermostat, box_geo,
+      bonded_ias, coulomb_kernel, dipoles_kernel, elc_kernel, coulomb_u_kernel);
 #endif
 
   /***********************************************/

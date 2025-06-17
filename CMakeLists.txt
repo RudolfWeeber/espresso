@@ -610,9 +610,9 @@ if(ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM)
     list(APPEND SKIP_CLANG_TIDY_CHECKS
          "-readability-avoid-const-params-in-decls")
     list(APPEND SKIP_CLANG_TIDY_CHECKS
-	"-clang-analyzer-optin.performance.Padding")
+         "-clang-analyzer-optin.performance.Padding")
     list(APPEND SKIP_CLANG_TIDY_CHECKS
-	"-clang-analyzer-security.insecureAPI.strcpy")
+         "-clang-analyzer-security.insecureAPI.strcpy")
     espresso_override_clang_tidy_checks(
       KOKKOS_CXX_CLANG_TIDY "${SKIP_CLANG_TIDY_CHECKS}"
       "${SKIP_CLANG_TIDY_CHECKS_CXX}")
