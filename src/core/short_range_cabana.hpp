@@ -249,7 +249,7 @@ void cabana_short_range(
     int index = 0;
 
     bool const rebuild = cell_structure.get_rebuild_cabana_verlet_list();
-    // std::cout << "For CABANA rebuild " << rebuild << std::endl;
+    //std::cout << "For CABANA rebuild " << rebuild << " " << Kokkos::OpenMP::concurrency() << std::endl;
 
     CabanaData saved_data;
 
@@ -435,7 +435,7 @@ void cabana_short_range(
 
         IA_parameters const &ia_params =
             nonbonded_ias.get_ia_param(slice_type(i), slice_type(j));
-        //
+        /*
         auto p1 = cell->get_local_particle(slice_id(i));
         auto p2 = cell->get_local_particle(slice_id(j));
 
@@ -447,10 +447,12 @@ void cabana_short_range(
             const_cast<Particle &>(*p1), const_cast<Particle &>(*p2), d, dist,
             dist2, q1q2, ia_params, thermostat, box_geo, bonded_ias,
             coulomb_kernel, dipoles_kernel, elc_kernel, coulomb_u_kernel);
-        //
-        /*
+        */
+        
         ParticleForce pf{};
+#ifdef NPT
         Utils::Vector3d virial{};
+#endif
 
 #ifdef EXCLUSIONS
         auto p1 = cell->get_local_particle(slice_id(i));
@@ -468,7 +470,7 @@ void cabana_short_range(
                                      do_nonbonded_flag, coulomb_kernel);
 
 #if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
-    defined(DPD) or defined(DIPOLES)
+    defined(DPD) or defined(DIPOLES) or defined(NPT)
         auto const dist2 = dist * dist;
 
 #ifndef EXCLUSIONS
@@ -477,14 +479,17 @@ void cabana_short_range(
 
         if (p1 == nullptr or p2 == nullptr)
           return;
-#endif
+#endif // NOT EXCLUSIONS
         add_non_bonded_pair_force_with_p(
             const_cast<Particle &>(*p1), const_cast<Particle &>(*p2), pf,
-            virial, d, dist, dist2, q1q2, ia_params, do_nonbonded_flag,
+#ifdef NPT
+            virial,
+#endif //NPT
+	    d, dist, dist2, q1q2, ia_params, do_nonbonded_flag,
             thermostat, box_geo, bonded_ias, coulomb_kernel, dipoles_kernel,
             elc_kernel, coulomb_u_kernel);
 #endif // ETC
-       */
+       //
         local_force(thread_id, i, 0) += pf.f[0];
         local_force(thread_id, i, 1) += pf.f[1];
         local_force(thread_id, i, 2) += pf.f[2];
@@ -690,7 +695,7 @@ void cabana_short_range(
                         << dx[0] << " "
                         << dx[1] << " "
                         << dx[2] << "\n";*/
-              // first_neighbor_kernel(ii, jj);
+              first_neighbor_kernel(ii, jj);
             }
           } // j-loop
         };
@@ -724,13 +729,20 @@ void cabana_short_range(
                                                          empty_pair_number);
       Kokkos::parallel_for("calc_by_cell_list", policy, kernel);
       Kokkos::fence();
-    } // else {
-    {
+    } else {
+    //{
       Kokkos::RangePolicy<execution_space> policy(0, particle_storage.size());
       Cabana::neighbor_parallel_for(policy, first_neighbor_kernel, verlet_list,
                                     Cabana::FirstNeighborsTag(),
                                     Cabana::SerialOpTag());
+                                    //Cabana::TeamOpTag());
       Kokkos::fence();
+    }
+
+    // Save data for next iteration if we just rebuilt
+    if (rebuild) {
+      CabanaData new_data(verlet_list, particle_storage.size());
+      cell_structure.set_cabana_data(std::make_unique<CabanaData>(new_data));
     }
 #ifdef CALIPER
     CALI_MARK_END("Cabana - Verlet List2");
@@ -739,13 +751,6 @@ void cabana_short_range(
 #ifdef CALIPER
     CALI_MARK_BEGIN("Cabana - Calc Forces");
 #endif
-
-    // Save data for next iteration if we just rebuilt
-    if (rebuild) {
-      CabanaData new_data(verlet_list, particle_storage.size());
-      cell_structure.set_cabana_data(std::make_unique<CabanaData>(new_data));
-    }
-
     // Force and Torque reduction
     Kokkos::RangePolicy<execution_space> policy(0, particle_storage.size());
     Kokkos::parallel_for(

@@ -213,7 +213,10 @@ inline void add_non_bonded_pair_withot_p(
  * For the interaction which need particle information
  */
 inline void add_non_bonded_pair_force_with_p(
-    Particle &p1, Particle &p2, ParticleForce &pf, Utils::Vector3d &virial,
+    Particle &p1, Particle &p2, ParticleForce &pf, 
+#ifdef SHARED_MEMORY_PARALLELISM
+    Utils::Vector3d &virial,
+#endif
     Utils::Vector3d const &d, double dist, double dist2, double q1q2,
     IA_parameters const &ia_params, [[maybe_unused]] bool do_nonbonded,
     Thermostat::Thermostat const &thermostat, BoxGeometry const &box_geo,
@@ -308,8 +311,10 @@ inline void add_non_bonded_pair_force_with_p(
   // return std::pair{pf, virial};
 }
 
-#ifdef SHARED_MEMORY_PARALLELISM
+#if defined(NPT) and defined(SHARED_MEMORY_PARALLELISM)
 using ReturnType = std::pair<ParticleForce, Utils::Vector3d>;
+#elif defined(SHARED_MEMORY_PARALLELISM)
+using ReturnType = ParticleForce;
 #else
 using ReturnType = void;
 #endif
@@ -341,8 +346,7 @@ inline ReturnType add_non_bonded_pair_force(
     Coulomb::ShortRangeEnergyKernel::kernel_type const *coulomb_u_kernel) {
 
   ParticleForce pf{};
-#if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
-    defined(DPD) or defined(DIPOLES) or defined(SHARED_MEMORY_PARALLELISM)
+#if defined(NPT) and defined(SHARED_MEMORY_PARALLELISM)
   Utils::Vector3d virial{};
 #endif
 
@@ -355,10 +359,14 @@ inline ReturnType add_non_bonded_pair_force(
   add_non_bonded_pair_withot_p(pf, d, dist, q1q2, ia_params, do_nonbonded_flag,
                                coulomb_kernel);
 
-#if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
+#if defined(NPT) or defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
     defined(DPD) or defined(DIPOLES)
   add_non_bonded_pair_force_with_p(
-      p1, p2, pf, virial, d, dist, dist2, q1q2, ia_params, do_nonbonded_flag,
+      p1, p2, pf,
+#if defined(NPT) and defined(SHARED_MEMORY_PARALLELISM)
+      virial,
+#endif
+      d, dist, dist2, q1q2, ia_params, do_nonbonded_flag,
       thermostat, box_geo, bonded_ias, coulomb_kernel, dipoles_kernel,
       elc_kernel, coulomb_u_kernel);
 #endif
@@ -367,8 +375,10 @@ inline ReturnType add_non_bonded_pair_force(
   /* add total non-bonded forces to particles    */
   /***********************************************/
 
-#ifdef SHARED_MEMORY_PARALLELISM
+#if defined(NPT) and defined(SHARED_MEMORY_PARALLELISM)
   return std::pair{pf, virial};
+#elif defined(SHARED_MEMORY_PARALLELISM)
+  return pf;
 #else
   p1.force_and_torque() += pf;
   p2.force_and_torque() += calc_opposing_force(pf, d);
