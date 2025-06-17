@@ -99,7 +99,7 @@ void init(std::shared_ptr<boost::mpi::environment> mpi_env) {
 
 #ifdef SHARED_MEMORY_PARALLELISM
   Kokkos::initialize();
-  Kokkos::print_configuration(std::cout);
+  //Kokkos::print_configuration(std::cout);
 #endif
 }
 

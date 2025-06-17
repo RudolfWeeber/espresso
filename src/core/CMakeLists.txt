@@ -101,23 +101,12 @@ target_link_libraries(
          Boost::serialization Boost::mpi espresso::instrumentation)
 
 target_include_directories(espresso_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-if(ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM)
-  target_include_directories(
-    espresso_core SYSTEM INTERFACE ${FETCHCONTENT_BASE_DIR}/cabana-src/core/src
-                                   ${FETCHCONTENT_BASE_DIR}/kokkos-src/core/src)
-endif()
 
 if(ESPRESSO_BUILD_WITH_WALBERLA)
   target_link_libraries(
     espresso_core
     PRIVATE espresso::walberla
             $<$<BOOL:${ESPRESSO_BUILD_WITH_CUDA}>:espresso::walberla_cuda>)
-  set_source_files_properties(
-    ${CMAKE_CURRENT_SOURCE_DIR}/forces.cpp
-    PROPERTIES
-      CMAKE_CXX_CLANG_TIDY
-      "/usr/bin/clang-tidy-19;-checks=*,-modernize-use-nullptr,-clang-analyzer-optin.performance.Padding"
-  )
 endif()
 
 if(ESPRESSO_BUILD_WITH_FFTW)

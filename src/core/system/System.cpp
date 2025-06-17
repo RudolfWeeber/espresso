@@ -95,7 +95,6 @@ System::System(Private) {
 }
 
 System::~System() {
-  // std::cout << "~System()\n";
 #ifdef SHARED_MEMORY_PARALLELISM
   cell_structure->reset_cabana_data();
 #endif

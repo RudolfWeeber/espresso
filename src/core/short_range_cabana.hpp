@@ -524,7 +524,7 @@ void cabana_short_range(
     // Get Verlet Pairs and Fill list
     // ===================================================
 #ifdef CALIPER
-    CALI_MARK_BEGIN("Cabana - Verlet List1");
+    CALI_MARK_BEGIN("Cabana - Verlet List by ESPRESSO");
 #endif
     ListType verlet_list;
 
@@ -563,10 +563,10 @@ void cabana_short_range(
       verlet_list = saved_data.get_verlet_list();
     }
 #ifdef CALIPER
-    CALI_MARK_END("Cabana - Verlet List1");
+    CALI_MARK_END("Cabana - Verlet List by ESPRESSO");
 #endif
 #ifdef CALIPER
-    CALI_MARK_BEGIN("Cabana - Verlet List2");
+    CALI_MARK_BEGIN("Cabana - Verlet List and calc Force");
 #endif
 
     FirstNeighborKernel first_neighbor_kernel(
@@ -734,8 +734,7 @@ void cabana_short_range(
       Kokkos::RangePolicy<execution_space> policy(0, particle_storage.size());
       Cabana::neighbor_parallel_for(policy, first_neighbor_kernel, verlet_list,
                                     Cabana::FirstNeighborsTag(),
-                                    Cabana::SerialOpTag());
-                                    //Cabana::TeamOpTag());
+                                    Cabana::TeamOpTag());
       Kokkos::fence();
     }
 
@@ -745,11 +744,11 @@ void cabana_short_range(
       cell_structure.set_cabana_data(std::make_unique<CabanaData>(new_data));
     }
 #ifdef CALIPER
-    CALI_MARK_END("Cabana - Verlet List2");
+    CALI_MARK_END("Cabana - Verlet List and calc Force");
 #endif
 
 #ifdef CALIPER
-    CALI_MARK_BEGIN("Cabana - Calc Forces");
+    CALI_MARK_BEGIN("Cabana - reduction Forces");
 #endif
     // Force and Torque reduction
     Kokkos::RangePolicy<execution_space> policy(0, particle_storage.size());
@@ -791,7 +790,7 @@ void cabana_short_range(
     npt_add_virial_force_contribution(virial_vec);
 #endif
 #ifdef CALIPER
-    CALI_MARK_END("Cabana - Calc Forces");
+    CALI_MARK_END("Cabana - reduction Forces");
 #endif
 
 #ifdef CALIPER

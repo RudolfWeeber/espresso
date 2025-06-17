@@ -557,7 +557,6 @@ if(ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM)
     # install all kokkos shared objects
     get_target_property(ESPRESSO_KOKKOS_LIBS kokkos INTERFACE_LINK_LIBRARIES)
     foreach(target_name IN LISTS ESPRESSO_KOKKOS_LIBS)
-      message(${target_name})
       get_target_property(target_type ${target_name} TYPE)
       if(${target_type} STREQUAL "SHARED_LIBRARY" AND ${target_name} MATCHES
                                                       "^kokkos[a-zA-Z0-9_]+$")
@@ -586,6 +585,8 @@ if(ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM)
 
   if(ESPRESSO_BUILD_WITH_CLANG_TIDY)
     # silence Kokkos and Cabana diagnostics
+    set(KOKKOS_CXX_CLANG_TIDY "${ESPRESSO_CXX_CLANG_TIDY}")
+    set(KOKKOS_CUDA_CLANG_TIDY "${ESPRESSO_CUDA_CLANG_TIDY}")
     set(CABANA_CXX_CLANG_TIDY "${ESPRESSO_CXX_CLANG_TIDY}")
     set(CABANA_CUDA_CLANG_TIDY "${ESPRESSO_CUDA_CLANG_TIDY}")
     unset(SKIP_CLANG_TIDY_CHECKS)
@@ -608,6 +609,16 @@ if(ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM)
     list(APPEND SKIP_CLANG_TIDY_CHECKS "-readability-simplify-boolean-expr")
     list(APPEND SKIP_CLANG_TIDY_CHECKS
          "-readability-avoid-const-params-in-decls")
+    list(APPEND SKIP_CLANG_TIDY_CHECKS
+	"-clang-analyzer-optin.performance.Padding")
+    list(APPEND SKIP_CLANG_TIDY_CHECKS
+	"-clang-analyzer-security.insecureAPI.strcpy")
+    espresso_override_clang_tidy_checks(
+      KOKKOS_CXX_CLANG_TIDY "${SKIP_CLANG_TIDY_CHECKS}"
+      "${SKIP_CLANG_TIDY_CHECKS_CXX}")
+    espresso_override_clang_tidy_checks(
+      KOKKOS_CUDA_CLANG_TIDY "${SKIP_CLANG_TIDY_CHECKS}"
+      "${SKIP_CLANG_TIDY_CHECKS_CUDA}")
     espresso_override_clang_tidy_checks(
       CABANA_CXX_CLANG_TIDY "${SKIP_CLANG_TIDY_CHECKS}"
       "${SKIP_CLANG_TIDY_CHECKS_CXX}")
