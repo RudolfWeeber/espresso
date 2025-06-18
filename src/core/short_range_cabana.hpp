@@ -301,7 +301,7 @@ void cabana_short_range(
     // Create and fill particle storage
     // ===================================================
 #ifdef CALIPER
-    CALI_MARK_BEGIN("Cabana - Fill particle storage");
+    CALI_MARK_BEGIN("Cabana - Allocation");
 #endif
     Cabana::AoSoA<data_types, memory_space, vector_length> particle_storage(
         "particles", number_of_unique_particles);
@@ -315,6 +315,12 @@ void cabana_short_range(
     auto slice_has_excl = Cabana::slice<7>(particle_storage);
     std::vector<Particle *> slice_pointers(number_of_unique_particles);
     auto box_l = box_geo.length();
+#ifdef CALIPER
+    CALI_MARK_END("Cabana - Allocation");
+#endif
+#ifdef CALIPER
+    CALI_MARK_BEGIN("Cabana - Fill particle storage");
+#endif
     int p_id = 0;
     registered_index.clear();
     for (auto &p : particles) {
