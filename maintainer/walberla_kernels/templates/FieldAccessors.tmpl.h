@@ -106,7 +106,11 @@ namespace Population
     initialize( GhostLayerField< {{dtype}}, uint_t{ {{Q}}u } > * pdf_field,
                 std::array<{{dtype}}, {{Q}}u> const & pop)
      {
+#ifdef _OPENMP
+         WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ_OMP(pdf_field, omp parallel for schedule(static), {
+#else
          WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ(pdf_field, {
+#endif
              {{dtype}} & xyz0 = pdf_field->get(x, y, z, uint_t{ 0u });
              {% for i in range(Q) -%}
                  pdf_field->getF( &xyz0, uint_t{ {{i}}u }) = pop[{{i}}u];
@@ -221,7 +225,11 @@ namespace Vector
     initialize( GhostLayerField< {{dtype}}, uint_t{ {{D}}u } > * vec_field,
                 Vector{{D}}< {{dtype}} > const & vec)
      {
+#ifdef _OPENMP
+         WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ_OMP(vec_field, omp parallel for schedule(static), {
+#else
          WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ(vec_field, {
+#endif
              {{dtype}} & xyz0 = vec_field->get(x, y, z, uint_t{ 0u });
              {% for i in range(D) -%}
                  vec_field->getF( &xyz0, uint_t{ {{i}}u }) = vec[{{i}}u];
@@ -233,7 +241,11 @@ namespace Vector
     add_to_all( GhostLayerField< {{dtype}}, uint_t{ {{D}}u } > * vec_field,
                 Vector{{D}}< {{dtype}} > const & vec)
      {
+#ifdef _OPENMP
+         WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ_OMP(vec_field, omp parallel for schedule(static), {
+#else
          WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ(vec_field, {
+#endif
              {{dtype}} & xyz0 = vec_field->get(x, y, z, uint_t{ 0u });
              {% for i in range(D) -%}
                  vec_field->getF( &xyz0, uint_t{ {{i}}u }) += vec[{{i}}u];

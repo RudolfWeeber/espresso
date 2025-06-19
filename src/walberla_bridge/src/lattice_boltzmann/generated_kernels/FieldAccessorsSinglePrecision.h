@@ -18,8 +18,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// kernel generated with pystencils v1.3.7, lbmpy v1.3.7+4.gc7d65a7, sympy
-// v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit
+// kernel generated with pystencils v1.3.7, lbmpy v1.3.7, sympy v1.12.1,
+// lbmpy_walberla/pystencils_walberla from waLBerla commit
 // 0aab9c0af2335b1f6fec75deae06e514ccb233ab
 
 /*
@@ -161,7 +161,11 @@ inline void set(GhostLayerField<float, uint_t{19u}> *pdf_field,
 
 inline void initialize(GhostLayerField<float, uint_t{19u}> *pdf_field,
                        std::array<float, 19u> const &pop) {
+#ifdef _OPENMP
+         WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ_OMP(pdf_field, omp parallel for schedule(static), {
+#else
   WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ(pdf_field, {
+#endif
     float &xyz0 = pdf_field->get(x, y, z, uint_t{0u});
     pdf_field->getF(&xyz0, uint_t{0u}) = pop[0u];
     pdf_field->getF(&xyz0, uint_t{1u}) = pop[1u];
@@ -182,7 +186,7 @@ inline void initialize(GhostLayerField<float, uint_t{19u}> *pdf_field,
     pdf_field->getF(&xyz0, uint_t{16u}) = pop[16u];
     pdf_field->getF(&xyz0, uint_t{17u}) = pop[17u];
     pdf_field->getF(&xyz0, uint_t{18u}) = pop[18u];
-  });
+             });
 }
 
 inline auto get(GhostLayerField<float, uint_t{19u}> const *pdf_field,
@@ -337,22 +341,30 @@ inline void add(GhostLayerField<float, uint_t{3u}> *vec_field,
 
 inline void initialize(GhostLayerField<float, uint_t{3u}> *vec_field,
                        Vector3<float> const &vec) {
+#ifdef _OPENMP
+         WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ_OMP(vec_field, omp parallel for schedule(static), {
+#else
   WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ(vec_field, {
+#endif
     float &xyz0 = vec_field->get(x, y, z, uint_t{0u});
     vec_field->getF(&xyz0, uint_t{0u}) = vec[0u];
     vec_field->getF(&xyz0, uint_t{1u}) = vec[1u];
     vec_field->getF(&xyz0, uint_t{2u}) = vec[2u];
-  });
+             });
 }
 
 inline void add_to_all(GhostLayerField<float, uint_t{3u}> *vec_field,
                        Vector3<float> const &vec) {
+#ifdef _OPENMP
+         WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ_OMP(vec_field, omp parallel for schedule(static), {
+#else
   WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ(vec_field, {
+#endif
     float &xyz0 = vec_field->get(x, y, z, uint_t{0u});
     vec_field->getF(&xyz0, uint_t{0u}) += vec[0u];
     vec_field->getF(&xyz0, uint_t{1u}) += vec[1u];
     vec_field->getF(&xyz0, uint_t{2u}) += vec[2u];
-  });
+             });
 }
 
 inline auto get(GhostLayerField<float, uint_t{3u}> const *vec_field,
