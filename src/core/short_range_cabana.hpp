@@ -155,17 +155,16 @@ void cabana_short_range(
     if (rebuild) {
 
       for (auto &p : particles) {
-        if (cell_structure.get_local_particle(p.id())) {
-          // id_to_index[p.id()] = index;
-          registered_index.insert(p.id());
-          unique_particles.emplace_back(&p);
-          index++;
-        }
+        //        if (cell_structure.get_local_particle(p.id())) {
+        // id_to_index[p.id()] = index;
+        unique_particles.emplace_back(&p);
+        index++;
+        //        }
       }
 
       for (auto &p : ghost_particles) {
         if (not registered_index.contains(p.id())) {
-          if (cell_structure.get_local_particle(p.id())) {
+          if (cell_structure.get_local_particle(p.id())->is_ghost()) {
             // id_to_index[p.id()] = index;
             registered_index.insert(p.id());
             unique_particles.emplace_back(&p);
@@ -443,7 +442,7 @@ cell->get_local_particle(aosoa.id(j));
           static_cast<int>(27 * max_cutoff * max_cutoff * max_cutoff / 3);
     }
     if (max_counts < 256)
-      max_counts = 256;
+      max_counts = 56;
     if (rebuild) { // Legacy Velert List
       /*verlet_list =
           ListType(aosoa.position, 0,aosoa.position.size(), max_counts);
@@ -567,6 +566,14 @@ cell->get_local_particle(aosoa.id(j));
           aosoa.torque(i, 1) = ty;
           aosoa.torque(i, 2) = tz;
         });
+    Kokkos::parallel_for(
+        "add_force", policy, KOKKOS_LAMBDA(const int i) {
+          auto &p = unique_particles[i];
+          p->force() += Utils::Vector3d{aosoa.force(i, 0), aosoa.force(i, 1),
+                                        aosoa.force(i, 2)};
+          p->torque() += Utils::Vector3d{aosoa.torque(i, 0), aosoa.torque(i, 1),
+                                         aosoa.torque(i, 2)};
+        });
     Kokkos::fence();
 
 #ifdef NPT
@@ -607,8 +614,9 @@ cell->get_local_particle(aosoa.id(j));
 #ifdef CALIPER
     CALI_MARK_BEGIN("Cabana - Particle Forces");
 #endif
+/*
     for (auto id = 0; id < particle_storage.size(); ++id) {
-      auto p = cell_structure.get_local_particle(aosoa.id(id));
+      auto p = unique_particles[id];
       if (p == nullptr) {
         return;
       }
@@ -624,6 +632,7 @@ cell->get_local_particle(aosoa.id(j));
 #endif
       p->force_and_torque() += f;
     }
+*/
 #ifdef CALIPER
     CALI_MARK_END("Cabana - Particle Forces");
 #endif

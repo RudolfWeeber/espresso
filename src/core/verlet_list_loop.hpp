@@ -197,15 +197,27 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
         static_cast<int>(std::ceil(le_offset / grid_delta[le_direction])) %
         cell_num[le_direction];
   }
+#ifdef CALIPER
+  CALI_MARK_BEGIN("cell sorting");
+#endif
   cell_list = Cabana::createLinkedCellList<memory_space>(
       aosoa.position, grid_delta, grid_min, grid_max);
+#ifdef CALIPER
+  CALI_MARK_END("cell sorting");
+#endif
   int total_bins = cell_list.totalBins();
   // Now permute the AoSoA (i.e. reorder the data) using the linked cell
   // list.
   // Cabana::permute( cell_list, particle_storage );
 
+#ifdef CALIPER
+  CALI_MARK_BEGIN("verlet list init");
+#endif
   ListType verlet_list =
       ListType(aosoa.position, 0, aosoa.position.size(), max_counts);
+#ifdef CALIPER
+  CALI_MARK_END("verlet list init");
+#endif
 
   // Offset particle id and the number of particle in specific cell
   Kokkos::View<int *, Kokkos::LayoutRight> bin_offset("bin_offset", total_bins);
@@ -309,10 +321,16 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
     } // i-loop
   };
 
+#ifdef CALIPER
+  CALI_MARK_BEGIN("verlet list populating");
+#endif
   Kokkos::RangePolicy<execution_space> policy(0, total_pair_cell -
                                                      empty_pair_number);
   Kokkos::parallel_for("calc_by_cell_list", policy, kernel);
   Kokkos::fence();
+#ifdef CALIPER
+  CALI_MARK_END("verlet list populating");
+#endif
 
   return verlet_list;
 }

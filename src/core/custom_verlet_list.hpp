@@ -20,6 +20,9 @@
 
 #ifdef SHARED_MEMORY_PARALLELISM
 
+#ifdef CALIPER
+#include <caliper/cali.h>
+#endif
 #include <Cabana_VerletList.hpp>
 
 namespace Cabana {
@@ -84,6 +87,10 @@ public:
   // Method to add a neighbor
   KOKKOS_INLINE_FUNCTION
   void addNeighbor(const int pid, const int nid) {
+
+#ifdef CALIPER
+    CALI_CXX_MARK_FUNCTION;
+#endif
     std::size_t count = Kokkos::atomic_fetch_add(&counts(pid), 1);
     if (count >= neighbors.extent(1)) {
       // expandMaxNeighbors(neighbors.extent(1) * 2);
