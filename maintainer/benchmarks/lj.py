@@ -87,6 +87,7 @@ system.box_l = 3 * (box_l,)
 #############################################################
 system.time_step = 0.01
 system.cell_system.skin = 0.5
+system.cell_system.set_regular_decomposition(use_verlet_lists=False)
 
 # Interaction setup
 #############################################################

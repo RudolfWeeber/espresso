@@ -154,8 +154,8 @@ using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm,
 // VerletCriterion, class Kernel>
 template <class VerletCriterion, class Kernel>
 ListType create_verlet_list(double const max_cutoff, int const max_counts,
-                            AoSoA_pack aosoa,
-                            std::vector<Particle *> unique_particles,
+                            AoSoA_pack &aosoa,
+                            std::vector<Particle *> &unique_particles,
                             VerletCriterion const &verlet_criterion,
                             Kernel first_neighbor_kernel,
                             CellStructure &cell_structure) {

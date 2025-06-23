@@ -51,7 +51,7 @@ inline double wrap(double x, double L) {
 
 inline void write_particle(Particle const &p, int const &id, AoSoA_pack &aosoa,
                            Utils::Vector3d &box_l) {
-  auto const pos = p.pos();
+  auto const &pos = p.pos();
   aosoa.position(id, 0) = wrap(pos[0], box_l[0]);
   aosoa.position(id, 1) = wrap(pos[1], box_l[1]);
   aosoa.position(id, 2) = wrap(pos[2], box_l[2]);
@@ -202,7 +202,7 @@ void cabana_short_range(
     Kokkos::RangePolicy<execution_space> allocation_policy(
         0, unique_particles.size());
     Kokkos::parallel_for("allocation", allocation_policy, [&](int p_id) {
-      auto p = *unique_particles[p_id];
+      const auto &p = *unique_particles[p_id];
       // if (!cell_structure.get_local_particle(p.id())) continue;
       write_particle(p, p_id, aosoa, box_l);
     });
@@ -438,11 +438,11 @@ cell->get_local_particle(aosoa.id(j));
     if (std::isinf(max_cutoff)) {
       max_counts = number_of_unique_particles;
     } else {
-      max_counts =
-          static_cast<int>(27 * max_cutoff * max_cutoff * max_cutoff / 3);
+      max_counts = 64;
+      static_cast<int>(27 * max_cutoff * max_cutoff * max_cutoff / 3);
     }
-    if (max_counts < 256)
-      max_counts = 56;
+    //    if (max_counts < 256)
+    //      max_counts = 56;
     if (rebuild) { // Legacy Velert List
       /*verlet_list =
           ListType(aosoa.position, 0,aosoa.position.size(), max_counts);
@@ -520,10 +520,11 @@ cell->get_local_particle(aosoa.id(j));
                       });
       */
 
-      Kokkos::RangePolicy<execution_space> policy(0, particle_storage.size());
+      Kokkos::RangePolicy<execution_space, Kokkos::Schedule<Kokkos::Dynamic>>
+          policy(0, particle_storage.size());
       Cabana::neighbor_parallel_for(policy, first_neighbor_kernel, verlet_list,
                                     Cabana::FirstNeighborsTag(),
-                                    Cabana::TeamOpTag());
+                                    Cabana::SerialOpTag());
 
       Kokkos::fence();
 #ifdef CALIPER
