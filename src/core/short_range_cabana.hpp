@@ -44,8 +44,8 @@
 
 inline double wrap(double x, double L) {
   auto result = x - std::floor(x / L) * L;
-  //if (result >= L)
-  //  result -= std::nextafter(L, 0.);
+  // if (result >= L)
+  //   result -= std::nextafter(L, 0.);
   return result;
 }
 
@@ -58,16 +58,16 @@ inline void write_particle(Particle const &p, int const &id, AoSoA_pack &aosoa,
   auto const pos = p.pos();
   double wpos[3] = {};
   for (int d = 0; d < 3; ++d) {
-    //aosoa.position(id, d) =
-    //    pos[d] - std::floor(pos[d] / box_l[d]) * box_l[d];
+    // aosoa.position(id, d) =
+    //     pos[d] - std::floor(pos[d] / box_l[d]) * box_l[d];
     wpos[d] = pos[d] - std::floor(pos[d] / box_l[d]) * box_l[d];
   }
   for (int d = 0; d < 3; ++d) {
     aosoa.position(id, d) = wpos[d];
   }
-  //assert(aosoa.position(id, 0) >= 0. and aosoa.position(id, 0) < box_l[0]);
-  //assert(aosoa.position(id, 1) >= 0. and aosoa.position(id, 1) < box_l[1]);
-  //assert(aosoa.position(id, 2) >= 0. and aosoa.position(id, 2) < box_l[2]);
+  // assert(aosoa.position(id, 0) >= 0. and aosoa.position(id, 0) < box_l[0]);
+  // assert(aosoa.position(id, 1) >= 0. and aosoa.position(id, 1) < box_l[1]);
+  // assert(aosoa.position(id, 2) >= 0. and aosoa.position(id, 2) < box_l[2]);
 }
 
 template <class BondKernel, class VerletCriterion = detail::True>
@@ -136,7 +136,7 @@ void cabana_short_range(
     std::unordered_set<int> registered_index{};
     // std::vector<int> index_to_id{};
     std::vector<Particle *> unique_particles;
-    //std::vector<Particle> sequential_particles;
+    // std::vector<Particle> sequential_particles;
     int index = 0;
 
     bool const rebuild = cell_structure.get_rebuild_cabana_verlet_list();
@@ -159,7 +159,7 @@ void cabana_short_range(
           // id_to_index[p.id()] = index;
           registered_index.insert(p.id());
           unique_particles.emplace_back(&p);
-	  //sequential_particles.emplace_back(p);
+          // sequential_particles.emplace_back(p);
           index++;
         }
       }
@@ -170,7 +170,7 @@ void cabana_short_range(
             // id_to_index[p.id()] = index;
             registered_index.insert(p.id());
             unique_particles.emplace_back(&p);
-	    //sequential_particles.emplace_back(p);
+            // sequential_particles.emplace_back(p);
             index++;
           }
         }
@@ -180,10 +180,10 @@ void cabana_short_range(
       // id_to_index = saved_data.get_id_to_index();
       index = saved_data.get_index();
       unique_particles = saved_data.get_unique_particles();
-      //sequential_particles.reserve(unique_particles.size());
-      //for (Particle * ptr : unique_particles) {
+      // sequential_particles.reserve(unique_particles.size());
+      // for (Particle * ptr : unique_particles) {
       //	sequential_particles.emplace_back(*ptr);
-      //}
+      // }
     }
 
     int number_of_unique_particles = index;
@@ -203,32 +203,37 @@ void cabana_short_range(
         particle_storage); // particle properties are defined in aosoa_pack.hpp
     auto box_l = box_geo.length();
 
-    Kokkos::RangePolicy<execution_space> allocation_policy(0, number_of_unique_particles);
-    //Kokkos::View<Particle*> device_particles("particles", number_of_unique_particles);
-    //for (int i = 0; i < number_of_unique_particles; ++i) device_particles(i) = *unique_particles[i];
-    Kokkos::parallel_for("allocation", allocation_policy, [&unique_particles, &box_l, &aosoa](int p_id) {
-    //for (int p_id = 0; p_id < number_of_unique_particles; ++p_id) {
-      //auto thread_id = omp_get_thread_num();
-      auto p = *unique_particles[p_id];
-      //auto p = sequential_particles[p_id];
-      //auto p = device_particles(p_id);
-      write_particle(p, p_id, aosoa, box_l);
-    //}
-    });
+    Kokkos::RangePolicy<execution_space> allocation_policy(
+        0, number_of_unique_particles);
+    // Kokkos::View<Particle*> device_particles("particles",
+    // number_of_unique_particles); for (int i = 0; i <
+    // number_of_unique_particles; ++i) device_particles(i) =
+    // *unique_particles[i];
+    Kokkos::parallel_for("allocation", allocation_policy,
+                         [&unique_particles, &box_l, &aosoa](int p_id) {
+                           // for (int p_id = 0; p_id <
+                           // number_of_unique_particles; ++p_id) { auto
+                           // thread_id = omp_get_thread_num();
+                           auto p = *unique_particles[p_id];
+                           // auto p = sequential_particles[p_id];
+                           // auto p = device_particles(p_id);
+                           write_particle(p, p_id, aosoa, box_l);
+                           //}
+                         });
     //
     /*using policy_type = Kokkos::TeamPolicy<execution_space>;
     int soa_length = vector_length;
     int num_soa = (number_of_unique_particles + soa_length - 1) / soa_length;
     policy_type team_policy(num_soa, Kokkos::AUTO);
     Kokkos::parallel_for("allocation", team_policy,
-		    [&](const policy_type::member_type &team_member) {
+                    [&](const policy_type::member_type &team_member) {
       int soa_idx = team_member.league_rank();
       int start = soa_idx * soa_length;
       int end = start + soa_length;
       if (end > number_of_unique_particles) end = number_of_unique_particles;
 
       for (int p_id = start + team_member.team_rank(); p_id < end;
-		      p_id += team_member.team_size()) {
+                      p_id += team_member.team_size()) {
         auto p = *unique_particles[p_id];
         write_particle(p, p_id, aosoa, box_l);
       }
@@ -381,8 +386,8 @@ void cabana_short_range(
 #ifdef EXCLUSIONS
         auto p1 = unique_particles.at(i);
         auto p2 = unique_particles.at(j);
-        //auto p1 = cell->get_local_particle(aosoa.id(i));
-        //auto p2 = cell->get_local_particle(aosoa.id(j));
+        // auto p1 = cell->get_local_particle(aosoa.id(i));
+        // auto p2 = cell->get_local_particle(aosoa.id(j));
 
         // if (p1 == nullptr or p2 == nullptr)
         //   return;
@@ -402,8 +407,8 @@ void cabana_short_range(
 #ifndef EXCLUSIONS
         auto p1 = unique_particles.at(i);
         auto p2 = unique_particles.at(j);
-        //auto p1 = cell->get_local_particle(aosoa.id(i));
-        //auto p2 = cell->get_local_particle(aosoa.id(j));
+        // auto p1 = cell->get_local_particle(aosoa.id(i));
+        // auto p2 = cell->get_local_particle(aosoa.id(j));
 
         // if (p1 == nullptr or p2 == nullptr)
         //   return;
@@ -561,7 +566,8 @@ void cabana_short_range(
 
     // Save data for next iteration if we just rebuilt
     if (rebuild) {
-      CabanaData new_data(verlet_list, unique_particles, unique_particles.size());
+      CabanaData new_data(verlet_list, unique_particles,
+                          unique_particles.size());
       cell_structure.set_cabana_data(std::make_unique<CabanaData>(new_data));
     }
 
@@ -570,29 +576,31 @@ void cabana_short_range(
 #endif
     // Force and Torque reduction
     Kokkos::RangePolicy<execution_space> policy(0, particle_storage.size());
-    Kokkos::parallel_for(
-        "reduction", policy, [&local_force, &local_torque, &unique_particles, num_threads](const int i) {
-          double fx = 0.;
-          double fy = 0.;
-          double fz = 0.;
-          double tx = 0.;
-          double ty = 0.;
-          double tz = 0.;
-          for (int tid = 0; tid < num_threads; ++tid) {
-            fx += local_force(tid, i, 0);
-            fy += local_force(tid, i, 1);
-            fz += local_force(tid, i, 2);
-            tx += local_torque(tid, i, 0);
-            ty += local_torque(tid, i, 1);
-            tz += local_torque(tid, i, 2);
-          }
-          auto &p = unique_particles[i];
-	  //auto p = cell_structure.get_local_particle(aosoa.id(i));
-          p->force() += Utils::Vector3d{fx, fy, fz};
+    Kokkos::parallel_for("reduction", policy,
+                         [&local_force, &local_torque, &unique_particles,
+                          num_threads](const int i) {
+                           double fx = 0.;
+                           double fy = 0.;
+                           double fz = 0.;
+                           double tx = 0.;
+                           double ty = 0.;
+                           double tz = 0.;
+                           for (int tid = 0; tid < num_threads; ++tid) {
+                             fx += local_force(tid, i, 0);
+                             fy += local_force(tid, i, 1);
+                             fz += local_force(tid, i, 2);
+                             tx += local_torque(tid, i, 0);
+                             ty += local_torque(tid, i, 1);
+                             tz += local_torque(tid, i, 2);
+                           }
+                           auto &p = unique_particles[i];
+                           // auto p =
+                           // cell_structure.get_local_particle(aosoa.id(i));
+                           p->force() += Utils::Vector3d{fx, fy, fz};
 #ifdef ROTATION
-          p->torque() += Utils::Vector3d{tx, ty, tz};
+                           p->torque() += Utils::Vector3d{tx, ty, tz};
 #endif
-        });
+                         });
     Kokkos::fence();
 
 #ifdef NPT
