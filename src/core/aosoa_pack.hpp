@@ -23,28 +23,30 @@
 
 #include <Cabana_Core.hpp>
 
-const int vector_length = 1;
-using data_types = Cabana::MemberTypes<double[3], double[3], double[3], double,
-                                       int, int, bool>;
+const int vector_length = 8;
+//using data_types = Cabana::MemberTypes<double[3], double[3], double[3], double,
+//                                       int, int, bool>;
+using data_types = Cabana::MemberTypes<double[3], double, int, int, bool>;
 using memory_space = Kokkos::HostSpace; // Kokkos::SharedSpace;
 using execution_space = Kokkos::DefaultExecutionSpace;
 using AoSoA_type = Cabana::AoSoA<data_types, memory_space, vector_length>;
 
 struct AoSoA_pack {
   AoSoA_type::member_slice_type<0> position;
-  AoSoA_type::member_slice_type<1> force;
-  AoSoA_type::member_slice_type<2> torque;
-  AoSoA_type::member_slice_type<3> charge;
-  AoSoA_type::member_slice_type<4> id;
-  AoSoA_type::member_slice_type<5> type;
-  AoSoA_type::member_slice_type<6> ghost;
+  //AoSoA_type::member_slice_type<1> force;
+  //AoSoA_type::member_slice_type<2> torque;
+  AoSoA_type::member_slice_type<1> charge;
+  AoSoA_type::member_slice_type<2> id;
+  AoSoA_type::member_slice_type<3> type;
+  AoSoA_type::member_slice_type<4> ghost;
 
   AoSoA_pack() = default;
 
   AoSoA_pack(AoSoA_type &aosoa)
-      : position(Cabana::slice<0>(aosoa)), force(Cabana::slice<1>(aosoa)),
-        torque(Cabana::slice<2>(aosoa)), charge(Cabana::slice<3>(aosoa)),
-        id(Cabana::slice<4>(aosoa)), type(Cabana::slice<5>(aosoa)),
-        ghost(Cabana::slice<6>(aosoa)) {}
+      : //position(Cabana::slice<0>(aosoa)), force(Cabana::slice<1>(aosoa)),
+        //torque(Cabana::slice<2>(aosoa)), charge(Cabana::slice<3>(aosoa)),
+        position(Cabana::slice<0>(aosoa)), charge(Cabana::slice<1>(aosoa)),
+        id(Cabana::slice<2>(aosoa)), type(Cabana::slice<3>(aosoa)),
+        ghost(Cabana::slice<4>(aosoa)) {}
 };
 #endif

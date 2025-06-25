@@ -48,8 +48,14 @@ inline void set_offset_and_size_indexed_by_cid(
     int &total_bins, int *cell_num,
     Cabana::LinkedCellList<memory_space, double> &cell_list,
     Kokkos::View<int *, Kokkos::LayoutRight> &bin_offset,
-    Kokkos::View<int *, Kokkos::LayoutRight> &bin_size) {
-  for (int cid = 0; cid < total_bins; ++cid) {
+    Kokkos::View<int *, Kokkos::LayoutRight> &bin_size,
+    Kokkos::View<int *, Kokkos::LayoutRight> &original_idx) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
+  //for (int cid = 0; cid < total_bins; ++cid) {
+  Kokkos::parallel_for("set_offset", total_bins,
+		  [&cell_num, &cell_list, &bin_offset, &bin_size](const int cid) {
     int dx[3] = {};
     dx[0] = static_cast<int>(cid / (cell_num[1] * cell_num[2]));
     dx[1] = static_cast<int>((cid - dx[0] * (cell_num[1] * cell_num[2])) /
@@ -60,7 +66,11 @@ inline void set_offset_and_size_indexed_by_cid(
 
     // Calculate particle_bins
     cell_list(cid);
-  }
+  });
+  Kokkos::parallel_for("set_permutation", original_idx.extent(0),
+		  [&cell_list, &original_idx](const int i) {
+    original_idx(i) = cell_list.permutation(i);
+  });
 }
 
 using ActiveProtocol = std::variant<LeesEdwards::Off, LeesEdwards::LinearShear,
@@ -73,7 +83,9 @@ inline int set_interacting_pair_cell(
     Kokkos::View<int *, Kokkos::LayoutRight> &bin_size,
     Cabana::LinkedCellList<memory_space, double> &cell_list,
     Kokkos::View<int **, Kokkos::LayoutRight> &interacting_pair_cell) {
-
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   constexpr int ijkIndexes[27][3] = {
       {-1, -1, -1}, {-1, -1, 0}, {-1, -1, 1}, {-1, 0, -1}, {-1, 0, 0},
       {-1, 0, 1},   {-1, 1, -1}, {-1, 1, 0},  {-1, 1, 1},  {0, -1, -1},
@@ -84,13 +96,28 @@ inline int set_interacting_pair_cell(
 
   int empty_pair_number = 0;
   int pair_cell_id = 0;
+  //Kokkos::View<int> empty_pair_number("empty_pair_number");
+  //Kokkos::View<int> pair_cell_id("pair_cell_id");
+  //Kokkos::deep_copy(empty_pair_number, 0);
+  //Kokkos::deep_copy(pair_cell_id, 0);
+
   for (int cid_i = 0; cid_i < total_bins; ++cid_i) {
+  //Kokkos::parallel_for("set_interacting_pair_cell", total_bins,
+  //		  KOKKOS_LAMBDA(const int cid_i) {
+    //auto thread_id = omp_get_thread_num();
     // Obtaining 3 dimentional cell index from cid_i
     int index[3] = {};
     cell_list.ijkBinIndex(cid_i, index[0], index[1], index[2]);
     int dx[3];
     // From 27 neighbor cell, the list of interacting pair cell is created
     for (int n = 0; n < 27; ++n) {
+
+      if (le_protocol == nullptr) {
+        if (index[0] != 0 and ijkIndexes[n][0] == -1) continue;
+
+        if (index[1] != 0 and ijkIndexes[n][1] == -1 and ijkIndexes[n][0] == 0) continue;
+      }
+
       bool duplicate_cell = false;
       // Obtaining 3 dimentional cell index from neighbor cell
       for (int d = 0; d < 3; ++d) {
@@ -135,14 +162,23 @@ inline int set_interacting_pair_cell(
       int cid_j = cell_list.cardinalBinIndex(dx[0], dx[1], dx[2]);
       if (cid_i <= cid_j) {
         if (bin_size(cid_i) != 0 and bin_size(cid_j) != 0) {
+	  //std::size_t pcid = Kokkos::atomic_fetch_inc(&pair_cell_id());
+          //interacting_pair_cell(pcid, 0) = cid_i;
+          //interacting_pair_cell(pcid, 1) = cid_j;
           interacting_pair_cell(pair_cell_id, 0) = cid_i;
           interacting_pair_cell(pair_cell_id, 1) = cid_j;
           ++pair_cell_id;
+          //interacting_pair_cell_thread(thread_id, pair_id_thread(thread_id), 0) = cid_i;
+          //interacting_pair_cell_thread(thread_id, pair_id_thread(thread_id), 1) = cid_j;
+    	  //pair_id_thread(thread_id) += 1;
         } else {
+	  //Kokkos::atomic_inc(&empty_pair_number());
           ++empty_pair_number;
+	  //empty_thread(thread_id) += 1;
         }
       }
     }
+  //});
   }
   return empty_pair_number;
 }
@@ -150,8 +186,6 @@ inline int set_interacting_pair_cell(
 using ListAlgorithm = Cabana::HalfNeighborTag;
 using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm,
                                           Cabana::VerletLayout2D>;
-// template <class SliceDouble3, class SliceInt, class SliceBool, class
-// VerletCriterion, class Kernel>
 template <class VerletCriterion, class Kernel>
 ListType create_verlet_list(double const max_cutoff, int const max_counts,
                             AoSoA_pack aosoa,
@@ -183,8 +217,6 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
   int le_normal;
   int delta_lebc[3] = {0, 0, 0};
   auto le_protocol = system.lees_edwards->get_protocol();
-  // std::shared_ptr<ActiveProtocol> le_protocol =
-  // system.lees_edwards->get_protocol();
   if (le_protocol == nullptr) {
     le_offset = 0.;
     le_direction = -1;
@@ -197,21 +229,31 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
         static_cast<int>(std::ceil(le_offset / grid_delta[le_direction])) %
         cell_num[le_direction];
   }
+#ifdef CALIPER
+    CALI_MARK_BEGIN("Cabana - CellList");
+#endif
   cell_list = Cabana::createLinkedCellList<memory_space>(
       aosoa.position, grid_delta, grid_min, grid_max);
+#ifdef CALIPER
+    CALI_MARK_END("Cabana - CellList");
+#endif
   int total_bins = cell_list.totalBins();
   // Now permute the AoSoA (i.e. reorder the data) using the linked cell
   // list.
   // Cabana::permute( cell_list, particle_storage );
 
+  // Number of threads
+  int num_threads = execution_space().concurrency();
+
   ListType verlet_list =
-      ListType(aosoa.position, 0, aosoa.position.size(), max_counts);
+      ListType(aosoa.position, 0, aosoa.position.size(), max_counts, num_threads);
 
   // Offset particle id and the number of particle in specific cell
   Kokkos::View<int *, Kokkos::LayoutRight> bin_offset("bin_offset", total_bins);
   Kokkos::View<int *, Kokkos::LayoutRight> bin_size("bin_size", total_bins);
+  Kokkos::View<int *, Kokkos::LayoutRight> original_idx("original_idx", unique_particles.size());
   set_offset_and_size_indexed_by_cid(total_bins, cell_num, cell_list,
-                                     bin_offset, bin_size);
+                                     bin_offset, bin_size, original_idx);
   auto const particle_bins = cell_list.getParticleBins();
 
   // Creating Interacting cell
@@ -230,39 +272,44 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
   auto const distance_function = detail::MinimalImageDistance{
       std::as_const(cell_structure).decomposition().box()};
 
+  auto aosoa_id = aosoa.id;
+  auto aosoa_ghost = aosoa.ghost;
   // This kernel used the loop for the pair of interacting cell
-  auto kernel = [&](const int pair_cell_i) {
+  auto kernel = [&interacting_pair_cell, &bin_offset, &bin_size,
+       &original_idx, &aosoa_id, &aosoa_ghost, &unique_particles, &verlet_criterion, &distance_function,
+       &verlet_list, &first_neighbor_kernel] (const int pair_cell_i) {
+    //auto thread_id = omp_get_thread_num();
     int cid_i = interacting_pair_cell(pair_cell_i, 0);
     int cid_j = interacting_pair_cell(pair_cell_i, 1);
 
-    auto verlet_kernel = [&](Particle *p1, int ii, int id_i, int cell_offset,
-                             int cell_size) {
+    auto verlet_kernel = [&original_idx, &aosoa_id, &aosoa_ghost, &unique_particles,
+	 &verlet_criterion, &distance_function, &verlet_list, &first_neighbor_kernel]//, thread_id]
+		 (Particle *p1, int ii, int id_i, int cell_offset, int cell_size) {
       for (int j = cell_offset; j < cell_offset + cell_size; ++j) {
         // int ii = cell_list.permutation(i); // debug
         //  int jj = j;
-        int jj = cell_list.permutation(j);
-        int id_j = aosoa.id(jj);
-        if (aosoa.ghost(ii) or aosoa.ghost(jj)) {
-          if (((id_i < id_j) and aosoa.ghost(ii)) or
-              ((id_i > id_j) and aosoa.ghost(jj))) {
+        int jj = original_idx(j);
+        int id_j = aosoa_id(jj);
+        if (aosoa_ghost(ii) or aosoa_ghost(jj)) {
+          if (((id_i < id_j) and aosoa_ghost(ii)) or
+              ((id_i > id_j) and aosoa_ghost(jj))) {
             continue;
           }
-        } else if (aosoa.ghost(ii) and aosoa.ghost(jj)) {
+        } else if (aosoa_ghost(ii) and aosoa_ghost(jj)) {
           continue; // reject both ghost
         }
-        auto p2 =
-            unique_particles.at(jj); // cell_structure.get_local_particle(id_j);
-        // if (p2 == nullptr)
-        //   continue;
+        auto p2 = unique_particles.at(jj);
+        //auto p2 = cell_structure.get_local_particle(id_j);
         if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
           verlet_list.addNeighbor(ii, jj);
+          //verlet_list.addNeighborNonAtomic(thread_id, ii, jj);
           /*std::cout << "*Cabana* "
                     << i << " "
                     << j << " "
                     << id_i << " "
                     << id_j << " "
-                    << aosoa.ghost(ii) << " "
-                    << aosoa.ghost(jj) << " "
+                    << aosoa_ghost(ii) << " "
+                    << aosoa_ghost(jj) << " "
                     << cid_i << " "
                     << cid_j << " "
                     << aosoa.position(ii, 0) << ", "
@@ -270,14 +317,7 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
                     << aosoa.position(ii, 2) << " "
                     << aosoa.position(jj, 0) << ", "
                     << aosoa.position(jj, 1) << ", "
-                    << aosoa.position(jj, 2) << "\n";//
-          //std::cout << "CHECK "
-                    << n << " "
-                    << i << " "
-                    << j << " "
-                    << dx[0] << " "
-                    << dx[1] << " "
-                    << dx[2] << "\n";*/
+                    << aosoa.position(jj, 2) << "\n";*/
           first_neighbor_kernel(ii, jj);
         }
       } // j-loop
@@ -288,12 +328,10 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
 
     for (int i = offset_i; i < offset_i + size_i; ++i) {
       // int ii = i;
-      int ii = cell_list.permutation(i); // get previous id
-      int id_i = aosoa.id(ii);
-      auto p1 =
-          unique_particles.at(ii); // cell_structure.get_local_particle(id_i);
-      // if (p1 == nullptr)
-      //   continue;
+      int ii = original_idx(i); // get previous id
+      int id_i = aosoa_id(ii);
+      auto p1 = unique_particles.at(ii);
+      //auto p1 = cell_structure.get_local_particle(id_i);
 
       if (cid_i == cid_j) {
         verlet_kernel(p1, ii, id_i, i + 1,
@@ -313,6 +351,8 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
                                                      empty_pair_number);
   Kokkos::parallel_for("calc_by_cell_list", policy, kernel);
   Kokkos::fence();
+
+  //verlet_list.reduction();
 
   return verlet_list;
 }

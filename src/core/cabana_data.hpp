@@ -34,30 +34,19 @@ using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm,
                                           Cabana::VerletLayout2D>;
 
 class CabanaData {
+private:
   ListType verlet_list;
-  std::unordered_map<int, int> id_to_index;
-  std::vector<int> index_to_id;
   std::vector<Particle *> unique_particles;
   int particle_number;
 
 public:
   CabanaData() = default;
-  CabanaData(ListType verlet_list, std::unordered_map<int, int> id_to_index,
-             std::vector<int> index_to_id)
-      : verlet_list(verlet_list), id_to_index(id_to_index),
-        index_to_id(index_to_id) {}
-  CabanaData(ListType verlet_list, std::unordered_map<int, int> id_to_index)
-      : verlet_list(verlet_list), id_to_index(id_to_index) {}
-  CabanaData(ListType verlet_list, int particle_number)
-      : verlet_list(verlet_list), particle_number(particle_number) {}
   CabanaData(ListType verlet_list, std::vector<Particle *> unique_particles,
              int particle_number)
       : verlet_list(verlet_list), unique_particles(unique_particles),
         particle_number(particle_number) {}
 
   ListType get_verlet_list() const { return verlet_list; }
-  std::unordered_map<int, int> get_id_to_index() const { return id_to_index; }
-  std::vector<int> get_index_to_id() const { return index_to_id; }
   int get_index() const { return particle_number; }
   std::vector<Particle *> get_unique_particles() const {
     return unique_particles;
