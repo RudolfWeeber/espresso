@@ -57,9 +57,8 @@ class Exclusions(ut.TestCase):
 
         p0.exclusions = [1, 2, 3]
 
-        i = 0
         for _ in range(15):
-            i += 1
+            print('run')
             self.system.integrator.run(100)
             self.assertEqual(list(p0.exclusions), [1, 2, 3])
 

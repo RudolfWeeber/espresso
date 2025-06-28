@@ -192,10 +192,11 @@ using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm,
                                           Cabana::VerletLayout2D>;
 template <class VerletCriterion, class Kernel>
 ListType create_verlet_list(double const max_cutoff, int const max_counts,
-                            AoSoA_pack aosoa,
-                            std::vector<Particle *> unique_particles,
+                            AoSoA_pack &aosoa,
+                            std::vector<Particle *> &unique_particles,
+                            //std::vector<Particle> &unique_particles,
                             VerletCriterion const &verlet_criterion,
-                            Kernel first_neighbor_kernel,
+                            Kernel &first_neighbor_kernel,
                             CellStructure &cell_structure) {
   // Creating LinkedCellList and VerletList:
   // Box Properties
@@ -256,7 +257,7 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
   Kokkos::View<int *, Kokkos::LayoutRight> bin_offset("bin_offset", total_bins);
   Kokkos::View<int *, Kokkos::LayoutRight> bin_size("bin_size", total_bins);
   Kokkos::View<int *, Kokkos::LayoutRight> original_idx(
-      "original_idx", unique_particles.size());
+      "original_idx", aosoa.position.size());
   set_offset_and_size_indexed_by_cid(total_bins, cell_num, cell_list,
                                      bin_offset, bin_size, original_idx);
   auto const particle_bins = cell_list.getParticleBins();
@@ -292,7 +293,7 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
                           &unique_particles, &verlet_criterion,
                           &distance_function, &verlet_list,
                           &first_neighbor_kernel] //, thread_id]
-        (Particle * p1, int ii, int id_i, int cell_offset, int cell_size) {
+        (Particle* p1, int ii, int id_i, int cell_offset, int cell_size) {
           for (int j = cell_offset; j < cell_offset + cell_size; ++j) {
             // int ii = cell_list.permutation(i); // debug
             //  int jj = j;
@@ -309,15 +310,19 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
             auto p2 = unique_particles.at(jj);
             // auto p2 = cell_structure.get_local_particle(id_j);
             if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
-              verlet_list.addNeighbor(ii, jj);
+#ifdef EXCLUSIONS
+                verlet_list.addNeighbor(std::min(ii, jj), std::max(ii, jj));
+#else
+                verlet_list.addNeighbor(ii, jj);
+#endif
               // verlet_list.addNeighborNonAtomic(thread_id, ii, jj);
-              /*std::cout << "*Cabana* "
-                        << i << " "
-                        << j << " "
-                        << id_i << " "
-                        << id_j << " "
+              /*std::cout << "*Ca* "
+                        << ii << " "
+                        << jj << " "
                         << aosoa_ghost(ii) << " "
                         << aosoa_ghost(jj) << " "
+                        << id_i << " "
+                        << id_j << "\n";
                         << cid_i << " "
                         << cid_j << " "
                         << aosoa.position(ii, 0) << ", "

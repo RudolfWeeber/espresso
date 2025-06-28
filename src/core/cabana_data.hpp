@@ -37,17 +37,18 @@ class CabanaData {
 private:
   ListType verlet_list;
   std::vector<Particle *> unique_particles;
-  int particle_number;
+  int max_id;
 
 public:
   CabanaData() = default;
   CabanaData(ListType verlet_list, std::vector<Particle *> unique_particles,
-             int particle_number)
+             int max_id)
       : verlet_list(verlet_list), unique_particles(unique_particles),
-        particle_number(particle_number) {}
+        max_id(max_id) {}
 
   ListType get_verlet_list() const { return verlet_list; }
-  int get_index() const { return particle_number; }
+  int get_index() const { return unique_particles.size(); }
+  int get_max_id() const { return max_id; }
   std::vector<Particle *> get_unique_particles() const {
     return unique_particles;
   }

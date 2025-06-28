@@ -663,6 +663,7 @@ private:
 #ifdef SHARED_MEMORY_PARALLELISM
 private:
   std::unique_ptr<CabanaData> m_cabana_data;
+  bool steepest_descent_flag = true;
 
 public:
   void set_cabana_data(std::unique_ptr<CabanaData> data);
@@ -675,6 +676,9 @@ public:
   bool get_rebuild_cabana_verlet_list() const {
     return m_rebuild_cabana_verlet_list;
   }
+
+  void set_steepest_descent_flag(bool flag) { steepest_descent_flag = flag; }
+  bool get_steepest_descent_flag() { return steepest_descent_flag; }
 
   template <class Kernel> void cabana_link_cell(Kernel kernel) {
     auto const local_cells_span = decomposition().local_cells();
