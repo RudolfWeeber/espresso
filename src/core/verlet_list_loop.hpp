@@ -194,7 +194,7 @@ template <class VerletCriterion, class Kernel>
 ListType create_verlet_list(double const max_cutoff, int const max_counts,
                             AoSoA_pack &aosoa,
                             std::vector<Particle *> &unique_particles,
-                            //std::vector<Particle> &unique_particles,
+                            // std::vector<Particle> &unique_particles,
                             VerletCriterion const &verlet_criterion,
                             Kernel &first_neighbor_kernel,
                             CellStructure &cell_structure) {
@@ -256,8 +256,8 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
   // Offset particle id and the number of particle in specific cell
   Kokkos::View<int *, Kokkos::LayoutRight> bin_offset("bin_offset", total_bins);
   Kokkos::View<int *, Kokkos::LayoutRight> bin_size("bin_size", total_bins);
-  Kokkos::View<int *, Kokkos::LayoutRight> original_idx(
-      "original_idx", aosoa.position.size());
+  Kokkos::View<int *, Kokkos::LayoutRight> original_idx("original_idx",
+                                                        aosoa.position.size());
   set_offset_and_size_indexed_by_cid(total_bins, cell_num, cell_list,
                                      bin_offset, bin_size, original_idx);
   auto const particle_bins = cell_list.getParticleBins();
@@ -289,11 +289,11 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
     int cid_i = interacting_pair_cell(pair_cell_i, 0);
     int cid_j = interacting_pair_cell(pair_cell_i, 1);
 
-    auto verlet_kernel = [&original_idx, &aosoa_id, &aosoa_ghost,
-                          &unique_particles, &verlet_criterion,
-                          &distance_function, &verlet_list,
-                          &first_neighbor_kernel, thread_id]
-        (Particle* p1, int ii, int id_i, int cell_offset, int cell_size) {
+    auto verlet_kernel =
+        [&original_idx, &aosoa_id, &aosoa_ghost, &unique_particles,
+         &verlet_criterion, &distance_function, &verlet_list,
+         &first_neighbor_kernel, thread_id](Particle *p1, int ii, int id_i,
+                                            int cell_offset, int cell_size) {
           for (int j = cell_offset; j < cell_offset + cell_size; ++j) {
             // int ii = cell_list.permutation(i); // debug
             //  int jj = j;
@@ -311,11 +311,12 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
             // auto p2 = cell_structure.get_local_particle(id_j);
             if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
 #ifdef EXCLUSIONS
-                verlet_list.addNeighbor(std::min(ii, jj), std::max(ii, jj));
-                //verlet_list.addNeighborNonAtomic(thread_id, std::min(ii, jj), std::max(ii, jj));
+              verlet_list.addNeighbor(std::min(ii, jj), std::max(ii, jj));
+          // verlet_list.addNeighborNonAtomic(thread_id, std::min(ii, jj),
+          // std::max(ii, jj));
 #else
-                verlet_list.addNeighbor(thread_id, ii, jj);
-                //verlet_list.addNeighborNonAtomic(thread_id, ii, jj);
+              verlet_list.addNeighbor(thread_id, ii, jj);
+          // verlet_list.addNeighborNonAtomic(thread_id, ii, jj);
 #endif
               /*std::cout << "*Ca* "
                         << ii << " "

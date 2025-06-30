@@ -119,7 +119,8 @@ public:
   }
 #else
   void addNeighbor(const int tid, int pid, int nid) {
-    if (counts(pid) + 1 > max_thread(tid)) std::swap(pid, nid);
+    if (counts(pid) + 1 > max_thread(tid))
+      std::swap(pid, nid);
     std::size_t count = Kokkos::atomic_fetch_add(&counts(pid), 1);
     if (count >= neighbors.extent(1)) {
       // expandMaxNeighbors(neighbors.extent(1) * 2);
@@ -127,7 +128,8 @@ public:
           "Number of count is larger than VerletList size.");
     }
     neighbors(pid, count) = nid;
-    if (counts(pid) > max_thread(tid)) max_thread(tid) = counts(pid);
+    if (counts(pid) > max_thread(tid))
+      max_thread(tid) = counts(pid);
   }
 #endif
 
@@ -171,12 +173,13 @@ public:
     std::size_t max_counts = 0;
     std::size_t ave_counts = 0;
     for (int pid = 0; pid < counts.extent(0); ++pid) {
-      if (max_counts < counts(pid)) max_counts = counts(pid);
+      if (max_counts < counts(pid))
+        max_counts = counts(pid);
       ave_counts += counts(pid);
     }
     if (counts.extent(0) != 0) {
       std::cout << "max:" << max_counts
-	        << " ave:" << ave_counts/counts.extent(0) << std::endl;
+                << " ave:" << ave_counts / counts.extent(0) << std::endl;
     }
     return max_counts;
   }
