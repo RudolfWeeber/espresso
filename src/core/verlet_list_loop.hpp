@@ -285,14 +285,14 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
                  &aosoa_id, &aosoa_ghost, &unique_particles, &verlet_criterion,
                  &distance_function, &verlet_list,
                  &first_neighbor_kernel](const int pair_cell_i) {
-    // auto thread_id = omp_get_thread_num();
+    auto thread_id = omp_get_thread_num();
     int cid_i = interacting_pair_cell(pair_cell_i, 0);
     int cid_j = interacting_pair_cell(pair_cell_i, 1);
 
     auto verlet_kernel = [&original_idx, &aosoa_id, &aosoa_ghost,
                           &unique_particles, &verlet_criterion,
                           &distance_function, &verlet_list,
-                          &first_neighbor_kernel] //, thread_id]
+                          &first_neighbor_kernel, thread_id]
         (Particle* p1, int ii, int id_i, int cell_offset, int cell_size) {
           for (int j = cell_offset; j < cell_offset + cell_size; ++j) {
             // int ii = cell_list.permutation(i); // debug
@@ -312,10 +312,11 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
             if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
 #ifdef EXCLUSIONS
                 verlet_list.addNeighbor(std::min(ii, jj), std::max(ii, jj));
+                //verlet_list.addNeighborNonAtomic(thread_id, std::min(ii, jj), std::max(ii, jj));
 #else
-                verlet_list.addNeighbor(ii, jj);
+                verlet_list.addNeighbor(thread_id, ii, jj);
+                //verlet_list.addNeighborNonAtomic(thread_id, ii, jj);
 #endif
-              // verlet_list.addNeighborNonAtomic(thread_id, ii, jj);
               /*std::cout << "*Ca* "
                         << ii << " "
                         << jj << " "
