@@ -107,17 +107,6 @@ public:
 
   // Method to add a neighbor
   KOKKOS_INLINE_FUNCTION
-#ifdef EXCLUSIONS
-  void addNeighbor(const int pid, const int nid) {
-    std::size_t count = Kokkos::atomic_fetch_add(&counts(pid), 1);
-    if (count >= neighbors.extent(1)) {
-      // expandMaxNeighbors(neighbors.extent(1) * 2);
-      throw std::runtime_error(
-          "Number of count is larger than VerletList size.");
-    }
-    neighbors(pid, count) = nid;
-  }
-#else
   void addNeighbor(const int tid, int pid, int nid) {
     if (counts(pid) + 1 > max_thread(tid))
       std::swap(pid, nid);
@@ -131,7 +120,6 @@ public:
     if (counts(pid) > max_thread(tid))
       max_thread(tid) = counts(pid);
   }
-#endif
 
   // Thread safe but non atomic method to add a neighbor
   KOKKOS_INLINE_FUNCTION

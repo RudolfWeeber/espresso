@@ -299,6 +299,11 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
             //  int jj = j;
             int jj = original_idx(j);
             int id_j = aosoa_id(jj);
+	    /*if (id_i < id_j) {
+	      if (aosoa_ghost(ii)) continue;
+	    } else {
+	      if (aosoa_ghost(jj)) continue;
+	    }*/
             if (aosoa_ghost(ii) or aosoa_ghost(jj)) {
               if (((id_i < id_j) and aosoa_ghost(ii)) or
                   ((id_i > id_j) and aosoa_ghost(jj))) {
@@ -310,14 +315,8 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
             auto p2 = unique_particles.at(jj);
             // auto p2 = cell_structure.get_local_particle(id_j);
             if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
-#ifdef EXCLUSIONS
-              verlet_list.addNeighbor(std::min(ii, jj), std::max(ii, jj));
-          // verlet_list.addNeighborNonAtomic(thread_id, std::min(ii, jj),
-          // std::max(ii, jj));
-#else
               verlet_list.addNeighbor(thread_id, ii, jj);
-          // verlet_list.addNeighborNonAtomic(thread_id, ii, jj);
-#endif
+              // verlet_list.addNeighborNonAtomic(thread_id, ii, jj);
               /*std::cout << "*Ca* "
                         << ii << " "
                         << jj << " "
