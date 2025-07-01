@@ -299,11 +299,11 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
             //  int jj = j;
             int jj = original_idx(j);
             int id_j = aosoa_id(jj);
-	    /*if (id_i < id_j) {
-	      if (aosoa_ghost(ii)) continue;
-	    } else {
-	      if (aosoa_ghost(jj)) continue;
-	    }*/
+            /*if (id_i < id_j) {
+              if (aosoa_ghost(ii)) continue;
+            } else {
+              if (aosoa_ghost(jj)) continue;
+            }*/
             if (aosoa_ghost(ii) or aosoa_ghost(jj)) {
               if (((id_i < id_j) and aosoa_ghost(ii)) or
                   ((id_i > id_j) and aosoa_ghost(jj))) {

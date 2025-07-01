@@ -209,29 +209,30 @@ void cabana_short_range(
     using policy_type = Kokkos::TeamPolicy<execution_space>;
     int team_size = 1;
     int league_size = (unique_particles.size() + team_size - 1) / team_size;
-    Kokkos::parallel_for(
-      "AoSoA Write",
-      policy_type(league_size, team_size),
-      [&unique_particles, &aosoa, &box_l, team_size, number_of_unique_particles]
-        (const policy_type::member_type& team_member) {
+    Kokkos::parallel_for("AoSoA Write", policy_type(league_size, team_size),
+                         [&unique_particles, &aosoa, &box_l, team_size,
+                          number_of_unique_particles](
+                             const policy_type::member_type &team_member) {
+                           int p_id = team_member.league_rank() * team_size +
+                                      team_member.team_rank();
+                           if (p_id >= number_of_unique_particles)
+                             return;
 
-	int p_id = team_member.league_rank() * team_size + team_member.team_rank();
-        if (p_id >= number_of_unique_particles) return;
+                           Particle p = *unique_particles.at(p_id);
 
-        Particle p = *unique_particles.at(p_id);
+                           write_particle(p, p_id, aosoa, box_l);
+                           /*auto pos = p.pos();
+                           for (int d = 0; d < 3; ++d) {
+                             double wrapped = pos[d] - std::floor(pos[d] /
+                           box_l[d]) * box_l[d]; aosoa.position(p_id, d) =
+                           wrapped;
+                           }
 
-        write_particle(p, p_id, aosoa, box_l);
-        /*auto pos = p.pos();
-        for (int d = 0; d < 3; ++d) {
-          double wrapped = pos[d] - std::floor(pos[d] / box_l[d]) * box_l[d];
-          aosoa.position(p_id, d) = wrapped;
-        }
-
-        aosoa.charge(p_id) = p.q();       // charge
-        aosoa.id(p_id) = p.id();          // id
-        aosoa.type(p_id) = p.type();      // type
-        aosoa.ghost(p_id) = p.is_ghost(); // ghost*/
-    });
+                           aosoa.charge(p_id) = p.q();       // charge
+                           aosoa.id(p_id) = p.id();          // id
+                           aosoa.type(p_id) = p.type();      // type
+                           aosoa.ghost(p_id) = p.is_ghost(); // ghost*/
+                         });
     Kokkos::fence();
 
     Kokkos::View<double ***, Kokkos::LayoutRight> local_force(
