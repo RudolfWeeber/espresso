@@ -196,43 +196,69 @@ void cabana_short_range(
 #endif
     Cabana::AoSoA<data_types, memory_space, vector_length> particle_storage(
         "particles", number_of_unique_particles);
-    auto slice_position = Cabana::slice<0>(particle_storage);
-    auto slice_charge = Cabana::slice<1>(particle_storage);
-    auto slice_id = Cabana::slice<2>(particle_storage);
-    auto slice_type = Cabana::slice<3>(particle_storage);
-    auto slice_ghost = Cabana::slice<4>(particle_storage);
-    // particle properties are defined in aosoa_pack.hpp
     particle_storage.resize(number_of_unique_particles);
+    auto slice_position = Cabana::slice<0>(particle_storage);
+    auto slice_charge   = Cabana::slice<1>(particle_storage);
+    auto slice_id       = Cabana::slice<2>(particle_storage);
+    auto slice_type     = Cabana::slice<3>(particle_storage);
+    auto slice_ghost    = Cabana::slice<4>(particle_storage);
+    // particle properties are defined in aosoa_pack.hpp
     auto aosoa = AoSoA_pack(particle_storage);
     auto box_l = box_geo.length();
+    /*
+    using policy_type = Kokkos::RangePolicy<execution_space>;
+    Kokkos::parallel_for("AoSoA write", policy_type(0, particle_storage.size()),
+                         [&unique_particles, &aosoa, &box_l](
+                             const int p_id) {
 
+                           Particle p = *unique_particles.at(p_id);
+
+                           write_particle(p, p_id, aosoa, box_l);
+                         });
+    */
+    
     using policy_type = Kokkos::TeamPolicy<execution_space>;
-    int team_size = 1;
-    int league_size = (unique_particles.size() + team_size - 1) / team_size;
-    Kokkos::parallel_for("AoSoA Write", policy_type(league_size, team_size),
-                         [&unique_particles, &aosoa, &box_l, team_size,
+    int league_size = unique_particles.size();
+    Kokkos::parallel_for("AoSoA Write", policy_type(league_size, Kokkos::AUTO),
+                         [&unique_particles, &aosoa, &box_l,
                           number_of_unique_particles](
                              const policy_type::member_type &team_member) {
-                           int p_id = team_member.league_rank() * team_size +
-                                      team_member.team_rank();
+
+                           int p_id = team_member.league_rank();
                            if (p_id >= number_of_unique_particles)
                              return;
 
                            Particle p = *unique_particles.at(p_id);
 
                            write_particle(p, p_id, aosoa, box_l);
-                           /*auto pos = p.pos();
-                           for (int d = 0; d < 3; ++d) {
-                             double wrapped = pos[d] - std::floor(pos[d] /
-                           box_l[d]) * box_l[d]; aosoa.position(p_id, d) =
-                           wrapped;
-                           }
-
-                           aosoa.charge(p_id) = p.q();       // charge
-                           aosoa.id(p_id) = p.id();          // id
-                           aosoa.type(p_id) = p.type();      // type
-                           aosoa.ghost(p_id) = p.is_ghost(); // ghost*/
                          });
+    
+    /*using policy_type = Cabana::SimdPolicy<vector_length, execution_space>;
+    //int league_size = (particle_storage.size() + v_length - 1) / v_length;
+    //Kokkos::parallel_for("SIMD AoSoA Write",
+    Cabana::simd_parallel_for(
+			 policy_type(0, particle_storage.size()),
+                         [&unique_particles, &box_l, vector_length,
+                          number_of_unique_particles,
+			  &slice_position, &slice_charge, &slice_id,
+			  &slice_type, &slice_ghost] (const int s, const int a) {
+
+                           int p_id = s * vector_length + a;
+                           if (p_id >= number_of_unique_particles) return;
+
+                           Particle p = *unique_particles.at(p_id);
+
+			   auto pos = p.pos();
+			   for (int d = 0; d < 3; ++d) {
+			     double wrapped = pos[d] - std::floor(pos[d] / box_l[d]) * box_l[d];
+			     slice_position.access(s, a, d) = wrapped;
+			   }
+
+			   slice_charge.access(s, a) = p.q();         // charge
+			   slice_id.access(s, a)     = p.id();        // id
+			   slice_type.access(s, a)   = p.type();      // type
+			   slice_ghost.access(s, a)  = p.is_ghost();  // ghost
+                         }, "SIMD AoSoA Write");*/
     Kokkos::fence();
 
     Kokkos::View<double ***, Kokkos::LayoutRight> local_force(
@@ -457,7 +483,7 @@ void cabana_short_range(
       if (at_steepest_descent) {
         max_prefactor = 8;
       } else {
-        max_prefactor = 4;
+        max_prefactor = 5;
       }
       max_counts = static_cast<int>(
           std::ceil(max_prefactor * max_cutoff * max_cutoff * max_cutoff));
@@ -469,8 +495,7 @@ void cabana_short_range(
     if (max_counts < threshold_num) {
       max_counts = std::min(threshold_num, number_of_unique_particles);
     }
-    // std::cout << "max_counts:" << max_counts << " " << max_cutoff <<
-    // std::endl;
+    // std::cout << "max_counts:" << max_counts << " " << max_cutoff << std::endl;
     if (rebuild) { // Legacy Velert List
       /*verlet_list =
           ListType(aosoa.position, 0, aosoa.position.size(), max_counts,
@@ -528,7 +553,8 @@ void cabana_short_range(
 #endif
       if (1) {
         verlet_list = create_verlet_list(
-            max_cutoff, max_counts, aosoa, unique_particles, verlet_criterion,
+            max_cutoff, max_counts, aosoa,
+	    unique_particles, verlet_criterion,
             // sequential_particles, verlet_criterion,
             first_neighbor_kernel, cell_structure);
         /*using neighbor_list = Cabana::NeighborList<ListType>;
@@ -558,11 +584,13 @@ void cabana_short_range(
       CALI_MARK_BEGIN("Cabana - calc Force");
 #endif
       /*
-      Kokkos::parallel_for("ForceLoop", Kokkos::RangePolicy<>(0,
-      interaction_pairs.size()), KOKKOS_LAMBDA(int idx) { auto i =
-      interaction_pairs[idx].first; auto j = interaction_pairs[idx].second;
-                        first_neighbor_kernel(i, j);
-                      });
+      Kokkos::parallel_for(
+        "ForceLoop", Kokkos::RangePolicy<>(0,interaction_pairs.size()),
+	KOKKOS_LAMBDA(int idx) {
+	  auto i = interaction_pairs[idx].first;
+	  auto j = interaction_pairs[idx].second;
+          first_neighbor_kernel(i, j);
+      });
       */
       // verlet_list.get_max_counts();
 

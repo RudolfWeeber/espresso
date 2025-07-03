@@ -163,7 +163,8 @@ inline int set_interacting_pair_cell(
 
       // Interacting pair cell is registered in the list
       int cid_j = cell_list.cardinalBinIndex(dx[0], dx[1], dx[2]);
-      if (cid_i <= cid_j) {
+      //if (cid_i <= cid_j) {
+      if (cid_i < cid_j) {
         if (bin_size(cid_i) != 0 and bin_size(cid_j) != 0) {
           // std::size_t pcid = Kokkos::atomic_fetch_inc(&pair_cell_id());
           // interacting_pair_cell(pcid, 0) = cid_i;
@@ -270,7 +271,7 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
     total_pair_cell = 14 * total_bins;
   }
   Kokkos::View<int **, Kokkos::LayoutRight> interacting_pair_cell(
-      "interacting_pair_cell", total_pair_cell, 2);
+      "interacting_pair_cell", total_pair_cell - total_bins, 2);
   int empty_pair_number = set_interacting_pair_cell(
       total_bins, total_pair_cell, cell_num, delta_lebc, le_direction,
       le_normal, le_protocol, bin_size, cell_list, interacting_pair_cell);
@@ -280,62 +281,13 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
 
   auto aosoa_id = aosoa.id;
   auto aosoa_ghost = aosoa.ghost;
-  // This kernel used the loop for the pair of interacting cell
-  auto kernel = [&interacting_pair_cell, &bin_offset, &bin_size, &original_idx,
-                 &aosoa_id, &aosoa_ghost, &unique_particles, &verlet_criterion,
-                 &distance_function, &verlet_list,
-                 &first_neighbor_kernel](const int pair_cell_i) {
-    auto thread_id = omp_get_thread_num();
-    int cid_i = interacting_pair_cell(pair_cell_i, 0);
-    int cid_j = interacting_pair_cell(pair_cell_i, 1);
 
-    auto verlet_kernel =
-        [&original_idx, &aosoa_id, &aosoa_ghost, &unique_particles,
-         &verlet_criterion, &distance_function, &verlet_list,
-         &first_neighbor_kernel, thread_id](Particle *p1, int ii, int id_i,
-                                            int cell_offset, int cell_size) {
-          for (int j = cell_offset; j < cell_offset + cell_size; ++j) {
-            // int ii = cell_list.permutation(i); // debug
-            //  int jj = j;
-            int jj = original_idx(j);
-            int id_j = aosoa_id(jj);
-            /*if (id_i < id_j) {
-              if (aosoa_ghost(ii)) continue;
-            } else {
-              if (aosoa_ghost(jj)) continue;
-            }*/
-            if (aosoa_ghost(ii) or aosoa_ghost(jj)) {
-              if (((id_i < id_j) and aosoa_ghost(ii)) or
-                  ((id_i > id_j) and aosoa_ghost(jj))) {
-                continue;
-              }
-            } else if (aosoa_ghost(ii) and aosoa_ghost(jj)) {
-              continue; // reject both ghost
-            }
-            auto p2 = unique_particles.at(jj);
-            // auto p2 = cell_structure.get_local_particle(id_j);
-            if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
-              verlet_list.addNeighbor(thread_id, ii, jj);
-              // verlet_list.addNeighborNonAtomic(thread_id, ii, jj);
-              /*std::cout << "*Ca* "
-                        << ii << " "
-                        << jj << " "
-                        << aosoa_ghost(ii) << " "
-                        << aosoa_ghost(jj) << " "
-                        << id_i << " "
-                        << id_j << "\n";
-                        << cid_i << " "
-                        << cid_j << " "
-                        << aosoa.position(ii, 0) << ", "
-                        << aosoa.position(ii, 1) << ", "
-                        << aosoa.position(ii, 2) << " "
-                        << aosoa.position(jj, 0) << ", "
-                        << aosoa.position(jj, 1) << ", "
-                        << aosoa.position(jj, 2) << "\n";*/
-              first_neighbor_kernel(ii, jj);
-            }
-          } // j-loop
-        };
+  // This kernel calculate within each cell
+  auto kernel_each = [&bin_offset, &bin_size, &original_idx,
+                 &aosoa_id, &aosoa_ghost, &unique_particles, &verlet_criterion,
+                 &distance_function, &verlet_list, &first_neighbor_kernel](const int cid_i) {
+
+    auto thread_id = omp_get_thread_num();
 
     int offset_i = bin_offset(cid_i);
     int size_i = bin_size(cid_i);
@@ -346,27 +298,78 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
       int id_i = aosoa_id(ii);
       auto p1 = unique_particles.at(ii);
       // auto p1 = cell_structure.get_local_particle(id_i);
-
-      if (cid_i == cid_j) {
-        verlet_kernel(p1, ii, id_i, i + 1,
-                      size_i + offset_i - i - 1); // j-loop
-        // verlet_kernel(p1, i, id_i, i + 1,
-        //               size_i + offset_i - i - 1); // j-loop
-      } else {
-        int offset_j = bin_offset(cid_j);
-        int size_j = bin_size(cid_j);
-        verlet_kernel(p1, ii, id_i, offset_j, size_j); // j-loop
-        // verlet_kernel(p1, i, id_i, offset_j, size_j); // j-loop
+      for (int j = i + 1; j < offset_i + size_i; ++j) {
+	int jj = original_idx(j);
+	int id_j = aosoa_id(jj);
+	if (aosoa_ghost(ii) or aosoa_ghost(jj)) {
+	  if (((id_i < id_j) and aosoa_ghost(ii)) or
+	      ((id_i > id_j) and aosoa_ghost(jj))) {
+	    continue;
+	  }
+	} else if (aosoa_ghost(ii) and aosoa_ghost(jj)) {
+	  continue; // reject both ghost
+	}
+	auto p2 = unique_particles.at(jj);
+	// auto p2 = cell_structure.get_local_particle(id_j);
+	if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
+	  //verlet_list.addNeighborNonAtomic(thread_id, std::min(ii, jj), std::max(ii, jj));
+	  verlet_list.addNeighborNonAtomic(thread_id, ii, jj);
+	  first_neighbor_kernel(ii, jj);
+	}
       }
     } // i-loop
   };
 
-  Kokkos::RangePolicy<execution_space> policy(0, total_pair_cell -
-                                                     empty_pair_number);
-  Kokkos::parallel_for("calc_by_cell_list", policy, kernel);
+  // This kernel used the loop for the pair of interacting cell
+  auto kernel_neighbor = [&interacting_pair_cell, &bin_offset, &bin_size, &original_idx,
+                 &aosoa_id, &aosoa_ghost, &unique_particles, &verlet_criterion,
+                 &distance_function, &verlet_list, &first_neighbor_kernel](const int pair_cell_i) {
+    int cid_i = interacting_pair_cell(pair_cell_i, 0);
+    int cid_j = interacting_pair_cell(pair_cell_i, 1);
+
+    auto thread_id = omp_get_thread_num();
+
+    int offset_i = bin_offset(cid_i);
+    int size_i = bin_size(cid_i);
+    int offset_j = bin_offset(cid_j);
+    int size_j = bin_size(cid_j);
+
+    for (int i = offset_i; i < offset_i + size_i; ++i) {
+      // int ii = i;
+      int ii = original_idx(i); // get previous id
+      int id_i = aosoa_id(ii);
+      auto p1 = unique_particles.at(ii);
+      // auto p1 = cell_structure.get_local_particle(id_i);
+
+      for (int j = offset_j; j < offset_j + size_j; ++j) {
+	int jj = original_idx(j);
+	int id_j = aosoa_id(jj);
+	if (aosoa_ghost(ii) or aosoa_ghost(jj)) {
+	  if (((id_i < id_j) and aosoa_ghost(ii)) or
+	      ((id_i > id_j) and aosoa_ghost(jj))) {
+	    continue;
+	  }
+	} else if (aosoa_ghost(ii) and aosoa_ghost(jj)) {
+	  continue; // reject both ghost
+	}
+	auto p2 = unique_particles.at(jj);
+	// auto p2 = cell_structure.get_local_particle(id_j);
+	if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
+	  verlet_list.addNeighbor(thread_id, ii, jj);
+	  first_neighbor_kernel(ii, jj);
+	}
+      } // i-loop
+    }
+  };
+
+  Kokkos::RangePolicy<execution_space> policy_each(0, total_bins);
+  Kokkos::parallel_for("calc_by_cell_list_each", policy_each, kernel_each);
   Kokkos::fence();
 
-  // verlet_list.reduction();
+  Kokkos::RangePolicy<execution_space> policy_neighbor(0, total_pair_cell -total_bins -
+                                                     empty_pair_number);
+  Kokkos::parallel_for("calc_by_cell_list_beighbor", policy_neighbor, kernel_neighbor);
+  Kokkos::fence();
 
   return verlet_list;
 }
