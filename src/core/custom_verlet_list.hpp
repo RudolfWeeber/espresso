@@ -66,19 +66,6 @@ public:
     for (int tid = 0; tid < thread_number; ++tid) {
       max_thread(tid) = 1;
     }
-    /*
-    counts_thread = Kokkos::View<int **, MemorySpace>(
-        "num_neighbors", thread_number, num_particles);
-    neighbors_thread = Kokkos::View<int ***, MemorySpace>(
-        Kokkos::ViewAllocateWithoutInitializing("neighbors"), thread_number,
-        num_particles, max_neigh);
-    Kokkos::parallel_for("initialize counts_thread", num_particles,
-                         [=, this](const int &i) {
-                           for (int tid = 0; tid < thread_number; ++tid) {
-                             counts_thread(tid, i) = 0;
-                           }
-                         });
-    */
   }
 
   // Method to dynamically expand the size of max_neighbors
@@ -123,13 +110,18 @@ public:
 
   // Thread safe but non atomic method to add a neighbor
   KOKKOS_INLINE_FUNCTION
-  void addNeighborNonAtomic(const int tid, const int pid, const int nid) {
-    neighbors_thread(tid, pid, counts_thread(tid, pid)) = nid;
-    counts_thread(tid, pid) += 1;
-    if (counts_thread(tid, pid) >= neighbors.extent(1)) {
+  void addNeighborNonAtomic(const int tid, int pid, int nid) {
+    if (counts(pid) + 1 > max_thread(tid))
+      std::swap(pid, nid);
+    std::size_t count = counts(pid);
+    counts(pid) += 1;
+    if (count >= neighbors.extent(1)) {
       throw std::runtime_error(
           "Number of count in one thread is larger than VerletList size.");
     }
+    neighbors(pid, count) = nid;
+    if (counts(pid) > max_thread(tid))
+      max_thread(tid) = counts(pid);
   }
 
   // Reduction of counts and neighbor in all threads
