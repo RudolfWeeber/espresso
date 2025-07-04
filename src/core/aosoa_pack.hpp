@@ -23,7 +23,7 @@
 
 #include <Cabana_Core.hpp>
 
-const int vector_length = 1;
+const int vector_length = 32;
 using data_types = Cabana::MemberTypes<double[3], double, int, int, bool>;
 using memory_space = Kokkos::HostSpace; // Kokkos::SharedSpace;
 using execution_space = Kokkos::DefaultExecutionSpace;

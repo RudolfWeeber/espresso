@@ -50,7 +50,7 @@ inline double wrap(double x, double L) {
 }
 
 inline void write_particle(Particle const &p, int const &id, AoSoA_pack &aosoa,
-                           Utils::Vector3d &box_l) {
+                           Utils::Vector3d const &box_l) {
   aosoa.id(id) = p.id();
   aosoa.charge(id) = p.q();
   aosoa.type(id) = p.type();
@@ -194,71 +194,18 @@ void cabana_short_range(
 #ifdef CALIPER
     CALI_MARK_BEGIN("Cabana - Allocation");
 #endif
-    Cabana::AoSoA<data_types, memory_space, vector_length> particle_storage(
-        "particles", number_of_unique_particles);
+    Cabana::AoSoA<data_types, memory_space, vector_length>
+	    particle_storage("particles", number_of_unique_particles);
     particle_storage.resize(number_of_unique_particles);
-    auto slice_position = Cabana::slice<0>(particle_storage);
-    auto slice_charge = Cabana::slice<1>(particle_storage);
-    auto slice_id = Cabana::slice<2>(particle_storage);
-    auto slice_type = Cabana::slice<3>(particle_storage);
-    auto slice_ghost = Cabana::slice<4>(particle_storage);
     // particle properties are defined in aosoa_pack.hpp
     auto aosoa = AoSoA_pack(particle_storage);
     auto box_l = box_geo.length();
-    /*
+    
     using policy_type = Kokkos::RangePolicy<execution_space>;
     Kokkos::parallel_for("AoSoA write", policy_type(0, particle_storage.size()),
-                         [&unique_particles, &aosoa, &box_l](
-                             const int p_id) {
-
-                           Particle p = *unique_particles.at(p_id);
-
-                           write_particle(p, p_id, aosoa, box_l);
+                         [&unique_particles, &aosoa, &box_l](const int p_id) {
+                           write_particle(*unique_particles.at(p_id), p_id, aosoa, box_l);
                          });
-    */
-
-    using policy_type = Kokkos::TeamPolicy<execution_space>;
-    int league_size = unique_particles.size();
-    Kokkos::parallel_for(
-        "AoSoA Write", policy_type(league_size, Kokkos::AUTO),
-        [&unique_particles, &aosoa, &box_l, number_of_unique_particles](
-            const policy_type::member_type &team_member) {
-          int p_id = team_member.league_rank();
-          if (p_id >= number_of_unique_particles)
-            return;
-
-          Particle p = *unique_particles.at(p_id);
-
-          write_particle(p, p_id, aosoa, box_l);
-        });
-
-    /*using policy_type = Cabana::SimdPolicy<vector_length, execution_space>;
-    //int league_size = (particle_storage.size() + v_length - 1) / v_length;
-    //Kokkos::parallel_for("SIMD AoSoA Write",
-    Cabana::simd_parallel_for(
-                         policy_type(0, particle_storage.size()),
-                         [&unique_particles, &box_l, vector_length,
-                          number_of_unique_particles,
-                          &slice_position, &slice_charge, &slice_id,
-                          &slice_type, &slice_ghost] (const int s, const int a)
-    {
-
-                           int p_id = s * vector_length + a;
-                           if (p_id >= number_of_unique_particles) return;
-
-                           Particle p = *unique_particles.at(p_id);
-
-                           auto pos = p.pos();
-                           for (int d = 0; d < 3; ++d) {
-                             double wrapped = pos[d] - std::floor(pos[d] /
-    box_l[d]) * box_l[d]; slice_position.access(s, a, d) = wrapped;
-                           }
-
-                           slice_charge.access(s, a) = p.q();         // charge
-                           slice_id.access(s, a)     = p.id();        // id
-                           slice_type.access(s, a)   = p.type();      // type
-                           slice_ghost.access(s, a)  = p.is_ghost();  // ghost
-                         }, "SIMD AoSoA Write");*/
     Kokkos::fence();
 
     Kokkos::View<double ***, Kokkos::LayoutRight> local_force(
@@ -283,7 +230,7 @@ void cabana_short_range(
       [[maybe_unused]] const BondedInteractionsMap &bonded_ias;
       const InteractionsNonBonded &nonbonded_ias;
       const BoxGeometry &box_geo;
-      AoSoA_pack aosoa;
+      const AoSoA_pack aosoa;
       Kokkos::View<double ***> local_force;
 #ifdef ROTATION
       Kokkos::View<double ***> local_torque;
@@ -317,7 +264,7 @@ void cabana_short_range(
 #endif
           [[maybe_unused]] const BondedInteractionsMap &bonded_ias_,
           const InteractionsNonBonded &nonbonded_ias_,
-          const BoxGeometry &box_geo_, AoSoA_pack &aosoa_,
+          const BoxGeometry &box_geo_, const AoSoA_pack &aosoa_,
           Kokkos::View<double ***> local_force_,
 #ifdef ROTATION
           Kokkos::View<double ***> local_torque_,

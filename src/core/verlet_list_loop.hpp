@@ -97,10 +97,6 @@ inline int set_interacting_pair_cell(
 
   int empty_pair_number = 0;
   int pair_cell_id = 0;
-  // Kokkos::View<int> empty_pair_number("empty_pair_number");
-  // Kokkos::View<int> pair_cell_id("pair_cell_id");
-  // Kokkos::deep_copy(empty_pair_number, 0);
-  // Kokkos::deep_copy(pair_cell_id, 0);
 
   for (int cid_i = 0; cid_i < total_bins; ++cid_i) {
     // Kokkos::parallel_for("set_interacting_pair_cell", total_bins,
@@ -195,7 +191,6 @@ template <class VerletCriterion, class Kernel>
 ListType create_verlet_list(double const max_cutoff, int const max_counts,
                             AoSoA_pack &aosoa,
                             std::vector<Particle *> &unique_particles,
-                            // std::vector<Particle> &unique_particles,
                             VerletCriterion const &verlet_criterion,
                             Kernel &first_neighbor_kernel,
                             CellStructure &cell_structure) {
@@ -296,9 +291,10 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
       // int ii = i;
       int ii = original_idx(i); // get previous id
       int id_i = aosoa_id(ii);
-      auto p1 = unique_particles.at(ii);
+      //auto p1 = unique_particles.at(ii);
       // auto p1 = cell_structure.get_local_particle(id_i);
       for (int j = i + 1; j < offset_i + size_i; ++j) {
+        // int jj = j;
         int jj = original_idx(j);
         int id_j = aosoa_id(jj);
         if (aosoa_ghost(ii) or aosoa_ghost(jj)) {
@@ -306,14 +302,13 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
               ((id_i > id_j) and aosoa_ghost(jj))) {
             continue;
           }
-        } else if (aosoa_ghost(ii) and aosoa_ghost(jj)) {
-          continue; // reject both ghost
         }
-        auto p2 = unique_particles.at(jj);
+        //auto p2 = unique_particles.at(jj);
         // auto p2 = cell_structure.get_local_particle(id_j);
-        if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
-          // verlet_list.addNeighborNonAtomic(thread_id, std::min(ii, jj),
-          // std::max(ii, jj));
+	if (verlet_criterion(*unique_particles.at(ii),
+			     *unique_particles.at(jj),
+			     distance_function(*unique_particles.at(ii),
+					       *unique_particles.at(jj)))) {
           verlet_list.addNeighborNonAtomic(thread_id, ii, jj);
           first_neighbor_kernel(ii, jj);
         }
@@ -340,10 +335,11 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
           // int ii = i;
           int ii = original_idx(i); // get previous id
           int id_i = aosoa_id(ii);
-          auto p1 = unique_particles.at(ii);
+          // auto p1 = unique_particles.at(ii);
           // auto p1 = cell_structure.get_local_particle(id_i);
 
           for (int j = offset_j; j < offset_j + size_j; ++j) {
+            // int jj = j;
             int jj = original_idx(j);
             int id_j = aosoa_id(jj);
             if (aosoa_ghost(ii) or aosoa_ghost(jj)) {
@@ -351,12 +347,13 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
                   ((id_i > id_j) and aosoa_ghost(jj))) {
                 continue;
               }
-            } else if (aosoa_ghost(ii) and aosoa_ghost(jj)) {
-              continue; // reject both ghost
             }
-            auto p2 = unique_particles.at(jj);
+            // auto p2 = unique_particles.at(jj);
             // auto p2 = cell_structure.get_local_particle(id_j);
-            if (verlet_criterion(*p1, *p2, distance_function(*p1, *p2))) {
+            if (verlet_criterion(*unique_particles.at(ii),
+				 *unique_particles.at(jj),
+				 distance_function(*unique_particles.at(ii),
+					           *unique_particles.at(jj)))) {
               verlet_list.addNeighbor(thread_id, ii, jj);
               first_neighbor_kernel(ii, jj);
             }
