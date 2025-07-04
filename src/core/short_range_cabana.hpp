@@ -194,17 +194,18 @@ void cabana_short_range(
 #ifdef CALIPER
     CALI_MARK_BEGIN("Cabana - Allocation");
 #endif
-    Cabana::AoSoA<data_types, memory_space, vector_length>
-	    particle_storage("particles", number_of_unique_particles);
+    Cabana::AoSoA<data_types, memory_space, vector_length> particle_storage(
+        "particles", number_of_unique_particles);
     particle_storage.resize(number_of_unique_particles);
     // particle properties are defined in aosoa_pack.hpp
     auto aosoa = AoSoA_pack(particle_storage);
     auto box_l = box_geo.length();
-    
+
     using policy_type = Kokkos::RangePolicy<execution_space>;
     Kokkos::parallel_for("AoSoA write", policy_type(0, particle_storage.size()),
                          [&unique_particles, &aosoa, &box_l](const int p_id) {
-                           write_particle(*unique_particles.at(p_id), p_id, aosoa, box_l);
+                           write_particle(*unique_particles.at(p_id), p_id,
+                                          aosoa, box_l);
                          });
     Kokkos::fence();
 
