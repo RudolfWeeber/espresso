@@ -194,6 +194,15 @@ void cabana_short_range(
 #ifdef CALIPER
     CALI_MARK_BEGIN("Cabana - Allocation");
 #endif
+    Kokkos::View<double ***, Kokkos::LayoutRight> local_force(
+        "local_force", num_threads, number_of_unique_particles, 3);
+
+    Kokkos::View<double ***, Kokkos::LayoutRight> local_torque(
+        "local_torque", num_threads, number_of_unique_particles, 3);
+
+    Kokkos::View<double **, Kokkos::LayoutRight> local_virial("local_virial",
+                                                              num_threads, 3);
+
     Cabana::AoSoA<data_types, memory_space, vector_length> particle_storage(
         "particles", number_of_unique_particles);
     particle_storage.resize(number_of_unique_particles);
@@ -208,15 +217,6 @@ void cabana_short_range(
                                           aosoa, box_l);
                          });
     Kokkos::fence();
-
-    Kokkos::View<double ***, Kokkos::LayoutRight> local_force(
-        "local_force", num_threads, number_of_unique_particles, 3);
-
-    Kokkos::View<double ***, Kokkos::LayoutRight> local_torque(
-        "local_torque", num_threads, number_of_unique_particles, 3);
-
-    Kokkos::View<double **, Kokkos::LayoutRight> local_virial("local_virial",
-                                                              num_threads, 3);
 
 #ifdef CALIPER
     CALI_MARK_END("Cabana - Allocation");

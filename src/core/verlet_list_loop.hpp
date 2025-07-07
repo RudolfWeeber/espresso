@@ -291,7 +291,7 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
       // int ii = i;
       int ii = original_idx(i); // get previous id
       int id_i = aosoa_id(ii);
-      // auto p1 = unique_particles.at(ii);
+      auto p1 = unique_particles.at(ii);
       //  auto p1 = cell_structure.get_local_particle(id_i);
       for (int j = i + 1; j < offset_i + size_i; ++j) {
         // int jj = j;
@@ -305,8 +305,8 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
         }
         // auto p2 = unique_particles.at(jj);
         //  auto p2 = cell_structure.get_local_particle(id_j);
-        if (verlet_criterion(*unique_particles.at(ii), *unique_particles.at(jj),
-                             distance_function(*unique_particles.at(ii),
+        if (verlet_criterion(*p1, *unique_particles.at(jj),
+                             distance_function(*p1,
                                                *unique_particles.at(jj)))) {
           verlet_list.addNeighborNonAtomic(thread_id, ii, jj);
           first_neighbor_kernel(ii, jj);
@@ -335,7 +335,7 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
       // int ii = i;
       int ii = original_idx(i); // get previous id
       int id_i = aosoa_id(ii);
-      // auto p1 = unique_particles.at(ii);
+      auto p1 = unique_particles.at(ii);
       // auto p1 = cell_structure.get_local_particle(id_i);
 
       for (int j = offset_j; j < offset_j + size_j; ++j) {
@@ -350,8 +350,8 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
         }
         // auto p2 = unique_particles.at(jj);
         // auto p2 = cell_structure.get_local_particle(id_j);
-        if (verlet_criterion(*unique_particles.at(ii), *unique_particles.at(jj),
-                             distance_function(*unique_particles.at(ii),
+        if (verlet_criterion(*p1, *unique_particles.at(jj),
+                             distance_function(*p1,
                                                *unique_particles.at(jj)))) {
           verlet_list.addNeighbor(thread_id, ii, jj);
           first_neighbor_kernel(ii, jj);
