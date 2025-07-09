@@ -57,6 +57,10 @@
 #include <utility>
 #include <vector>
 
+#ifdef CALIPER
+#include <caliper/cali.h>
+#endif
+
 // forward declaration to not have to import cabana
 #ifdef SHARED_MEMORY_PARALLELISM
 class CabanaData;
@@ -699,14 +703,12 @@ public:
       link_cell([&](Particle &p1, Particle &p2, Distance const &d) {
         if (verlet_criterion(p1, p2, d)) {
           m_verlet_list.emplace_back(&p1, &p2);
+          kernel(p1, p2);
         }
       });
       m_rebuild_verlet_list = false;
+      m_rebuild_cabana_verlet_list = false;
     }
-    for (auto const &pair : m_verlet_list) {
-      kernel(*pair.first, *pair.second);
-    }
-    m_rebuild_cabana_verlet_list = false;
   }
 #endif
 
@@ -723,6 +725,9 @@ private:
      * the pair kernel, and the verlet list is rebuilt as
      * we go. */
     if (m_rebuild_verlet_list) {
+#ifdef CALIPER
+    CALI_MARK_BEGIN("link_cell");
+#endif
       m_verlet_list.clear();
 
       link_cell([&](Particle &p1, Particle &p2, Distance const &d) {
@@ -734,7 +739,13 @@ private:
 
       m_rebuild_verlet_list = false;
       m_rebuild_cabana_verlet_list = true;
+#ifdef CALIPER
+    CALI_MARK_END("link_cell");
+#endif
     } else {
+#ifdef CALIPER
+    CALI_MARK_BEGIN("pair_kernel");
+#endif
       auto const maybe_box = decomposition().minimum_image_distance();
       /* In this case the pair kernel is just run over the verlet list. */
       if (maybe_box) {
@@ -751,6 +762,9 @@ private:
                       distance_function(*pair.first, *pair.second));
         }
       }
+#ifdef CALIPER
+    CALI_MARK_END("pair_kernel");
+#endif
     }
   }
 

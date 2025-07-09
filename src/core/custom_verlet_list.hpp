@@ -38,41 +38,36 @@ public:
   // Custom constructor
   template <class PositionSlice>
   CustomVerletList(PositionSlice x, const std::size_t begin,
-                   const std::size_t end, const std::size_t max_neigh,
-                   const std::size_t thread_number) {
-    initializeData(x.size(), max_neigh, thread_number);
+                   const std::size_t end, const std::size_t max_neigh) {
+                   //const std::size_t thread_number) {
+    initializeData(x.size(), max_neigh);//, thread_number);
   }
   virtual ~CustomVerletList() {};
-
-private:
-  Kokkos::View<int *, MemorySpace> max_thread;
 
 public:
   Kokkos::View<int *, MemorySpace> counts;
   Kokkos::View<int **, MemorySpace> neighbors;
+  // Kokkos::View<int **, Kokkos::LayoutRight> neighbors;
 
   // Method to initialize _data without filling neighbors
   KOKKOS_INLINE_FUNCTION
   void initializeData(const std::size_t num_particles,
-                      const std::size_t max_neigh,
-                      const std::size_t thread_number) {
+                      const std::size_t max_neigh) {
+                      //const std::size_t thread_number) {
     counts = Kokkos::View<int *, MemorySpace>("num_neighbors", num_particles);
     neighbors = Kokkos::View<int **, MemorySpace>(
+    //  neighbors = Kokkos::View<int **, Kokkos::LayoutRight>(
         Kokkos::ViewAllocateWithoutInitializing("neighbors"), num_particles,
         max_neigh);
-    max_thread = Kokkos::View<int *, MemorySpace>("max_thread", thread_number);
-    for (int tid = 0; tid < thread_number; ++tid) {
-      max_thread(tid) = 1;
-    }
   }
 
   // Method to add a neighbor
   KOKKOS_INLINE_FUNCTION
-  void addNeighbor(const int tid, int pid, int nid) {
+  void addNeighbor(int pid, int nid) {
     std::size_t count = counts(pid);
-    std::size_t max_t = max_thread(tid);
+    std::size_t count_n = counts(nid);
 
-    if (count + 1 > max_t) {
+    if (count > count_n) {
       int tmp = pid;
       pid = nid;
       nid = tmp;
@@ -80,35 +75,31 @@ public:
     count = Kokkos::atomic_fetch_add(&counts(pid), 1);
     if (count >= neighbors.extent(1)) {
       throw std::runtime_error(
-          "Number of count in one thread is larger than VerletList size.");
+      //Kokkos::abort(
+          "Number of count is larger than VerletList size.");
     }
     neighbors(pid, count) = nid;
-    std::size_t new_count = count + 1;
-    if (new_count > max_t)
-      max_thread(tid) = new_count;
   }
 
   // Thread safe but non atomic method to add a neighbor
   KOKKOS_INLINE_FUNCTION
-  void addNeighborNonAtomic(const int tid, int pid, int nid) {
+  void addNeighborNonAtomic(int pid, int nid) {
     std::size_t count = counts(pid);
-    std::size_t max_t = max_thread(tid);
+    std::size_t count_n = counts(nid);
 
-    if (count + 1 > max_t) {
+    if (count > count_n) {
       int tmp = pid;
       pid = nid;
       nid = tmp;
       count = counts(pid);
     }
     if (count >= neighbors.extent(1)) {
-      // expandMaxNeighbors(neighbors.extent(1) * 2);
       throw std::runtime_error(
+      //Kokkos::abort(
           "Number of count is larger than VerletList size.");
     }
     neighbors(pid, count) = nid;
     counts(pid) += 1;
-    if (count + 1 > max_thread(tid))
-      max_thread(tid) = count + 1;
   }
 
   // Find max counts

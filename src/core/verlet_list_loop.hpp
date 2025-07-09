@@ -83,6 +83,7 @@ inline int set_interacting_pair_cell(
     // ActiveProtocol le_protocol,
     Kokkos::View<int *, Kokkos::LayoutRight> &bin_size,
     Cabana::LinkedCellList<memory_space, double> &cell_list,
+    //std::vector<std::pair<int, int>> &interacting_pair_cell) {
     Kokkos::View<int **, Kokkos::LayoutRight> &interacting_pair_cell) {
 #ifdef CALIPER
   CALI_CXX_MARK_FUNCTION;
@@ -167,6 +168,7 @@ inline int set_interacting_pair_cell(
           // interacting_pair_cell(pcid, 1) = cid_j;
           interacting_pair_cell(pair_cell_id, 0) = cid_i;
           interacting_pair_cell(pair_cell_id, 1) = cid_j;
+          // interacting_pair_cell.emplace_back(std::pair(cid_i, cid_j));
           ++pair_cell_id;
           // interacting_pair_cell_thread(thread_id, pair_id_thread(thread_id),
           // 0) = cid_i; interacting_pair_cell_thread(thread_id,
@@ -244,10 +246,9 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
   // Cabana::permute( cell_list, particle_storage );
 
   // Number of threads
-  int num_threads = execution_space().concurrency();
-
+  //int num_threads = execution_space().concurrency();
   ListType verlet_list = ListType(aosoa.position, 0, aosoa.position.size(),
-                                  max_counts, num_threads);
+                                  max_counts);//, num_threads);
 
   // Offset particle id and the number of particle in specific cell
   Kokkos::View<int *, Kokkos::LayoutRight> bin_offset("bin_offset", total_bins);
@@ -267,6 +268,8 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
   }
   Kokkos::View<int **, Kokkos::LayoutRight> interacting_pair_cell(
       "interacting_pair_cell", total_pair_cell - total_bins, 2);
+  //std::vector<std::pair<int, int>> interacting_pair_cell;
+  //interacting_pair_cell.reserve(total_pair_cell - total_bins);
   int empty_pair_number = set_interacting_pair_cell(
       total_bins, total_pair_cell, cell_num, delta_lebc, le_direction,
       le_normal, le_protocol, bin_size, cell_list, interacting_pair_cell);
@@ -280,9 +283,9 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
   // This kernel calculate within each cell
   auto kernel_each = [&bin_offset, &bin_size, &original_idx, &aosoa_id,
                       &aosoa_ghost, &unique_particles, &verlet_criterion,
-                      &distance_function, &verlet_list,
-                      &first_neighbor_kernel](const int cid_i) {
-    auto thread_id = omp_get_thread_num();
+                      &distance_function, &verlet_list](const int cid_i) {
+                      //&first_neighbor_kernel](const int cid_i) {
+    //auto thread_id = omp_get_thread_num();
 
     int offset_i = bin_offset(cid_i);
     int size_i = bin_size(cid_i);
@@ -308,8 +311,9 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
         if (verlet_criterion(*p1, *unique_particles.at(jj),
                              distance_function(*p1,
                                                *unique_particles.at(jj)))) {
-          verlet_list.addNeighborNonAtomic(thread_id, ii, jj);
-          first_neighbor_kernel(ii, jj);
+          //verlet_list.addNeighborNonAtomic(thread_id, ii, jj);
+          verlet_list.addNeighborNonAtomic(ii, jj);
+          //first_neighbor_kernel(ii, jj);
         }
       }
     } // i-loop
@@ -319,12 +323,14 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
   auto kernel_neighbor = [&interacting_pair_cell, &bin_offset, &bin_size,
                           &original_idx, &aosoa_id, &aosoa_ghost,
                           &unique_particles, &verlet_criterion,
-                          &distance_function, &verlet_list,
-                          &first_neighbor_kernel](const int pair_cell_i) {
+                          &distance_function, &verlet_list](const int pair_cell_i) {
+                          //&first_neighbor_kernel](const int pair_cell_i) {
     int cid_i = interacting_pair_cell(pair_cell_i, 0);
     int cid_j = interacting_pair_cell(pair_cell_i, 1);
+    // int cid_i = interacting_pair_cell.at(pair_cell_i).first;
+    // int cid_j = interacting_pair_cell.at(pair_cell_i).second;
 
-    auto thread_id = omp_get_thread_num();
+    //auto thread_id = omp_get_thread_num();
 
     int offset_i = bin_offset(cid_i);
     int size_i = bin_size(cid_i);
@@ -353,8 +359,9 @@ ListType create_verlet_list(double const max_cutoff, int const max_counts,
         if (verlet_criterion(*p1, *unique_particles.at(jj),
                              distance_function(*p1,
                                                *unique_particles.at(jj)))) {
-          verlet_list.addNeighbor(thread_id, ii, jj);
-          first_neighbor_kernel(ii, jj);
+          //verlet_list.addNeighbor(thread_id, ii, jj);
+          verlet_list.addNeighbor(ii, jj);
+          //first_neighbor_kernel(ii, jj);
         }
       } // i-loop
     }
