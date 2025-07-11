@@ -241,11 +241,12 @@ public:
    */
   template <typename T>
   Utils::Vector<T, 3> get_mi_vector(const T &a0, const T &a1, const T &a2,
-                                    const T &b0, const T &b1, const T &b2) const {
+                                    const T &b0, const T &b1,
+                                    const T &b2) const {
     if (type() == BoxType::LEES_EDWARDS) {
       auto const shear_plane_normal = lees_edwards_bc().shear_plane_normal;
-      auto a_tmp = Utils::Vector<T, 3> {a0, a1, a2};
-      auto b_tmp = Utils::Vector<T, 3> {b0, b1, b2};
+      auto a_tmp = Utils::Vector<T, 3>{a0, a1, a2};
+      auto b_tmp = Utils::Vector<T, 3>{b0, b1, b2};
       a_tmp[shear_plane_normal] = Algorithm::periodic_fold(
           a_tmp[shear_plane_normal], m_length[shear_plane_normal]);
       b_tmp[shear_plane_normal] = Algorithm::periodic_fold(

@@ -36,13 +36,13 @@ public:
   CustomVerletList() : Base() {}
 
   // Custom constructor
-  //template <class PositionSlice>
-  //CustomVerletList(PositionSlice x, const std::size_t begin,
-  CustomVerletList(const std::size_t begin,
-                   const std::size_t end, const std::size_t max_neigh) {
-                   //const std::size_t thread_number) {
-    //initializeData(x.size(), max_neigh);//, thread_number);
-    initializeData(end - begin, max_neigh);//, thread_number);
+  // template <class PositionSlice>
+  // CustomVerletList(PositionSlice x, const std::size_t begin,
+  CustomVerletList(const std::size_t begin, const std::size_t end,
+                   const std::size_t max_neigh) {
+    // const std::size_t thread_number) {
+    // initializeData(x.size(), max_neigh);//, thread_number);
+    initializeData(end - begin, max_neigh); //, thread_number);
   }
   virtual ~CustomVerletList() {};
 
@@ -55,10 +55,10 @@ public:
   KOKKOS_INLINE_FUNCTION
   void initializeData(const std::size_t num_particles,
                       const std::size_t max_neigh) {
-                      //const std::size_t thread_number) {
+    // const std::size_t thread_number) {
     counts = Kokkos::View<int *, MemorySpace>("num_neighbors", num_particles);
     neighbors = Kokkos::View<int **, MemorySpace>(
-    //  neighbors = Kokkos::View<int **, Kokkos::LayoutRight>(
+        //  neighbors = Kokkos::View<int **, Kokkos::LayoutRight>(
         Kokkos::ViewAllocateWithoutInitializing("neighbors"), num_particles,
         max_neigh);
   }
@@ -77,7 +77,7 @@ public:
     count = Kokkos::atomic_fetch_add(&counts(pid), 1);
     if (count >= neighbors.extent(1)) {
       throw std::runtime_error(
-      //Kokkos::abort(
+          // Kokkos::abort(
           "Number of count is larger than VerletList size.");
     }
     neighbors(pid, count) = nid;
@@ -97,7 +97,7 @@ public:
     }
     if (count >= neighbors.extent(1)) {
       throw std::runtime_error(
-      //Kokkos::abort(
+          // Kokkos::abort(
           "Number of count is larger than VerletList size.");
     }
     neighbors(pid, count) = nid;

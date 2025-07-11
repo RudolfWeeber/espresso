@@ -43,9 +43,9 @@ public:
   CabanaData(ListType verlet_list, std::vector<Particle *> unique_particles)
       : verlet_list(verlet_list), unique_particles(unique_particles) {}
   CabanaData(ListType verlet_list, std::vector<Particle *> unique_particles,
-              int max_id)
-       : verlet_list(verlet_list), unique_particles(unique_particles),
-         max_id(max_id) {}
+             int max_id)
+      : verlet_list(verlet_list), unique_particles(unique_particles),
+        max_id(max_id) {}
 
   ListType get_verlet_list() const { return verlet_list; }
   int get_index() const { return unique_particles.size(); }

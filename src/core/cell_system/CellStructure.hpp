@@ -697,7 +697,7 @@ public:
   void cabana_verlet_list_loop(Kernel kernel,
                                const VerletCriterion &verlet_criterion) {
     if (m_rebuild_cabana_verlet_list) {
-    // if (m_rebuild_verlet_list) {
+      // if (m_rebuild_verlet_list) {
       m_verlet_list.clear();
 
       link_cell([&](Particle &p1, Particle &p2, Distance const &d) {
@@ -726,7 +726,7 @@ private:
      * we go. */
     if (m_rebuild_verlet_list) {
 #ifdef CALIPER
-    CALI_MARK_BEGIN("link_cell");
+      CALI_MARK_BEGIN("link_cell");
 #endif
       m_verlet_list.clear();
 
@@ -740,11 +740,11 @@ private:
       m_rebuild_verlet_list = false;
       m_rebuild_cabana_verlet_list = true;
 #ifdef CALIPER
-    CALI_MARK_END("link_cell");
+      CALI_MARK_END("link_cell");
 #endif
     } else {
 #ifdef CALIPER
-    CALI_MARK_BEGIN("pair_kernel");
+      CALI_MARK_BEGIN("pair_kernel");
 #endif
       auto const maybe_box = decomposition().minimum_image_distance();
       /* In this case the pair kernel is just run over the verlet list. */
@@ -763,7 +763,7 @@ private:
         }
       }
 #ifdef CALIPER
-    CALI_MARK_END("pair_kernel");
+      CALI_MARK_END("pair_kernel");
 #endif
     }
   }
