@@ -696,8 +696,8 @@ public:
   template <class Kernel, class VerletCriterion>
   void cabana_verlet_list_loop(Kernel kernel,
                                const VerletCriterion &verlet_criterion) {
-    // if (m_rebuild_cabana_verlet_list) {
-    if (m_rebuild_verlet_list) {
+    if (m_rebuild_cabana_verlet_list) {
+    // if (m_rebuild_verlet_list) {
       m_verlet_list.clear();
 
       link_cell([&](Particle &p1, Particle &p2, Distance const &d) {

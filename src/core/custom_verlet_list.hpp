@@ -36,11 +36,13 @@ public:
   CustomVerletList() : Base() {}
 
   // Custom constructor
-  template <class PositionSlice>
-  CustomVerletList(PositionSlice x, const std::size_t begin,
+  //template <class PositionSlice>
+  //CustomVerletList(PositionSlice x, const std::size_t begin,
+  CustomVerletList(const std::size_t begin,
                    const std::size_t end, const std::size_t max_neigh) {
                    //const std::size_t thread_number) {
-    initializeData(x.size(), max_neigh);//, thread_number);
+    //initializeData(x.size(), max_neigh);//, thread_number);
+    initializeData(end - begin, max_neigh);//, thread_number);
   }
   virtual ~CustomVerletList() {};
 

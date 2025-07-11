@@ -23,7 +23,6 @@
 
 #include "custom_verlet_list.hpp"
 #include <Cabana_Core.hpp>
-#include <unordered_map>
 #include <vector>
 
 using memory_space = Kokkos::SharedSpace;
