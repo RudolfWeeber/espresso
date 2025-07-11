@@ -336,8 +336,10 @@ template <std::size_t N, typename T, class U,
 auto operator*(Vector<T, N> const &a, Vector<U, N> const &b) {
   using std::declval;
   using R = decltype(declval<T>() * declval<U>());
-
-  return std::inner_product(std::begin(a), std::end(a), std::begin(b), R{});
+  R result{};
+  for (std::size_t i = 0; i < N; i++)
+    result += a[i] * b[i];
+  return result;
 }
 
 template <
