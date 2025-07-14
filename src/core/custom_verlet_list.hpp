@@ -125,9 +125,8 @@ public:
       ave_counts /= counts.extent(0);
       ave_sq_counts /= counts.extent(0);
       ave_sq_counts -= ave_counts * ave_counts;
-      std::cout << "max:" << max_counts
-                << " ave:" << ave_counts
-		<< " var:" << ave_sq_counts << std::endl;
+      std::cout << "max:" << max_counts << " ave:" << ave_counts
+                << " var:" << ave_sq_counts << std::endl;
     }
     return max_counts;
   }

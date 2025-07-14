@@ -36,7 +36,7 @@ struct AoSoA_pack {
   AoSoA_type::member_slice_type<1> charge;
   AoSoA_type::member_slice_type<2> id;
   AoSoA_type::member_slice_type<3> type;
-  //AoSoA_type::member_slice_type<4> ghost;
+  // AoSoA_type::member_slice_type<4> ghost;
 
   AoSoA_pack() = default;
 
@@ -45,6 +45,6 @@ struct AoSoA_pack {
         // torque(Cabana::slice<2>(aosoa)), charge(Cabana::slice<3>(aosoa)),
         position(Cabana::slice<0>(aosoa)), charge(Cabana::slice<1>(aosoa)),
         id(Cabana::slice<2>(aosoa)), type(Cabana::slice<3>(aosoa)) {}
-        //ghost(Cabana::slice<4>(aosoa)) {}
+  // ghost(Cabana::slice<4>(aosoa)) {}
 };
 #endif
