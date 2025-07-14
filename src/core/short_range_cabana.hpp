@@ -54,7 +54,7 @@ inline void write_particle(Particle const &p, int const &id, AoSoA_pack &aosoa,
   aosoa.id(id) = p.id();
   aosoa.charge(id) = p.q();
   aosoa.type(id) = p.type();
-  aosoa.ghost(id) = p.is_ghost();
+  //aosoa.ghost(id) = p.is_ghost();
   auto const pos = p.pos();
   double wpos[3] = {};
   for (int d = 0; d < 3; ++d) {
@@ -197,17 +197,18 @@ void cabana_short_range(
 #ifdef CALIPER
     CALI_MARK_BEGIN("Cabana - Allocation");
 #endif
-
     Kokkos::View<int *> id_to_index("id_to_index", max_id + 1);
     Kokkos::View<double ***, Kokkos::LayoutRight> local_force(
         "local_force", num_threads, number_of_unique_particles, 3);
 
+#ifdef ROTATION
     Kokkos::View<double ***, Kokkos::LayoutRight> local_torque(
         "local_torque", num_threads, number_of_unique_particles, 3);
-
+#endif
+#ifdef NPT
     Kokkos::View<double **, Kokkos::LayoutRight> local_virial("local_virial",
                                                               num_threads, 3);
-
+#endif
     Cabana::AoSoA<data_types, memory_space, vector_length> particle_storage(
         "particles", number_of_unique_particles);
     particle_storage.resize(number_of_unique_particles);
@@ -270,9 +271,9 @@ void cabana_short_range(
     defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
       std::vector<Particle *> unique_particles;
 #endif
-      [[maybe_unused]] const BondedInteractionsMap &bonded_ias;
-      const InteractionsNonBonded &nonbonded_ias;
-      const BoxGeometry &box_geo;
+      [[maybe_unused]] const BondedInteractionsMap bonded_ias;
+      const InteractionsNonBonded nonbonded_ias;
+      const BoxGeometry box_geo;
       const AoSoA_pack aosoa;
       Kokkos::View<double ***> local_force;
 #ifdef ROTATION
@@ -307,7 +308,8 @@ void cabana_short_range(
 #endif
           [[maybe_unused]] const BondedInteractionsMap &bonded_ias_,
           const InteractionsNonBonded &nonbonded_ias_,
-          const BoxGeometry &box_geo_, const AoSoA_pack &aosoa_,
+          const BoxGeometry &box_geo_,
+	  const AoSoA_pack &aosoa_,
           Kokkos::View<double ***> local_force_,
 #ifdef ROTATION
           Kokkos::View<double ***> local_torque_,
@@ -329,7 +331,7 @@ void cabana_short_range(
           Coulomb::ShortRangeEnergyKernel::kernel_type const *coulomb_u_kernel_,
           const Thermostat::Thermostat &thermostat_,
 #endif
-          int &num_threads_, int &mpi_rank_, int &particle_number_)
+          int num_threads_, int mpi_rank_, int particle_number_)
           : // cell(cell_),
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
     defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
@@ -366,7 +368,7 @@ void cabana_short_range(
 
         IA_parameters const &ia_params =
             nonbonded_ias.get_ia_param(aosoa.type(i), aosoa.type(j));
-
+	
         ParticleForce pf{};
 #ifdef NPT
         Utils::Vector3d virial{};
@@ -513,7 +515,7 @@ void cabana_short_range(
     CALI_MARK_END("Cabana - Verlet List by ESPRESSO");
 #endif
 
-    FirstNeighborKernel first_neighbor_kernel(
+    FirstNeighborKernel first_neighbor_kernel_o(
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
     defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
         unique_particles,
@@ -535,12 +537,13 @@ void cabana_short_range(
 #endif
         num_threads, rank, number_of_unique_particles);
 
+    const auto& first_neighbor_kernel = first_neighbor_kernel_o;
+
     if (rebuild and max_cutoff != INACTIVE_CUTOFF) { // Shared memory
 #ifdef CALIPER
       CALI_MARK_BEGIN("Cabana - Verlet List by Cabana");
 #endif
       if (1) {
-        // ListType v_verlet_list;
         /*
         verlet_list = create_verlet_list(
             max_cutoff, max_counts, aosoa, unique_particles, verlet_criterion,
@@ -553,8 +556,9 @@ void cabana_short_range(
             std::as_const(cell_structure).decomposition().box()};
 
         auto kernel_each = [&cells, &distance_function, &verlet_criterion,
-                            &id_to_index, &verlet_list, max_id,
-                            &first_neighbor_kernel](int i) {
+                            &id_to_index, &verlet_list, max_id](int i) {
+                            //&id_to_index, &verlet_list, max_id,
+                            //&first_neighbor_kernel](int i) {
           auto &local_particles = cells[i]->particles();
           for (auto it = local_particles.begin(); it != local_particles.end();
                ++it) {
@@ -576,8 +580,9 @@ void cabana_short_range(
         };
 
         auto kernel_neighbor = [&cells, &distance_function, &verlet_criterion,
-                                &id_to_index, &verlet_list, max_id,
-                                &first_neighbor_kernel](int i) {
+                                &id_to_index, &verlet_list, max_id](int i) {
+                                //&id_to_index, &verlet_list, max_id,
+                                //&first_neighbor_kernel](int i) {
           auto &local_particles = cells[i]->particles();
           for (auto it = local_particles.begin(); it != local_particles.end();
                ++it) {
@@ -639,17 +644,15 @@ void cabana_short_range(
       /*
       using neighbor_list = Cabana::NeighborList<ListType>;
       using SimdPolicy = Cabana::SimdPolicy<vector_length, execution_space>;
-      SimdPolicy simd_policy(0, (number_of_unique_particles - 1 + vector_length)
-      / vector_length); Cabana::simd_parallel_for(simd_policy,
+      SimdPolicy simd_policy(0, number_of_unique_particles);
+      Cabana::simd_parallel_for(simd_policy,
                       [&number_of_unique_particles, &verlet_list,
                        &first_neighbor_kernel] (const int s, const int a) {
                         int i = s * vector_length + a;
                         if (i > number_of_unique_particles) return;
-
-                        for (int n = 0; n <
-      neighbor_list::numNeighbor(verlet_list, i); ++n) { int j =
-      neighbor_list::getNeighbor(verlet_list, i, n); first_neighbor_kernel(i,
-      j);
+                        for (int n = 0; n < neighbor_list::numNeighbor(verlet_list, i); ++n) {
+			  int j = neighbor_list::getNeighbor(verlet_list, i, n);
+			  first_neighbor_kernel(i, j);
                         }
                       });
                       */
@@ -674,21 +677,29 @@ void cabana_short_range(
     // Force and Torque reduction
     Kokkos::RangePolicy<execution_space> policy(0, particle_storage.size());
     Kokkos::parallel_for("reduction", policy,
-                         [&local_force, &local_torque, &unique_particles,
+                         [&local_force,
+#ifdef ROTATION
+			 &local_torque,
+#endif
+			 &unique_particles,
                           num_threads](const int i) {
                            double fx = 0.;
                            double fy = 0.;
                            double fz = 0.;
+#ifdef ROTATION
                            double tx = 0.;
                            double ty = 0.;
                            double tz = 0.;
+#endif
                            for (int tid = 0; tid < num_threads; ++tid) {
                              fx += local_force(tid, i, 0);
                              fy += local_force(tid, i, 1);
                              fz += local_force(tid, i, 2);
+#ifdef ROTATION
                              tx += local_torque(tid, i, 0);
                              ty += local_torque(tid, i, 1);
                              tz += local_torque(tid, i, 2);
+#endif
                            }
                            auto &p = unique_particles.at(i);
                            // auto p =

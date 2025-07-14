@@ -75,11 +75,13 @@ public:
       nid = tmp;
     }
     count = Kokkos::atomic_fetch_add(&counts(pid), 1);
+#ifndef NDEBUG
     if (count >= neighbors.extent(1)) {
       throw std::runtime_error(
           // Kokkos::abort(
           "Number of count is larger than VerletList size.");
     }
+#endif
     neighbors(pid, count) = nid;
   }
 
@@ -95,11 +97,13 @@ public:
       nid = tmp;
       count = counts(pid);
     }
+#ifndef NDEBUG
     if (count >= neighbors.extent(1)) {
       throw std::runtime_error(
           // Kokkos::abort(
           "Number of count is larger than VerletList size.");
     }
+#endif
     neighbors(pid, count) = nid;
     counts(pid) += 1;
   }
@@ -109,14 +113,21 @@ public:
   std::size_t get_max_counts() {
     std::size_t max_counts = 0;
     std::size_t ave_counts = 0;
+    std::size_t ave_sq_counts = 0;
     for (int pid = 0; pid < counts.extent(0); ++pid) {
-      if (max_counts < counts(pid))
-        max_counts = counts(pid);
-      ave_counts += counts(pid);
+      std::size_t count = counts(pid);
+      if (max_counts < count)
+        max_counts = count;
+      ave_counts += count;
+      ave_sq_counts += count * count;
     }
     if (counts.extent(0) != 0) {
+      ave_counts /= counts.extent(0);
+      ave_sq_counts /= counts.extent(0);
+      ave_sq_counts -= ave_counts * ave_counts;
       std::cout << "max:" << max_counts
-                << " ave:" << ave_counts / counts.extent(0) << std::endl;
+                << " ave:" << ave_counts
+		<< " var:" << ave_sq_counts << std::endl;
     }
     return max_counts;
   }
