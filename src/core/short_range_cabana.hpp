@@ -157,27 +157,26 @@ void cabana_short_range(
     if (rebuild) {
 
       for (auto &p : particles) {
-        if (cell_structure.get_local_particle(p.id())) {
-          if (p.id() > max_id)
-            max_id = p.id();
-          registered_index.insert(p.id());
-          unique_particles.emplace_back(&p);
-          // sequential_particles.emplace_back(p);
-          index++;
-        }
+        if (p.id() > max_id)
+          max_id = p.id();
+        unique_particles.emplace_back(&p);
+        // sequential_particles.emplace_back(p);
+        index++;
       }
 
       for (auto &p : ghost_particles) {
-        if (not registered_index.contains(p.id())) {
-          if (cell_structure.get_local_particle(p.id())) {
-            if (p.id() > max_id)
-              max_id = p.id();
-            registered_index.insert(p.id());
-            unique_particles.emplace_back(&p);
-            // sequential_particles.emplace_back(p);
-            index++;
-          }
+        if (not cell_structure.get_local_particle(p.id())->is_ghost()) {
+          continue;
         }
+        if (registered_index.contains(p.id())) {
+          continue;
+        }
+        if (p.id() > max_id)
+          max_id = p.id();
+        registered_index.insert(p.id());
+        unique_particles.emplace_back(&p);
+        // sequential_particles.emplace_back(p);
+        index++;
       }
     } else {
       // If we do not rebuild we can use the saved map
