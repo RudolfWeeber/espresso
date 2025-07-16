@@ -214,11 +214,14 @@ Utils::Vector3d ParticleCoupling::get_noise_term(Particle const &p) const {
   return m_noise_pref_wo_gamma * Utils::hadamard_product(sqrt(gamma), noise);
 }
 
-void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
+void ParticleCoupling::prepare_coupling(
+    std::vector<Particle *> const &particles, ParticleCouplingState &state) {
+  state.clear();
+
   if (particles.empty()) {
     return;
   }
-  enum coupling_modes { none, particle_force, swimmer_force_on_fluid };
+
   auto const halo = 0.5 * m_lb.get_agrid();
   auto const halo_vec = Utils::Vector3d::broadcast(halo);
   auto const fully_inside_lower = m_local_box.my_left() + 2. * halo_vec;
@@ -226,25 +229,14 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
   auto const halo_lower_corner = m_local_box.my_left() - halo_vec;
   auto const halo_upper_corner = m_local_box.my_right() + halo_vec;
 
-  // Structure to hold all data related to a coupled particle
-  struct CoupledParticleData {
-    Particle *particle;
-    std::vector<Utils::Vector3d> force_positions;
-    std::optional<size_t> velocity_coupling_index;
-    coupling_modes mode;
-  };
-
-  std::vector<CoupledParticleData> coupled_particle_data;
-  std::vector<Utils::Vector3d> positions_velocity_coupling;
-
   // First pass: determine positions and coupling modes
   for (auto ptr : particles) {
     auto &p = *ptr;
     auto const folded_pos = m_box_geo.folded_position(p.pos());
 
-    CoupledParticleData data;
+    ParticleCouplingState::CoupledParticleData data;
     data.particle = ptr;
-    data.mode = none;
+    data.mode = ParticleCouplingState::none;
 
     // Determine force coupling positions
     if (in_box(folded_pos, fully_inside_lower, fully_inside_upper)) {
@@ -257,35 +249,40 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
     // Check if particle should be coupled
 #ifdef ENGINE
     if (p.swimming().is_engine_force_on_fluid) {
-      data.mode = swimmer_force_on_fluid;
+      data.mode = ParticleCouplingState::swimmer_force_on_fluid;
     }
 #endif
 
-    if (data.mode == none) {
+    if (data.mode == ParticleCouplingState::none) {
       // Check if any position is within velocity coupling region
       for (auto const &pos : data.force_positions) {
         if (pos >= halo_lower_corner and pos < halo_upper_corner) {
-          data.velocity_coupling_index = positions_velocity_coupling.size();
-          positions_velocity_coupling.push_back(pos);
-          data.mode = particle_force;
+          data.velocity_coupling_index =
+              state.positions_velocity_coupling.size();
+          state.positions_velocity_coupling.push_back(pos);
+          data.mode = ParticleCouplingState::particle_force;
           break;
         }
       }
     }
 
     // Only keep particles that will be coupled
-    if (data.mode != none) {
-      coupled_particle_data.push_back(std::move(data));
+    if (data.mode != ParticleCouplingState::none) {
+      state.coupled_particle_data.push_back(std::move(data));
     }
   }
 
-  if (coupled_particle_data.empty()) {
+  if (!state.coupled_particle_data.empty()) {
+    // Get interpolated velocities for all velocity coupling positions at once
+    state.interpolated_velocities = m_lb.get_coupling_interpolated_velocities(
+        state.positions_velocity_coupling);
+  }
+}
+
+void ParticleCoupling::apply_forces(ParticleCouplingState &state) {
+  if (state.coupled_particle_data.empty()) {
     return;
   }
-
-  // Get interpolated velocities for all velocity coupling positions at once
-  auto interpolated_velocities =
-      m_lb.get_coupling_interpolated_velocities(positions_velocity_coupling);
 
   auto const &domain_lower_corner = m_local_box.my_left();
   auto const &domain_upper_corner = m_local_box.my_right();
@@ -294,19 +291,20 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
   std::vector<Utils::Vector3d> all_force_positions;
   std::vector<Utils::Vector3d> all_forces;
 
-  // Second pass: calculate forces
-  for (auto &data : coupled_particle_data) {
+  // Calculate and apply forces
+  for (auto &data : state.coupled_particle_data) {
     auto &p = *data.particle;
     Utils::Vector3d force_on_particle = {};
 
-    if (data.mode == particle_force) {
+    if (data.mode == ParticleCouplingState::particle_force) {
 #ifndef THERMOSTAT_PER_PARTICLE
       if (m_thermostat.gamma > 0.)
 #endif
       {
-        auto v_fluid = interpolated_velocities[*data.velocity_coupling_index];
+        auto v_fluid =
+            state.interpolated_velocities[*data.velocity_coupling_index];
         auto const &vel_pos =
-            positions_velocity_coupling[*data.velocity_coupling_index];
+            state.positions_velocity_coupling[*data.velocity_coupling_index];
 
         if (m_box_geo.type() == BoxType::LEES_EDWARDS) {
           // Account for the case where the interpolated velocity has been read
@@ -324,7 +322,7 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
 
     auto force_on_fluid = -force_on_particle;
 #ifdef ENGINE
-    if (data.mode == swimmer_force_on_fluid) {
+    if (data.mode == ParticleCouplingState::swimmer_force_on_fluid) {
       force_on_fluid = p.calc_director() * p.swimming().f_swim;
     }
 #endif
@@ -344,6 +342,12 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
   m_lb.add_forces_at_pos(all_force_positions, all_forces);
 }
 
+void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
+  ParticleCouplingState state;
+  prepare_coupling(particles, state);
+  apply_forces(state);
+}
+
 #if defined(THERMOSTAT_PER_PARTICLE) and defined(PARTICLE_ANISOTROPY)
 static void lb_coupling_sanity_checks(Particle const &p) {
   /*
@@ -360,11 +364,14 @@ static void lb_coupling_sanity_checks(Particle const &p) {
 
 } // namespace LB
 
-void System::System::lb_couple_particles() {
+void System::System::lb_prepare_particle_coupling(
+    LB::ParticleCouplingState &state) {
 #ifdef CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif
   assert(thermostat->lb != nullptr);
+  state.clear();
+
   if (thermostat->lb->couple_to_md) {
     if (not lb.is_solver_set()) {
       runtimeErrorMsg() << "The LB thermostat requires a LB fluid";
@@ -386,6 +393,32 @@ void System::System::lb_couple_particles() {
         }
       }
     }
-    coupling.kernel(particles);
+
+    coupling.prepare_coupling(particles, state);
   }
+}
+
+void System::System::lb_apply_particle_forces(
+    LB::ParticleCouplingState &state) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
+  assert(thermostat->lb != nullptr);
+  if (thermostat->lb->couple_to_md && !state.coupled_particle_data.empty()) {
+    if (not lb.is_solver_set()) {
+      runtimeErrorMsg() << "The LB thermostat requires a LB fluid";
+      return;
+    }
+    LB::ParticleCoupling coupling{*thermostat->lb, lb, *box_geo, *local_geo};
+    coupling.apply_forces(state);
+  }
+}
+
+void System::System::lb_couple_particles() {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
+  LB::ParticleCouplingState coupling_state;
+  lb_prepare_particle_coupling(coupling_state);
+  lb_apply_particle_forces(coupling_state);
 }

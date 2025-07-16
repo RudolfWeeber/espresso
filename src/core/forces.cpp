@@ -259,9 +259,11 @@ void System::System::calculate_forces() {
   // Must be done here. Forces need to be ghost-communicated
   immersed_boundaries->volume_conservation(*cell_structure);
 
+  // Prepare LB coupling state (initiates velocity interpolation)
+  LB::ParticleCouplingState lb_coupling_state;
   if (thermostat->lb and (propagation->used_propagations &
                           PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE)) {
-    lb_couple_particles();
+    lb_prepare_particle_coupling(lb_coupling_state);
   }
 
 #ifdef CUDA
@@ -273,6 +275,12 @@ void System::System::calculate_forces() {
   CALI_MARK_END("copy_forces_from_GPU");
 #endif
 #endif // CUDA
+
+  // Apply LB forces after GPU copy (hides interpolation latency)
+  if (thermostat->lb and (propagation->used_propagations &
+                          PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE)) {
+    lb_apply_particle_forces(lb_coupling_state);
+  }
 
 #ifdef VIRTUAL_SITES_RELATIVE
   if (propagation->used_propagations &
