@@ -42,6 +42,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -224,115 +225,123 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
   auto const fully_inside_upper = m_local_box.my_right() - 2. * halo_vec;
   auto const halo_lower_corner = m_local_box.my_left() - halo_vec;
   auto const halo_upper_corner = m_local_box.my_right() + halo_vec;
+
+  // Structure to hold all data related to a coupled particle
+  struct CoupledParticleData {
+    Particle *particle;
+    std::vector<Utils::Vector3d> force_positions;
+    std::optional<size_t> velocity_coupling_index;
+    coupling_modes mode;
+  };
+
+  std::vector<CoupledParticleData> coupled_particle_data;
   std::vector<Utils::Vector3d> positions_velocity_coupling;
-  std::vector<Utils::Vector3d> positions_force_coupling;
-  std::vector<Utils::Vector3d> force_coupling_forces;
-  std::vector<uint8_t> positions_force_coupling_counter;
-  std::vector<Particle *> coupled_particles;
+
+  // First pass: determine positions and coupling modes
   for (auto ptr : particles) {
     auto &p = *ptr;
-    auto span_size = 1u;
     auto const folded_pos = m_box_geo.folded_position(p.pos());
+
+    CoupledParticleData data;
+    data.particle = ptr;
+    data.mode = none;
+
+    // Determine force coupling positions
     if (in_box(folded_pos, fully_inside_lower, fully_inside_upper)) {
-      positions_force_coupling.emplace_back(folded_pos);
+      data.force_positions.push_back(folded_pos);
     } else {
-      auto const old_size = positions_force_coupling.size();
       positions_in_halo_impl(folded_pos, halo_lower_corner, halo_upper_corner,
-                             m_box_geo, positions_force_coupling);
-      auto const new_size = positions_force_coupling.size();
-      span_size = static_cast<uint8_t>(new_size - old_size);
+                             m_box_geo, data.force_positions);
     }
-    auto coupling_mode = none;
+
+    // Check if particle should be coupled
 #ifdef ENGINE
     if (p.swimming().is_engine_force_on_fluid) {
-      coupling_mode = swimmer_force_on_fluid;
+      data.mode = swimmer_force_on_fluid;
     }
 #endif
-    if (coupling_mode == none) {
-      for (auto end = positions_force_coupling.end(), it = end - span_size;
-           it != end; ++it) {
-        auto const &pos = *it;
+
+    if (data.mode == none) {
+      // Check if any position is within velocity coupling region
+      for (auto const &pos : data.force_positions) {
         if (pos >= halo_lower_corner and pos < halo_upper_corner) {
-          positions_velocity_coupling.emplace_back(pos);
-          coupling_mode = particle_force;
+          data.velocity_coupling_index = positions_velocity_coupling.size();
+          positions_velocity_coupling.push_back(pos);
+          data.mode = particle_force;
           break;
         }
       }
     }
-    if (coupling_mode == none) {
-      positions_force_coupling.erase(positions_force_coupling.end() - span_size,
-                                     positions_force_coupling.end());
-    } else {
-      coupled_particles.emplace_back(ptr);
-      positions_force_coupling_counter.emplace_back(span_size);
+
+    // Only keep particles that will be coupled
+    if (data.mode != none) {
+      coupled_particle_data.push_back(std::move(data));
     }
   }
 
-  if (coupled_particles.empty()) {
+  if (coupled_particle_data.empty()) {
     return;
   }
+
+  // Get interpolated velocities for all velocity coupling positions at once
   auto interpolated_velocities =
       m_lb.get_coupling_interpolated_velocities(positions_velocity_coupling);
 
   auto const &domain_lower_corner = m_local_box.my_left();
   auto const &domain_upper_corner = m_local_box.my_right();
-  auto it_interpolated_velocities = interpolated_velocities.begin();
-  auto it_positions_force_coupling = positions_force_coupling.begin();
-  auto it_positions_velocity_coupling = positions_velocity_coupling.begin();
-  auto it_positions_force_coupling_counter =
-      positions_force_coupling_counter.begin();
-  for (auto ptr : coupled_particles) {
-    auto &p = *ptr;
-    auto coupling_mode = particle_force;
-#ifdef ENGINE
-    if (p.swimming().is_engine_force_on_fluid) {
-      coupling_mode = swimmer_force_on_fluid;
-    }
-#endif
+
+  // Collect all force positions and forces
+  std::vector<Utils::Vector3d> all_force_positions;
+  std::vector<Utils::Vector3d> all_forces;
+
+  // Second pass: calculate forces
+  for (auto &data : coupled_particle_data) {
+    auto &p = *data.particle;
     Utils::Vector3d force_on_particle = {};
-    if (coupling_mode == particle_force) {
+
+    if (data.mode == particle_force) {
 #ifndef THERMOSTAT_PER_PARTICLE
       if (m_thermostat.gamma > 0.)
 #endif
       {
-        auto &v_fluid = *it_interpolated_velocities;
+        auto v_fluid = interpolated_velocities[*data.velocity_coupling_index];
+        auto const &vel_pos =
+            positions_velocity_coupling[*data.velocity_coupling_index];
+
         if (m_box_geo.type() == BoxType::LEES_EDWARDS) {
           // Account for the case where the interpolated velocity has been read
           // from a ghost of the particle across the LE boundary (or vice versa)
           // Then the particle velocity is shifted by +,- the LE shear velocity
-          auto const vel_correction = lees_edwards_vel_shift(
-              *it_positions_velocity_coupling, p.pos(), m_box_geo);
+          auto const vel_correction =
+              lees_edwards_vel_shift(vel_pos, p.pos(), m_box_geo);
           v_fluid += vel_correction;
         }
         auto const drag_force = lb_drag_force(p, m_thermostat.gamma, v_fluid);
         auto const random_force = get_noise_term(p);
         force_on_particle = drag_force + random_force;
       }
-      ++it_interpolated_velocities;
-      ++it_positions_velocity_coupling;
     }
 
     auto force_on_fluid = -force_on_particle;
 #ifdef ENGINE
-    if (coupling_mode == swimmer_force_on_fluid) {
+    if (data.mode == swimmer_force_on_fluid) {
       force_on_fluid = p.calc_director() * p.swimming().f_swim;
     }
 #endif
 
-    auto const span_size = *it_positions_force_coupling_counter;
-    ++it_positions_force_coupling_counter;
-    for (uint8_t i{0u}; i < span_size; ++i) {
-      auto &pos = *it_positions_force_coupling;
+    // Apply forces
+    for (auto const &pos : data.force_positions) {
       if (pos >= domain_lower_corner and pos < domain_upper_corner) {
         /* Particle is in our LB volume, so this node
          * is responsible to adding its force */
         p.force() += force_on_particle;
       }
-      force_coupling_forces.emplace_back(force_on_fluid);
-      ++it_positions_force_coupling;
+      all_force_positions.push_back(pos);
+      all_forces.push_back(force_on_fluid);
     }
   }
-  m_lb.add_forces_at_pos(positions_force_coupling, force_coupling_forces);
+
+  m_lb.add_forces_at_pos(all_force_positions, all_forces);
 }
 
 #if defined(THERMOSTAT_PER_PARTICLE) and defined(PARTICLE_ANISOTROPY)
