@@ -114,11 +114,10 @@ public:
   }
 
   Utils::Vector3d get_noise_term(Particle const &p) const;
-  void kernel(std::vector<Particle *> const &particles);
 
   // Split kernel into two phases
-  void prepare_coupling(std::vector<Particle *> const &particles,
-                        ParticleCouplingState &state);
+  ParticleCouplingState
+  prepare_coupling(std::vector<Particle *> const &particles);
   void apply_forces(ParticleCouplingState &state);
 };
 

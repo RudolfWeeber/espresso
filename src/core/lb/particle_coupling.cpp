@@ -214,12 +214,12 @@ Utils::Vector3d ParticleCoupling::get_noise_term(Particle const &p) const {
   return m_noise_pref_wo_gamma * Utils::hadamard_product(sqrt(gamma), noise);
 }
 
-void ParticleCoupling::prepare_coupling(
-    std::vector<Particle *> const &particles, ParticleCouplingState &state) {
-  state.clear();
+ParticleCouplingState
+ParticleCoupling::prepare_coupling(std::vector<Particle *> const &particles) {
+  ParticleCouplingState state;
 
   if (particles.empty()) {
-    return;
+    return state;
   }
 
   auto const halo = 0.5 * m_lb.get_agrid();
@@ -277,6 +277,8 @@ void ParticleCoupling::prepare_coupling(
     state.interpolated_velocities = m_lb.get_coupling_interpolated_velocities(
         state.positions_velocity_coupling);
   }
+
+  return state;
 }
 
 void ParticleCoupling::apply_forces(ParticleCouplingState &state) {
@@ -342,12 +344,6 @@ void ParticleCoupling::apply_forces(ParticleCouplingState &state) {
   m_lb.add_forces_at_pos(all_force_positions, all_forces);
 }
 
-void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
-  ParticleCouplingState state;
-  prepare_coupling(particles, state);
-  apply_forces(state);
-}
-
 #if defined(THERMOSTAT_PER_PARTICLE) and defined(PARTICLE_ANISOTROPY)
 static void lb_coupling_sanity_checks(Particle const &p) {
   /*
@@ -364,18 +360,17 @@ static void lb_coupling_sanity_checks(Particle const &p) {
 
 } // namespace LB
 
-void System::System::lb_prepare_particle_coupling(
-    LB::ParticleCouplingState &state) {
+LB::ParticleCouplingState System::System::lb_prepare_particle_coupling() {
 #ifdef CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif
   assert(thermostat->lb != nullptr);
-  state.clear();
+  LB::ParticleCouplingState state;
 
   if (thermostat->lb->couple_to_md) {
     if (not lb.is_solver_set()) {
       runtimeErrorMsg() << "The LB thermostat requires a LB fluid";
-      return;
+      return state;
     }
     auto const real_particles = cell_structure->local_particles();
     auto const ghost_particles = cell_structure->ghost_particles();
@@ -394,8 +389,10 @@ void System::System::lb_prepare_particle_coupling(
       }
     }
 
-    coupling.prepare_coupling(particles, state);
+    state = coupling.prepare_coupling(particles);
   }
+
+  return state;
 }
 
 void System::System::lb_apply_particle_forces(
@@ -418,7 +415,6 @@ void System::System::lb_couple_particles() {
 #ifdef CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif
-  LB::ParticleCouplingState coupling_state;
-  lb_prepare_particle_coupling(coupling_state);
+  auto coupling_state = lb_prepare_particle_coupling();
   lb_apply_particle_forces(coupling_state);
 }
