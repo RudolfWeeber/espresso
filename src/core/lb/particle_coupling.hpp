@@ -32,6 +32,7 @@
 #include <utils/math/sqr.hpp>
 
 #include <cmath>
+#include <future>
 #include <unordered_set>
 #include <vector>
 
@@ -80,6 +81,7 @@ struct ParticleCouplingState {
 
   std::vector<CoupledParticleData> coupled_particle_data;
   std::vector<Utils::Vector3d> positions_velocity_coupling;
+  std::future<std::vector<Utils::Vector3d>> interpolated_velocities_future;
   std::vector<Utils::Vector3d> interpolated_velocities;
 
   void clear() {

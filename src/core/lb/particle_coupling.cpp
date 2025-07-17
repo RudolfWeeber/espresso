@@ -273,9 +273,11 @@ ParticleCoupling::prepare_coupling(std::vector<Particle *> const &particles) {
   }
 
   if (!state.coupled_particle_data.empty()) {
-    // Get interpolated velocities for all velocity coupling positions at once
-    state.interpolated_velocities = m_lb.get_coupling_interpolated_velocities(
-        state.positions_velocity_coupling);
+    // Start async interpolation of velocities for all velocity coupling
+    // positions
+    state.interpolated_velocities_future =
+        m_lb.get_coupling_interpolated_velocities_async(
+            state.positions_velocity_coupling);
   }
 
   return state;
@@ -284,6 +286,11 @@ ParticleCoupling::prepare_coupling(std::vector<Particle *> const &particles) {
 void ParticleCoupling::apply_forces(ParticleCouplingState &state) {
   if (state.coupled_particle_data.empty()) {
     return;
+  }
+
+  // Wait for async velocity interpolation to complete
+  if (state.interpolated_velocities_future.valid()) {
+    state.interpolated_velocities = state.interpolated_velocities_future.get();
   }
 
   auto const &domain_lower_corner = m_local_box.my_left();

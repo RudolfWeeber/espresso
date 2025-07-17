@@ -27,6 +27,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <future>
 #include <memory>
 #include <optional>
 
@@ -165,6 +166,10 @@ struct Solver : public System::Leaf<Solver> {
   get_coupling_interpolated_velocity(Utils::Vector3d const &pos) const;
 
   std::vector<Utils::Vector3d> get_coupling_interpolated_velocities(
+      std::vector<Utils::Vector3d> const &pos) const;
+
+  std::future<std::vector<Utils::Vector3d>>
+  get_coupling_interpolated_velocities_async(
       std::vector<Utils::Vector3d> const &pos) const;
 
   void add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,

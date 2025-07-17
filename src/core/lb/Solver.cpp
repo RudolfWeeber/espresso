@@ -38,6 +38,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <future>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -245,6 +246,14 @@ std::vector<Utils::Vector3d> Solver::get_coupling_interpolated_velocities(
         return res;
       },
       *impl->solver);
+}
+
+std::future<std::vector<Utils::Vector3d>>
+Solver::get_coupling_interpolated_velocities_async(
+    std::vector<Utils::Vector3d> const &pos) const {
+  return std::async(std::launch::async, [this, pos]() {
+    return get_coupling_interpolated_velocities(pos);
+  });
 }
 
 void Solver::add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
