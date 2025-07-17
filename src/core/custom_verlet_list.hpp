@@ -57,8 +57,8 @@ public:
                       const std::size_t max_neigh) {
     // const std::size_t thread_number) {
     counts = Kokkos::View<int *, MemorySpace>("num_neighbors", num_particles);
+    //  neighbors = Kokkos::View<int **, Kokkos::LayoutRight>(
     neighbors = Kokkos::View<int **, MemorySpace>(
-        //  neighbors = Kokkos::View<int **, Kokkos::LayoutRight>(
         Kokkos::ViewAllocateWithoutInitializing("neighbors"), num_particles,
         max_neigh);
   }
