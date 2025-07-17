@@ -273,11 +273,18 @@ ParticleCoupling::prepare_coupling(std::vector<Particle *> const &particles) {
   }
 
   if (!state.coupled_particle_data.empty()) {
-    // Start async interpolation of velocities for all velocity coupling
-    // positions
-    state.interpolated_velocities_future =
-        m_lb.get_coupling_interpolated_velocities_async(
-            state.positions_velocity_coupling);
+    // Use async interpolation only for GPU solvers
+    if (m_lb.is_gpu()) {
+      // Start async interpolation of velocities for all velocity coupling
+      // positions
+      state.interpolated_velocities_future =
+          m_lb.get_coupling_interpolated_velocities_async(
+              state.positions_velocity_coupling);
+    } else {
+      // For CPU solvers, get velocities synchronously
+      state.interpolated_velocities = m_lb.get_coupling_interpolated_velocities(
+          state.positions_velocity_coupling);
+    }
   }
 
   return state;
@@ -288,10 +295,11 @@ void ParticleCoupling::apply_forces(ParticleCouplingState &state) {
     return;
   }
 
-  // Wait for async velocity interpolation to complete
+  // Wait for async velocity interpolation to complete (GPU case)
   if (state.interpolated_velocities_future.valid()) {
     state.interpolated_velocities = state.interpolated_velocities_future.get();
   }
+  // For CPU case, velocities are already in state.interpolated_velocities
 
   auto const &domain_lower_corner = m_local_box.my_left();
   auto const &domain_upper_corner = m_local_box.my_right();
