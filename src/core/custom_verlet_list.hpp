@@ -110,7 +110,7 @@ public:
 
   // Find max counts
   KOKKOS_INLINE_FUNCTION
-  std::size_t get_max_counts() {
+  std::size_t get_variance_max_counts() {
     std::size_t max_counts = 0;
     std::size_t ave_counts = 0;
     std::size_t ave_sq_counts = 0;
@@ -129,6 +129,22 @@ public:
                 << " var:" << ave_sq_counts << std::endl;
     }
     return max_counts;
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  std::size_t get_max_counts() {
+    int max;
+    Kokkos::Max<int> max_reduce( max );
+    Kokkos::parallel_reduce(
+      "custom_velet_list::reduce_max",
+      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, counts.size()),
+      [&]( const int i, int& value ) {
+	  if ( counts( i ) > value )
+	      value = counts( i );
+      },
+      max_reduce );
+    Kokkos::fence();
+    return static_cast<std::size_t>( max );
   }
 };
 

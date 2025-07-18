@@ -319,6 +319,7 @@ void CellStructure::set_verlet_skin(double value) {
   m_verlet_skin = value;
   m_verlet_skin_set = true;
   m_rebuild_cabana_verlet_list = true;
+  max_counts = -1;
   get_system().on_verlet_skin_change();
 }
 
