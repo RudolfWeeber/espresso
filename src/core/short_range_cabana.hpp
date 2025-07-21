@@ -417,10 +417,11 @@ void cabana_short_range(
       using policy_type = Kokkos::RangePolicy<execution_space>;
       Kokkos::parallel_for(
           "AoSoA write", policy_type(0, particle_storage.size()),
-          //[&unique_particles, &aosoa, &box_l, &id_to_index](const int p_id) {//permute
+          //[&unique_particles, &aosoa, &box_l, &id_to_index](const int p_id)
+          //{//permute
           [&unique_particles, &aosoa, &id_to_index](const int p_id) {
-            //write_particle_permute(*unique_particles.at(p_id), p_id, aosoa,
-            //  box_l);//permute
+            // write_particle_permute(*unique_particles.at(p_id), p_id, aosoa,
+            //   box_l);//permute
             write_particle(*unique_particles.at(p_id), p_id, aosoa);
             id_to_index(unique_particles.at(p_id)->id()) = p_id;
           });
@@ -488,8 +489,9 @@ void cabana_short_range(
           if (practical_max > 0) {
             max_counts = practical_max + 2;
           } else {
-            max_counts = static_cast<int>(std::ceil(cell_structure.get_max_prefactor()
-				    * pair_cutoff * pair_cutoff * pair_cutoff));
+            max_counts = static_cast<int>(
+                std::ceil(cell_structure.get_max_prefactor() * pair_cutoff *
+                          pair_cutoff * pair_cutoff));
             int threshold_num = 8;
 #ifdef COLLISION_DETECTION
             threshold_num = 64;

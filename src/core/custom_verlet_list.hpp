@@ -70,19 +70,19 @@ public:
     std::size_t count_n = counts(nid);
 
     if (count > count_n) {
-    //if (pid > nid) {
+      // if (pid > nid) {
       int tmp = pid;
       pid = nid;
       nid = tmp;
     }
     count = Kokkos::atomic_fetch_add(&counts(pid), 1);
-//#ifndef NDEBUG
+    // #ifndef NDEBUG
     if (count >= neighbors.extent(1)) {
       throw std::runtime_error(
           // Kokkos::abort(
           "Number of count is larger than VerletList size.");
     }
-//#endif
+    // #endif
     neighbors(pid, count) = nid;
   }
 
@@ -93,19 +93,19 @@ public:
     std::size_t count_n = counts(nid);
 
     if (count > count_n) {
-    //if (pid > nid) {
+      // if (pid > nid) {
       int tmp = pid;
       pid = nid;
       nid = tmp;
       count = counts(pid);
     }
-//#ifndef NDEBUG
+    // #ifndef NDEBUG
     if (count >= neighbors.extent(1)) {
       throw std::runtime_error(
           // Kokkos::abort(
           "Number of count is larger than VerletList size.");
     }
-//#endif
+    // #endif
     neighbors(pid, count) = nid;
     counts(pid) += 1;
   }
