@@ -35,6 +35,7 @@
 #include "particle_reduction.hpp"
 #include "system/System.hpp"
 
+#include <utils/Vector.hpp>
 #include <utils/contains.hpp>
 #include <utils/math/sqr.hpp>
 
@@ -362,8 +363,8 @@ bool CellStructure::check_resort_required(
     }
   };
 
-  Reduction::ReductionOp<bool> reduce_op = [](bool &dst, bool const &src) {
-    dst = dst || src;
+  Reduction::ReductionOp<bool> reduce_op = [](bool &acc, bool const &val) {
+    acc |= val;
   };
 
   return reduce_over_local_particles(*this, add_partial, reduce_op);

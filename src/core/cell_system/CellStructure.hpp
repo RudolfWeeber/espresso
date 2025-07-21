@@ -36,7 +36,7 @@
 #include "ghosts.hpp"
 #include "system/Leaf.hpp"
 
-#include <utils/math/sqr.hpp>
+#include <utils/Vector.hpp>
 
 #include <boost/container/static_vector.hpp>
 #include <boost/iterator/indirect_iterator.hpp>
