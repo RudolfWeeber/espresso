@@ -661,7 +661,8 @@ private:
 #ifdef SHARED_MEMORY_PARALLELISM
 private:
   std::unique_ptr<CabanaData> m_cabana_data;
-  bool steepest_descent_flag = true;
+  // bool steepest_descent_flag = true;
+  std::size_t max_prefactor = 8;
   std::size_t max_counts = -1;
 
 public:
@@ -676,8 +677,11 @@ public:
     return m_rebuild_cabana_verlet_list;
   }
 
-  void set_steepest_descent_flag(bool flag) { steepest_descent_flag = flag; }
-  bool get_steepest_descent_flag() { return steepest_descent_flag; }
+  // void set_steepest_descent_flag(bool flag) { steepest_descent_flag = flag; }
+  // bool get_steepest_descent_flag() { return steepest_descent_flag; }
+
+  void set_max_prefactor(std::size_t value) { max_prefactor = value; }
+  std::size_t get_max_prefactor() { return max_prefactor; }
 
   void set_max_counts(std::size_t value) { max_counts = value; }
   std::size_t get_max_counts() { return max_counts; }

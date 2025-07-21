@@ -70,18 +70,19 @@ public:
     std::size_t count_n = counts(nid);
 
     if (count > count_n) {
+    //if (pid > nid) {
       int tmp = pid;
       pid = nid;
       nid = tmp;
     }
     count = Kokkos::atomic_fetch_add(&counts(pid), 1);
-#ifndef NDEBUG
+//#ifndef NDEBUG
     if (count >= neighbors.extent(1)) {
       throw std::runtime_error(
           // Kokkos::abort(
           "Number of count is larger than VerletList size.");
     }
-#endif
+//#endif
     neighbors(pid, count) = nid;
   }
 
@@ -92,18 +93,19 @@ public:
     std::size_t count_n = counts(nid);
 
     if (count > count_n) {
+    //if (pid > nid) {
       int tmp = pid;
       pid = nid;
       nid = tmp;
       count = counts(pid);
     }
-#ifndef NDEBUG
+//#ifndef NDEBUG
     if (count >= neighbors.extent(1)) {
       throw std::runtime_error(
           // Kokkos::abort(
           "Number of count is larger than VerletList size.");
     }
-#endif
+//#endif
     neighbors(pid, count) = nid;
     counts(pid) += 1;
   }
@@ -134,17 +136,17 @@ public:
   KOKKOS_INLINE_FUNCTION
   std::size_t get_max_counts() {
     int max;
-    Kokkos::Max<int> max_reduce( max );
+    Kokkos::Max<int> max_reduce(max);
     Kokkos::parallel_reduce(
-      "custom_velet_list::reduce_max",
-      Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, counts.size()),
-      [&]( const int i, int& value ) {
-	  if ( counts( i ) > value )
-	      value = counts( i );
-      },
-      max_reduce );
+        "custom_velet_list::reduce_max",
+        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, counts.size()),
+        [&](const int i, int &value) {
+          if (counts(i) > value)
+            value = counts(i);
+        },
+        max_reduce);
     Kokkos::fence();
-    return static_cast<std::size_t>( max );
+    return static_cast<std::size_t>(max);
   }
 };
 

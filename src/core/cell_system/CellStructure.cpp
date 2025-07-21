@@ -319,7 +319,9 @@ void CellStructure::set_verlet_skin(double value) {
   m_verlet_skin = value;
   m_verlet_skin_set = true;
   m_rebuild_cabana_verlet_list = true;
+#ifdef SHARED_MEMORY_PARALLELISM
   max_counts = -1;
+#endif
   get_system().on_verlet_skin_change();
 }
 
