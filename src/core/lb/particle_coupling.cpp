@@ -43,6 +43,7 @@
 #include <initializer_list>
 #include <limits>
 #include <optional>
+#include <ranges>
 #include <stdexcept>
 #include <vector>
 
@@ -119,8 +120,8 @@ static void positions_in_halo_impl(Utils::Vector3d const &pos_folded,
 
   // Lees-Edwards: pre-calc positional offset folded into the simulation box
   double folded_le_offset = 0.;
+  auto const &le = box_geo.lees_edwards_bc();
   if (box_geo.type() == BoxType::LEES_EDWARDS) {
-    auto const &le = box_geo.lees_edwards_bc();
     folded_le_offset = Algorithm::periodic_fold(
         le.pos_offset, box_geo.length()[le.shear_direction]);
   }
@@ -130,24 +131,17 @@ static void positions_in_halo_impl(Utils::Vector3d const &pos_folded,
       for (int k : {-1, 0, 1}) {
         Utils::Vector3d shift{{double(i), double(j), double(k)}};
 
+        auto pos_shifted = pos_folded;
         // Lees Edwards: folded position incl. LE pos offset
         // This is needed to ensure that the position from which `pos_shifted`
         // is calculated below, is always in the primary simulation box.
-        auto with_le_offset = [&](auto pos) {
-          auto const &le = box_geo.lees_edwards_bc();
-          pos[le.shear_direction] = Algorithm::periodic_fold(
-              pos[le.shear_direction] +
+        if (box_geo.type() == BoxType::LEES_EDWARDS) {
+          pos_shifted[le.shear_direction] = Algorithm::periodic_fold(
+              pos_folded[le.shear_direction] +
                   shift[le.shear_plane_normal] * folded_le_offset,
               box_geo.length()[le.shear_direction]);
-          return pos;
-        };
-
-        Utils::Vector3d pos_shifted =
-            (box_geo.type() != BoxType::LEES_EDWARDS) ? // no Lees Edwards
-                pos_folded + Utils::hadamard_product(box_geo.length(), shift)
-                                                      : // Lees Edwards
-                with_le_offset(pos_folded) +
-                    Utils::hadamard_product(box_geo.length(), shift);
+        }
+        pos_shifted += Utils::hadamard_product(box_geo.length(), shift);
 
         if (in_box(pos_shifted, halo_lower_corner, halo_upper_corner)) {
           res.emplace_back(pos_shifted);
@@ -252,7 +246,6 @@ ParticleCoupling::prepare_coupling(std::vector<Particle *> const &particles) {
       data.mode = ParticleCouplingState::swimmer_force_on_fluid;
     }
 #endif
-
     if (data.mode == ParticleCouplingState::none) {
       // Check if any position is within velocity coupling region
       for (auto const &pos : data.force_positions) {
