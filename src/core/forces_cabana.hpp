@@ -38,7 +38,7 @@
 
 struct ForcesKernel {
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
-defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
+    defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
   std::vector<Particle *> unique_particles;
 #endif
   [[maybe_unused]] const BondedInteractionsMap bonded_ias;
@@ -53,7 +53,7 @@ defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
 #endif
   Coulomb::ShortRangeForceKernel::kernel_type const *coulomb_kernel;
 #if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
-defined(DPD) or defined(DIPOLES) or defined(NPT)
+    defined(DPD) or defined(DIPOLES) or defined(NPT)
   Dipoles::ShortRangeForceKernel::kernel_type const *dipoles_kernel;
   Coulomb::ShortRangeForceCorrectionsKernel::kernel_type const *elc_kernel;
   Coulomb::ShortRangeEnergyKernel::kernel_type const *coulomb_u_kernel;
@@ -67,12 +67,12 @@ defined(DPD) or defined(DIPOLES) or defined(NPT)
   ForcesKernel(
   // const CellStructure *cell_,
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
-defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
+    defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
       std::vector<Particle *> &unique_particles_,
 #endif
       [[maybe_unused]] const BondedInteractionsMap &bonded_ias_,
-      const InteractionsNonBonded &nonbonded_ias_,
-      const BoxGeometry &box_geo_, Kokkos::View<double **[3]> local_force_,
+      const InteractionsNonBonded &nonbonded_ias_, const BoxGeometry &box_geo_,
+      Kokkos::View<double **[3]> local_force_,
 #ifdef ROTATION
       Kokkos::View<double **[3]> local_torque_,
 #endif
@@ -81,10 +81,9 @@ defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
 #endif
       Coulomb::ShortRangeForceKernel::kernel_type const *coulomb_kernel_,
 #if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
-defined(DPD) or defined(DIPOLES) or defined(NPT)
+    defined(DPD) or defined(DIPOLES) or defined(NPT)
       Dipoles::ShortRangeForceKernel::kernel_type const *dipoles_kernel_,
-      Coulomb::ShortRangeForceCorrectionsKernel::kernel_type const
-	  *elc_kernel_,
+      Coulomb::ShortRangeForceCorrectionsKernel::kernel_type const *elc_kernel_,
       Coulomb::ShortRangeEnergyKernel::kernel_type const *coulomb_u_kernel_,
       const Thermostat::Thermostat &thermostat_,
 #endif
@@ -92,24 +91,24 @@ defined(DPD) or defined(DIPOLES) or defined(NPT)
       // int num_threads_), int mpi_rank_, int particle_number_)
       : // cell(cell_),
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
-defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
-	unique_particles(unique_particles_),
+    defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
+        unique_particles(unique_particles_),
 #endif
-	bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
-	box_geo(box_geo_), local_force(local_force_),
+        bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
+        box_geo(box_geo_), local_force(local_force_),
 #ifdef ROTATION
-	local_torque(local_torque_),
+        local_torque(local_torque_),
 #endif
 #ifdef NPT
-	local_virial(local_virial_),
+        local_virial(local_virial_),
 #endif
-	coulomb_kernel(coulomb_kernel_),
+        coulomb_kernel(coulomb_kernel_),
 #if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
-defined(DPD) or defined(DIPOLES) or defined(NPT)
-	dipoles_kernel(dipoles_kernel_), elc_kernel(elc_kernel_),
-	coulomb_u_kernel(coulomb_u_kernel_), thermostat(thermostat_),
+    defined(DPD) or defined(DIPOLES) or defined(NPT)
+        dipoles_kernel(dipoles_kernel_), elc_kernel(elc_kernel_),
+        coulomb_u_kernel(coulomb_u_kernel_), thermostat(thermostat_),
 #endif
-	aosoa(aosoa_) {
+        aosoa(aosoa_) {
   }
 
   KOKKOS_FORCEINLINE_FUNCTION
@@ -121,15 +120,15 @@ defined(DPD) or defined(DIPOLES) or defined(NPT)
     // " " <<
 
     IA_parameters const &ia_params =
-	nonbonded_ias.get_ia_param(aosoa.type(i), aosoa.type(j));
+        nonbonded_ias.get_ia_param(aosoa.type(i), aosoa.type(j));
 
     ParticleForce pf{};
 #ifdef NPT
     Utils::Vector3d virial{};
 #endif
     Utils::Vector3d const d = box_geo.get_mi_vector(
-	aosoa.position(i, 0), aosoa.position(i, 1), aosoa.position(i, 2),
-	aosoa.position(j, 0), aosoa.position(j, 1), aosoa.position(j, 2));
+        aosoa.position(i, 0), aosoa.position(i, 1), aosoa.position(i, 2),
+        aosoa.position(j, 0), aosoa.position(j, 1), aosoa.position(j, 2));
     auto const dist = d.norm();
 
     auto const q1q2 = aosoa.charge(i) * aosoa.charge(j);
@@ -144,10 +143,10 @@ defined(DPD) or defined(DIPOLES) or defined(NPT)
 #endif
 
     add_non_bonded_pair_withot_p(pf, d, dist, q1q2, ia_params,
-				 do_nonbonded_flag, coulomb_kernel);
+                                 do_nonbonded_flag, coulomb_kernel);
 
 #if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
-defined(DPD) or defined(DIPOLES) or defined(NPT)
+    defined(DPD) or defined(DIPOLES) or defined(NPT)
     auto const dist2 = dist * dist;
 
 #ifndef EXCLUSIONS
@@ -155,15 +154,15 @@ defined(DPD) or defined(DIPOLES) or defined(NPT)
     auto p2 = unique_particles.at(j);
 #endif // NOT EXCLUSIONS
     add_non_bonded_pair_force_with_p(
-	const_cast<Particle &>(*p1), const_cast<Particle &>(*p2), pf,
+        const_cast<Particle &>(*p1), const_cast<Particle &>(*p2), pf,
 #ifdef NPT
-	virial,
+        virial,
 #endif // NPT
-	d, dist, dist2, q1q2, ia_params, do_nonbonded_flag, thermostat,
-	box_geo, bonded_ias, coulomb_kernel, dipoles_kernel, elc_kernel,
-	coulomb_u_kernel);
+        d, dist, dist2, q1q2, ia_params, do_nonbonded_flag, thermostat, box_geo,
+        bonded_ias, coulomb_kernel, dipoles_kernel, elc_kernel,
+        coulomb_u_kernel);
 #endif // ETC
-   //
+       //
     local_force(i, thread_id, 0) += pf.f[0];
     local_force(i, thread_id, 1) += pf.f[1];
     local_force(i, thread_id, 2) += pf.f[2];
