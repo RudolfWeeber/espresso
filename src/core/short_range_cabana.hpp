@@ -22,7 +22,7 @@
 #include "config/config.hpp"
 
 #include "cell_system/CellStructure.hpp"
-//#include "lees_edwards/lees_edwards.hpp"
+// #include "lees_edwards/lees_edwards.hpp"
 
 #ifdef CALIPER
 #include <caliper/cali.h>
@@ -36,11 +36,8 @@
 #include "forces_cabana.hpp"
 #include <Cabana_Core.hpp>
 #include <Cabana_NeighborList.hpp>
-//#include <cassert>
-//#include <iostream>
-//#include <stdio.h>
+#include <iostream>
 #include <unordered_set>
-//#include <utility>
 
 inline double wrap(double x, double L) {
   auto result = x - std::floor(x / L) * L;
@@ -66,7 +63,6 @@ inline void write_particle_permute(Particle const &p, int const &id,
   aosoa.id(id) = p.id();
   aosoa.charge(id) = p.q();
   aosoa.type(id) = p.type();
-  // aosoa.ghost(id) = p.is_ghost();
   auto const pos = p.pos();
   double wpos[3] = {};
   for (int d = 0; d < 3; ++d) {
@@ -82,11 +78,11 @@ inline void write_particle_permute(Particle const &p, int const &id,
   // assert(aosoa.position(id, 2) >= 0. and aosoa.position(id, 2) < box_l[2]);
 }
 
-inline void set_index_map(std::vector<Particle*> &unique_particles,
-			  ParticleRange const &particles,
-			  ParticleRange const &ghost_particles,
-			  CellStructure const &cell_structure,
-                          int &index, int &max_id) {
+inline void set_index_map(std::vector<Particle *> &unique_particles,
+                          ParticleRange const &particles,
+                          ParticleRange const &ghost_particles,
+                          CellStructure const &cell_structure, int &index,
+                          int &max_id) {
   std::unordered_set<int> registered_index{};
   for (auto &p : particles) {
     if (p.id() > max_id)
@@ -114,13 +110,14 @@ inline void set_index_map(std::vector<Particle*> &unique_particles,
   registered_index.clear();
 }
 
-inline int estimate_max_counts(const double pair_cutoff, const int number_of_unique_particles,
-    			       CellStructure &cell_structure) {
+inline int estimate_max_counts(const double pair_cutoff,
+                               const int number_of_unique_particles,
+                               CellStructure &cell_structure) {
   int max_counts;
   if (not std::isinf(pair_cutoff)) {
-    max_counts = static_cast<int>(
-	std::ceil(cell_structure.get_max_prefactor() * pair_cutoff *
-		  pair_cutoff * pair_cutoff));
+    max_counts =
+        static_cast<int>(std::ceil(cell_structure.get_max_prefactor() *
+                                   pair_cutoff * pair_cutoff * pair_cutoff));
     int threshold_num = 8;
 #ifdef COLLISION_DETECTION
     threshold_num = 64;
@@ -136,64 +133,63 @@ inline int estimate_max_counts(const double pair_cutoff, const int number_of_uni
 
 using ListAlgorithm = Cabana::HalfNeighborTag;
 using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm,
-                                              Cabana::VerletLayout2D>;
+                                          Cabana::VerletLayout2D>;
 template <class VerletCriterion = detail::True>
 inline void set_verlet_list(CellStructure const &cell_structure,
-    VerletCriterion const &verlet_criterion, Kokkos::View<int *> const &id_to_index,
-    ListType &verlet_list, const int max_id) {
+                            VerletCriterion const &verlet_criterion,
+                            Kokkos::View<int *> const &id_to_index,
+                            ListType &verlet_list, const int max_id) {
   auto const &cells =
       std::as_const(cell_structure).decomposition().local_cells();
   auto const distance_function = detail::MinimalImageDistance{
       std::as_const(cell_structure).decomposition().box()};
 
   auto kernel_each = [&cells, &distance_function, &verlet_criterion,
-		      &id_to_index, &verlet_list, max_id](int i) {
+                      &id_to_index, &verlet_list, max_id](int i) {
     auto &local_particles = cells[i]->particles();
-    for (auto it = local_particles.begin(); it != local_particles.end();
-	 ++it) {
+    for (auto it = local_particles.begin(); it != local_particles.end(); ++it) {
       auto &p1 = *it;
       if (p1.id() > max_id)
-	continue;
+        continue;
       int ii = id_to_index(p1.id());
       if (ii < 0)
-	continue;
+        continue;
       /* Pairs in this cell */
       for (auto jt = std::next(it); jt != local_particles.end(); ++jt) {
-	if ((*jt).id() > max_id)
-	  continue;
-	if (verlet_criterion(p1, *jt, distance_function(p1, *jt))) {
-	  int jj = id_to_index((*jt).id());
-	  if (jj >= 0) {
-	    verlet_list.addNeighborNonAtomic(ii, jj);
-	  }
-	}
+        if ((*jt).id() > max_id)
+          continue;
+        if (verlet_criterion(p1, *jt, distance_function(p1, *jt))) {
+          int jj = id_to_index((*jt).id());
+          if (jj >= 0) {
+            verlet_list.addNeighborNonAtomic(ii, jj);
+          }
+        }
       }
     }
   };
 
   auto kernel_neighbor = [&cells, &distance_function, &verlet_criterion,
-			  &id_to_index, &verlet_list, max_id](int i) {
+                          &id_to_index, &verlet_list, max_id](int i) {
     auto &local_particles = cells[i]->particles();
-    for (auto it = local_particles.begin(); it != local_particles.end();
-	 ++it) {
+    for (auto it = local_particles.begin(); it != local_particles.end(); ++it) {
       auto const &p1 = *it;
       if (p1.id() > max_id)
-	continue;
+        continue;
       int ii = id_to_index(p1.id());
       if (ii < 0)
-	continue;
+        continue;
       /* Pairs with neighbors */
       for (auto &neighbor : cells[i]->neighbors().red()) {
-	for (auto const &p2 : neighbor->particles()) {
-	  if (p2.id() > max_id)
-	    continue;
-	  if (verlet_criterion(p1, p2, distance_function(p1, p2))) {
-	    int jj = id_to_index(p2.id());
-	    if (jj >= 0) {
-	      verlet_list.addNeighbor(ii, jj);
-	    }
-	  }
-	}
+        for (auto const &p2 : neighbor->particles()) {
+          if (p2.id() > max_id)
+            continue;
+          if (verlet_criterion(p1, p2, distance_function(p1, p2))) {
+            int jj = id_to_index(p2.id());
+            if (jj >= 0) {
+              verlet_list.addNeighbor(ii, jj);
+            }
+          }
+        }
       }
     }
   };
@@ -260,7 +256,7 @@ void cabana_short_range(
     if (rebuild) {
       // If we have to rebuild, we need to count the particles
       set_index_map(unique_particles, particles, ghost_particles,
-	  cell_structure, number_of_unique_particles, max_id);
+                    cell_structure, number_of_unique_particles, max_id);
     } else {
       // If we do not rebuild we can use the saved map
       CabanaData saved_data;
@@ -476,72 +472,74 @@ void cabana_short_range(
 #ifdef CALIPER
         CALI_MARK_BEGIN("Cabana - Verlet List");
 #endif
-	int max_counts = estimate_max_counts(pair_cutoff, number_of_unique_particles, cell_structure);
+        int max_counts = estimate_max_counts(
+            pair_cutoff, number_of_unique_particles, cell_structure);
         verlet_list = ListType(0, number_of_unique_particles, max_counts);
 
-	//set_verlet_list(cell_structure, verlet_criterion, id_to_index, verlet_list, max_id);
-	auto const &cells =
-	    std::as_const(cell_structure).decomposition().local_cells();
-	auto const distance_function = detail::MinimalImageDistance{
-	    std::as_const(cell_structure).decomposition().box()};
+        // set_verlet_list(cell_structure, verlet_criterion, id_to_index,
+        // verlet_list, max_id);
+        auto const &cells =
+            std::as_const(cell_structure).decomposition().local_cells();
+        auto const distance_function = detail::MinimalImageDistance{
+            std::as_const(cell_structure).decomposition().box()};
 
-	auto kernel_each = [&cells, &distance_function, &verlet_criterion,
-			    &id_to_index, &verlet_list, max_id](int i) {
-	  auto &local_particles = cells[i]->particles();
-	  for (auto it = local_particles.begin(); it != local_particles.end();
-	       ++it) {
-	    auto &p1 = *it;
-	    if (p1.id() > max_id)
-	      continue;
-	    int ii = id_to_index(p1.id());
-	    if (ii < 0)
-	      continue;
-	    /* Pairs in this cell */
-	    for (auto jt = std::next(it); jt != local_particles.end(); ++jt) {
-	      if ((*jt).id() > max_id)
-		continue;
-	      if (verlet_criterion(p1, *jt, distance_function(p1, *jt))) {
-		int jj = id_to_index((*jt).id());
-		if (jj >= 0) {
-		  verlet_list.addNeighborNonAtomic(ii, jj);
-		}
-	      }
-	    }
-	  }
-	};
+        auto kernel_each = [&cells, &distance_function, &verlet_criterion,
+                            &id_to_index, &verlet_list, max_id](int i) {
+          auto &local_particles = cells[i]->particles();
+          for (auto it = local_particles.begin(); it != local_particles.end();
+               ++it) {
+            auto &p1 = *it;
+            if (p1.id() > max_id)
+              continue;
+            int ii = id_to_index(p1.id());
+            if (ii < 0)
+              continue;
+            /* Pairs in this cell */
+            for (auto jt = std::next(it); jt != local_particles.end(); ++jt) {
+              if ((*jt).id() > max_id)
+                continue;
+              if (verlet_criterion(p1, *jt, distance_function(p1, *jt))) {
+                int jj = id_to_index((*jt).id());
+                if (jj >= 0) {
+                  verlet_list.addNeighborNonAtomic(ii, jj);
+                }
+              }
+            }
+          }
+        };
 
-	auto kernel_neighbor = [&cells, &distance_function, &verlet_criterion,
-				&id_to_index, &verlet_list, max_id](int i) {
-	  auto &local_particles = cells[i]->particles();
-	  for (auto it = local_particles.begin(); it != local_particles.end();
-	       ++it) {
-	    auto const &p1 = *it;
-	    if (p1.id() > max_id)
-	      continue;
-	    int ii = id_to_index(p1.id());
-	    if (ii < 0)
-	      continue;
-	    /* Pairs with neighbors */
-	    for (auto &neighbor : cells[i]->neighbors().red()) {
-	      for (auto const &p2 : neighbor->particles()) {
-		if (p2.id() > max_id)
-		  continue;
-		if (verlet_criterion(p1, p2, distance_function(p1, p2))) {
-		  int jj = id_to_index(p2.id());
-		  if (jj >= 0) {
-		    verlet_list.addNeighbor(ii, jj);
-		  }
-		}
-	      }
-	    }
-	  }
-	};
+        auto kernel_neighbor = [&cells, &distance_function, &verlet_criterion,
+                                &id_to_index, &verlet_list, max_id](int i) {
+          auto &local_particles = cells[i]->particles();
+          for (auto it = local_particles.begin(); it != local_particles.end();
+               ++it) {
+            auto const &p1 = *it;
+            if (p1.id() > max_id)
+              continue;
+            int ii = id_to_index(p1.id());
+            if (ii < 0)
+              continue;
+            /* Pairs with neighbors */
+            for (auto &neighbor : cells[i]->neighbors().red()) {
+              for (auto const &p2 : neighbor->particles()) {
+                if (p2.id() > max_id)
+                  continue;
+                if (verlet_criterion(p1, p2, distance_function(p1, p2))) {
+                  int jj = id_to_index(p2.id());
+                  if (jj >= 0) {
+                    verlet_list.addNeighbor(ii, jj);
+                  }
+                }
+              }
+            }
+          }
+        };
 
-	Kokkos::parallel_for("each", cells.size(), kernel_each);
-	Kokkos::fence();
+        Kokkos::parallel_for("each", cells.size(), kernel_each);
+        Kokkos::fence();
 
-	Kokkos::parallel_for("neighbor", cells.size(), kernel_neighbor);
-	Kokkos::fence();
+        Kokkos::parallel_for("neighbor", cells.size(), kernel_neighbor);
+        Kokkos::fence();
 
         // Save data for next iteration if we just rebuilt
         CabanaData new_data(verlet_list, unique_particles, max_id);
