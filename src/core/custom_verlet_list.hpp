@@ -65,7 +65,7 @@ public:
 
   // Method to add a neighbor
   KOKKOS_INLINE_FUNCTION
-  void addNeighbor(int pid, int nid) {
+  void addNeighborAtomic(int pid, int nid) {
     std::size_t count = counts(pid);
     std::size_t count_n = counts(nid);
 
@@ -89,6 +89,22 @@ public:
   // Thread safe but non atomic method to add a neighbor
   KOKKOS_INLINE_FUNCTION
   void addNeighborNonAtomic(int pid, int nid) {
+    std::size_t count = counts(pid);
+
+    // #ifndef NDEBUG
+    if (count >= neighbors.extent(1)) {
+      throw std::runtime_error(
+          // Kokkos::abort(
+          "Number of count is larger than VerletList size.");
+    }
+    // #endif
+    neighbors(pid, count) = nid;
+    counts(pid) += 1;
+  }
+
+  // Non atomic and load balancing method to add a neighbor
+  KOKKOS_INLINE_FUNCTION
+  void addNeighborLoadBalancing(int pid, int nid) {
     std::size_t count = counts(pid);
     std::size_t count_n = counts(nid);
 

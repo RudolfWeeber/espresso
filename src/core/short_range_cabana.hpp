@@ -161,7 +161,8 @@ inline void set_verlet_list(CellStructure const &cell_structure,
         if (verlet_criterion(p1, *jt, distance_function(p1, *jt))) {
           int jj = id_to_index((*jt).id());
           if (jj >= 0) {
-            verlet_list.addNeighborNonAtomic(ii, jj);
+            //verlet_list.addNeighborNonAtomic(ii, jj);
+            verlet_list.addNeighborLoadBalancing(ii, jj);
           }
         }
       }
@@ -186,7 +187,8 @@ inline void set_verlet_list(CellStructure const &cell_structure,
           if (verlet_criterion(p1, p2, distance_function(p1, p2))) {
             int jj = id_to_index(p2.id());
             if (jj >= 0) {
-              verlet_list.addNeighbor(ii, jj);
+              //verlet_list.addNeighbor(ii, jj);
+              verlet_list.addNeighborNonAtomic(ii, jj);
             }
           }
         }
@@ -501,7 +503,8 @@ void cabana_short_range(
               if (verlet_criterion(p1, *jt, distance_function(p1, *jt))) {
                 int jj = id_to_index((*jt).id());
                 if (jj >= 0) {
-                  verlet_list.addNeighborNonAtomic(ii, jj);
+                  //verlet_list.addNeighborNonAtomic(ii, jj);
+            	  verlet_list.addNeighborLoadBalancing(ii, jj);
                 }
               }
             }
@@ -527,7 +530,8 @@ void cabana_short_range(
                 if (verlet_criterion(p1, p2, distance_function(p1, p2))) {
                   int jj = id_to_index(p2.id());
                   if (jj >= 0) {
-                    verlet_list.addNeighbor(ii, jj);
+                    //verlet_list.addNeighbor(ii, jj);
+                    verlet_list.addNeighborNonAtomic(ii, jj);
                   }
                 }
               }

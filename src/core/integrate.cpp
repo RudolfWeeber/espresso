@@ -533,7 +533,7 @@ int System::System::integrate(int n_steps, int reuse_forces) {
 #ifdef SHARED_MEMORY_PARALLELISM
   else {
     // cell_structure->set_steepest_descent_flag(true);
-    cell_structure->set_max_prefactor(5);
+    cell_structure->set_max_prefactor(7);//5
   }
 #endif
   auto const calc_md_steps_per_tau = [this](double tau) {
