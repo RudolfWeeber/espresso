@@ -1,0 +1,192 @@
+/*
+ * Copyright (C) 2010-2025 The ESPResSo project
+ *
+ * This file is part of ESPResSo.
+ *
+ * ESPResSo is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * ESPResSo is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#pragma once
+
+#ifdef CALIPER
+#include <caliper/cali.h>
+#endif
+
+#ifdef SHARED_MEMORY_PARALLELISM
+
+#include "aosoa_pack.hpp"
+#include "cabana_data.hpp"
+#include "custom_verlet_list.hpp"
+#include <Cabana_Core.hpp>
+#include <Cabana_NeighborList.hpp>
+#include <cassert>
+#include <iostream>
+#include <stdio.h>
+#include <unordered_set>
+#include <utility>
+
+struct ForcesKernel {
+#if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
+defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
+  std::vector<Particle *> unique_particles;
+#endif
+  [[maybe_unused]] const BondedInteractionsMap bonded_ias;
+  const InteractionsNonBonded nonbonded_ias;
+  const BoxGeometry box_geo;
+  Kokkos::View<double **[3]> local_force;
+#ifdef ROTATION
+  Kokkos::View<double **[3]> local_torque;
+#endif
+#ifdef NPT
+  Kokkos::View<double *[3]> local_virial;
+#endif
+  Coulomb::ShortRangeForceKernel::kernel_type const *coulomb_kernel;
+#if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
+defined(DPD) or defined(DIPOLES) or defined(NPT)
+  Dipoles::ShortRangeForceKernel::kernel_type const *dipoles_kernel;
+  Coulomb::ShortRangeForceCorrectionsKernel::kernel_type const *elc_kernel;
+  Coulomb::ShortRangeEnergyKernel::kernel_type const *coulomb_u_kernel;
+  const Thermostat::Thermostat &thermostat;
+#endif
+  // int num_threads;
+  // int mpi_rank;
+  // int particle_number;
+  const AoSoA_pack aosoa;
+
+  ForcesKernel(
+  // const CellStructure *cell_,
+#if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
+defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
+      std::vector<Particle *> &unique_particles_,
+#endif
+      [[maybe_unused]] const BondedInteractionsMap &bonded_ias_,
+      const InteractionsNonBonded &nonbonded_ias_,
+      const BoxGeometry &box_geo_, Kokkos::View<double **[3]> local_force_,
+#ifdef ROTATION
+      Kokkos::View<double **[3]> local_torque_,
+#endif
+#ifdef NPT
+      Kokkos::View<double *[3]> local_virial_,
+#endif
+      Coulomb::ShortRangeForceKernel::kernel_type const *coulomb_kernel_,
+#if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
+defined(DPD) or defined(DIPOLES) or defined(NPT)
+      Dipoles::ShortRangeForceKernel::kernel_type const *dipoles_kernel_,
+      Coulomb::ShortRangeForceCorrectionsKernel::kernel_type const
+	  *elc_kernel_,
+      Coulomb::ShortRangeEnergyKernel::kernel_type const *coulomb_u_kernel_,
+      const Thermostat::Thermostat &thermostat_,
+#endif
+      const AoSoA_pack &aosoa_)
+      // int num_threads_), int mpi_rank_, int particle_number_)
+      : // cell(cell_),
+#if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
+defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
+	unique_particles(unique_particles_),
+#endif
+	bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
+	box_geo(box_geo_), local_force(local_force_),
+#ifdef ROTATION
+	local_torque(local_torque_),
+#endif
+#ifdef NPT
+	local_virial(local_virial_),
+#endif
+	coulomb_kernel(coulomb_kernel_),
+#if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
+defined(DPD) or defined(DIPOLES) or defined(NPT)
+	dipoles_kernel(dipoles_kernel_), elc_kernel(elc_kernel_),
+	coulomb_u_kernel(coulomb_u_kernel_), thermostat(thermostat_),
+#endif
+	aosoa(aosoa_) {
+  }
+
+  KOKKOS_FORCEINLINE_FUNCTION
+  void operator()(int i, int j) const {
+
+    auto thread_id = omp_get_thread_num();
+    // auto thread_id = Kokkos::OpenMP::impl_hardware_thread_id();
+    // std::cout << "\nin " << thread_id << "\n"; //" " << i << " " << j <<
+    // " " <<
+
+    IA_parameters const &ia_params =
+	nonbonded_ias.get_ia_param(aosoa.type(i), aosoa.type(j));
+
+    ParticleForce pf{};
+#ifdef NPT
+    Utils::Vector3d virial{};
+#endif
+    Utils::Vector3d const d = box_geo.get_mi_vector(
+	aosoa.position(i, 0), aosoa.position(i, 1), aosoa.position(i, 2),
+	aosoa.position(j, 0), aosoa.position(j, 1), aosoa.position(j, 2));
+    auto const dist = d.norm();
+
+    auto const q1q2 = aosoa.charge(i) * aosoa.charge(j);
+
+#ifdef EXCLUSIONS
+    auto p1 = unique_particles.at(i);
+    auto p2 = unique_particles.at(j);
+
+    bool do_nonbonded_flag = do_nonbonded(*p1, *p2);
+#else
+    bool do_nonbonded_flag = true;
+#endif
+
+    add_non_bonded_pair_withot_p(pf, d, dist, q1q2, ia_params,
+				 do_nonbonded_flag, coulomb_kernel);
+
+#if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
+defined(DPD) or defined(DIPOLES) or defined(NPT)
+    auto const dist2 = dist * dist;
+
+#ifndef EXCLUSIONS
+    auto p1 = unique_particles.at(i);
+    auto p2 = unique_particles.at(j);
+#endif // NOT EXCLUSIONS
+    add_non_bonded_pair_force_with_p(
+	const_cast<Particle &>(*p1), const_cast<Particle &>(*p2), pf,
+#ifdef NPT
+	virial,
+#endif // NPT
+	d, dist, dist2, q1q2, ia_params, do_nonbonded_flag, thermostat,
+	box_geo, bonded_ias, coulomb_kernel, dipoles_kernel, elc_kernel,
+	coulomb_u_kernel);
+#endif // ETC
+   //
+    local_force(i, thread_id, 0) += pf.f[0];
+    local_force(i, thread_id, 1) += pf.f[1];
+    local_force(i, thread_id, 2) += pf.f[2];
+#ifdef ROTATION
+    local_torque(i, thread_id, 0) += pf.torque[0];
+    local_torque(i, thread_id, 1) += pf.torque[1];
+    local_torque(i, thread_id, 2) += pf.torque[2];
+#endif
+
+    auto opf = calc_opposing_force(pf, d);
+    local_force(j, thread_id, 0) += opf.f[0];
+    local_force(j, thread_id, 1) += opf.f[1];
+    local_force(j, thread_id, 2) += opf.f[2];
+#ifdef ROTATION
+    local_torque(j, thread_id, 0) += opf.torque[0];
+    local_torque(j, thread_id, 1) += opf.torque[1];
+    local_torque(j, thread_id, 2) += opf.torque[2];
+#endif
+#ifdef NPT
+    local_virial(thread_id, 0) += virial[0];
+    local_virial(thread_id, 1) += virial[1];
+    local_virial(thread_id, 2) += virial[2];
+#endif
+  }
+};
+#endif
