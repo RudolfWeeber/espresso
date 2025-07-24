@@ -557,8 +557,8 @@ void cabana_short_range(
 #ifdef CALIPER
       CALI_MARK_BEGIN("Cabana - calc Force");
 #endif
-      FirstNeighborKernel first_neighbor_kernel(
-      // ForcesKernel first_neighbor_kernel(
+      //FirstNeighborKernel first_neighbor_kernel(
+      ForcesKernel first_neighbor_kernel(
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
     defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
           unique_particles,

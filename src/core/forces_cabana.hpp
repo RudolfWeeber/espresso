@@ -19,22 +19,10 @@
 
 #pragma once
 
-#ifdef CALIPER
-#include <caliper/cali.h>
-#endif
-
 #ifdef SHARED_MEMORY_PARALLELISM
 
 #include "aosoa_pack.hpp"
-#include "cabana_data.hpp"
-#include "custom_verlet_list.hpp"
 #include <Cabana_Core.hpp>
-#include <Cabana_NeighborList.hpp>
-#include <cassert>
-#include <iostream>
-#include <stdio.h>
-#include <unordered_set>
-#include <utility>
 
 struct ForcesKernel {
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
@@ -111,13 +99,10 @@ struct ForcesKernel {
         aosoa(aosoa_) {
   }
 
-  KOKKOS_FORCEINLINE_FUNCTION
+  KOKKOS_INLINE_FUNCTION
   void operator()(int i, int j) const {
 
     auto thread_id = omp_get_thread_num();
-    // auto thread_id = Kokkos::OpenMP::impl_hardware_thread_id();
-    // std::cout << "\nin " << thread_id << "\n"; //" " << i << " " << j <<
-    // " " <<
 
     IA_parameters const &ia_params =
         nonbonded_ias.get_ia_param(aosoa.type(i), aosoa.type(j));
