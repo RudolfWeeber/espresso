@@ -27,11 +27,11 @@
 struct ForcesKernel {
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
     defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
-  std::vector<Particle *> unique_particles;
+  std::vector<Particle *> &unique_particles;
 #endif
-  [[maybe_unused]] const BondedInteractionsMap bonded_ias;
-  const InteractionsNonBonded nonbonded_ias;
-  const BoxGeometry box_geo;
+  [[maybe_unused]] const BondedInteractionsMap &bonded_ias;
+  const InteractionsNonBonded &nonbonded_ias;
+  const BoxGeometry &box_geo;
   Kokkos::View<double **[3]> local_force;
 #ifdef ROTATION
   Kokkos::View<double **[3]> local_torque;
@@ -50,7 +50,7 @@ struct ForcesKernel {
   // int num_threads;
   // int mpi_rank;
   // int particle_number;
-  const AoSoA_pack aosoa;
+  const AoSoA_pack &aosoa;
 
   ForcesKernel(
   // const CellStructure *cell_,
@@ -99,8 +99,8 @@ struct ForcesKernel {
         aosoa(aosoa_) {
   }
 
-  KOKKOS_INLINE_FUNCTION
-  void operator()(int i, int j) const {
+  __attribute__((always_inline)) KOKKOS_INLINE_FUNCTION void
+  operator()(int i, int j) const {
 
     auto thread_id = omp_get_thread_num();
 
