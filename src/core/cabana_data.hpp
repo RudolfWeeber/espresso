@@ -39,10 +39,10 @@ private:
   int max_id;
 
 public:
-  CabanaData() = default;
-  CabanaData(ListType verlet_list, std::vector<Particle *> unique_particles)
+  // CabanaData() = default;
+  CabanaData(ListType &verlet_list, std::vector<Particle *> &unique_particles)
       : verlet_list(verlet_list), unique_particles(unique_particles) {}
-  CabanaData(ListType verlet_list, std::vector<Particle *> unique_particles,
+  CabanaData(ListType &verlet_list, std::vector<Particle *> &unique_particles,
              int max_id)
       : verlet_list(verlet_list), unique_particles(unique_particles),
         max_id(max_id) {}

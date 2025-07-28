@@ -37,20 +37,8 @@
 #include <utility>
 
 struct ForcesKernel {
-#if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
-    defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
-  std::vector<Particle *> unique_particles;
-#endif
-  [[maybe_unused]] const BondedInteractionsMap bonded_ias;
-  const InteractionsNonBonded nonbonded_ias;
-  const BoxGeometry box_geo;
-  Kokkos::View<double **[3]> local_force;
-#ifdef ROTATION
-  Kokkos::View<double **[3]> local_torque;
-#endif
-#ifdef NPT
-  Kokkos::View<double *[3]> local_virial;
-#endif
+  [[maybe_unused]] const BondedInteractionsMap &bonded_ias;
+  const InteractionsNonBonded &nonbonded_ias;
   Coulomb::ShortRangeForceKernel::kernel_type const *coulomb_kernel;
 #if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
     defined(DPD) or defined(DIPOLES) or defined(NPT)
@@ -59,26 +47,23 @@ struct ForcesKernel {
   Coulomb::ShortRangeEnergyKernel::kernel_type const *coulomb_u_kernel;
   const Thermostat::Thermostat &thermostat;
 #endif
-  // int num_threads;
-  // int mpi_rank;
-  // int particle_number;
-  const AoSoA_pack aosoa;
-
-  ForcesKernel(
-  // const CellStructure *cell_,
+  const BoxGeometry &box_geo;
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
     defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
-      std::vector<Particle *> &unique_particles_,
+  std::vector<Particle *> unique_particles;
 #endif
-      [[maybe_unused]] const BondedInteractionsMap &bonded_ias_,
-      const InteractionsNonBonded &nonbonded_ias_, const BoxGeometry &box_geo_,
-      Kokkos::View<double **[3]> local_force_,
+  Kokkos::View<double **[3]> local_force;
 #ifdef ROTATION
-      Kokkos::View<double **[3]> local_torque_,
+  Kokkos::View<double **[3]> local_torque;
 #endif
 #ifdef NPT
-      Kokkos::View<double *[3]> local_virial_,
+  Kokkos::View<double *[3]> local_virial;
 #endif
+  AoSoA_pack aosoa;
+
+  ForcesKernel(
+      [[maybe_unused]] const BondedInteractionsMap &bonded_ias_,
+      const InteractionsNonBonded &nonbonded_ias_,
       Coulomb::ShortRangeForceKernel::kernel_type const *coulomb_kernel_,
 #if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
     defined(DPD) or defined(DIPOLES) or defined(NPT)
@@ -87,37 +72,49 @@ struct ForcesKernel {
       Coulomb::ShortRangeEnergyKernel::kernel_type const *coulomb_u_kernel_,
       const Thermostat::Thermostat &thermostat_,
 #endif
-      const AoSoA_pack &aosoa_)
-      // int num_threads_), int mpi_rank_, int particle_number_)
-      : // cell(cell_),
-#if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
-    defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
-        unique_particles(unique_particles_),
-#endif
+      const BoxGeometry &box_geo_)
+      :
         bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
-        box_geo(box_geo_), local_force(local_force_),
-#ifdef ROTATION
-        local_torque(local_torque_),
-#endif
-#ifdef NPT
-        local_virial(local_virial_),
-#endif
         coulomb_kernel(coulomb_kernel_),
 #if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
     defined(DPD) or defined(DIPOLES) or defined(NPT)
         dipoles_kernel(dipoles_kernel_), elc_kernel(elc_kernel_),
         coulomb_u_kernel(coulomb_u_kernel_), thermostat(thermostat_),
 #endif
-        aosoa(aosoa_) {
+        box_geo(box_geo_) { 
   }
 
-  KOKKOS_FORCEINLINE_FUNCTION
-  void operator()(int i, int j) const {
+  void set_essential_variables(
+#if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
+    defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
+      std::vector<Particle *> &unique_particles_,
+#endif
+      Kokkos::View<double **[3]> local_force_,
+#ifdef ROTATION
+      Kokkos::View<double **[3]> local_torque_,
+#endif
+#ifdef NPT
+      Kokkos::View<double *[3]> local_virial_,
+#endif
+      AoSoA_pack &aosoa_) {
+#if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
+    defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
+    unique_particles = unique_particles_;
+#endif
+    local_force = local_force_;
+#ifdef ROTATION
+    local_torque = local_torque_;
+#endif
+#ifdef NPT
+    local_virial = local_virial_;
+#endif
+    aosoa = aosoa_;
+  }
+
+  __attribute__((always_inline)) KOKKOS_INLINE_FUNCTION void
+  operator()(int i, int j) const {
 
     auto thread_id = omp_get_thread_num();
-    // auto thread_id = Kokkos::OpenMP::impl_hardware_thread_id();
-    // std::cout << "\nin " << thread_id << "\n"; //" " << i << " " << j <<
-    // " " <<
 
     IA_parameters const &ia_params =
         nonbonded_ias.get_ia_param(aosoa.type(i), aosoa.type(j));

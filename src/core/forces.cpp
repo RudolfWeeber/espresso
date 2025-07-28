@@ -193,22 +193,33 @@ void System::System::calculate_forces() {
   };
 
 #ifdef SHARED_MEMORY_PARALLELISM
-  auto coulomb_kernel_ptr = get_ptr(coulomb_kernel);
-  auto dipoles_kernel_ptr = get_ptr(dipoles_kernel);
-  auto elc_kernel_ptr = get_ptr(elc_kernel);
-  auto coulomb_u_kernel_ptr = get_ptr(coulomb_u_kernel);
+  //auto coulomb_kernel_ptr = get_ptr(coulomb_kernel);
+  //auto dipoles_kernel_ptr = get_ptr(dipoles_kernel);
+  //auto elc_kernel_ptr = get_ptr(elc_kernel);
+  //auto coulomb_u_kernel_ptr = get_ptr(coulomb_u_kernel);
+  ForcesKernel first_neighbor_kernel(
+      *bonded_ias, *nonbonded_ias,
+      get_ptr(coulomb_kernel),
+#if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
+    defined(DPD) or defined(DIPOLES) or defined(NPT)
+      get_ptr(dipoles_kernel),
+      get_ptr(elc_kernel),
+      get_ptr(coulomb_u_kernel),
+      *thermostat,
+#endif
+      *box_geo);
+
   cabana_short_range(
-      bond_kernel, *bonded_ias, coulomb_kernel_ptr, dipoles_kernel_ptr,
-      elc_kernel_ptr, coulomb_u_kernel_ptr,
+      bond_kernel, first_neighbor_kernel,
 #ifdef COLLISION_DETECTION
       collision_detection,
 #endif
       *cell_structure, get_interaction_range(), bonded_ias->maximal_cutoff(),
-      *thermostat, *box_geo, *nonbonded_ias, particles,
-      cell_structure->ghost_particles(),
+      particles, cell_structure->ghost_particles(),
       VerletCriterion<>{*this, cell_structure->get_verlet_skin(),
                         get_interaction_range(), coulomb_cutoff, dipole_cutoff,
                         collision_detection_cutoff});
+
 #else
 
   auto pair_kernel = [coulomb_kernel_ptr = get_ptr(coulomb_kernel),

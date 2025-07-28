@@ -134,7 +134,7 @@ inline int estimate_max_counts(const double pair_cutoff,
 using ListAlgorithm = Cabana::HalfNeighborTag;
 using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm,
                                           Cabana::VerletLayout2D>;
-template <class VerletCriterion = detail::True>
+template <class VerletCriterion = detail::True> __attribute__((always_inline))
 inline void set_verlet_list(CellStructure const &cell_structure,
                             VerletCriterion const &verlet_criterion,
                             Kokkos::View<int *> const &id_to_index,
@@ -187,8 +187,8 @@ inline void set_verlet_list(CellStructure const &cell_structure,
           if (verlet_criterion(p1, p2, distance_function(p1, p2))) {
             int jj = id_to_index(p2.id());
             if (jj >= 0) {
-              // verlet_list.addNeighbor(ii, jj);
-              verlet_list.addNeighborNonAtomic(ii, jj);
+              verlet_list.addNeighborAtomic(ii, jj);
+              // verlet_list.addNeighborNonAtomic(ii, jj);
             }
           }
         }
@@ -203,20 +203,15 @@ inline void set_verlet_list(CellStructure const &cell_structure,
   Kokkos::fence();
 }
 
-template <class BondKernel, class VerletCriterion = detail::True>
+template <class BondKernel, class PairKernel, class VerletCriterion = detail::True>
 void cabana_short_range(
     BondKernel const &bond_kernel,
-    [[maybe_unused]] BondedInteractionsMap const &bonded_ias,
-    Coulomb::ShortRangeForceKernel::kernel_type const *coulomb_kernel,
-    Dipoles::ShortRangeForceKernel::kernel_type const *dipoles_kernel,
-    Coulomb::ShortRangeForceCorrectionsKernel::kernel_type const *elc_kernel,
-    Coulomb::ShortRangeEnergyKernel::kernel_type const *coulomb_u_kernel,
+    PairKernel &first_neighbor_kernel,
 #ifdef COLLISION_DETECTION
     std::shared_ptr<CollisionDetection::CollisionDetection> collision_detection,
 #endif
     CellStructure &cell_structure, double pair_cutoff, double bond_cutoff,
-    Thermostat::Thermostat const &thermostat, BoxGeometry const &box_geo,
-    InteractionsNonBonded const &nonbonded_ias, ParticleRange const &particles,
+    ParticleRange const &particles,
     ParticleRange const &ghost_particles,
     VerletCriterion const &verlet_criterion = {}) {
 #ifdef CALIPER
@@ -261,8 +256,7 @@ void cabana_short_range(
                     cell_structure, number_of_unique_particles, max_id);
     } else {
       // If we do not rebuild we can use the saved map
-      CabanaData saved_data;
-      saved_data = cell_structure.get_cabana_data();
+      CabanaData saved_data = cell_structure.get_cabana_data();
       unique_particles = saved_data.get_unique_particles();
       number_of_unique_particles = saved_data.get_index();
       max_id = saved_data.get_max_id();
@@ -293,152 +287,6 @@ void cabana_short_range(
     CALI_MARK_END("Cabana - Index map");
 #endif
 
-    // The kernel of calculate force
-    struct FirstNeighborKernel {
-#if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
-    defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
-      std::vector<Particle *> unique_particles;
-#endif
-      [[maybe_unused]] const BondedInteractionsMap bonded_ias;
-      const InteractionsNonBonded nonbonded_ias;
-      const BoxGeometry box_geo;
-      Kokkos::View<double **[3]> local_force;
-#ifdef ROTATION
-      Kokkos::View<double **[3]> local_torque;
-#endif
-#ifdef NPT
-      Kokkos::View<double *[3]> local_virial;
-#endif
-      Coulomb::ShortRangeForceKernel::kernel_type const *coulomb_kernel;
-#if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
-    defined(DPD) or defined(DIPOLES) or defined(NPT)
-      Dipoles::ShortRangeForceKernel::kernel_type const *dipoles_kernel;
-      Coulomb::ShortRangeForceCorrectionsKernel::kernel_type const *elc_kernel;
-      Coulomb::ShortRangeEnergyKernel::kernel_type const *coulomb_u_kernel;
-      const Thermostat::Thermostat &thermostat;
-#endif
-      const AoSoA_pack aosoa;
-
-      FirstNeighborKernel(
-#if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
-    defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
-          std::vector<Particle *> &unique_particles_,
-#endif
-          [[maybe_unused]] const BondedInteractionsMap &bonded_ias_,
-          const InteractionsNonBonded &nonbonded_ias_,
-          const BoxGeometry &box_geo_, Kokkos::View<double **[3]> local_force_,
-#ifdef ROTATION
-          Kokkos::View<double **[3]> local_torque_,
-#endif
-#ifdef NPT
-          Kokkos::View<double *[3]> local_virial_,
-#endif
-          Coulomb::ShortRangeForceKernel::kernel_type const *coulomb_kernel_,
-#if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
-    defined(DPD) or defined(DIPOLES) or defined(NPT)
-          Dipoles::ShortRangeForceKernel::kernel_type const *dipoles_kernel_,
-          Coulomb::ShortRangeForceCorrectionsKernel::kernel_type const
-              *elc_kernel_,
-          Coulomb::ShortRangeEnergyKernel::kernel_type const *coulomb_u_kernel_,
-          const Thermostat::Thermostat &thermostat_,
-#endif
-          const AoSoA_pack &aosoa_)
-          :
-#if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
-    defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
-            unique_particles(unique_particles_),
-#endif
-            bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
-            box_geo(box_geo_), local_force(local_force_),
-#ifdef ROTATION
-            local_torque(local_torque_),
-#endif
-#ifdef NPT
-            local_virial(local_virial_),
-#endif
-            coulomb_kernel(coulomb_kernel_),
-#if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
-    defined(DPD) or defined(DIPOLES) or defined(NPT)
-            dipoles_kernel(dipoles_kernel_), elc_kernel(elc_kernel_),
-            coulomb_u_kernel(coulomb_u_kernel_), thermostat(thermostat_),
-#endif
-            aosoa(aosoa_) {
-      }
-
-      KOKKOS_INLINE_FUNCTION
-      void operator()(int i, int j) const {
-
-        auto thread_id = omp_get_thread_num();
-
-        IA_parameters const &ia_params =
-            nonbonded_ias.get_ia_param(aosoa.type(i), aosoa.type(j));
-
-        ParticleForce pf{};
-#ifdef NPT
-        Utils::Vector3d virial{};
-#endif
-        Utils::Vector3d const d = box_geo.get_mi_vector(
-            aosoa.position(i, 0), aosoa.position(i, 1), aosoa.position(i, 2),
-            aosoa.position(j, 0), aosoa.position(j, 1), aosoa.position(j, 2));
-        auto const dist = d.norm();
-
-        auto const q1q2 = aosoa.charge(i) * aosoa.charge(j);
-
-#ifdef EXCLUSIONS
-        auto p1 = unique_particles.at(i);
-        auto p2 = unique_particles.at(j);
-
-        bool do_nonbonded_flag = do_nonbonded(*p1, *p2);
-#else
-        bool do_nonbonded_flag = true;
-#endif
-
-        add_non_bonded_pair_withot_p(pf, d, dist, q1q2, ia_params,
-                                     do_nonbonded_flag, coulomb_kernel);
-
-#if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
-    defined(DPD) or defined(DIPOLES) or defined(NPT)
-        auto const dist2 = dist * dist;
-
-#ifndef EXCLUSIONS
-        auto p1 = unique_particles.at(i);
-        auto p2 = unique_particles.at(j);
-#endif // NOT EXCLUSIONS
-        add_non_bonded_pair_force_with_p(
-            const_cast<Particle &>(*p1), const_cast<Particle &>(*p2), pf,
-#ifdef NPT
-            virial,
-#endif // NPT
-            d, dist, dist2, q1q2, ia_params, do_nonbonded_flag, thermostat,
-            box_geo, bonded_ias, coulomb_kernel, dipoles_kernel, elc_kernel,
-            coulomb_u_kernel);
-#endif // ETC
-        local_force(i, thread_id, 0) += pf.f[0];
-        local_force(i, thread_id, 1) += pf.f[1];
-        local_force(i, thread_id, 2) += pf.f[2];
-#ifdef ROTATION
-        local_torque(i, thread_id, 0) += pf.torque[0];
-        local_torque(i, thread_id, 1) += pf.torque[1];
-        local_torque(i, thread_id, 2) += pf.torque[2];
-#endif
-
-        auto opf = calc_opposing_force(pf, d);
-        local_force(j, thread_id, 0) += opf.f[0];
-        local_force(j, thread_id, 1) += opf.f[1];
-        local_force(j, thread_id, 2) += opf.f[2];
-#ifdef ROTATION
-        local_torque(j, thread_id, 0) += opf.torque[0];
-        local_torque(j, thread_id, 1) += opf.torque[1];
-        local_torque(j, thread_id, 2) += opf.torque[2];
-#endif
-#ifdef NPT
-        local_virial(thread_id, 0) += virial[0];
-        local_virial(thread_id, 1) += virial[1];
-        local_virial(thread_id, 2) += virial[2];
-#endif
-      };
-    };
-
     // Fill the essential variable for MD
     {
 #ifdef CALIPER
@@ -447,9 +295,8 @@ void cabana_short_range(
       // ===================================================
       // Fill particle storage
       // ===================================================
-
       Kokkos::View<int *> id_to_index(
-          Kokkos::ViewAllocateWithoutInitializing("id_to_index"), max_id + 1);
+	  Kokkos::ViewAllocateWithoutInitializing("id_to_index"), max_id + 1);
       Kokkos::deep_copy(id_to_index, -1);
 
       using policy_type = Kokkos::RangePolicy<execution_space>;
@@ -478,72 +325,7 @@ void cabana_short_range(
             pair_cutoff, number_of_unique_particles, cell_structure);
         verlet_list = ListType(0, number_of_unique_particles, max_counts);
 
-        // set_verlet_list(cell_structure, verlet_criterion, id_to_index,
-        // verlet_list, max_id);
-        auto const &cells =
-            std::as_const(cell_structure).decomposition().local_cells();
-        auto const distance_function = detail::MinimalImageDistance{
-            std::as_const(cell_structure).decomposition().box()};
-
-        auto kernel_each = [&cells, &distance_function, &verlet_criterion,
-                            &id_to_index, &verlet_list, max_id](int i) {
-          auto &local_particles = cells[i]->particles();
-          for (auto it = local_particles.begin(); it != local_particles.end();
-               ++it) {
-            auto &p1 = *it;
-            if (p1.id() > max_id)
-              continue;
-            int ii = id_to_index(p1.id());
-            if (ii < 0)
-              continue;
-            /* Pairs in this cell */
-            for (auto jt = std::next(it); jt != local_particles.end(); ++jt) {
-              if ((*jt).id() > max_id)
-                continue;
-              if (verlet_criterion(p1, *jt, distance_function(p1, *jt))) {
-                int jj = id_to_index((*jt).id());
-                if (jj >= 0) {
-                  // verlet_list.addNeighborNonAtomic(ii, jj);
-                  verlet_list.addNeighborLoadBalancing(ii, jj);
-                }
-              }
-            }
-          }
-        };
-
-        auto kernel_neighbor = [&cells, &distance_function, &verlet_criterion,
-                                &id_to_index, &verlet_list, max_id](int i) {
-          auto &local_particles = cells[i]->particles();
-          for (auto it = local_particles.begin(); it != local_particles.end();
-               ++it) {
-            auto const &p1 = *it;
-            if (p1.id() > max_id)
-              continue;
-            int ii = id_to_index(p1.id());
-            if (ii < 0)
-              continue;
-            /* Pairs with neighbors */
-            for (auto &neighbor : cells[i]->neighbors().red()) {
-              for (auto const &p2 : neighbor->particles()) {
-                if (p2.id() > max_id)
-                  continue;
-                if (verlet_criterion(p1, p2, distance_function(p1, p2))) {
-                  int jj = id_to_index(p2.id());
-                  if (jj >= 0) {
-                    // verlet_list.addNeighbor(ii, jj);
-                    verlet_list.addNeighborNonAtomic(ii, jj);
-                  }
-                }
-              }
-            }
-          }
-        };
-
-        Kokkos::parallel_for("each", cells.size(), kernel_each);
-        Kokkos::fence();
-
-        Kokkos::parallel_for("neighbor", cells.size(), kernel_neighbor);
-        Kokkos::fence();
+        set_verlet_list(cell_structure, verlet_criterion, id_to_index, verlet_list, max_id);
 
         // Save data for next iteration if we just rebuilt
         CabanaData new_data(verlet_list, unique_particles, max_id);
@@ -557,32 +339,28 @@ void cabana_short_range(
 #ifdef CALIPER
       CALI_MARK_BEGIN("Cabana - calc Force");
 #endif
-      FirstNeighborKernel first_neighbor_kernel(
-      // ForcesKernel first_neighbor_kernel(
+      first_neighbor_kernel.set_essential_variables(
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
     defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
-          unique_particles,
+	  unique_particles,
 #endif
-          bonded_ias, nonbonded_ias, box_geo, local_force,
+	  local_force,
 #ifdef ROTATION
-          local_torque,
+	  local_torque,
 #endif
 #ifdef NPT
-          local_virial,
+	  local_virial,
 #endif
-          coulomb_kernel,
-#if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
-    defined(DPD) or defined(DIPOLES) or defined(NPT)
-          dipoles_kernel, elc_kernel, coulomb_u_kernel, thermostat,
-#endif
-          aosoa);
+	  aosoa);
 
-      const auto &kernel_force = first_neighbor_kernel;
+      //const auto kernel_force = first_neighbor_kernel;
+      const auto kernel_force = std::move(first_neighbor_kernel);
       // verlet_list.get_variance_max_counts();
       Kokkos::RangePolicy<execution_space> policy(0, particle_storage.size());
       Cabana::neighbor_parallel_for(policy, kernel_force, verlet_list,
                                     Cabana::FirstNeighborsTag(),
-                                    Cabana::TeamOpTag());
+                                    //Cabana::TeamOpTag());
+                                    Cabana::SerialOpTag());
       Kokkos::fence();
 #ifdef CALIPER
       CALI_MARK_END("Cabana - calc Force");
