@@ -73,15 +73,14 @@ struct ForcesKernel {
       const Thermostat::Thermostat &thermostat_,
 #endif
       const BoxGeometry &box_geo_)
-      :
-        bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
+      : bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
         coulomb_kernel(coulomb_kernel_),
 #if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
     defined(DPD) or defined(DIPOLES) or defined(NPT)
         dipoles_kernel(dipoles_kernel_), elc_kernel(elc_kernel_),
         coulomb_u_kernel(coulomb_u_kernel_), thermostat(thermostat_),
 #endif
-        box_geo(box_geo_) { 
+        box_geo(box_geo_) {
   }
 
   void set_essential_variables(

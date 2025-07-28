@@ -193,18 +193,15 @@ void System::System::calculate_forces() {
   };
 
 #ifdef SHARED_MEMORY_PARALLELISM
-  //auto coulomb_kernel_ptr = get_ptr(coulomb_kernel);
-  //auto dipoles_kernel_ptr = get_ptr(dipoles_kernel);
-  //auto elc_kernel_ptr = get_ptr(elc_kernel);
-  //auto coulomb_u_kernel_ptr = get_ptr(coulomb_u_kernel);
+  // auto coulomb_kernel_ptr = get_ptr(coulomb_kernel);
+  // auto dipoles_kernel_ptr = get_ptr(dipoles_kernel);
+  // auto elc_kernel_ptr = get_ptr(elc_kernel);
+  // auto coulomb_u_kernel_ptr = get_ptr(coulomb_u_kernel);
   ForcesKernel first_neighbor_kernel(
-      *bonded_ias, *nonbonded_ias,
-      get_ptr(coulomb_kernel),
+      *bonded_ias, *nonbonded_ias, get_ptr(coulomb_kernel),
 #if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
     defined(DPD) or defined(DIPOLES) or defined(NPT)
-      get_ptr(dipoles_kernel),
-      get_ptr(elc_kernel),
-      get_ptr(coulomb_u_kernel),
+      get_ptr(dipoles_kernel), get_ptr(elc_kernel), get_ptr(coulomb_u_kernel),
       *thermostat,
 #endif
       *box_geo);

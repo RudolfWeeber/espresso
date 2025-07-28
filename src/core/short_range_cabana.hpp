@@ -134,11 +134,12 @@ inline int estimate_max_counts(const double pair_cutoff,
 using ListAlgorithm = Cabana::HalfNeighborTag;
 using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm,
                                           Cabana::VerletLayout2D>;
-template <class VerletCriterion = detail::True> __attribute__((always_inline))
-inline void set_verlet_list(CellStructure const &cell_structure,
-                            VerletCriterion const &verlet_criterion,
-                            Kokkos::View<int *> const &id_to_index,
-                            ListType &verlet_list, const int max_id) {
+template <class VerletCriterion = detail::True>
+__attribute__((always_inline)) inline void
+set_verlet_list(CellStructure const &cell_structure,
+                VerletCriterion const &verlet_criterion,
+                Kokkos::View<int *> const &id_to_index, ListType &verlet_list,
+                const int max_id) {
   auto const &cells =
       std::as_const(cell_structure).decomposition().local_cells();
   auto const distance_function = detail::MinimalImageDistance{
@@ -203,16 +204,15 @@ inline void set_verlet_list(CellStructure const &cell_structure,
   Kokkos::fence();
 }
 
-template <class BondKernel, class PairKernel, class VerletCriterion = detail::True>
+template <class BondKernel, class PairKernel,
+          class VerletCriterion = detail::True>
 void cabana_short_range(
-    BondKernel const &bond_kernel,
-    PairKernel &first_neighbor_kernel,
+    BondKernel const &bond_kernel, PairKernel &first_neighbor_kernel,
 #ifdef COLLISION_DETECTION
     std::shared_ptr<CollisionDetection::CollisionDetection> collision_detection,
 #endif
     CellStructure &cell_structure, double pair_cutoff, double bond_cutoff,
-    ParticleRange const &particles,
-    ParticleRange const &ghost_particles,
+    ParticleRange const &particles, ParticleRange const &ghost_particles,
     VerletCriterion const &verlet_criterion = {}) {
 #ifdef CALIPER
   CALI_CXX_MARK_FUNCTION;
@@ -296,7 +296,7 @@ void cabana_short_range(
       // Fill particle storage
       // ===================================================
       Kokkos::View<int *> id_to_index(
-	  Kokkos::ViewAllocateWithoutInitializing("id_to_index"), max_id + 1);
+          Kokkos::ViewAllocateWithoutInitializing("id_to_index"), max_id + 1);
       Kokkos::deep_copy(id_to_index, -1);
 
       using policy_type = Kokkos::RangePolicy<execution_space>;
@@ -325,7 +325,8 @@ void cabana_short_range(
             pair_cutoff, number_of_unique_particles, cell_structure);
         verlet_list = ListType(0, number_of_unique_particles, max_counts);
 
-        set_verlet_list(cell_structure, verlet_criterion, id_to_index, verlet_list, max_id);
+        set_verlet_list(cell_structure, verlet_criterion, id_to_index,
+                        verlet_list, max_id);
 
         // Save data for next iteration if we just rebuilt
         CabanaData new_data(verlet_list, unique_particles, max_id);
@@ -342,24 +343,24 @@ void cabana_short_range(
       first_neighbor_kernel.set_essential_variables(
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
     defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
-	  unique_particles,
+          unique_particles,
 #endif
-	  local_force,
+          local_force,
 #ifdef ROTATION
-	  local_torque,
+          local_torque,
 #endif
 #ifdef NPT
-	  local_virial,
+          local_virial,
 #endif
-	  aosoa);
+          aosoa);
 
-      //const auto kernel_force = first_neighbor_kernel;
+      // const auto kernel_force = first_neighbor_kernel;
       const auto kernel_force = std::move(first_neighbor_kernel);
       // verlet_list.get_variance_max_counts();
       Kokkos::RangePolicy<execution_space> policy(0, particle_storage.size());
       Cabana::neighbor_parallel_for(policy, kernel_force, verlet_list,
                                     Cabana::FirstNeighborsTag(),
-                                    //Cabana::TeamOpTag());
+                                    // Cabana::TeamOpTag());
                                     Cabana::SerialOpTag());
       Kokkos::fence();
 #ifdef CALIPER
