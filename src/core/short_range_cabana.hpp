@@ -363,6 +363,35 @@ void cabana_short_range(
                                     // Cabana::TeamOpTag());
                                     Cabana::SerialOpTag());
       Kokkos::fence();
+      // !!! REDUCIOTN TEST
+
+      struct SumQiQj {
+        double sum;
+        SumQiQj() : sum{} {};
+        SumQiQj(int x) : sum{} {
+          assert(x == 0);
+        }; // work around type-unagnostic initializaiotn in cabana.
+        void operator+=(const SumQiQj &rhs) { sum += rhs.sum; };
+      };
+
+      class Reducer {
+      public:
+        using value_type = SumQiQj;
+
+        AoSoA_pack &aosoa;
+        Reducer(AoSoA_pack &aosoa) : aosoa(aosoa) {};
+        Reducer(Reducer const &other) : aosoa(other.aosoa) {};
+        KOKKOS_INLINE_FUNCTION void operator()(int const i, const int j,
+                                               value_type &update) const {
+          update.sum += aosoa.charge(i) * aosoa.charge(j);
+        }
+      };
+      SumQiQj qiqj_res;
+      Cabana::neighbor_parallel_reduce(policy, Reducer(aosoa), verlet_list,
+                                       Cabana::FirstNeighborsTag(),
+                                       Cabana::SerialOpTag(), qiqj_res);
+      Kokkos::fence();
+
 #ifdef CALIPER
       CALI_MARK_END("Cabana - calc Force");
 #endif
