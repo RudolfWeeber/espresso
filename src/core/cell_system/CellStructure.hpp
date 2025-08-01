@@ -755,8 +755,7 @@ public:
   // void set_steepest_descent_flag(bool flag) { steepest_descent_flag = flag; }
   // bool get_steepest_descent_flag() { return steepest_descent_flag; }
 
-  void set_max_prefactor(std::size_t value) { max_prefactor = value; }
-  std::size_t get_max_prefactor() { return max_prefactor; }
+  void set_max_prefactor(int value) { max_prefactor = value; }
 
   void set_max_counts(std::size_t value) { max_counts = value; }
   std::size_t get_max_counts() { return max_counts; }
