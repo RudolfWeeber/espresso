@@ -757,8 +757,8 @@ public:
 
   void set_max_prefactor(int value) { max_prefactor = value; }
 
-  void set_max_counts(std::size_t value) { max_counts = value; }
-  std::size_t get_max_counts() { return max_counts; }
+  void set_max_counts(int value) { max_counts = value; }
+  int get_max_counts() { return max_counts; }
 
   int get_max_id() { return m_max_id; }
 
