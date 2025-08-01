@@ -198,8 +198,7 @@ private:
   using VirialType = Kokkos::View<double *[3], Kokkos::LayoutRight>;
   std::unique_ptr<VirialType> m_local_virial;
 #endif
-  using data_types =
-      Cabana::MemberTypes<double[3], double, int, int>;
+  using data_types = Cabana::MemberTypes<double[3], double, int, int>;
   using memory_space = Kokkos::HostSpace;
   using AoSoAType = Cabana::AoSoA<data_types, memory_space, vector_length,
                                   Kokkos::MemoryTraits<0>>;

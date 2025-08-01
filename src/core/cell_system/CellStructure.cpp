@@ -143,11 +143,9 @@ void CellStructure::rebuild_local_properties(const std::size_t num_part,
       std::make_unique<ForceType>("local_torque", num_part, num_threads);
 #endif
 #ifdef NPT
-  m_local_virial =
-      std::make_unique<VirialType>("local_virial", num_threads);
+  m_local_virial = std::make_unique<VirialType>("local_virial", num_threads);
 #endif
-  m_particle_storage =
-      std::make_unique<AoSoAType>("particles", num_part);
+  m_particle_storage = std::make_unique<AoSoAType>("particles", num_part);
   (*m_particle_storage).resize(num_part);
   // particle properties are defined in aosoa_pack.hpp
   m_aosoa = std::make_unique<AoSoA_pack>(*m_particle_storage);
