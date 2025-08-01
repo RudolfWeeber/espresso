@@ -65,12 +65,12 @@
 namespace Kokkos {
 template <class DataType, class... Properties> class View;
 class HostSpace;
-class LayoutRight;
-template <unsigned T> class MemoryTraits;
+struct LayoutRight;
+template <unsigned T> struct MemoryTraits;
 } // namespace Kokkos
 namespace Cabana {
 class HalfNeighborTag;
-class VerletLayout2D;
+struct VerletLayout2D;
 class TeamVectorOpTag;
 template <class MemorySpace, class ListAlgorithm, class Layout, class BuildTag>
 class CustomVerletList;
@@ -712,8 +712,8 @@ private:
 private:
   std::unique_ptr<CabanaData> m_cabana_data;
   // bool steepest_descent_flag = true;
-  std::size_t max_prefactor = 8;
-  std::size_t max_counts = -1;
+  int max_prefactor = 8;
+  int max_counts = -1;
   int m_max_id = 0;
 
   inline int estimate_max_counts(const double pair_cutoff,
