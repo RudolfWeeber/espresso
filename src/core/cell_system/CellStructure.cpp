@@ -62,12 +62,12 @@
 
 #ifdef SHARED_MEMORY_PARALLELISM
 
-//using memory_space = Kokkos::HostSpace;
-//using execution_space = Kokkos::DefaultExecutionSpace;
+// using memory_space = Kokkos::HostSpace;
+// using execution_space = Kokkos::DefaultExecutionSpace;
 
-//using ListAlgorithm = Cabana::HalfNeighborTag;
-//using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm,
-//                                          Cabana::VerletLayout2D>;
+// using ListAlgorithm = Cabana::HalfNeighborTag;
+// using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm,
+//                                           Cabana::VerletLayout2D>;
 
 CellStructure::~CellStructure() {
   if (m_cabana_data) {
@@ -133,20 +133,21 @@ void CellStructure::reset_cabana_data() {
   }
 }
 
-void CellStructure::rebuild_local_properties(const std::size_t num_part, const std::size_t num_threads, const double pair_cutoff) {
-  m_local_force = std::make_unique<Kokkos::View<double **[3], Kokkos::LayoutRight>>
-	  ("local_force", num_part, num_threads);
+void CellStructure::rebuild_local_properties(const std::size_t num_part,
+                                             const std::size_t num_threads,
+                                             const double pair_cutoff) {
+  m_local_force =
+      std::make_unique<ForceType>("local_force", num_part, num_threads);
 #ifdef ROTATION
-  m_local_torque = std::make_unique<Kokkos::View<double **[3], Kokkos::LayoutRight>>
-	  ("local_torque", num_part, num_threads);
+  m_local_torque =
+      std::make_unique<ForceType>("local_torque", num_part, num_threads);
 #endif
 #ifdef NPT
-  m_local_virial = std::make_unique<Kokkos::View<double *[3], Kokkos::LayoutRight>>
-	  ("local_virial", num_threads);
+  m_local_virial =
+      std::make_unique<VirialType>("local_virial", num_threads);
 #endif
   m_particle_storage =
-    std::make_unique<Cabana::AoSoA<data_types, memory_space, vector_length>>
-    ("particles", num_part);
+      std::make_unique<AoSoAType>("particles", num_part);
   (*m_particle_storage).resize(num_part);
   // particle properties are defined in aosoa_pack.hpp
   m_aosoa = std::make_unique<AoSoA_pack>(*m_particle_storage);

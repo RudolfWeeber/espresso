@@ -88,16 +88,16 @@ struct ForcesKernel {
         box_geo(box_geo_),
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
     defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
-	unique_particles(unique_particles_),
+        unique_particles(unique_particles_),
 #endif
-	local_force(local_force_), 
+        local_force(local_force_),
 #ifdef ROTATION
-	local_torque(local_torque_),
+        local_torque(local_torque_),
 #endif
 #ifdef NPT
-	local_virial(local_virial_),
+        local_virial(local_virial_),
 #endif
-	aosoa(aosoa_) {
+        aosoa(aosoa_) {
   }
 
   __attribute__((always_inline)) KOKKOS_INLINE_FUNCTION void

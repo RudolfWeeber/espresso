@@ -193,14 +193,18 @@ void System::System::calculate_forces() {
   };
 
 #ifdef SHARED_MEMORY_PARALLELISM
-  auto const &verlet_criterion =  
-    VerletCriterion<>{*this, cell_structure->get_verlet_skin(),
-		      get_interaction_range(), coulomb_cutoff, dipole_cutoff,
-		      collision_detection_cutoff};
-  update_cabana_state(*cell_structure, particles, cell_structure->ghost_particles(),
-		  verlet_criterion, get_interaction_range());
+  auto const &verlet_criterion =
+      VerletCriterion<>{*this,
+                        cell_structure->get_verlet_skin(),
+                        get_interaction_range(),
+                        coulomb_cutoff,
+                        dipole_cutoff,
+                        collision_detection_cutoff};
+  update_cabana_state(*cell_structure, particles,
+                      cell_structure->ghost_particles(), verlet_criterion,
+                      get_interaction_range());
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
-  defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
+    defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
   auto unique_particles = cell_structure->get_unique_particles();
 #endif
   auto local_force = cell_structure->get_local_force();
@@ -221,7 +225,7 @@ void System::System::calculate_forces() {
 #endif
       *box_geo,
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
-  defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
+    defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
       unique_particles,
 #endif
       local_force,
@@ -233,13 +237,13 @@ void System::System::calculate_forces() {
 #endif
       aosoa);
 
-  cabana_short_range(
-      bond_kernel, first_neighbor_kernel,
+  cabana_short_range(bond_kernel, first_neighbor_kernel,
 #ifdef COLLISION_DETECTION
-      collision_detection,
+                     collision_detection,
 #endif
-      *cell_structure, get_interaction_range(), bonded_ias->maximal_cutoff(),
-      particles, cell_structure->ghost_particles(), verlet_criterion);
+                     *cell_structure, get_interaction_range(),
+                     bonded_ias->maximal_cutoff(), particles,
+                     cell_structure->ghost_particles(), verlet_criterion);
 #else
 
   auto pair_kernel = [coulomb_kernel_ptr = get_ptr(coulomb_kernel),

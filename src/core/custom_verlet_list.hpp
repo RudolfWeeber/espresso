@@ -115,7 +115,7 @@ public:
     counts(pid) += 1;
   }
 
-  // Sorting a neighbor 
+  // Sorting a neighbor
   KOKKOS_INLINE_FUNCTION
   void sortNeighbors() {
     Kokkos::parallel_for(
@@ -123,8 +123,8 @@ public:
         Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, counts.size()),
         [&](const int i) {
           const int count = counts(i);
-	  int* ptr = &neighbors(i, 0);
-	  std::sort(ptr, ptr + count);
+          int *ptr = &neighbors(i, 0);
+          std::sort(ptr, ptr + count);
         });
     Kokkos::fence();
   }
