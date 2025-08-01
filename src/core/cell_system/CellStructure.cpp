@@ -52,24 +52,48 @@
 #include <vector>
 
 #ifdef SHARED_MEMORY_PARALLELISM
+#include "aosoa_pack.hpp"
 #include "cabana_data.hpp"
 #include "custom_verlet_list.hpp"
 #include <Cabana_Core.hpp>
+#include <Cabana_NeighborList.hpp>
 #include <Kokkos_Core.hpp>
 #endif
 
 #ifdef SHARED_MEMORY_PARALLELISM
 
-using memory_space = Kokkos::SharedSpace;
-using execution_space = Kokkos::DefaultExecutionSpace;
+//using memory_space = Kokkos::HostSpace;
+//using execution_space = Kokkos::DefaultExecutionSpace;
 
-using ListAlgorithm = Cabana::HalfNeighborTag;
-using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm,
-                                          Cabana::VerletLayout2D>;
+//using ListAlgorithm = Cabana::HalfNeighborTag;
+//using ListType = Cabana::CustomVerletList<memory_space, ListAlgorithm,
+//                                          Cabana::VerletLayout2D>;
 
 CellStructure::~CellStructure() {
   if (m_cabana_data) {
     m_cabana_data.reset();
+  }
+  if (m_local_force) {
+    m_local_force.reset();
+  }
+#ifdef ROTATION
+  if (m_local_torque) {
+    m_local_torque.reset();
+  }
+#endif
+#ifdef NPT
+  if (m_local_virial) {
+    m_local_virial.reset();
+  }
+#endif
+  if (m_aosoa) {
+    m_aosoa.reset();
+  }
+  if (m_particle_storage) {
+    m_particle_storage.reset();
+  }
+  if (m_cabana_verlet_list) {
+    m_cabana_verlet_list.reset();
   }
 }
 
@@ -85,8 +109,61 @@ void CellStructure::reset_cabana_data() {
   if (m_cabana_data) {
     m_cabana_data.reset();
   }
+  if (m_local_force) {
+    m_local_force.reset();
+  }
+#ifdef ROTATION
+  if (m_local_torque) {
+    m_local_torque.reset();
+  }
+#endif
+#ifdef NPT
+  if (m_local_virial) {
+    m_local_virial.reset();
+  }
+#endif
+  if (m_aosoa) {
+    m_aosoa.reset();
+  }
+  if (m_particle_storage) {
+    m_particle_storage.reset();
+  }
+  if (m_cabana_verlet_list) {
+    m_cabana_verlet_list.reset();
+  }
 }
 
+void CellStructure::rebuild_local_properties(const std::size_t num_part, const std::size_t num_threads, const double pair_cutoff) {
+  m_local_force = std::make_unique<Kokkos::View<double **[3], Kokkos::LayoutRight>>
+	  ("local_force", num_part, num_threads);
+#ifdef ROTATION
+  m_local_torque = std::make_unique<Kokkos::View<double **[3], Kokkos::LayoutRight>>
+	  ("local_torque", num_part, num_threads);
+#endif
+#ifdef NPT
+  m_local_virial = std::make_unique<Kokkos::View<double *[3], Kokkos::LayoutRight>>
+	  ("local_virial", num_threads);
+#endif
+  m_particle_storage =
+    std::make_unique<Cabana::AoSoA<data_types, memory_space, vector_length>>
+    ("particles", num_part);
+  (*m_particle_storage).resize(num_part);
+  // particle properties are defined in aosoa_pack.hpp
+  m_aosoa = std::make_unique<AoSoA_pack>(*m_particle_storage);
+
+  int max_counts = estimate_max_counts(pair_cutoff, num_part);
+  m_cabana_verlet_list = std::make_unique<ListType>(0, num_part, max_counts);
+}
+
+void CellStructure::reset_local_properties() {
+  Kokkos::deep_copy(get_local_force(), 0);
+#ifdef ROTATION
+  Kokkos::deep_copy(get_local_torque(), 0);
+#endif
+#ifdef NPT
+  Kokkos::deep_copy(get_local_virial(), 0);
+#endif
+}
 #endif
 
 CellStructure::CellStructure(BoxGeometry const &box)

@@ -53,11 +53,39 @@
 #include <span>
 #include <stdexcept>
 #include <utility>
+#include <unordered_set>
 #include <vector>
+
+#ifdef CALIPER
+#include <caliper/cali.h>
+#endif
 
 // forward declaration to not have to import cabana
 #ifdef SHARED_MEMORY_PARALLELISM
+namespace Kokkos {
+  template<class DataType, class... Properties>
+  class View;
+  class HostSpace;
+  class LayoutRight;
+  template <unsigned T>
+  class MemoryTraits;
+}
+namespace Cabana {
+  class HalfNeighborTag;
+  class VerletLayout2D;
+  class TeamVectorOpTag;
+  template<class MemorySpace, class ListAlgorithm, class Layout, 
+	   class BuildTag>
+  class CustomVerletList;
+  template <typename... Types>
+  struct MemberTypes;
+  template<class DataType, class MemorySpace, int, class MemoryTraits>
+  class AoSoA;
+}
 class CabanaData;
+struct AoSoA_pack;
+// To construct AoSoA, vector_length is defined HERE.
+const int vector_length = 1;
 #endif
 
 template <typename Callable>
@@ -164,6 +192,28 @@ private:
   double m_verlet_skin = 0.;
   bool m_verlet_skin_set = false;
   double m_verlet_reuse = 0.;
+#ifdef SHARED_MEMORY_PARALLELISM
+  std::unique_ptr<Kokkos::View<double **[3], Kokkos::LayoutRight>> m_local_force;
+#ifdef ROTATION
+  std::unique_ptr<Kokkos::View<double **[3], Kokkos::LayoutRight>> m_local_torque;
+#endif
+#ifdef NPT
+  std::unique_ptr<Kokkos::View<double *[3], Kokkos::LayoutRight>> m_local_virial;
+#endif
+  using data_types = Cabana::MemberTypes<double[3], double, int, int>; //, bool>;
+  using memory_space = Kokkos::HostSpace; // Kokkos::SharedSpace;
+  using AoSoAType = Cabana::AoSoA<data_types, memory_space, vector_length, Kokkos::MemoryTraits<0>>;
+  std::unique_ptr<AoSoAType> m_particle_storage;
+  /** particle properties for Cabana defined in aosoa_pack.hpp */
+  std::unique_ptr<AoSoA_pack> m_aosoa;
+  /** The local id-to-index for aosoa data */
+  std::vector<Particle *> m_unique_particles;
+
+  using ListAlgorithm = Cabana::HalfNeighborTag;
+  using ListType = Cabana::CustomVerletList<Kokkos::HostSpace, ListAlgorithm,
+                                          Cabana::VerletLayout2D, Cabana::TeamVectorOpTag>;
+  std::unique_ptr<ListType> m_cabana_verlet_list;
+#endif
 
 public:
   CellStructure(BoxGeometry const &box);
@@ -664,6 +714,29 @@ private:
   // bool steepest_descent_flag = true;
   std::size_t max_prefactor = 8;
   std::size_t max_counts = -1;
+  int m_max_id = 0;
+
+  inline int estimate_max_counts(const double pair_cutoff,
+				 const int number_of_unique_particles) {
+    //std::cout << "estimate_max_counts:" << pair_cutoff << " "
+//	      << max_prefactor << std::endl;
+    int max_counts;
+    if (not std::isinf(pair_cutoff)) {
+      max_counts =
+	  static_cast<int>(std::ceil(max_prefactor *
+				     pair_cutoff * pair_cutoff * pair_cutoff));
+      int threshold_num = 16; //8;
+#ifdef COLLISION_DETECTION
+      threshold_num = 64;
+#endif
+      if (max_counts < threshold_num) {
+	max_counts = std::min(threshold_num, number_of_unique_particles);
+      }
+    } else {
+      max_counts = number_of_unique_particles;
+    }
+    return max_counts;
+  }
 
 public:
   void set_cabana_data(std::unique_ptr<CabanaData> data);
@@ -676,6 +749,9 @@ public:
   bool get_rebuild_cabana_verlet_list() const {
     return m_rebuild_cabana_verlet_list;
   }
+  void mark_rebuild_cabana_verlet_list_as_UpToDate() {
+    m_rebuild_cabana_verlet_list = false;
+  }
 
   // void set_steepest_descent_flag(bool flag) { steepest_descent_flag = flag; }
   // bool get_steepest_descent_flag() { return steepest_descent_flag; }
@@ -686,31 +762,52 @@ public:
   void set_max_counts(std::size_t value) { max_counts = value; }
   std::size_t get_max_counts() { return max_counts; }
 
-  template <class Kernel> void cabana_link_cell(Kernel kernel) {
-    auto const local_cells_span = decomposition().local_cells();
-    auto const first = boost::make_indirect_iterator(local_cells_span.begin());
-    auto const last = boost::make_indirect_iterator(local_cells_span.end());
+  int get_max_id() { return m_max_id; }
 
-    Algorithm::link_cell(
-        first, last, [&kernel](Particle &p1, Particle &p2) { kernel(p1, p2); });
-  }
+  void rebuild_local_properties(std::size_t num_part, std::size_t num_threads, double pair_cutoff);
+  void reset_local_properties();
 
-  template <class Kernel, class VerletCriterion>
-  void cabana_verlet_list_loop(Kernel kernel,
-                               const VerletCriterion &verlet_criterion) {
-    if (m_rebuild_cabana_verlet_list) {
-      // if (m_rebuild_verlet_list) {
-      m_verlet_list.clear();
+  Kokkos::View<double **[3], Kokkos::LayoutRight>& get_local_force() { return *m_local_force; }
+#ifdef ROTATION
+  Kokkos::View<double **[3], Kokkos::LayoutRight>& get_local_torque() { return *m_local_torque; }
+#endif
+#ifdef NPT
+  Kokkos::View<double *[3], Kokkos::LayoutRight>& get_local_virial() { return *m_local_virial; }
+#endif
+  AoSoA_pack& get_aosoa_data() { return *m_aosoa; };
+  ListType& get_cabana_verlet_list() { return *m_cabana_verlet_list; };
+  std::vector<Particle *>& get_unique_particles() { return m_unique_particles; }
 
-      link_cell([&](Particle &p1, Particle &p2, Distance const &d) {
-        if (verlet_criterion(p1, p2, d)) {
-          m_verlet_list.emplace_back(&p1, &p2);
-          kernel(p1, p2);
-        }
-      });
-      m_rebuild_verlet_list = false;
-      m_rebuild_cabana_verlet_list = false;
+  inline void set_index_map(ParticleRange const &particles,
+			    ParticleRange const &ghost_particles,
+			    int &index) {
+    m_unique_particles.clear();
+    m_max_id = 0;
+    std::unordered_set<int> registered_index{};
+    for (auto &p : particles) {
+      if (p.id() > m_max_id)
+	m_max_id = p.id();
+      m_unique_particles.emplace_back(&p);
+      index++;
     }
+
+    for (auto &p : ghost_particles) {
+      if (not get_local_particle(p.id())) {
+	continue;
+      }
+      if (not get_local_particle(p.id())->is_ghost()) {
+	continue;
+      }
+      if (registered_index.contains(p.id())) {
+	continue;
+      }
+      if (p.id() > m_max_id)
+	m_max_id = p.id();
+      registered_index.insert(p.id());
+      m_unique_particles.emplace_back(&p);
+      index++;
+    }
+    registered_index.clear();
   }
 #endif
 

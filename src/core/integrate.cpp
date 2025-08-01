@@ -527,13 +527,13 @@ int System::System::integrate(int n_steps, int reuse_forces) {
     ek_active = ek.is_ready_for_propagation();
 #ifdef SHARED_MEMORY_PARALLELISM
     // cell_structure->set_steepest_descent_flag(false);
-    cell_structure->set_max_prefactor(8);
+    cell_structure->set_max_prefactor(5); 
 #endif
   }
 #ifdef SHARED_MEMORY_PARALLELISM
   else {
     // cell_structure->set_steepest_descent_flag(true);
-    cell_structure->set_max_prefactor(5); // 5 lb, 7 no-lb
+    cell_structure->set_max_prefactor(8);
   }
 #endif
   auto const calc_md_steps_per_tau = [this](double tau) {

@@ -21,6 +21,7 @@
 #ifdef SHARED_MEMORY_PARALLELISM
 
 #include <Cabana_VerletList.hpp>
+#include <algorithm>
 
 namespace Cabana {
 // ONLY FOR 2D LAYOUT, OTHERWISE NEIGHBOR LIST INTERFACE IMPLEMENTATION WILL
@@ -36,29 +37,22 @@ public:
   CustomVerletList() : Base() {}
 
   // Custom constructor
-  // template <class PositionSlice>
-  // CustomVerletList(PositionSlice x, const std::size_t begin,
   CustomVerletList(const std::size_t begin, const std::size_t end,
                    const std::size_t max_neigh) {
-    // const std::size_t thread_number) {
-    // initializeData(x.size(), max_neigh);//, thread_number);
-    initializeData(end - begin, max_neigh); //, thread_number);
+    initializeData(end - begin, max_neigh);
   }
   virtual ~CustomVerletList() {};
 
 public:
   Kokkos::View<int *, MemorySpace> counts;
-  Kokkos::View<int **, MemorySpace> neighbors;
-  // Kokkos::View<int **, Kokkos::LayoutRight> neighbors;
+  Kokkos::View<int **, Kokkos::LayoutRight, MemorySpace> neighbors;
 
   // Method to initialize _data without filling neighbors
   KOKKOS_INLINE_FUNCTION
   void initializeData(const std::size_t num_particles,
                       const std::size_t max_neigh) {
-    // const std::size_t thread_number) {
     counts = Kokkos::View<int *, MemorySpace>("num_neighbors", num_particles);
-    //  neighbors = Kokkos::View<int **, Kokkos::LayoutRight>(
-    neighbors = Kokkos::View<int **, MemorySpace>(
+    neighbors = Kokkos::View<int **, Kokkos::LayoutRight, MemorySpace>(
         Kokkos::ViewAllocateWithoutInitializing("neighbors"), num_particles,
         max_neigh);
   }
@@ -70,7 +64,6 @@ public:
     std::size_t count_n = counts(nid);
 
     if (count > count_n) {
-      // if (pid > nid) {
       int tmp = pid;
       pid = nid;
       nid = tmp;
@@ -79,7 +72,6 @@ public:
 #ifndef NDEBUG
     if (count >= neighbors.extent(1)) {
       throw std::runtime_error(
-          // Kokkos::abort(
           "Number of count is larger than VerletList size.");
     }
 #endif
@@ -91,13 +83,12 @@ public:
   void addNeighborNonAtomic(int pid, int nid) {
     std::size_t count = counts(pid);
 
-    // #ifndef NDEBUG
+#ifndef NDEBUG
     if (count >= neighbors.extent(1)) {
       throw std::runtime_error(
-          // Kokkos::abort(
           "Number of count is larger than VerletList size.");
     }
-    // #endif
+#endif
     neighbors(pid, count) = nid;
     counts(pid) += 1;
   }
@@ -109,7 +100,6 @@ public:
     std::size_t count_n = counts(nid);
 
     if (count > count_n) {
-      // if (pid > nid) {
       int tmp = pid;
       pid = nid;
       nid = tmp;
@@ -118,12 +108,25 @@ public:
 #ifndef NDEBUG
     if (count >= neighbors.extent(1)) {
       throw std::runtime_error(
-          // Kokkos::abort(
           "Number of count is larger than VerletList size.");
     }
 #endif
     neighbors(pid, count) = nid;
     counts(pid) += 1;
+  }
+
+  // Sorting a neighbor 
+  KOKKOS_INLINE_FUNCTION
+  void sortNeighbors() {
+    Kokkos::parallel_for(
+        "custom_velet_list::sort_neighbors",
+        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, counts.size()),
+        [&](const int i) {
+          const int count = counts(i);
+	  int* ptr = &neighbors(i, 0);
+	  std::sort(ptr, ptr + count);
+        });
+    Kokkos::fence();
   }
 
   // Find max counts

@@ -26,15 +26,8 @@
 #ifdef SHARED_MEMORY_PARALLELISM
 
 #include "aosoa_pack.hpp"
-#include "cabana_data.hpp"
-#include "custom_verlet_list.hpp"
+#include "forces_inline.hpp"
 #include <Cabana_Core.hpp>
-#include <Cabana_NeighborList.hpp>
-#include <cassert>
-#include <iostream>
-#include <stdio.h>
-#include <unordered_set>
-#include <utility>
 
 struct ForcesKernel {
   [[maybe_unused]] const BondedInteractionsMap &bonded_ias;
@@ -50,16 +43,16 @@ struct ForcesKernel {
   const BoxGeometry &box_geo;
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
     defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
-  std::vector<Particle *> unique_particles;
+  std::vector<Particle *> &unique_particles;
 #endif
-  Kokkos::View<double **[3]> local_force;
+  Kokkos::View<double **[3], Kokkos::LayoutRight> local_force;
 #ifdef ROTATION
-  Kokkos::View<double **[3]> local_torque;
+  Kokkos::View<double **[3], Kokkos::LayoutRight> local_torque;
 #endif
 #ifdef NPT
-  Kokkos::View<double *[3]> local_virial;
+  Kokkos::View<double *[3], Kokkos::LayoutRight> local_virial;
 #endif
-  AoSoA_pack aosoa;
+  const AoSoA_pack &aosoa;
 
   ForcesKernel(
       [[maybe_unused]] const BondedInteractionsMap &bonded_ias_,
@@ -72,7 +65,19 @@ struct ForcesKernel {
       Coulomb::ShortRangeEnergyKernel::kernel_type const *coulomb_u_kernel_,
       const Thermostat::Thermostat &thermostat_,
 #endif
-      const BoxGeometry &box_geo_)
+      const BoxGeometry &box_geo_,
+#if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
+    defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
+      std::vector<Particle *> &unique_particles_,
+#endif
+      Kokkos::View<double **[3], Kokkos::LayoutRight> local_force_,
+#ifdef ROTATION
+      Kokkos::View<double **[3], Kokkos::LayoutRight> local_torque_,
+#endif
+#ifdef NPT
+      Kokkos::View<double *[3], Kokkos::LayoutRight> local_virial_,
+#endif
+      const AoSoA_pack &aosoa_)
       : bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
         coulomb_kernel(coulomb_kernel_),
 #if defined(THOLE) or defined(ELECTROSTATICS) or defined(P3M) or               \
@@ -80,34 +85,19 @@ struct ForcesKernel {
         dipoles_kernel(dipoles_kernel_), elc_kernel(elc_kernel_),
         coulomb_u_kernel(coulomb_u_kernel_), thermostat(thermostat_),
 #endif
-        box_geo(box_geo_) {
-  }
-
-  void set_essential_variables(
+        box_geo(box_geo_),
 #if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
     defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
-      std::vector<Particle *> &unique_particles_,
+	unique_particles(unique_particles_),
 #endif
-      Kokkos::View<double **[3]> local_force_,
+	local_force(local_force_), 
 #ifdef ROTATION
-      Kokkos::View<double **[3]> local_torque_,
+	local_torque(local_torque_),
 #endif
 #ifdef NPT
-      Kokkos::View<double *[3]> local_virial_,
+	local_virial(local_virial_),
 #endif
-      AoSoA_pack &aosoa_) {
-#if defined(EXCLUSIONS) or defined(THOLE) or defined(ELECTROSTATICS) or        \
-    defined(P3M) or defined(DPD) or defined(DIPOLES) or defined(NPT)
-    unique_particles = unique_particles_;
-#endif
-    local_force = local_force_;
-#ifdef ROTATION
-    local_torque = local_torque_;
-#endif
-#ifdef NPT
-    local_virial = local_virial_;
-#endif
-    aosoa = aosoa_;
+	aosoa(aosoa_) {
   }
 
   __attribute__((always_inline)) KOKKOS_INLINE_FUNCTION void
