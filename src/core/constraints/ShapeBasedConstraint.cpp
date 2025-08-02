@@ -29,6 +29,9 @@
 #include "errorhandling.hpp"
 #include "forces_inline.hpp"
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
+#ifdef GAY_BERNE
+#include "nonbonded_interactions/gay_berne.hpp"
+#endif
 #include "system/System.hpp"
 #include "thermostat.hpp"
 
@@ -111,7 +114,12 @@ ParticleForce ShapeBasedConstraint::force(Particle const &p,
       pf.f += thole_pair_force(p, part_rep, ia_params, dist_vec, dist,
                                *system.bonded_ias, get_ptr(coulomb_kernel));
 #endif
-      pf += calc_non_central_force(p, part_rep, ia_params, dist_vec, dist);
+#ifdef GAY_BERNE
+      if (gb_active(ia_params)) {
+        pf +=
+            gb_pair_force(p.quat(), part_rep.quat(), ia_params, dist_vec, dist);
+      }
+#endif
 
 #ifdef DPD
       if (system.thermostat->thermo_switch & THERMO_DPD) {
@@ -130,7 +138,12 @@ ParticleForce ShapeBasedConstraint::force(Particle const &p,
         pf.f += thole_pair_force(p, part_rep, ia_params, dist_vec, -dist,
                                  *system.bonded_ias, get_ptr(coulomb_kernel));
 #endif
-        pf += calc_non_central_force(p, part_rep, ia_params, dist_vec, -dist);
+#ifdef GAY_BERNE
+        if (gb_active(ia_params)) {
+          pf += gb_pair_force(p.quat(), part_rep.quat(), ia_params, dist_vec,
+                              -dist);
+        }
+#endif
 
 #ifdef DPD
         if (system.thermostat->thermo_switch & THERMO_DPD) {

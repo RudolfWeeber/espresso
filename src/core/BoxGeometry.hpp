@@ -207,8 +207,9 @@ public:
    *         periodic images, i.e. <tt>a - b</tt>.
    */
   template <typename T>
-  Utils::Vector<T, 3> get_mi_vector(const Utils::Vector<T, 3> &a,
-                                    const Utils::Vector<T, 3> &b) const {
+  [[gnu::always_inline]] inline Utils::Vector<T, 3>
+  get_mi_vector(const Utils::Vector<T, 3> &a,
+                const Utils::Vector<T, 3> &b) const {
     if (type() == BoxType::LEES_EDWARDS) {
       auto const shear_plane_normal = lees_edwards_bc().shear_plane_normal;
       auto a_tmp = a;

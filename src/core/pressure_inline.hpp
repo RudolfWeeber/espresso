@@ -33,6 +33,9 @@
 #include "errorhandling.hpp"
 #include "exclusions.hpp"
 #include "forces_inline.hpp"
+#ifdef GAY_BERNE
+#include "nonbonded_interactions/gay_berne.hpp"
+#endif
 
 #include <utils/Vector.hpp>
 #include <utils/math/tensor_product.hpp>
@@ -67,12 +70,16 @@ inline void add_non_bonded_pair_virials(
   if (do_nonbonded(p1, p2))
 #endif
   {
-    auto const force = calc_central_radial_force(ia_params, d, dist) +
+    auto force = calc_central_radial_force(ia_params, d, dist);
 #ifdef THOLE
-                       thole_pair_force(p1, p2, ia_params, d, dist, bonded_ias,
-                                        kernel_forces) +
+    force +=
+        thole_pair_force(p1, p2, ia_params, d, dist, bonded_ias, kernel_forces);
 #endif
-                       calc_non_central_force(p1, p2, ia_params, d, dist).f;
+#ifdef GAY_BERNE
+    if (gb_active(ia_params)) {
+      force += gb_pair_force(p1.quat(), p2.quat(), ia_params, d, dist).f;
+    }
+#endif
     auto const stress = Utils::tensor_product(d, force);
     obs_pressure.add_non_bonded_contribution(p1.type(), p2.type(), p1.mol_id(),
                                              p2.mol_id(), flatten(stress));

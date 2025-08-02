@@ -40,7 +40,9 @@ void link_cell(CellIterator first, CellIterator last,
       for (auto jt = std::next(it); jt != local_particles.end(); ++jt) {
         pair_kernel(p1, *jt);
       }
-
+    }
+    for (auto it = local_particles.begin(); it != local_particles.end(); ++it) {
+      auto &p1 = *it;
       /* Pairs with neighbors */
       for (auto &neighbor : cell->neighbors().red()) {
         for (auto &p2 : neighbor->particles()) {

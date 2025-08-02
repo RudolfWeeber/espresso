@@ -67,6 +67,9 @@
 #include "errorhandling.hpp"
 #include "exclusions.hpp"
 #include "thermostat.hpp"
+#ifdef NPT
+#include "npt.hpp"
+#endif
 
 #include <utils/Vector.hpp>
 
@@ -140,20 +143,6 @@ inline Utils::Vector3d calc_central_radial_force(IA_parameters const &ia_params,
   return force_factor * d;
 }
 
-inline ParticleForce calc_non_central_force(Particle const &p1,
-                                            Particle const &p2,
-                                            IA_parameters const &ia_params,
-                                            Utils::Vector3d const &d,
-                                            double const dist) {
-
-  ParticleForce pf{};
-/* Gay-Berne */
-#ifdef GAY_BERNE
-  pf += gb_pair_force(p1.quat(), p2.quat(), ia_params, d, dist);
-#endif
-  return pf;
-}
-
 inline void apply_opposing_force(ParticleForce &pf, Utils::Vector3d const &d) {
 #ifdef ROTATION
   // if torque is a null vector, the opposing torque is a null vector too
@@ -203,11 +192,11 @@ inline void add_non_bonded_pair_force(
     if (do_nonbonded(p1, p2)) {
 #endif
       pf.f += calc_central_radial_force(ia_params, d, dist);
-#ifdef THOLE
-      pf.f += thole_pair_force(p1, p2, ia_params, d, dist, bonded_ias,
-                               coulomb_kernel);
+#ifdef GAY_BERNE
+      if (gb_active(ia_params)) {
+        pf += gb_pair_force(p1.quat(), p2.quat(), ia_params, d, dist);
+      }
 #endif
-      pf += calc_non_central_force(p1, p2, ia_params, d, dist);
 #ifdef EXCLUSIONS
     }
 #endif
@@ -219,7 +208,9 @@ inline void add_non_bonded_pair_force(
   /* electrostatic is calculated by energy                             */
   /*********************************************************************/
 #ifdef NPT
-  npt_add_virial_force_contribution(pf.f, d);
+  if (npt_active()) {
+    npt_add_virial_force_contribution(pf.f, d);
+  }
 #endif
 
   /***********************************************/
@@ -231,9 +222,15 @@ inline void add_non_bonded_pair_force(
   auto const q1q2 = p1.q() * p2.q();
   if (q1q2 != 0. and coulomb_kernel != nullptr) {
     pf.f += (*coulomb_kernel)(q1q2, d, dist);
+#ifdef THOLE
+    pf.f += thole_pair_force(p1, p2, ia_params, d, dist, bonded_ias,
+                             coulomb_kernel);
+#endif
 #ifdef NPT
-    npt_add_virial_diagonalSum_contribution(
-        (*coulomb_u_kernel)(p1, p2, q1q2, d, dist));
+    if (npt_active()) {
+      npt_add_virial_diagonalSum_contribution(
+          (*coulomb_u_kernel)(p1, p2, q1q2, d, dist));
+    }
 #endif
 #ifdef P3M
     if (elc_kernel)
@@ -345,7 +342,9 @@ inline bool add_bonded_two_body_force(
       p2.force() -= result.value();
 
 #ifdef NPT
-      npt_add_virial_force_contribution(result.value(), dx);
+      if (npt_active()) {
+        npt_add_virial_force_contribution(result.value(), dx);
+      }
 #endif
       return false;
     }

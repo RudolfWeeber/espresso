@@ -148,4 +148,5 @@ void System::System::npt_add_virial_contribution(Utils::Vector3d const &force,
     npt_inst_pressure->p_vir += hadamard_product(force, d);
   }
 }
+
 #endif // NPT

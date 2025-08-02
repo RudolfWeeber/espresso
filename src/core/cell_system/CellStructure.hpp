@@ -115,8 +115,7 @@ namespace detail {
 // NOLINTNEXTLINE(bugprone-exception-escape)
 struct MinimalImageDistance {
   BoxGeometry const box;
-
-  Distance operator()(Particle const &p1, Particle const &p2) const {
+  inline Distance operator()(Particle const &p1, Particle const &p2) const {
     return Distance(box.get_mi_vector(p1.pos(), p2.pos()));
   }
 };

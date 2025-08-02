@@ -34,6 +34,10 @@
 #include <cstddef>
 #include <vector>
 
+#include "PropagationMode.hpp"
+#include "integrators/Propagation.hpp"
+#include "system/System.hpp"
+
 namespace System {
 class System;
 } // namespace System
@@ -98,5 +102,12 @@ struct InstantaneousPressure {
   /** ideal gas components of \ref p_inst, derived from the velocities */
   Utils::Vector3d p_vel = {0., 0., 0.};
 };
+
+/** Check if NPT integration is active. */
+inline bool npt_active() {
+  auto const &system = ::System::get_system();
+  return (system.propagation->integ_switch == INTEG_METHOD_NPT_ISO_AND) ||
+         (system.propagation->integ_switch == INTEG_METHOD_NPT_ISO_MTK);
+}
 
 #endif // NPT

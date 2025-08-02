@@ -45,6 +45,11 @@
 
 #include <cmath>
 
+/** Check if Gay-Berne interaction is active */
+inline bool gb_active(IA_parameters const &ia_params) {
+  return ia_params.gay_berne.cut != INACTIVE_CUTOFF;
+}
+
 /** Calculate Gay-Berne force and torques */
 inline ParticleForce gb_pair_force(Utils::Quaternion<double> const &qi,
                                    Utils::Quaternion<double> const &qj,
