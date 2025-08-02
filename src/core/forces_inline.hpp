@@ -76,11 +76,10 @@
 #include <span>
 #include <tuple>
 
-inline ParticleForce calc_central_radial_force(IA_parameters const &ia_params,
-                                               Utils::Vector3d const &d,
-                                               double const dist) {
+inline Utils::Vector3d calc_central_radial_force(IA_parameters const &ia_params,
+                                                 Utils::Vector3d const &d,
+                                                 double const dist) {
 
-  ParticleForce pf{};
   auto force_factor = 0.;
 /* Lennard-Jones */
 #ifdef LENNARD_JONES
@@ -138,8 +137,7 @@ inline ParticleForce calc_central_radial_force(IA_parameters const &ia_params,
 #ifdef TABULATED
   force_factor += tabulated_pair_force_factor(ia_params, dist);
 #endif
-  pf.f += force_factor * d;
-  return pf;
+  return force_factor * d;
 }
 
 inline ParticleForce calc_non_central_force(Particle const &p1,
@@ -156,18 +154,16 @@ inline ParticleForce calc_non_central_force(Particle const &p1,
   return pf;
 }
 
-inline ParticleForce calc_opposing_force(ParticleForce const &pf,
-                                         Utils::Vector3d const &d) {
-  ParticleForce out{-pf.f};
+inline void apply_opposing_force(ParticleForce &pf, Utils::Vector3d const &d) {
 #ifdef ROTATION
   // if torque is a null vector, the opposing torque is a null vector too
   // (this check guards from returning a small yet non-null opposing
   // torque due to numerical imprecision)
   if (pf.torque[0] != 0. || pf.torque[1] != 0. || pf.torque[2] != 0.) {
-    out.torque = -(pf.torque + vector_product(d, pf.f));
+    pf.torque = -(pf.torque + vector_product(d, pf.f));
   }
 #endif
-  return out;
+  pf.f = -pf.f;
 }
 
 /** Calculate non-bonded forces between a pair of particles and update their
@@ -206,7 +202,7 @@ inline void add_non_bonded_pair_force(
 #ifdef EXCLUSIONS
     if (do_nonbonded(p1, p2)) {
 #endif
-      pf += calc_central_radial_force(ia_params, d, dist);
+      pf.f += calc_central_radial_force(ia_params, d, dist);
 #ifdef THOLE
       pf.f += thole_pair_force(p1, p2, ia_params, d, dist, bonded_ias,
                                coulomb_kernel);
@@ -277,7 +273,8 @@ inline void add_non_bonded_pair_force(
   /***********************************************/
 
   p1.force_and_torque() += pf;
-  p2.force_and_torque() += calc_opposing_force(pf, d);
+  apply_opposing_force(pf, d);
+  p2.force_and_torque() += pf;
 }
 
 /** Compute the bonded interaction force between particle pairs.

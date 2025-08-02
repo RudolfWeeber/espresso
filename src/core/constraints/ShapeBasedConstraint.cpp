@@ -106,12 +106,12 @@ ParticleForce ShapeBasedConstraint::force(Particle const &p,
 
     if (dist > 0) {
       outer_normal_vec = -dist_vec / dist;
-      pf = calc_central_radial_force(ia_params, dist_vec, dist) +
+      pf.f = calc_central_radial_force(ia_params, dist_vec, dist);
 #ifdef THOLE
-           thole_pair_force(p, part_rep, ia_params, dist_vec, dist,
-                            *system.bonded_ias, get_ptr(coulomb_kernel)) +
+      pf.f += thole_pair_force(p, part_rep, ia_params, dist_vec, dist,
+                               *system.bonded_ias, get_ptr(coulomb_kernel));
 #endif
-           calc_non_central_force(p, part_rep, ia_params, dist_vec, dist);
+      pf += calc_non_central_force(p, part_rep, ia_params, dist_vec, dist);
 
 #ifdef DPD
       if (system.thermostat->thermo_switch & THERMO_DPD) {
@@ -125,12 +125,12 @@ ParticleForce ShapeBasedConstraint::force(Particle const &p,
 #endif
     } else if (m_penetrable && (dist <= 0)) {
       if ((!m_only_positive) && (dist < 0)) {
-        pf = calc_central_radial_force(ia_params, dist_vec, -dist) +
+        pf.f = calc_central_radial_force(ia_params, dist_vec, -dist);
 #ifdef THOLE
-             thole_pair_force(p, part_rep, ia_params, dist_vec, -dist,
-                              *system.bonded_ias, get_ptr(coulomb_kernel)) +
+        pf.f += thole_pair_force(p, part_rep, ia_params, dist_vec, -dist,
+                                 *system.bonded_ias, get_ptr(coulomb_kernel));
 #endif
-             calc_non_central_force(p, part_rep, ia_params, dist_vec, -dist);
+        pf += calc_non_central_force(p, part_rep, ia_params, dist_vec, -dist);
 
 #ifdef DPD
         if (system.thermostat->thermo_switch & THERMO_DPD) {
@@ -149,7 +149,9 @@ ParticleForce ShapeBasedConstraint::force(Particle const &p,
     }
 
 #ifdef ROTATION
-    part_rep.torque() += calc_opposing_force(pf, dist_vec).torque;
+    auto pf_copy = pf;
+    apply_opposing_force(pf_copy, dist_vec);
+    part_rep.torque() += pf_copy.torque;
 #endif
 #ifdef DPD
     pf.f += dpd_force;

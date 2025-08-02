@@ -149,7 +149,7 @@ if args.visualizer:
 
 # time integration loop
 timings = benchmarks.get_timings(
-    system, measurement_steps, n_iterations, retune_skin_after_steps=5)
+    system, measurement_steps, n_iterations, retune_skin_after_steps=30)
 
 # average time
 avg, ci = benchmarks.get_average_time(timings)
