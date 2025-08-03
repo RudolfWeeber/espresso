@@ -135,12 +135,29 @@ void System::System::calculate_forces() {
 #endif
 #endif // CUDA
 
+#ifdef CALIPER
+  CALI_MARK_BEGIN("clear_queues");
+#endif
 #ifdef COLLISION_DETECTION
   collision_detection->clear_queue();
 #endif
   bond_breakage->clear_queue();
+#ifdef CALIPER
+  CALI_MARK_END("clear_queues");
+#endif
+
+#ifdef CALIPER
+  CALI_MARK_BEGIN("setup_particles");
+#endif
   auto particles = cell_structure->local_particles();
+#ifdef CALIPER
+  CALI_MARK_END("setup_particles");
+#endif
+
 #ifdef ELECTROSTATICS
+#ifdef CALIPER
+  CALI_MARK_BEGIN("icc_iteration");
+#endif
   if (coulomb.impl->extension) {
     if (auto icc = std::get_if<std::shared_ptr<ICCStar>>(
             get_ptr(coulomb.impl->extension))) {
@@ -148,18 +165,51 @@ void System::System::calculate_forces() {
       (**icc).iteration(*cell_structure, particles, ghost_particles);
     }
   }
+#ifdef CALIPER
+  CALI_MARK_END("icc_iteration");
+#endif
 #endif // ELECTROSTATICS
+
 #ifdef NPT
+#ifdef CALIPER
+  CALI_MARK_BEGIN("npt_reset");
+#endif
   if (propagation->used_propagations & PropagationMode::TRANS_LANGEVIN_NPT) {
     // reset virial part of instantaneous pressure
     npt_inst_pressure->p_vir = Utils::Vector3d{};
   }
+#ifdef CALIPER
+  CALI_MARK_END("npt_reset");
+#endif
+#endif
+
+#ifdef CALIPER
+  CALI_MARK_BEGIN("init_forces");
 #endif
   init_forces(*cell_structure);
+#ifdef CALIPER
+  CALI_MARK_END("init_forces");
+#endif
+
+#ifdef CALIPER
+  CALI_MARK_BEGIN("thermostat_force_init");
+#endif
   thermostat_force_init();
+#ifdef CALIPER
+  CALI_MARK_END("thermostat_force_init");
+#endif
 
+#ifdef CALIPER
+  CALI_MARK_BEGIN("calc_long_range_forces");
+#endif
   calc_long_range_forces(particles);
+#ifdef CALIPER
+  CALI_MARK_END("calc_long_range_forces");
+#endif
 
+#ifdef CALIPER
+  CALI_MARK_BEGIN("setup_kernels");
+#endif
   auto const elc_kernel = coulomb.pair_force_elc_kernel();
   auto const coulomb_kernel = coulomb.pair_force_kernel();
   auto const dipoles_kernel = dipoles.pair_force_kernel();
@@ -191,8 +241,14 @@ void System::System::calculate_forces() {
     return add_bonded_force(p1, bond_id, partners, bonded_ias, bond_breakage,
                             box_geo, coulomb_kernel_ptr);
   };
+#ifdef CALIPER
+  CALI_MARK_END("setup_kernels");
+#endif
 
 #ifdef SHARED_MEMORY_PARALLELISM
+#ifdef CALIPER
+  CALI_MARK_BEGIN("cabana_setup");
+#endif
   auto const &verlet_criterion =
       VerletCriterion<>{*this,
                         cell_structure->get_verlet_skin(),
@@ -236,7 +292,13 @@ void System::System::calculate_forces() {
       local_virial,
 #endif
       aosoa);
+#ifdef CALIPER
+  CALI_MARK_END("cabana_setup");
+#endif
 
+#ifdef CALIPER
+  CALI_MARK_BEGIN("cabana_short_range");
+#endif
   cabana_short_range(bond_kernel, first_neighbor_kernel,
 #ifdef COLLISION_DETECTION
                      collision_detection,
@@ -244,8 +306,14 @@ void System::System::calculate_forces() {
                      *cell_structure, get_interaction_range(),
                      bonded_ias->maximal_cutoff(), particles,
                      cell_structure->ghost_particles(), verlet_criterion);
+#ifdef CALIPER
+  CALI_MARK_END("cabana_short_range");
+#endif
 #else
 
+#ifdef CALIPER
+  CALI_MARK_BEGIN("setup_pair_kernel");
+#endif
   auto pair_kernel = [coulomb_kernel_ptr = get_ptr(coulomb_kernel),
                       dipoles_kernel_ptr = get_ptr(dipoles_kernel),
                       elc_kernel_ptr = get_ptr(elc_kernel),
@@ -268,25 +336,60 @@ void System::System::calculate_forces() {
     }
 #endif
   };
+#ifdef CALIPER
+  CALI_MARK_END("setup_pair_kernel");
+#endif
 
+#ifdef CALIPER
+  CALI_MARK_BEGIN("short_range_loop");
+#endif
   short_range_loop(bond_kernel, pair_kernel, *cell_structure, maximal_cutoff(),
                    bonded_ias->maximal_cutoff(),
                    VerletCriterion<>{*this, cell_structure->get_verlet_skin(),
                                      get_interaction_range(), coulomb_cutoff,
                                      dipole_cutoff,
                                      collision_detection_cutoff});
+#ifdef CALIPER
+  CALI_MARK_END("short_range_loop");
+#endif
 
 #endif
+
+#ifdef CALIPER
+  CALI_MARK_BEGIN("constraints_add_forces");
+#endif
   constraints->add_forces(particles, get_sim_time());
+#ifdef CALIPER
+  CALI_MARK_END("constraints_add_forces");
+#endif
+
+#ifdef CALIPER
+  CALI_MARK_BEGIN("oif_global_calculate_forces");
+#endif
   oif_global->calculate_forces();
+#ifdef CALIPER
+  CALI_MARK_END("oif_global_calculate_forces");
+#endif
 
   // Must be done here. Forces need to be ghost-communicated
+#ifdef CALIPER
+  CALI_MARK_BEGIN("immersed_boundaries_volume_conservation");
+#endif
   immersed_boundaries->volume_conservation(*cell_structure);
+#ifdef CALIPER
+  CALI_MARK_END("immersed_boundaries_volume_conservation");
+#endif
 
+#ifdef CALIPER
+  CALI_MARK_BEGIN("lb_couple_particles");
+#endif
   if (thermostat->lb and (propagation->used_propagations &
                           PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE)) {
     lb_couple_particles();
   }
+#ifdef CALIPER
+  CALI_MARK_END("lb_couple_particles");
+#endif
 
 #ifdef CUDA
 #ifdef CALIPER
@@ -299,20 +402,44 @@ void System::System::calculate_forces() {
 #endif // CUDA
 
 #ifdef VIRTUAL_SITES_RELATIVE
+#ifdef CALIPER
+  CALI_MARK_BEGIN("vs_relative_back_transfer");
+#endif
   if (propagation->used_propagations &
       (PropagationMode::TRANS_VS_RELATIVE | PropagationMode::ROT_VS_RELATIVE)) {
     vs_relative_back_transfer_forces_and_torques(*cell_structure);
   }
+#ifdef CALIPER
+  CALI_MARK_END("vs_relative_back_transfer");
+#endif
 #endif
 
   // Communication step: ghost forces
+#ifdef CALIPER
+  CALI_MARK_BEGIN("ghosts_reduce_forces");
+#endif
   cell_structure->ghosts_reduce_forces();
+#ifdef CALIPER
+  CALI_MARK_END("ghosts_reduce_forces");
+#endif
 
   // should be pretty late, since it needs to zero out the total force
+#ifdef CALIPER
+  CALI_MARK_BEGIN("comfixed_apply");
+#endif
   comfixed->apply(particles);
+#ifdef CALIPER
+  CALI_MARK_END("comfixed_apply");
+#endif
 
   // Needs to be the last one to be effective
+#ifdef CALIPER
+  CALI_MARK_BEGIN("force_capping");
+#endif
   force_capping(*cell_structure, force_cap);
+#ifdef CALIPER
+  CALI_MARK_END("force_capping");
+#endif
 
   // mark that forces are now up-to-date
   propagation->recalc_forces = false;

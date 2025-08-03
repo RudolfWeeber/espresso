@@ -53,6 +53,8 @@
 #include <span>
 #include <vector>
 
+#include <Kokkos_Core.hpp>
+
 /** Tag for ghosts communications. */
 #define REQ_GHOST_SEND 100
 
@@ -377,13 +379,14 @@ static void add_forces_from_recv_buffer(CommBuf &recv_buffer,
 static void cell_cell_transfer(GhostCommunication const &ghost_comm,
                                BoxGeometry const &box_geo,
                                unsigned int data_parts) {
-  CommBuf buffer;
-  if (!(data_parts & GHOSTTRANS_PARTNUM)) {
-    buffer.resize(calc_transmit_size(box_geo, data_parts));
-  }
   /* transfer data */
   auto const offset = ghost_comm.part_lists.size() / 2;
-  for (std::size_t pl = 0; pl < offset; pl++) {
+  auto transfer_size = calc_transmit_size(box_geo, data_parts);
+  Kokkos::parallel_for(offset, [&](int pl) {
+    CommBuf buffer;
+    if (!(data_parts & GHOSTTRANS_PARTNUM)) {
+      buffer.resize(transfer_size);
+    }
     auto *src_list = ghost_comm.part_lists[pl];
     auto *dst_list = ghost_comm.part_lists[pl + offset];
 
@@ -409,7 +412,7 @@ static void cell_cell_transfer(GhostCommunication const &ghost_comm,
         }
       }
     }
-  }
+  });
 }
 
 static bool is_send_op(int comm_type, int node, int this_node) {
