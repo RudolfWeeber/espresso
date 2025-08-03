@@ -59,6 +59,10 @@
 #include <Cabana_NeighborList.hpp>
 #include <Kokkos_Core.hpp>
 #endif
+#include "particle_enumeration.hpp"
+#ifdef CALIPER
+#include "caliper/cali.h"
+#endif
 
 #ifdef SHARED_MEMORY_PARALLELISM
 
@@ -136,6 +140,9 @@ void CellStructure::reset_cabana_data() {
 void CellStructure::rebuild_local_properties(const std::size_t num_part,
                                              const std::size_t num_threads,
                                              const double pair_cutoff) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   m_local_force =
       std::make_unique<ForceType>("local_force", num_part, num_threads);
 #ifdef ROTATION
@@ -155,13 +162,77 @@ void CellStructure::rebuild_local_properties(const std::size_t num_part,
 }
 
 void CellStructure::reset_local_properties() {
-  Kokkos::deep_copy(get_local_force(), 0);
-#ifdef ROTATION
-  Kokkos::deep_copy(get_local_torque(), 0);
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
 #endif
+  Kokkos::parallel_for(get_local_force().extent(0), [&](int i) {
+    for (int j = 0; j < get_local_force().extent(1); j++) {
+      for (int k : {0, 1, 2}) {
+        get_local_force()(i, j, k) = 0.;
+      }
+    }
+#ifdef ROTATION
+    for (int j = 0; j < get_local_force().extent(1); j++) {
+      for (int k : {0, 1, 2}) {
+        get_local_torque()(i, j, k) = 0.;
+      }
+    }
+#endif
+  });
 #ifdef NPT
   Kokkos::deep_copy(get_local_virial(), 0);
 #endif
+}
+
+void CellStructure::set_index_map() {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
+  m_unique_particles.clear();
+  m_unique_particles.resize(count_local_particles());
+  std::unordered_set<int> registered_index{};
+  enumerate_local_particles(
+      *this, [&](int index, Particle &p) { m_unique_particles[index] = &p; });
+
+  for (auto &p : ghost_particles()) {
+    const Particle *local_particle = get_local_particle(p.id());
+    if (not local_particle) {
+      continue;
+    }
+    if (not local_particle->is_ghost()) {
+      continue;
+    }
+    if (registered_index.contains(p.id())) {
+      continue;
+    }
+    registered_index.insert(p.id());
+    m_unique_particles.emplace_back(&p);
+  }
+  registered_index.clear();
+
+  class Reducer {
+  public:
+    using ParticleVec = std::vector<Particle *>;
+    using value_type = int;
+    ParticleVec &particles;
+    Reducer(ParticleVec &particles) : particles(particles) {};
+    Reducer(const Reducer &other) : particles(other.particles) {};
+    KOKKOS_INLINE_FUNCTION void operator()(int const i,
+                                           value_type &update) const {
+      update = std::max(particles[i]->id(), update);
+    }
+
+    // "Join" intermediate results from different threads.
+    // This should normally implement the same reduction
+    // operation as operator() above.
+    KOKKOS_INLINE_FUNCTION void join(value_type &dst,
+                                     value_type const &src) const {
+      dst = std::max(src, dst);
+    }
+  };
+  const Reducer reducer(m_unique_particles);
+  Kokkos::parallel_reduce(m_unique_particles.size(), reducer,
+                          m_cached_max_local_particle_id);
 }
 #endif
 

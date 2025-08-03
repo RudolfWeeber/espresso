@@ -188,7 +188,9 @@ private:
   double m_verlet_skin = 0.;
   bool m_verlet_skin_set = false;
   double m_verlet_reuse = 0.;
+
 #ifdef SHARED_MEMORY_PARALLELISM
+  int m_cached_max_local_particle_id;
   using ForceType = Kokkos::View<double **[3], Kokkos::LayoutRight>;
   std::unique_ptr<ForceType> m_local_force;
 #ifdef ROTATION
@@ -340,6 +342,14 @@ public:
     return Cells::particles(decomposition().ghost_cells());
   }
 
+  int count_local_particles() const {
+    int count = 0;
+    for (auto const &cell : m_decomposition->local_cells()) {
+      count += cell->particles().size();
+    }
+    return count;
+  }
+
   /** @brief whether to use parallel version of @ref for_each_local_particle */
   bool use_parallel_for_each_local_particle() const {
 #ifdef SHARED_MEMORY_PARALLELISM
@@ -442,6 +452,9 @@ public:
    * this node, or -1 if there are no particles on this node.
    */
   int get_max_local_particle_id() const;
+  int get_cached_max_local_particle_id() const {
+    return m_cached_max_local_particle_id;
+  };
 
   /**
    * @brief Remove all particles from the cell system.
@@ -714,7 +727,6 @@ private:
   // bool steepest_descent_flag = true;
   int max_prefactor = 8;
   int max_counts = -1;
-  int m_max_id = 0;
 
   inline int estimate_max_counts(const double pair_cutoff,
                                  const int number_of_unique_particles) {
@@ -758,9 +770,7 @@ public:
   void set_max_prefactor(int value) { max_prefactor = value; }
 
   void set_max_counts(int value) { max_counts = value; }
-  int get_max_counts() { return max_counts; }
-
-  int get_max_id() { return m_max_id; }
+  int get_max_counts() const { return max_counts; }
 
   void rebuild_local_properties(std::size_t num_part, std::size_t num_threads,
                                 double pair_cutoff);
@@ -777,36 +787,7 @@ public:
   ListType &get_cabana_verlet_list() { return *m_cabana_verlet_list; };
   std::vector<Particle *> &get_unique_particles() { return m_unique_particles; }
 
-  inline void set_index_map(ParticleRange const &particles,
-                            ParticleRange const &ghost_particles, int &index) {
-    m_unique_particles.clear();
-    m_max_id = 0;
-    std::unordered_set<int> registered_index{};
-    for (auto &p : particles) {
-      if (p.id() > m_max_id)
-        m_max_id = p.id();
-      m_unique_particles.emplace_back(&p);
-      index++;
-    }
-
-    for (auto &p : ghost_particles) {
-      if (not get_local_particle(p.id())) {
-        continue;
-      }
-      if (not get_local_particle(p.id())->is_ghost()) {
-        continue;
-      }
-      if (registered_index.contains(p.id())) {
-        continue;
-      }
-      if (p.id() > m_max_id)
-        m_max_id = p.id();
-      registered_index.insert(p.id());
-      m_unique_particles.emplace_back(&p);
-      index++;
-    }
-    registered_index.clear();
-  }
+  void set_index_map();
 #endif
 
 private:
