@@ -26,8 +26,18 @@
 #include "Particle.hpp"
 #include "cell_system/Cell.hpp"
 
+#include <unordered_set>
 #include <utility>
 #include <vector>
+
+// Custom hash function for pair<int, int>
+struct pair_hash {
+  std::size_t operator()(const std::pair<int, int> &p) const {
+    auto h1 = std::hash<int>{}(p.first);
+    auto h2 = std::hash<int>{}(p.second);
+    return h1 ^ (h2 << 1);
+  }
+};
 
 BOOST_AUTO_TEST_CASE(link_cell) {
   auto const n_cells = 10u;
@@ -54,21 +64,29 @@ BOOST_AUTO_TEST_CASE(link_cell) {
     }
   }
 
-  std::vector<std::pair<int, int>> lc_pairs;
-  lc_pairs.reserve((n_part * (n_part - 1u)) / 2u);
+  // Collect all pairs found by the link_cell algorithm
+  std::unordered_set<std::pair<int, int>, pair_hash> found_pairs;
 
   Algorithm::link_cell(cells.begin(), cells.end(),
-                       [&lc_pairs](Particle const &p1, Particle const &p2) {
-                         if (p1.id() <= p2.id())
-                           lc_pairs.emplace_back(p1.id(), p2.id());
+                       [&found_pairs](Particle const &p1, Particle const &p2) {
+                         // Store pairs in normalized order (smaller id first)
+                         if (p1.id() < p2.id())
+                           found_pairs.emplace(p1.id(), p2.id());
+                         else if (p2.id() < p1.id())
+                           found_pairs.emplace(p2.id(), p1.id());
+                         // Skip if p1.id() == p2.id()
                        });
 
-  BOOST_CHECK(lc_pairs.size() == (n_part * (n_part - 1u) / 2u));
-
-  auto it = lc_pairs.begin();
+  // Generate expected pairs
+  std::unordered_set<std::pair<int, int>, pair_hash> expected_pairs;
   for (auto i = 0; i < static_cast<int>(n_part); i++)
     for (auto j = i + 1; j < static_cast<int>(n_part); j++) {
-      BOOST_CHECK((it->first == i) && (it->second == j));
-      ++it;
+      expected_pairs.emplace(i, j);
     }
+
+  // Check that we found exactly the expected number of pairs
+  BOOST_CHECK_EQUAL(found_pairs.size(), expected_pairs.size());
+
+  // Check that the sets are equal (all expected pairs were found)
+  BOOST_CHECK(found_pairs == expected_pairs);
 }
