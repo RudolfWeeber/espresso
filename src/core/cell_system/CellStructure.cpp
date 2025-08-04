@@ -191,9 +191,15 @@ void CellStructure::set_index_map() {
   m_unique_particles.clear();
   m_unique_particles.resize(count_local_particles());
   std::unordered_set<int> registered_index{};
-  enumerate_local_particles(
-      *this, [&](int index, Particle &p) { m_unique_particles[index] = &p; });
-
+  using execution_space = Kokkos::DefaultExecutionSpace;
+  int n_threads = execution_space().concurrency();
+  std::vector<int> max_ids(n_threads);
+  enumerate_local_particles(*this, [&](int index, Particle &p) {
+    m_unique_particles[index] = &p;
+    const int thread_num = omp_get_thread_num();
+    max_ids[thread_num] = std::max(p.id(), max_ids[thread_num]);
+  });
+  int max_id = *(std::max_element(max_ids.begin(), max_ids.end()));
   for (auto &p : ghost_particles()) {
     const Particle *local_particle = get_local_particle(p.id());
     if (not local_particle) {
@@ -207,32 +213,10 @@ void CellStructure::set_index_map() {
     }
     registered_index.insert(p.id());
     m_unique_particles.emplace_back(&p);
+    max_id = std::max(p.id(), max_id);
   }
   registered_index.clear();
-
-  class Reducer {
-  public:
-    using ParticleVec = std::vector<Particle *>;
-    using value_type = int;
-    ParticleVec &particles;
-    Reducer(ParticleVec &particles) : particles(particles) {};
-    Reducer(const Reducer &other) : particles(other.particles) {};
-    KOKKOS_INLINE_FUNCTION void operator()(int const i,
-                                           value_type &update) const {
-      update = std::max(particles[i]->id(), update);
-    }
-
-    // "Join" intermediate results from different threads.
-    // This should normally implement the same reduction
-    // operation as operator() above.
-    KOKKOS_INLINE_FUNCTION void join(value_type &dst,
-                                     value_type const &src) const {
-      dst = std::max(src, dst);
-    }
-  };
-  const Reducer reducer(m_unique_particles);
-  Kokkos::parallel_reduce(m_unique_particles.size(), reducer,
-                          m_cached_max_local_particle_id);
+  m_cached_max_local_particle_id = max_id;
 }
 #endif
 
