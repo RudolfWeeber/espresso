@@ -162,9 +162,7 @@ ParticleForce ShapeBasedConstraint::force(Particle const &p,
     }
 
 #ifdef ROTATION
-    auto pf_copy = pf;
-    apply_opposing_force(pf_copy, dist_vec);
-    part_rep.torque() += pf_copy.torque;
+    part_rep.torque() += calc_opposing_force(pf, dist_vec).torque;
 #endif
 #ifdef DPD
     pf.f += dpd_force;

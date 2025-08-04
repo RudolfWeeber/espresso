@@ -154,6 +154,12 @@ inline void apply_opposing_force(ParticleForce &pf, Utils::Vector3d const &d) {
 #endif
   pf.f = -pf.f;
 }
+inline ParticleForce calc_opposing_force(const ParticleForce &pf,
+                                         Utils::Vector3d const &d) {
+  ParticleForce res = pf;
+  apply_opposing_force(res, d);
+  return res;
+}
 
 /** Calculate non-bonded forces between a pair of particles and update their
  *  forces and torques.
