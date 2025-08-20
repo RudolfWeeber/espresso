@@ -32,7 +32,6 @@
 #include <utils/math/sqr.hpp>
 
 #include <cmath>
-#include <future>
 #include <unordered_set>
 #include <vector>
 
@@ -74,19 +73,23 @@ struct ParticleCouplingState {
   // Structure to hold all data related to a coupled particle
   struct CoupledParticleData {
     Particle *particle;
-    std::vector<Utils::Vector3d> force_positions;
+    size_t
+        force_positions_start; // Start index in global force positions vector
+    size_t force_positions_count; // Number of force positions for this particle
     std::optional<size_t> velocity_coupling_index;
     coupling_modes mode;
   };
 
   std::vector<CoupledParticleData> coupled_particle_data;
   std::vector<Utils::Vector3d> positions_velocity_coupling;
-  std::future<std::vector<Utils::Vector3d>> interpolated_velocities_future;
+  std::vector<Utils::Vector3d>
+      all_force_positions; // Direct storage for all force positions
   std::vector<Utils::Vector3d> interpolated_velocities;
 
   void clear() {
     coupled_particle_data.clear();
     positions_velocity_coupling.clear();
+    all_force_positions.clear();
     interpolated_velocities.clear();
   }
 };

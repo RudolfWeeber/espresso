@@ -95,11 +95,12 @@ function(python_test)
         ${MPIEXEC} ${ESPRESSO_MPIEXEC_PREFLAGS} ${MPIEXEC_NUMPROC_FLAG}
         ${TEST_NUM_PROC} ${MPIEXEC_PREFLAGS} ${ESPRESSO_MPIEXEC_TMPDIR}
         ${CMAKE_BINARY_DIR}/pypresso ${PYPRESSO_OPTIONS}
-        ${TEST_FILE_CONFIGURED} ${TEST_ARGUMENTS} ${MPIEXEC_POSTFLAGS})
+        ${TEST_FILE_CONFIGURED} --verbose ${TEST_ARGUMENTS}
+        ${MPIEXEC_POSTFLAGS})
   else()
     add_test(NAME ${TEST_NAME}
              COMMAND ${CMAKE_BINARY_DIR}/pypresso ${PYPRESSO_OPTIONS}
-                     ${TEST_FILE_CONFIGURED} ${TEST_ARGUMENTS})
+                     ${TEST_FILE_CONFIGURED} --verbose ${TEST_ARGUMENTS})
   endif()
 
   if(${TEST_GPU_SLOTS} GREATER 0 AND ESPRESSO_BUILD_WITH_CUDA)
@@ -231,6 +232,7 @@ python_test(FILE engine_langevin.py MAX_NUM_PROC 4)
 python_test(FILE engine_lb.py MAX_NUM_PROC 2 GPU_SLOTS 1)
 python_test(FILE engine_lb.py MAX_NUM_PROC 1 GPU_SLOTS 1 SUFFIX 1_core)
 python_test(FILE icc.py MAX_NUM_PROC 4)
+python_test(FILE icc_electrodes.py MAX_NUM_PROC 1)
 python_test(FILE icc_interface.py MAX_NUM_PROC 1 GPU_SLOTS 1)
 python_test(FILE mass-and-rinertia_per_particle.py MAX_NUM_PROC 2 LABELS long)
 python_test(FILE interactions_bond_angle.py MAX_NUM_PROC 4)

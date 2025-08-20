@@ -25,6 +25,7 @@
 #include "script_interface/get_value.hpp"
 
 #include <cassert>
+#include <filesystem>
 #include <memory>
 #include <regex>
 #include <stdexcept>
@@ -37,10 +38,16 @@ BOOST_AUTO_TEST_CASE(default_case) {
   using ScriptInterface::Variant;
 
   {
-    auto const s = std::string{"Abc"};
+    auto const s = std::string{"gemäß"};
     auto const v = Variant(s);
 
     BOOST_CHECK_EQUAL(get_value<std::string>(v), s);
+  }
+  {
+    auto const p = std::filesystem::path("ab/cd/ef/gemäß.txt");
+    auto const v = Variant(p);
+
+    BOOST_CHECK_EQUAL(get_value<std::filesystem::path>(v), p);
   }
   {
     auto const vec = Utils::Vector<double, 3>{1., 2., 3.};
@@ -135,7 +142,7 @@ BOOST_AUTO_TEST_CASE(get_value_from_map) {
   using ScriptInterface::Variant;
   using ScriptInterface::VariantMap;
 
-  VariantMap map{{"a", 13}, {"e", 3.1}, {"f", "s"}};
+  VariantMap map{{"a", 13}, {"e", 3.1}, {"f", std::string("s")}};
 
   BOOST_CHECK(3.1 == get_value<double>(map, "e"));
   BOOST_CHECK(13 == get_value_or(map, "a", -1));

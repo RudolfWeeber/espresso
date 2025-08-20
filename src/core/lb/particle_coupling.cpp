@@ -208,9 +208,15 @@ Utils::Vector3d ParticleCoupling::get_noise_term(Particle const &p) const {
   return m_noise_pref_wo_gamma * Utils::hadamard_product(sqrt(gamma), noise);
 }
 
+/** @brief Collect particles to couple to LB and initiate obtaining Lb
+ * interpolated velocities */
 ParticleCouplingState
 ParticleCoupling::prepare_coupling(std::vector<Particle *> const &particles) {
+#ifdef CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   ParticleCouplingState state;
+  state.coupled_particle_data.reserve(particles.size());
 
   if (particles.empty()) {
     return state;
@@ -231,28 +237,47 @@ ParticleCoupling::prepare_coupling(std::vector<Particle *> const &particles) {
     ParticleCouplingState::CoupledParticleData data;
     data.particle = ptr;
     data.mode = ParticleCouplingState::none;
+    data.force_positions_start = state.all_force_positions.size();
+    data.force_positions_count = 0;
 
-    // Determine force coupling positions
+    // Temporary vector to collect positions for this particle
+    std::vector<Utils::Vector3d> temp_positions;
+    temp_positions.reserve(8);
+
     if (in_box(folded_pos, fully_inside_lower, fully_inside_upper)) {
-      data.force_positions.push_back(folded_pos);
+      // Determine force coupling positions
+      // If the folded position of the particle is further than 1/2 agrid away
+      // from any wall, ghosts of the particle (shifted by +- box_l in any
+      // coordinate) are not within the domain of this MPi rank including halos
+      // (-agrid/2 +local_box_min..local_box_max+agrid/2)
+      temp_positions.emplace_back(folded_pos);
     } else {
+      // the particle is close to a boundary. We might have to also couple
+      // halos of the particle shifted by +- box_l in any coordinate
       positions_in_halo_impl(folded_pos, halo_lower_corner, halo_upper_corner,
-                             m_box_geo, data.force_positions);
+                             m_box_geo, temp_positions);
     }
 
     // Check if particle should be coupled
 #ifdef ENGINE
     if (p.swimming().is_engine_force_on_fluid) {
+      // swimmers excert a force on the fluid, but there is no
+      // coupling force based on the velocity difference between particle and
+      // fluid
       data.mode = ParticleCouplingState::swimmer_force_on_fluid;
     }
 #endif
     if (data.mode == ParticleCouplingState::none) {
       // Check if any position is within velocity coupling region
-      for (auto const &pos : data.force_positions) {
+      for (auto const &pos : temp_positions) {
         if (pos >= halo_lower_corner and pos < halo_upper_corner) {
+          // Coupling force on particle and fluid based on velocity difference.
+          // I.e., flwo velocity has to be obtained at this position.
+          // Note: Only one interpolation per particle is needed
+          // since velocities in the halo layers are identical
           data.velocity_coupling_index =
               state.positions_velocity_coupling.size();
-          state.positions_velocity_coupling.push_back(pos);
+          state.positions_velocity_coupling.emplace_back(pos);
           data.mode = ParticleCouplingState::particle_force;
           break;
         }
@@ -261,23 +286,18 @@ ParticleCoupling::prepare_coupling(std::vector<Particle *> const &particles) {
 
     // Only keep particles that will be coupled
     if (data.mode != ParticleCouplingState::none) {
-      state.coupled_particle_data.push_back(std::move(data));
+      // Add positions directly to global vector
+      state.all_force_positions.insert(state.all_force_positions.end(),
+                                       temp_positions.begin(),
+                                       temp_positions.end());
+      data.force_positions_count = temp_positions.size();
+      state.coupled_particle_data.emplace_back(std::move(data));
     }
   }
 
   if (!state.coupled_particle_data.empty()) {
-    // Use async interpolation only for GPU solvers
-    if (m_lb.is_gpu()) {
-      // Start async interpolation of velocities for all velocity coupling
-      // positions
-      state.interpolated_velocities_future =
-          m_lb.get_coupling_interpolated_velocities_async(
-              state.positions_velocity_coupling);
-    } else {
-      // For CPU solvers, get velocities synchronously
-      state.interpolated_velocities = m_lb.get_coupling_interpolated_velocities(
-          state.positions_velocity_coupling);
-    }
+    state.interpolated_velocities = m_lb.get_coupling_interpolated_velocities(
+        state.positions_velocity_coupling);
   }
 
   return state;
@@ -288,18 +308,12 @@ void ParticleCoupling::apply_forces(ParticleCouplingState &state) {
     return;
   }
 
-  // Wait for async velocity interpolation to complete (GPU case)
-  if (state.interpolated_velocities_future.valid()) {
-    state.interpolated_velocities = state.interpolated_velocities_future.get();
-  }
-  // For CPU case, velocities are already in state.interpolated_velocities
-
   auto const &domain_lower_corner = m_local_box.my_left();
   auto const &domain_upper_corner = m_local_box.my_right();
 
-  // Collect all force positions and forces
-  std::vector<Utils::Vector3d> all_force_positions;
+  // Pre-allocate forces vector with same size as positions
   std::vector<Utils::Vector3d> all_forces;
+  all_forces.reserve(state.all_force_positions.size());
 
   // Calculate and apply forces
   for (auto &data : state.coupled_particle_data) {
@@ -337,19 +351,24 @@ void ParticleCoupling::apply_forces(ParticleCouplingState &state) {
     }
 #endif
 
-    // Apply forces
-    for (auto const &pos : data.force_positions) {
+    // Apply forces to particle and collect forces for LB
+    bool particle_force_applied = false;
+    for (size_t i = 0; i < data.force_positions_count; ++i) {
+      auto const &pos =
+          state.all_force_positions[data.force_positions_start + i];
       if (pos >= domain_lower_corner and pos < domain_upper_corner) {
         /* Particle is in our LB volume, so this node
          * is responsible to adding its force */
-        p.force() += force_on_particle;
+        if (!particle_force_applied) {
+          p.force() += force_on_particle;
+          particle_force_applied = true;
+        }
       }
-      all_force_positions.push_back(pos);
-      all_forces.push_back(force_on_fluid);
+      all_forces.emplace_back(force_on_fluid);
     }
   }
 
-  m_lb.add_forces_at_pos(all_force_positions, all_forces);
+  m_lb.add_forces_at_pos(state.all_force_positions, all_forces);
 }
 
 #if defined(THERMOSTAT_PER_PARTICLE) and defined(PARTICLE_ANISOTROPY)
@@ -373,12 +392,11 @@ LB::ParticleCouplingState System::System::lb_prepare_particle_coupling() {
   CALI_CXX_MARK_FUNCTION;
 #endif
   assert(thermostat->lb != nullptr);
-  LB::ParticleCouplingState state;
 
   if (thermostat->lb->couple_to_md) {
     if (not lb.is_solver_set()) {
       runtimeErrorMsg() << "The LB thermostat requires a LB fluid";
-      return state;
+      return {};
     }
     auto const real_particles = cell_structure->local_particles();
     auto const ghost_particles = cell_structure->ghost_particles();
@@ -397,10 +415,9 @@ LB::ParticleCouplingState System::System::lb_prepare_particle_coupling() {
       }
     }
 
-    state = coupling.prepare_coupling(particles);
+    return coupling.prepare_coupling(particles);
   }
-
-  return state;
+  return {};
 }
 
 void System::System::lb_apply_particle_forces(
