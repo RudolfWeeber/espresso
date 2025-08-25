@@ -47,8 +47,6 @@
 #include <boost/mpi/collectives/all_reduce.hpp>
 
 #ifdef SHARED_MEMORY_PARALLELISM
-#include <Cabana_Core.hpp>
-#include <Cabana_NeighborList.hpp>
 #include <Kokkos_Core.hpp>
 #include <omp.h>
 #endif
@@ -85,7 +83,6 @@ void CellStructure::clear_local_properties() {
   m_local_virial.reset();
 #endif
   m_aosoa.reset();
-  m_particle_storage.reset();
   m_verlet_list_cabana.reset();
   m_rebuild_verlet_list_cabana = true;
 }
@@ -134,7 +131,8 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
 #ifdef ROTATION
     Kokkos::realloc(get_local_torque(), num_part, num_threads);
 #endif
-    m_particle_storage->resize(num_part);
+    // Resize particle views using AoSoA_pack's resize method
+    m_aosoa->resize(num_part, m_cached_max_local_particle_id);
     m_verlet_list_cabana->reallocData(num_part, max_counts);
   } else { // variables for local properties are generated.
     m_local_force =
@@ -143,8 +141,9 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
     m_local_torque =
         std::make_unique<ForceType>("local_torque", num_part, num_threads);
 #endif
-    m_particle_storage = std::make_unique<AoSoAType>("particles", num_part);
-    m_particle_storage->resize(num_part);
+    // Create AoSoA_pack and initialize with resize
+    m_aosoa = std::make_unique<AoSoA_pack>();
+    m_aosoa->resize(num_part, m_cached_max_local_particle_id);
 
     m_verlet_list_cabana =
         std::make_unique<ListType>(0ul, num_part, max_counts);
@@ -152,8 +151,6 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
 #ifdef NPT
   m_local_virial = std::make_unique<VirialType>("local_virial", num_threads);
 #endif
-  // particle properties are defined in aosoa_pack.hpp
-  m_aosoa = std::make_unique<AoSoA_pack>(*m_particle_storage);
 }
 
 void CellStructure::reset_local_force() {
