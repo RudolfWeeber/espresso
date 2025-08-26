@@ -21,7 +21,7 @@
 
 #include <config/config.hpp>
 
-#ifdef SHARED_MEMORY_PARALLELISM
+#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
 
 #include "cell_system/CellStructure.hpp"
 
@@ -63,4 +63,4 @@ struct CellStructure::AoSoA_pack {
   }
 };
 
-#endif // SHARED_MEMORY_PARALLELISM
+#endif // ESPRESSO_SHARED_MEMORY_PARALLELISM
