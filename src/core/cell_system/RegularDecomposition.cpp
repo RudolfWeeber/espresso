@@ -44,6 +44,7 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <utility>
 #include <vector>
@@ -393,19 +394,17 @@ void RegularDecomposition::init_cell_interactions() {
 
   // Note: the global index for physical cells is 0-based.
   // I.e., a global index of -1 refers to a ghost cell.
-
   auto const halo = Utils::Vector3i{1, 1, 1}; // number of ghost layers
   auto const cart_info = Utils::Mpi::cart_get<3>(m_comm);
-  auto const &node_pos = cart_info.coords; // 3d index of the MPI rank in the
-                                           // Cartesian grid of MPI ranks
-  auto const &node_grid =
-      ::communicator.node_grid; // Size of teh Cartesian grid of MPI ranks
+  // 3D index of the MPI rank in the Cartesian grid of MPI ranks
+  auto const &node_pos = cart_info.coords;
+  // size of the Cartesian grid of MPI ranks
+  auto const &node_grid = ::communicator.node_grid;
   auto const global_halo_offset = hadamard_product(node_pos, cell_grid) - halo;
-  auto const global_size = hadamard_product(
-      node_grid,
-      cell_grid); // MD Cell indx of lower halo layer on this MPI rank
+  // MD cell index of lower halo layer on this MPI rank
+  auto const global_size = hadamard_product(node_grid, cell_grid);
 
-  // Is a cell at the system boundary in the given coord
+  // is a cell at the system boundary in the given coord
   auto const at_boundary = [&global_size](int coord, Utils::Vector3i cell_idx) {
     return (cell_idx[coord] == 0 or cell_idx[coord] == global_size[coord]);
   };
@@ -525,12 +524,12 @@ void RegularDecomposition::init_cell_interactions() {
         std::vector<Cell *> black_neighbors;
 
         /* If we are running on a single MPI rank, it is not necessary to use
-         *  ghost cells. Instead of adding a ghost cell as
-         *  neighbor, we directly connect to the corresponding
-         *  physical cell across the periodic boudnary */
+         * ghost cells. Instead of adding a ghost cell as neighbor,
+         * we directly connect to the corresponding
+         * physical cell across the periodic boundary */
         for (auto &neighbor : neighbors) {
           if (one_mpi_rank) {
-            for (unsigned int coord : {0u, 1u, 2u}) {
+            for (auto coord : {0u, 1u, 2u}) {
               if (neighbor[coord] == -1) {
                 neighbor[coord] += cell_grid[coord];
               } else if (neighbor[coord] == cell_grid[coord]) {
@@ -546,13 +545,14 @@ void RegularDecomposition::init_cell_interactions() {
           auto cell = &cells.at(
               get_linear_index(local_index(neighbor), ghost_cell_grid));
 
-          // Devide red and black neighbors
+          // Divide red and black neighbors
           if (ind2 > ind1) {
             red_neighbors.push_back(cell);
           } else {
             black_neighbors.push_back(cell);
           }
         }
+
         // Assign neighbors to the cell
         cells[get_linear_index(local_index({m, n, o}), ghost_cell_grid)]
             .m_neighbors = Neighbors<Cell *>(red_neighbors, black_neighbors);
@@ -597,12 +597,10 @@ void assign_prefetches(GhostCommunicator &comm) {
 } // namespace
 
 GhostCommunicator RegularDecomposition::prepare_comm() {
-
-  // When running on a single MPI rank, the ghost cells are
-  // not needed, as the corresponding physical cell is available on the same MPi
-  // rank. The cell neighborships are set up such that cells across the periodic
+  // When running on a single MPI rank, the ghost cells are not needed,
+  // as the corresponding physical cell is available on the same MPI rank.
+  // The cell neighborships are set up such that cells across the periodic
   // boundaries are connected as neighbors directly.
-
   if (m_comm.size() == 1)
     return {};
 
