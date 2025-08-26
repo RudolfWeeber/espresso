@@ -59,7 +59,6 @@ struct CellStructure::AoSoA_pack {
       Kokkos::realloc(charge, num_particles);
       Kokkos::realloc(id, num_particles);
       Kokkos::realloc(type, num_particles);
-      Kokkos::realloc(id_to_index, num_particles);
     }
   }
 };

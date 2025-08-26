@@ -146,8 +146,8 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
   // ===================================================
   // Fill particle storage
   // ===================================================
+  Kokkos::realloc(aosoa.id_to_index, max_id + 1);
   auto &id_to_index = aosoa.id_to_index;
-
   kokkos_parallel_range_for<policy_type>(
       "Views write", std::size_t{0}, n_part,
       [&unique_particles, &aosoa, &id_to_index](int const index) {
