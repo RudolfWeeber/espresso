@@ -29,9 +29,10 @@ import ase
 class ASEInterfaceComprehensiveTest(ut.TestCase):
     """Comprehensive test suite for the ASE interface focusing on update_ase() method."""
 
+    system = espressomd.System(box_l=[10., 10., 10.])
+
     def setUp(self):
         """Set up system with particles having various properties."""
-        self.system = espressomd.System(box_l=[10., 10., 10.])
         self.system.time_step = 0.01
         
         # Add particles with positions, charges, masses, velocities
@@ -115,7 +116,7 @@ class ASEInterfaceComprehensiveTest(ut.TestCase):
         ase_interface = espressomd.plugins.ase.ASEInterface(
             system=self.system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part/all(),
+            particle_slice=self.system.part.all(),
             export_charges=True,
             export_masses=True,
             export_momenta=True
@@ -138,7 +139,7 @@ class ASEInterfaceComprehensiveTest(ut.TestCase):
         ase_interface = espressomd.plugins.ase.ASEInterface(
             system=self.system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part
+            particle_slice=self.system.part.all()
         )
         
         # Change particle positions
@@ -151,7 +152,7 @@ class ASEInterfaceComprehensiveTest(ut.TestCase):
         
         # Check that positions are updated
         atoms = ase_interface.atoms
-        expected_sositions = self.system.part.all().pos
+        expected_positions = self.system.part.all().pos
         np.testing.assert_allclose(atoms.positions, expected_positions)
 
     def test_update_ase_charges_no_skip(self):
@@ -159,7 +160,7 @@ class ASEInterfaceComprehensiveTest(ut.TestCase):
         ase_interface = espressomd.plugins.ase.ASEInterface(
             system=self.system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part,
+            particle_slice=self.system.part.all(),
             export_charges=True
         )
         
@@ -171,14 +172,14 @@ class ASEInterfaceComprehensiveTest(ut.TestCase):
         
         # Check that charges are updated
         atoms = ase_interface.atoms
-        np.testing.assert_allclose(atoms.get_initial_charges(), np.copy(system.part.all().q))
+        np.testing.assert_allclose(atoms.get_initial_charges(), np.copy(self.system.part.all().q))
 
     def test_update_ase_charges_with_skip(self):
         """Test update_ase() with charges enabled but skip_charge_update=True."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
             system=self.system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part,
+            particle_slice=self.system.part.all(),
             export_charges=True
         )
         
@@ -199,7 +200,7 @@ class ASEInterfaceComprehensiveTest(ut.TestCase):
         ase_interface = espressomd.plugins.ase.ASEInterface(
             system=self.system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part,
+            particle_slice=self.system.part.all(),
             export_masses=True
         )
         
@@ -211,7 +212,7 @@ class ASEInterfaceComprehensiveTest(ut.TestCase):
         
         # Check that masses are updated
         atoms = ase_interface.atoms
-        np.testing.assert_allclose(atoms.get_masses(), system.part.all().mass)
+        np.testing.assert_allclose(atoms.get_masses(), np.copy(self.system.part.all().mass))
 
     def test_update_ase_masses_with_skip(self):
         """Test update_ase() with masses enabled but skip_mass_update=True."""
@@ -226,7 +227,7 @@ class ASEInterfaceComprehensiveTest(ut.TestCase):
         original_masses = ase_interface.atoms.get_masses().copy()
         
         # Change particle masses
-        self.system.part[2].mass = 7.2
+        self.system.part.by_id(2).mass = 7.2
         
         # Update ASE with skip_mass_update=True
         ase_interface.update_ase(skip_mass_update=True)
@@ -245,9 +246,9 @@ class ASEInterfaceComprehensiveTest(ut.TestCase):
         )
         
         # Change particle velocities
-        self.system.part[0].v = [1.0, 1.1, 1.2]
-        self.system.part[1].v = [2.0, 2.1, 2.2]
-        self.system.part[2].v = [3.0, 3.1, 3.2]
+        self.system.part.by_id(0).v = [1.0, 1.1, 1.2]
+        self.system.part.by_id(1).v = [2.0, 2.1, 2.2]
+        self.system.part.by_id(2).v = [3.0, 3.1, 3.2]
         
         # Update ASE
         ase_interface.update_ase()
@@ -264,7 +265,7 @@ class ASEInterfaceComprehensiveTest(ut.TestCase):
         ase_interface = espressomd.plugins.ase.ASEInterface(
             system=self.system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part
+            particle_slice=self.system.part.all()
         )
         
         # Set atoms to None to simulate uninitialized state
