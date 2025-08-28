@@ -26,8 +26,8 @@ import ase
 
 
 @utx.skipIfMissingFeatures("EXTERNAL_FORCES")
-class ASEInterfaceComprehensiveTest(ut.TestCase):
-    """Comprehensive test suite for the ASE interface focusing on update_ase() method."""
+class ASEInterfaceTest(ut.TestCase):
+    """test suite for the ASE interface focusing on update_ase() method."""
 
     system = espressomd.System(box_l=[10., 10., 10.])
 
