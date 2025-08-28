@@ -90,8 +90,7 @@ class ASEInterface:
         unknown_types = set(types) - set(self.type_mapping)
         if unknown_types:
             raise RuntimeError(
-                f"Particle types '{
-                    unknown_types}' haven't been registered in the ASE type map"
+                f"Particle types '{unknown_types}' haven't been registered in the ASE type map"
             )
 
         # Check for virtual sites
@@ -108,44 +107,44 @@ class ASEInterface:
         self.update_ase()
 
     def update_ase(self, skip_charge_update: bool = False, skip_mass_update: bool = False):
-          """
-          Update the arrays in the atoms object based on the desired properties.
-  
-          Parameters
-          ----------
-          skip_charge_update : bool, optional
-              Whether to skip updating charges
-          skip_mass_update : bool, optional
-              Whether to skip updating masses
-          """
-          if self.atoms is None:
+        """
+        Update the arrays in the atoms object based on the desired properties.
+
+        Parameters
+        ----------
+        skip_charge_update : bool, optional
+            Whether to skip updating charges
+        skip_mass_update : bool, optional
+            Whether to skip updating masses
+        """
+        if self.atoms is None:
             raise RuntimeError(
-              "atoms object not initialized, call reset() first")
-  
-          particles = self.particle_slice
-  
-          # Always update positions (pos -> positions)
-          self.atoms.positions = np.copy(particles.pos)
-  
-          # Update charges if requested and not skipped
-          if self.export_charges and not skip_charge_update:
-              charges = np.copy(particles.q)
-              self.atoms.set_initial_charges(charges)
-  
-          # Update masses if requested and not skipped  
-          if self.export_masses and not skip_mass_update:
-              masses = np.copy(particles.mass)
-              self.atoms.set_masses(masses)
-  
-          # Update momenta if requested
-          if self.export_momenta:
-              momenta = np.copy(particles.v) * \
-                            np.copy(particles.mass)[:, np.newaxis]
-              self.atoms.set_momenta(momenta)
+                "atoms object not initialized, call reset() first")
+
+        particles = self.particle_slice
+
+        # Always update positions (pos -> positions)
+        self.atoms.positions = np.copy(particles.pos)
+
+        # Update charges if requested and not skipped
+        if self.export_charges and not skip_charge_update:
+            charges = np.copy(particles.q)
+            self.atoms.set_initial_charges(charges)
+
+        # Update masses if requested and not skipped  
+        if self.export_masses and not skip_mass_update:
+            masses = np.copy(particles.mass)
+            self.atoms.set_masses(masses)
+
+        # Update momenta if requested
+        if self.export_momenta:
+            momenta = np.copy(particles.v) * \
+                        np.copy(particles.mass)[:, np.newaxis]
+            self.atoms.set_momenta(momenta)
 
     def integrate(self, steps: int, skip_charge_update: bool = False, 
-                 skip_mass_update: bool = False) -> int:
-                  """
+                  skip_mass_update: bool = False) -> int:
+        """
         Integrate the system for the specified number of steps.
 
         For each step:
@@ -168,13 +167,13 @@ class ASEInterface:
         int
             Number of steps actually performed
         """
-                  if self.calculator is None:
-                  raise RuntimeError(
-                      "No calculator assigned. Set self.calculator before integrating.")
+        if self.calculator is None:
+            raise RuntimeError(
+                "No calculator assigned. Set self.calculator before integrating.")
 
-                  for step in range(steps):
-                  # Update ASE with current particle data
-                  self.update_ase(skip_charge_update=skip_charge_update, 
+        for step in range(steps):
+            # Update ASE with current particle data
+            self.update_ase(skip_charge_update=skip_charge_update, 
                            skip_mass_update=skip_mass_update)
 
             # Get forces from ASE calculator
@@ -187,3 +186,4 @@ class ASEInterface:
             self._system.integrator.run(1)
 
         return steps
+
