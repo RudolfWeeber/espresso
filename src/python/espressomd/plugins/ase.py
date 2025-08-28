@@ -170,6 +170,8 @@ class ASEInterface:
         if self.calculator is None:
             raise RuntimeError(
                 "No calculator assigned. Set self.calculator before integrating.")
+        if not (np.allclose(self._system.box_l, self.atoms.cell)):
+            raise Exception("Box size has changed. Call the reset() method on the ase interface")
 
         for step in range(steps):
             # Update ASE with current particle data
