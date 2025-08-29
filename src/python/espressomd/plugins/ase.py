@@ -20,7 +20,6 @@
 import dataclasses
 import typing
 import ase
-from ase.calculators.singlepoint import SinglePointCalculator
 import numpy as np
 import espressomd.code_info
 if typing.TYPE_CHECKING:
@@ -66,7 +65,6 @@ class ASEInterface:
         self.export_charges = export_charges
         self.export_masses = export_masses
         self.export_momenta = export_momenta
-        self.calculator = None
         self.atoms = None
 
         self.reset()
@@ -142,7 +140,7 @@ class ASEInterface:
                         np.copy(particles.mass)[:, np.newaxis]
             self.atoms.set_momenta(momenta)
 
-    def integrate(self, steps: int, skip_charge_update: bool = False, 
+    def integrate(self, steps: int, calculator, skip_charge_update: bool = False, 
                   skip_mass_update: bool = False) -> int:
         """
         Integrate the system for the specified number of steps.
@@ -167,10 +165,10 @@ class ASEInterface:
         int
             Number of steps actually performed
         """
-        if self.calculator is None:
+        if calculator is None:
             raise RuntimeError(
                 "No calculator assigned. Set self.calculator before integrating.")
-        if not (np.allclose(self._system.box_l, self.atoms.cell)):
+        if not (np.allclose(self._system.box_l, self.atoms.cell.lengths())):
             raise Exception("Box size has changed. Call the reset() method on the ase interface")
 
         for step in range(steps):
@@ -179,7 +177,7 @@ class ASEInterface:
                            skip_mass_update=skip_mass_update)
 
             # Get forces from ASE calculator
-            forces = self.calculator.get_forces(self.atoms)
+            forces = calculator.get_forces(self.atoms)
 
             # Set external forces on particle slice
             self.particle_slice.ext_force = forces

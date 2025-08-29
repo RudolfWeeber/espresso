@@ -275,7 +275,7 @@ class System(ScriptInterfaceHelper):
 
 
 
-    @propernty
+    @property
     def ekcontainer(self):
         """
         EK system (diffusion-advection-reaction models).

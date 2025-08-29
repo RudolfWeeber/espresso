@@ -23,35 +23,38 @@ import espressomd
 import espressomd.plugins.ase
 import numpy as np
 import ase
+from ase.calculators.calculator import Calculator
 
+
+# Global system instance shared between test classes
+system = espressomd.System(box_l=[20., 20., 20.])
 
 @utx.skipIfMissingFeatures("EXTERNAL_FORCES")
 class ASEInterfaceTest(ut.TestCase):
     """test suite for the ASE interface focusing on update_ase() method."""
 
-    system = espressomd.System(box_l=[10., 10., 10.])
-
     def setUp(self):
         """Set up system with particles having various properties."""
-        self.system.time_step = 0.01
+        system.time_step = 0.01
+        system.box_l = [20., 20., 20.]  # Ensure correct box size
         
         # Add particles with positions, charges, masses, velocities
-        self.system.part.add(pos=[1., 2., 3.], q=1.0, mass=2.0, v=[0.1, 0.2, 0.3], type=0)
-        self.system.part.add(pos=[4., 5., 6.], q=-0.5, mass=1.5, v=[0.4, 0.5, 0.6], type=1)
-        self.system.part.add(pos=[7., 8., 9.], q=2.0, mass=3.0, v=[0.7, 0.8, 0.9], type=0)
+        system.part.add(pos=[1., 2., 3.], q=1.0, mass=2.0, v=[0.1, 0.2, 0.3], type=0)
+        system.part.add(pos=[4., 5., 6.], q=-0.5, mass=1.5, v=[0.4, 0.5, 0.6], type=1)
+        system.part.add(pos=[7., 8., 9.], q=2.0, mass=3.0, v=[0.7, 0.8, 0.9], type=0)
         
         self.type_mapping = {0: "H", 1: "O"}
         
     def tearDown(self):
         """Clean up after each test."""
-        self.system.part.clear()
+        system.part.clear()
         
     def test_ase_interface_instantiation_basic(self):
         """Test basic ASE interface creation without optional exports."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
-            system=self.system,
+            system=system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part.all()
+            particle_slice=system.part.all()
         )
         
         # Check that interface is properly initialized
@@ -69,9 +72,9 @@ class ASEInterfaceTest(ut.TestCase):
     def test_ase_interface_instantiation_with_charges(self):
         """Test ASE interface creation with charge export enabled."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
-            system=self.system,
+            system=system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part.all(),
+            particle_slice=system.part.all(),
             export_charges=True
         )
         
@@ -83,9 +86,9 @@ class ASEInterfaceTest(ut.TestCase):
     def test_ase_interface_instantiation_with_masses(self):
         """Test ASE interface creation with mass export enabled."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
-            system=self.system,
+            system=system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part.all(),
+            particle_slice=system.part.all(),
             export_masses=True
         )
         
@@ -97,9 +100,9 @@ class ASEInterfaceTest(ut.TestCase):
     def test_ase_interface_instantiation_with_momenta(self):
         """Test ASE interface creation with momentum export enabled.""" 
         ase_interface = espressomd.plugins.ase.ASEInterface(
-            system=self.system,
+            system=system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part.all(),
+            particle_slice=system.part.all(),
             export_momenta=True
         )
         
@@ -114,9 +117,9 @@ class ASEInterfaceTest(ut.TestCase):
     def test_ase_interface_instantiation_all_exports(self):
         """Test ASE interface creation with all exports enabled."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
-            system=self.system,
+            system=system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part.all(),
+            particle_slice=system.part.all(),
             export_charges=True,
             export_masses=True,
             export_momenta=True
@@ -137,49 +140,49 @@ class ASEInterfaceTest(ut.TestCase):
     def test_update_ase_basic_no_exports(self):
         """Test update_ase() with no exports enabled - only positions should update."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
-            system=self.system,
+            system=system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part.all()
+            particle_slice=system.part.all()
         )
         
         # Change particle positions
-        self.system.part.by_id(0).pos = [10., 11., 12.]
-        self.system.part.by_id(1).pos = [13., 14., 15.]
-        self.system.part.by_id(2).pos = [16., 17., 18.]
+        system.part.by_id(0).pos = [10., 11., 12.]
+        system.part.by_id(1).pos = [13., 14., 15.]
+        system.part.by_id(2).pos = [16., 17., 18.]
         
         # Update ASE
         ase_interface.update_ase()
         
         # Check that positions are updated
         atoms = ase_interface.atoms
-        expected_positions = self.system.part.all().pos
+        expected_positions = system.part.all().pos
         np.testing.assert_allclose(atoms.positions, expected_positions)
 
     def test_update_ase_charges_no_skip(self):
         """Test update_ase() with charges enabled and no skip."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
-            system=self.system,
+            system=system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part.all(),
+            particle_slice=system.part.all(),
             export_charges=True
         )
         
         # Change particle charges 
-        self.system.part.all().q = [5.,-2.,3.5] 
+        system.part.all().q = [5.,-2.,3.5] 
         
         # Update ASE without skipping charge update
         ase_interface.update_ase(skip_charge_update=False)
         
         # Check that charges are updated
         atoms = ase_interface.atoms
-        np.testing.assert_allclose(atoms.get_initial_charges(), np.copy(self.system.part.all().q))
+        np.testing.assert_allclose(atoms.get_initial_charges(), np.copy(system.part.all().q))
 
     def test_update_ase_charges_with_skip(self):
         """Test update_ase() with charges enabled but skip_charge_update=True."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
-            system=self.system,
+            system=system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part.all(),
+            particle_slice=system.part.all(),
             export_charges=True
         )
         
@@ -187,7 +190,7 @@ class ASEInterfaceTest(ut.TestCase):
         original_charges = ase_interface.atoms.get_initial_charges().copy()
         
         # Change particle charges
-        self.system.part.all().q = [5.,-2.,3.5] 
+        system.part.all().q = [5.,-2.,3.5] 
         # Update ASE with skip_charge_update=True
         ase_interface.update_ase(skip_charge_update=True)
         
@@ -198,28 +201,28 @@ class ASEInterfaceTest(ut.TestCase):
     def test_update_ase_masses_no_skip(self):
         """Test update_ase() with masses enabled and no skip."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
-            system=self.system,
+            system=system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part.all(),
+            particle_slice=system.part.all(),
             export_masses=True
         )
         
         # Change particle masses
-        self.system.part.all().mass =  [10.0, 5.5, 7.2]
+        system.part.all().mass =  [10.0, 5.5, 7.2]
         
         # Update ASE without skipping mass update
         ase_interface.update_ase(skip_mass_update=False)
         
         # Check that masses are updated
         atoms = ase_interface.atoms
-        np.testing.assert_allclose(atoms.get_masses(), np.copy(self.system.part.all().mass))
+        np.testing.assert_allclose(atoms.get_masses(), np.copy(system.part.all().mass))
 
     def test_update_ase_masses_with_skip(self):
         """Test update_ase() with masses enabled but skip_mass_update=True."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
-            system=self.system,
+            system=system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part.all(),
+            particle_slice=system.part.all(),
             export_masses=True
         )
         
@@ -227,7 +230,7 @@ class ASEInterfaceTest(ut.TestCase):
         original_masses = ase_interface.atoms.get_masses().copy()
         
         # Change particle masses
-        self.system.part.by_id(2).mass = 7.2
+        system.part.by_id(2).mass = 7.2
         
         # Update ASE with skip_mass_update=True
         ase_interface.update_ase(skip_mass_update=True)
@@ -239,16 +242,16 @@ class ASEInterfaceTest(ut.TestCase):
     def test_update_ase_momenta_always_updates(self):
         """Test update_ase() with momenta enabled - should always update (no skip option)."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
-            system=self.system,
+            system=system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part.all(),
+            particle_slice=system.part.all(),
             export_momenta=True
         )
         
         # Change particle velocities
-        self.system.part.by_id(0).v = [1.0, 1.1, 1.2]
-        self.system.part.by_id(1).v = [2.0, 2.1, 2.2]
-        self.system.part.by_id(2).v = [3.0, 3.1, 3.2]
+        system.part.by_id(0).v = [1.0, 1.1, 1.2]
+        system.part.by_id(1).v = [2.0, 2.1, 2.2]
+        system.part.by_id(2).v = [3.0, 3.1, 3.2]
         
         # Update ASE
         ase_interface.update_ase()
@@ -263,9 +266,9 @@ class ASEInterfaceTest(ut.TestCase):
     def test_error_handling_no_atoms(self):
         """Test that update_ase() raises error when atoms is None."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
-            system=self.system,
+            system=system,
             type_mapping=self.type_mapping,
-            particle_slice=self.system.part.all()
+            particle_slice=system.part.all()
         )
         
         # Set atoms to None to simulate uninitialized state
@@ -274,6 +277,241 @@ class ASEInterfaceTest(ut.TestCase):
         # Should raise RuntimeError
         with self.assertRaisesRegex(RuntimeError, "atoms object not initialized"):
             ase_interface.update_ase()
+
+
+class FixedForceCalculator(Calculator):
+    """ASE calculator that returns fixed forces for testing."""
+    
+    implemented_properties = ['energy', 'forces']
+    
+    def __init__(self, forces_array, energy=0.0):
+        """
+        Initialize with fixed forces array and optional energy.
+        
+        Parameters
+        ----------
+        forces_array : np.ndarray
+            Array of forces with shape (n_atoms, 3)
+        energy : float, optional
+            Total energy value to return
+        """
+        Calculator.__init__(self)
+        self.forces_array = np.array(forces_array)
+        self.energy_value = energy
+        
+    def calculate(self, atoms=None, properties=['forces'], system_changes=['positions']):
+        """Calculate forces and energy."""
+        Calculator.calculate(self, atoms, properties, system_changes)
+        
+        if 'forces' in properties:
+            self.results['forces'] = self.forces_array.copy()
+        if 'energy' in properties:
+            self.results['energy'] = self.energy_value
+            
+    def get_forces(self, atoms):
+        """Get forces directly."""
+        return self.forces_array.copy()
+
+
+@utx.skipIfMissingFeatures("EXTERNAL_FORCES")
+class ASEIntegrationTest(ut.TestCase):
+    """Test suite for ASE interface integration functionality."""
+    
+    def setUp(self):
+        """Set up system with particles for integration tests."""
+        system.time_step = 0.01
+        system.box_l = [20., 20., 20.]  # Ensure correct box size
+        
+        # Add particles with different masses and initial positions
+        system.part.add(pos=[5., 5., 5.], mass=1.0, v=[0., 0., 0.], type=0)
+        system.part.add(pos=[10., 10., 10.], mass=2.0, v=[0., 0., 0.], type=1)
+        system.part.add(pos=[15., 15., 15.], mass=0.5, v=[0., 0., 0.], type=0)
+        
+        self.type_mapping = {0: "H", 1: "O"}
+        
+        # Set up velocity verlet integrator
+        system.integrator.set_vv()
+        
+    def tearDown(self):
+        """Clean up after each test."""
+        system.part.clear()
+        system.integrator.set_vv()
+        
+    def test_newton_second_law_integration(self):
+        """Test 5-step integration to verify Newton's second law."""
+        # Create ASE interface
+        system.cell_system.skin = 0.2
+        system.integrator.set_vv()
+        ase_interface = espressomd.plugins.ase.ASEInterface(
+            system=system,
+            type_mapping=self.type_mapping,
+            particle_slice=system.part.all(),
+            export_masses=True
+        )
+        
+        
+        # Define constant forces for testing Newton's second law
+        # F = ma, so we expect acceleration = F/m
+        test_forces = np.array([
+            [1.0, 0.0, 0.0],   # Force on particle 0 (mass=1.0), expected a = [1.0, 0.0, 0.0]
+            [4.0, 0.0, 0.0],   # Force on particle 1 (mass=2.0), expected a = [2.0, 0.0, 0.0]
+            [1.0, 0.0, 0.0]    # Force on particle 2 (mass=0.5), expected a = [2.0, 0.0, 0.0]
+        ])
+        
+        # Create calculator with fixed forces
+        calculator = FixedForceCalculator(test_forces)
+        
+        # Store initial positions and velocities
+        initial_pos = np.copy(system.part.all().pos)
+        initial_vel = np.copy(system.part.all().v)
+        
+        # Integrate for 5 steps
+        steps_performed = ase_interface.integrate(5, calculator)
+        
+        # Verify 5 steps were performed
+        self.assertEqual(steps_performed, 5)
+        
+        # Get final positions and velocities
+        final_pos = np.copy(system.part.all().pos)
+        final_vel = np.copy(system.part.all().v)
+        
+        # Expected accelerations based on F = ma
+        expected_accel = np.array([
+            [1.0, 0.0, 0.0],   # F=1.0, m=1.0 -> a=1.0
+            [2.0, 0.0, 0.0],   # F=4.0, m=2.0 -> a=2.0
+            [2.0, 0.0, 0.0]    # F=1.0, m=0.5 -> a=2.0
+        ])
+        
+        # For constant acceleration, v_final = v_initial + a*t
+        dt = system.time_step
+        total_time = 5 * dt
+        expected_final_vel = initial_vel + expected_accel * total_time
+        
+        # For constant acceleration, x_final = x_initial + v_initial*t + 0.5*a*t^2
+        expected_final_pos = (initial_pos + initial_vel * total_time + 
+                             0.5 * expected_accel * total_time**2)
+        
+        # Test velocities (allow some numerical tolerance)
+        np.testing.assert_allclose(final_vel, expected_final_vel, rtol=1e-10, 
+                                  err_msg="Final velocities don't match Newton's second law prediction")
+        
+        # Test positions (allow some numerical tolerance)
+        np.testing.assert_allclose(final_pos, expected_final_pos, rtol=1e-10,
+                                  err_msg="Final positions don't match kinematic prediction")
+                                  
+    def test_steepest_descent_integration(self):
+        """Test steepest descent integration with max_displacement constraint."""
+        system.cell_system.skin = 0.2
+        # Create ASE interface
+        ase_interface = espressomd.plugins.ase.ASEInterface(
+            system=system,
+            type_mapping=self.type_mapping,
+            particle_slice=system.part.all()
+        )
+        
+        
+        # Define forces pointing in positive x direction with different magnitudes
+        # These will be used to test max_displacement limit
+        large_forces = np.array([
+            [100.0, 0.0, 0.0],  # Large force on particle 0
+            [50.0, 0.0, 0.0],   # Medium force on particle 1
+            [200.0, 0.0, 0.0]   # Very large force on particle 2
+        ])
+        
+        calculator = FixedForceCalculator(large_forces)
+        
+        # Set up steepest descent integrator with small max_displacement
+        max_displacement = 0.1
+        system.integrator.set_steepest_descent(
+            f_max=0,  # No force threshold, run for specified steps
+            gamma=1.0,
+            max_displacement=max_displacement
+        )
+        
+        # Store initial positions
+        initial_pos = np.copy(system.part.all().pos)
+        
+        # Run one integration step
+        steps_performed = ase_interface.integrate(1, calculator)
+        
+        # Verify one step was performed
+        self.assertEqual(steps_performed, 1)
+        
+        # Get final positions
+        final_pos = np.copy(system.part.all().pos)
+        
+        # Calculate actual displacements
+        displacements = final_pos - initial_pos
+        displacement_magnitudes = np.linalg.norm(displacements, axis=1)
+        
+        # All displacements should be limited by max_displacement
+        for i, disp_mag in enumerate(displacement_magnitudes):
+            self.assertLessEqual(disp_mag, max_displacement + 1e-10,
+                               f"Particle {i} displacement {disp_mag:.6f} exceeds max_displacement {max_displacement}")
+        
+        # All displacements should be in the positive x direction (force direction)
+        for i, disp in enumerate(displacements):
+            self.assertGreater(disp[0], 0, f"Particle {i} should move in positive x direction")
+            self.assertAlmostEqual(disp[1], 0, places=10, msg=f"Particle {i} should not move in y direction")
+            self.assertAlmostEqual(disp[2], 0, places=10, msg=f"Particle {i} should not move in z direction")
+            
+        # For particles with large forces, displacement should equal max_displacement
+        # (since gamma * F  >> max_displacement, the displacement is limited)
+        np.testing.assert_allclose(displacement_magnitudes, max_displacement, rtol=1e-10,
+                                  err_msg="All particles should move exactly max_displacement distance")
+                                  
+    def test_steepest_descent_small_forces(self):
+        """Test steepest descent with small forces where max_displacement is not limiting."""
+        system.cell_system.skin = 0.2
+        # Create ASE interface
+        ase_interface = espressomd.plugins.ase.ASEInterface(
+            system=system,
+            type_mapping=self.type_mapping,
+            particle_slice=system.part.all()
+        )
+        
+        # Define small forces
+        small_forces = np.array([
+            [0.01, 0.0, 0.0],   # Small force on particle 0
+            [0.02, 0.0, 0.0],   # Small force on particle 1
+            [0.005, 0.0, 0.0]   # Very small force on particle 2
+        ])
+        
+        calculator = FixedForceCalculator(small_forces)
+        
+        # Set up steepest descent with large max_displacement but small gamma
+        max_displacement = 1.0  # Large max displacement
+        gamma = 0.1  # Small gamma
+        system.integrator.set_steepest_descent(
+            f_max=0,
+            gamma=gamma,
+            max_displacement=max_displacement
+        )
+        
+        # Store initial positions
+        initial_pos = np.copy(system.part.all().pos)
+        
+        # Run one integration step
+        steps_performed = ase_interface.integrate(1, calculator)
+        self.assertEqual(steps_performed, 1)
+        
+        # Get final positions
+        final_pos = np.copy(system.part.all().pos)
+        displacements = final_pos - initial_pos
+        displacement_magnitudes = np.linalg.norm(displacements, axis=1)
+        
+        # Calculate expected displacements based on steepest descent formula:
+        # displacement = min(|gamma * F, max_displacement) * F/|F|
+        force_magnitudes = np.linalg.norm(small_forces, axis=1)
+        expected_displacements = gamma * force_magnitudes 
+        
+        # All expected displacements should be less than max_displacement
+        for expected_disp in expected_displacements:
+            self.assertLess(expected_disp, max_displacement)
+            
+        # Actual displacements should match expected (not limited by max_displacement)
+        np.testing.assert_allclose(displacement_magnitudes, expected_displacements, rtol=1e-10,
+                                  err_msg="Displacements should match gamma* when not limited by max_displacement")
 
 if __name__ == "__main__":
     ut.main()
