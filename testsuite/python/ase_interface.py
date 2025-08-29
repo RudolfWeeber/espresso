@@ -398,6 +398,100 @@ class ASEIntegrationTest(ut.TestCase):
         # Test positions (allow some numerical tolerance)
         np.testing.assert_allclose(final_pos, expected_final_pos, rtol=1e-10,
                                   err_msg="Final positions don't match kinematic prediction")
+
+    def test_newton_second_law_varying_forces(self):
+        """Test 5-step integration with different forces in each time step."""
+        # Create ASE interface
+        system.cell_system.skin = 0.2
+        system.integrator.set_vv()
+        ase_interface = espressomd.plugins.ase.ASEInterface(
+            system=system,
+            type_mapping=self.type_mapping,
+            particle_slice=system.part.all(),
+            export_masses=True
+        )
+        
+        # Define different forces for each of the 5 time steps
+        # Each entry is forces for [particle0, particle1, particle2] at that time step
+        forces_per_step = [
+            np.array([[1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.5, 0.0, 0.0]]),  # Step 1
+            np.array([[0.0, 1.0, 0.0], [0.0, 4.0, 0.0], [0.0, 1.0, 0.0]]),  # Step 2  
+            np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 2.0], [0.0, 0.0, 2.0]]),  # Step 3
+            np.array([[-1.0, 0.0, 0.0], [-2.0, 0.0, 0.0], [-0.5, 0.0, 0.0]]), # Step 4
+            np.array([[2.0, 1.0, 0.5], [4.0, 2.0, 1.0], [1.0, 0.5, 1.0]])   # Step 5
+        ]
+        
+        # Store initial conditions
+        initial_pos = np.copy(system.part.all().pos)
+        initial_vel = np.copy(system.part.all().v)
+        masses = np.copy(system.part.all().mass)
+        
+        # Track positions and velocities at each step for verification
+        positions = [initial_pos.copy()]
+        velocities = [initial_vel.copy()]
+        
+        dt = system.time_step
+        
+        # Integrate step by step with different forces
+        for step in range(5):
+            # Create calculator with forces for this step
+            calculator = FixedForceCalculator(forces_per_step[step])
+            
+            # Perform one integration step
+            steps_performed = ase_interface.integrate(1, calculator)
+            self.assertEqual(steps_performed, 1)
+            
+            # Record state after this step
+            positions.append(np.copy(system.part.all().pos))
+            velocities.append(np.copy(system.part.all().v))
+        
+        # Verify Newton's second law for each step
+        # For each step: F = ma, so a = F/m
+        # Using velocity Verlet: v(t+dt) = v(t) + a*dt, x(t+dt) = x(t) + v(t)*dt + 0.5*a*dt^2
+        
+        for step in range(5):
+            current_forces = forces_per_step[step]
+            expected_accel = current_forces / masses[:, np.newaxis]  # F/m for each particle
+            
+            # Expected velocity after this step
+            expected_vel = velocities[step] + expected_accel * dt
+            
+            # Expected position after this step  
+            expected_pos = (positions[step] + velocities[step] * dt + 
+                           0.5 * expected_accel * dt**2)
+            
+            # Compare with actual results
+            np.testing.assert_allclose(
+                velocities[step + 1], expected_vel, rtol=1e-10,
+                err_msg=f"Step {step + 1}: Velocities don't match Newton's second law prediction"
+            )
+            
+            np.testing.assert_allclose(
+                positions[step + 1], expected_pos, rtol=1e-10,
+                err_msg=f"Step {step + 1}: Positions don't match kinematic prediction"
+            )
+        
+        # Additional verification: check that different forces produced different accelerations
+        for step in range(4):  # Compare adjacent steps
+            forces_1 = forces_per_step[step]
+            forces_2 = forces_per_step[step + 1]
+            
+            # Forces should be different between steps
+            self.assertFalse(np.allclose(forces_1, forces_2), 
+                           f"Forces in steps {step + 1} and {step + 2} should be different")
+            
+            # This should result in different velocity changes
+            accel_1 = forces_1 / masses[:, np.newaxis]
+            accel_2 = forces_2 / masses[:, np.newaxis]
+            
+            vel_change_1 = velocities[step + 1] - velocities[step] 
+            vel_change_2 = velocities[step + 2] - velocities[step + 1]
+            
+            expected_vel_change_1 = accel_1 * dt
+            expected_vel_change_2 = accel_2 * dt
+            
+            np.testing.assert_allclose(vel_change_1, expected_vel_change_1, rtol=1e-10)
+            np.testing.assert_allclose(vel_change_2, expected_vel_change_2, rtol=1e-10)
                                   
     def test_steepest_descent_integration(self):
         """Test steepest descent integration with max_displacement constraint."""
