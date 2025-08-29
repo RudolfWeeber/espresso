@@ -1,4 +1,3 @@
-#
 # Copyright (C) 2024 The ESPResSo project
 #
 # This file is part of ESPResSo.
@@ -174,10 +173,7 @@ class ASEInterface:
         if not (np.allclose(self._system.box_l, self.atoms.cell.lengths())):
             raise Exception("Box size has changed. Call the reset() method on the ase interface")
         self.atoms.calc = calculator
-        old_dt = self._system.time_step
-        self._system.time_step=old_dt/2
         for step in range(steps):
-            self._system.integrator.run(1)
             # Update ASE with current particle data
             self.update_ase(skip_charge_update=skip_charge_update, 
                            skip_mass_update=skip_mass_update)
@@ -190,6 +186,5 @@ class ASEInterface:
 
             # Run one integration step
             self._system.integrator.run(1)
-        self._system.time_step=old_dt
         return steps
 
