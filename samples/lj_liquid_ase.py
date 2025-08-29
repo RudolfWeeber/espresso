@@ -36,7 +36,7 @@ density = 0.7
 
 # Interaction parameters (repulsive Lennard-Jones)
 
-lj_eps = 0
+lj_eps = 1.0
 lj_sig = 1.0
 lj_cut = 2.**(1/6) * lj_sig
 
