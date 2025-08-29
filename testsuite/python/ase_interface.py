@@ -29,7 +29,7 @@ from ase.calculators.calculator import Calculator
 # Global system instance shared between test classes
 system = espressomd.System(box_l=[20., 20., 20.])
 
-@utx.skipIfMissingFeatures("EXTERNAL_FORCES")
+@utx.skipIfMissingFeatures(["EXTERNAL_FORCES","MASS","ELECTROSTATICS"])
 class ASEInterfaceTest(ut.TestCase):
     """test suite for the ASE interface focusing on update_ase() method."""
 
