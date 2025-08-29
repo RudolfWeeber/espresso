@@ -122,7 +122,7 @@ class ASEInterface:
         particles = self.particle_slice
 
         # Always update positions (pos -> positions)
-        self.atoms.positions = np.copy(particles.pos)
+        self.atoms.positions[:] = np.copy(particles.pos)
 
         # Update charges if requested and not skipped
         if self.export_charges and not skip_charge_update:
@@ -168,22 +168,28 @@ class ASEInterface:
         if calculator is None:
             raise RuntimeError(
                 "No calculator assigned. Set self.calculator before integrating.")
+        if self.atoms is None:
+            raise RuntimeError(
+                "atoms object not initialized, call reset() first")
         if not (np.allclose(self._system.box_l, self.atoms.cell.lengths())):
             raise Exception("Box size has changed. Call the reset() method on the ase interface")
-
+        self.atoms.calc = calculator
+        old_dt = self._system.time_step
+        self._system.time_step=old_dt/2
         for step in range(steps):
+            self._system.integrator.run(1)
             # Update ASE with current particle data
             self.update_ase(skip_charge_update=skip_charge_update, 
                            skip_mass_update=skip_mass_update)
 
             # Get forces from ASE calculator
-            forces = calculator.get_forces(self.atoms)
+            forces = self.atoms.get_forces()
 
             # Set external forces on particle slice
             self.particle_slice.ext_force = forces
 
             # Run one integration step
             self._system.integrator.run(1)
-
+        self._system.time_step=old_dt
         return steps
 
