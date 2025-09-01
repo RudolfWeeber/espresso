@@ -133,7 +133,8 @@ void Propagation::update_default_propagation(int thermo_switch) {
   case INTEG_METHOD_STEEPEST_DESCENT:
     default_propagation = PropagationMode::NONE;
     break;
-  case INTEG_METHOD_NVT: {
+  case INTEG_METHOD_NVT: 
+  case INTEG_METHOD_SYMPLECTIC_EULER: {
     // NOLINTNEXTLINE(bugprone-branch-clone)
     if ((thermo_switch & THERMO_LB) and (thermo_switch & THERMO_LANGEVIN)) {
       default_propagation = PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE;
