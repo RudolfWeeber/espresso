@@ -44,7 +44,7 @@ lj_cut = 2.**(1/6) * lj_sig
 system = espressomd.System(box_l=[box_l] * 3)
 np.random.seed(seed=42)
 
-system.time_step = 0.005
+system.time_step = 0.01
 system.cell_system.skin = 0.4
 
 warm_steps=10
@@ -104,4 +104,4 @@ for i in range(int_n_times):
     print(f"run {i} at time={system.time:.2f}")
 
     ase.integrate(int_steps,lj)
-    print(1/n_part *np.sum(system.part.all().v**2)/2)
+    print("E_kin per particle" , 1/n_part *np.sum(system.part.all().v**2)/2)
