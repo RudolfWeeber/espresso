@@ -97,35 +97,8 @@ while max_force > 10:
 # Normal integration
 
 
-system.integrator.set_vv()
-
-
-#system.non_bonded_inter[0,0].lennard_jones.set_params(epsilon=lj_eps,sigma=lj_sig, cutoff=lj_cut, shift='auto')
-system.integrator.run(0,reuse_forces=False)
-forces = system.part.all().f
-ase.update_ase()
-ase_pos = [a.position for a in ase.atoms]
-np.testing.assert_allclose(ase_pos, system.part.all().pos)
-
-lj = LennardJones(sigma=lj_sig,    
-                    epsilon=lj_eps,    
-                    rc=lj_cut,        
-                    smooth=False) 
-ase.atoms.calc = lj
-ase.update_ase()
-ase_forces =ase.atoms.get_forces()
-#np.testing.assert_allclose(forces,ase_forces)
-#exit()
-
-# activate thermostat
-system.thermostat.set_langevin(kT=1, gamma=1.0, seed=42)
-p = system.part.by_id(0)
-print(p.f,p.ext_force,p.v)
-for i in range(10):
-  ase.integrate(1,lj)
-  print(p.f,p.ext_force,p.v)
-
-
+system.thermostat.set_langevin(kT=1, gamma=0.2, seed=42)
+system.integrator.set_symplectic_euler()
 
 for i in range(int_n_times):
     print(f"run {i} at time={system.time:.2f}")
