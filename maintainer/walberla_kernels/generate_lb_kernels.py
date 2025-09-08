@@ -138,6 +138,10 @@ def generate_stream_collide_lees_edwards_kernels(
     lbm_opt = lbmpy.LBMOptimisation(symbolic_field=fields["pdfs"],
                                     symbolic_temporary_field=fields["pdfs_tmp"])
     shear_dir_normal = 1  # y-axis
+    precision_rng = pystencils_espresso.precision_rng[ctx.double_accuracy]
+    block_offsets = tuple(
+        ps.TypedSymbol(f"block_offset_{i}", np.uint32)
+        for i in range(3))
     le_config = lbmpy.LBMConfig(stencil=stencil,
                                 method=lbmpy.Method.TRT,
                                 relaxation_rate=sp.Symbol("omega_shear"),
@@ -146,14 +150,21 @@ def generate_stream_collide_lees_edwards_kernels(
                                 force=fields["force"].center_vector,
                                 kernel_type="stream_pull_collide",
                                 **lbm_config_kwargs)
-    le_update_rule_unthermalized = lbmpy.create_lb_update_rule(
-        lbm_config=le_config,
-        lbm_optimisation=lbm_opt)
-    le_collision_rule_unthermalized = lees_edwards.add_lees_edwards_to_collision(
-        config, le_update_rule_unthermalized, fields["pdfs"], stencil,
-        shear_dir_normal, True)
     optimization = {"cse_global": True,
                     "double_precision": ctx.double_accuracy}
+    le_collision_rule_thermalized = lbmpy.creationfunctions.create_lb_collision_rule(
+        method,
+        lbm_config=le_config,
+        fluctuating={
+            "temperature": kT,
+            "block_offsets": block_offsets,
+            "rng_node": precision_rng
+        },
+        optimization=optimization
+    )
+    le_collision_rule_thermalized = lees_edwards.add_lees_edwards_to_collision(
+        config, le_collision_rule_thermalized, fields["pdfs"], stencil,
+        shear_dir_normal, True)
     for params, target_suffix in paramlist(parameters, ("GPU", "CPU", "AVX")):
         stem = f"StreamCollideSweep{precision_prefix}LeesEdwards{target_suffix}"  # nopep8
         pystencils_espresso.generate_stream_collision_sweep(
@@ -161,7 +172,7 @@ def generate_stream_collide_lees_edwards_kernels(
             method,
             le_config,
             data_type,
-            le_collision_rule_unthermalized,
+            le_collision_rule_thermalized,
             stem,
             optimization,
             params
