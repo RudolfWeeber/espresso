@@ -17,9 +17,9 @@
 //! \\author pystencils
 //======================================================================================================================
 
-// kernel generated with pystencils v1.3.7, lbmpy v1.3.7, sympy v1.12.1,
-// lbmpy_walberla/pystencils_walberla from waLBerla commit
-// 0aab9c0af2335b1f6fec75deae06e514ccb233ab
+// kernel generated with pystencils v1.3.7, lbmpy v1.3.7+8.g11f0c22, sympy
+// v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit
+// c69cb11d6a95d32b2280544d3d9abde1fe5fdbb5
 
 #pragma once
 

@@ -17,7 +17,9 @@
 //! \\author pystencils
 //======================================================================================================================
 
-// kernel generated with pystencils v1.3.7, lbmpy v1.3.7, sympy v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit 0aab9c0af2335b1f6fec75deae06e514ccb233ab
+// kernel generated with pystencils v1.3.7, lbmpy v1.3.7+8.g11f0c22, sympy
+// v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit
+// c69cb11d6a95d32b2280544d3d9abde1fe5fdbb5
 
 #include "core/DataTypes.h"
 #include "core/cell/CellInterval.h"
@@ -75,32 +77,68 @@ using walberla::cell::CellInterval;
 using walberla::stencil::Direction;
 
 namespace internal_pack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE {
-static FUNC_PREFIX __launch_bounds__(256) void pack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE(double *RESTRICT _data_buffer, double *RESTRICT const _data_field, int64_t const _size_field_0, int64_t const _size_field_1, int64_t const _size_field_2, int64_t const _stride_field_0, int64_t const _stride_field_1, int64_t const _stride_field_2, int64_t const _stride_field_3) {
-  if (blockDim.x * blockIdx.x + threadIdx.x < _size_field_0 && blockDim.y * blockIdx.y + threadIdx.y < _size_field_1 && blockDim.z * blockIdx.z + threadIdx.z < _size_field_2) {
+static FUNC_PREFIX
+__launch_bounds__(256) void pack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE(
+    double *RESTRICT _data_buffer, double *RESTRICT const _data_field,
+    int64_t const _size_field_0, int64_t const _size_field_1,
+    int64_t const _size_field_2, int64_t const _stride_field_0,
+    int64_t const _stride_field_1, int64_t const _stride_field_2,
+    int64_t const _stride_field_3) {
+  if (blockDim.x * blockIdx.x + threadIdx.x < _size_field_0 &&
+      blockDim.y * blockIdx.y + threadIdx.y < _size_field_1 &&
+      blockDim.z * blockIdx.z + threadIdx.z < _size_field_2) {
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_buffer[3 * _size_field_0 * _size_field_1 * ctr_2 + 3 * _size_field_0 * ctr_1 + 3 * ctr_0] = _data_field[_stride_field_0 * ctr_0 + _stride_field_1 * ctr_1 + _stride_field_2 * ctr_2];
-    _data_buffer[3 * _size_field_0 * _size_field_1 * ctr_2 + 3 * _size_field_0 * ctr_1 + 3 * ctr_0 + 1] = _data_field[_stride_field_0 * ctr_0 + _stride_field_1 * ctr_1 + _stride_field_2 * ctr_2 + _stride_field_3];
-    _data_buffer[3 * _size_field_0 * _size_field_1 * ctr_2 + 3 * _size_field_0 * ctr_1 + 3 * ctr_0 + 2] = _data_field[_stride_field_0 * ctr_0 + _stride_field_1 * ctr_1 + _stride_field_2 * ctr_2 + 2 * _stride_field_3];
+    _data_buffer[3 * _size_field_0 * _size_field_1 * ctr_2 +
+                 3 * _size_field_0 * ctr_1 + 3 * ctr_0] =
+        _data_field[_stride_field_0 * ctr_0 + _stride_field_1 * ctr_1 +
+                    _stride_field_2 * ctr_2];
+    _data_buffer[3 * _size_field_0 * _size_field_1 * ctr_2 +
+                 3 * _size_field_0 * ctr_1 + 3 * ctr_0 + 1] =
+        _data_field[_stride_field_0 * ctr_0 + _stride_field_1 * ctr_1 +
+                    _stride_field_2 * ctr_2 + _stride_field_3];
+    _data_buffer[3 * _size_field_0 * _size_field_1 * ctr_2 +
+                 3 * _size_field_0 * ctr_1 + 3 * ctr_0 + 2] =
+        _data_field[_stride_field_0 * ctr_0 + _stride_field_1 * ctr_1 +
+                    _stride_field_2 * ctr_2 + 2 * _stride_field_3];
   }
 }
 } // namespace internal_pack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE
 
 namespace internal_unpack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE {
-static FUNC_PREFIX __launch_bounds__(256) void unpack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE(double *RESTRICT const _data_buffer, double *RESTRICT _data_field, int64_t const _size_field_0, int64_t const _size_field_1, int64_t const _size_field_2, int64_t const _stride_field_0, int64_t const _stride_field_1, int64_t const _stride_field_2, int64_t const _stride_field_3) {
-  if (blockDim.x * blockIdx.x + threadIdx.x < _size_field_0 && blockDim.y * blockIdx.y + threadIdx.y < _size_field_1 && blockDim.z * blockIdx.z + threadIdx.z < _size_field_2) {
+static FUNC_PREFIX
+__launch_bounds__(256) void unpack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE(
+    double *RESTRICT const _data_buffer, double *RESTRICT _data_field,
+    int64_t const _size_field_0, int64_t const _size_field_1,
+    int64_t const _size_field_2, int64_t const _stride_field_0,
+    int64_t const _stride_field_1, int64_t const _stride_field_2,
+    int64_t const _stride_field_3) {
+  if (blockDim.x * blockIdx.x + threadIdx.x < _size_field_0 &&
+      blockDim.y * blockIdx.y + threadIdx.y < _size_field_1 &&
+      blockDim.z * blockIdx.z + threadIdx.z < _size_field_2) {
     const int64_t ctr_0 = blockDim.x * blockIdx.x + threadIdx.x;
     const int64_t ctr_1 = blockDim.y * blockIdx.y + threadIdx.y;
     const int64_t ctr_2 = blockDim.z * blockIdx.z + threadIdx.z;
-    _data_field[_stride_field_0 * ctr_0 + _stride_field_1 * ctr_1 + _stride_field_2 * ctr_2] = _data_buffer[3 * _size_field_0 * _size_field_1 * ctr_2 + 3 * _size_field_0 * ctr_1 + 3 * ctr_0];
-    _data_field[_stride_field_0 * ctr_0 + _stride_field_1 * ctr_1 + _stride_field_2 * ctr_2 + _stride_field_3] = _data_buffer[3 * _size_field_0 * _size_field_1 * ctr_2 + 3 * _size_field_0 * ctr_1 + 3 * ctr_0 + 1];
-    _data_field[_stride_field_0 * ctr_0 + _stride_field_1 * ctr_1 + _stride_field_2 * ctr_2 + 2 * _stride_field_3] = _data_buffer[3 * _size_field_0 * _size_field_1 * ctr_2 + 3 * _size_field_0 * ctr_1 + 3 * ctr_0 + 2];
+    _data_field[_stride_field_0 * ctr_0 + _stride_field_1 * ctr_1 +
+                _stride_field_2 * ctr_2] =
+        _data_buffer[3 * _size_field_0 * _size_field_1 * ctr_2 +
+                     3 * _size_field_0 * ctr_1 + 3 * ctr_0];
+    _data_field[_stride_field_0 * ctr_0 + _stride_field_1 * ctr_1 +
+                _stride_field_2 * ctr_2 + _stride_field_3] =
+        _data_buffer[3 * _size_field_0 * _size_field_1 * ctr_2 +
+                     3 * _size_field_0 * ctr_1 + 3 * ctr_0 + 1];
+    _data_field[_stride_field_0 * ctr_0 + _stride_field_1 * ctr_1 +
+                _stride_field_2 * ctr_2 + 2 * _stride_field_3] =
+        _data_buffer[3 * _size_field_0 * _size_field_1 * ctr_2 +
+                     3 * _size_field_0 * ctr_1 + 3 * ctr_0 + 2];
   }
 }
 } // namespace internal_unpack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE
 
-void PackInfoVecDoublePrecisionCUDA::pack(Direction dir, unsigned char *byte_buffer, IBlock *block, gpuStream_t stream) {
+void PackInfoVecDoublePrecisionCUDA::pack(Direction dir,
+                                          unsigned char *byte_buffer,
+                                          IBlock *block, gpuStream_t stream) {
   double *buffer = reinterpret_cast<double *>(byte_buffer);
 
   auto field = block->getData<gpu::GPUField<double>>(fieldID);
@@ -132,20 +170,414 @@ void PackInfoVecDoublePrecisionCUDA::pack(Direction dir, unsigned char *byte_buf
     WALBERLA_ASSERT_GREATER_EQUAL(ci.xMin(), -int_c(field->nrOfGhostLayers()))
     WALBERLA_ASSERT_GREATER_EQUAL(ci.yMin(), -int_c(field->nrOfGhostLayers()))
     WALBERLA_ASSERT_GREATER_EQUAL(ci.zMin(), -int_c(field->nrOfGhostLayers()))
-    double *RESTRICT const _data_field = field->dataAt(ci.xMin(), ci.yMin(), ci.zMin(), 0);
-    WALBERLA_ASSERT_GREATER_EQUAL(field->xSizeWithGhostLayer(), int64_t(int64_c(ci.xSize()) + 0))
+    double *RESTRICT const _data_field =
+        field->dataAt(ci.xMin(), ci.yMin(), ci.zMin(), 0);
+    WALBERLA_ASSERT_GREATER_EQUAL(field->xSizeWithGhostLayer(),
+                                  int64_t(int64_c(ci.xSize()) + 0))
     const int64_t _size_field_0 = int64_t(int64_c(ci.xSize()) + 0);
-    WALBERLA_ASSERT_GREATER_EQUAL(field->ySizeWithGhostLayer(), int64_t(int64_c(ci.ySize()) + 0))
+    WALBERLA_ASSERT_GREATER_EQUAL(field->ySizeWithGhostLayer(),
+                                  int64_t(int64_c(ci.ySize()) + 0))
     const int64_t _size_field_1 = int64_t(int64_c(ci.ySize()) + 0);
-    WALBERLA_ASSERT_GREATER_EQUAL(field->zSizeWithGhostLayer(), int64_t(int64_c(ci.zSize()) + 0))
+    WALBERLA_ASSERT_GREATER_EQUAL(field->zSizeWithGhostLayer(),
+                                  int64_t(int64_c(ci.zSize()) + 0))
     const int64_t _size_field_2 = int64_t(int64_c(ci.zSize()) + 0);
     const int64_t _stride_field_0 = int64_t(field->xStride());
     const int64_t _stride_field_1 = int64_t(field->yStride());
     const int64_t _stride_field_2 = int64_t(field->zStride());
     const int64_t _stride_field_3 = int64_t(1 * int64_t(field->fStride()));
-    dim3 _block(uint32_c(((128 < _size_field_0) ? 128 : _size_field_0)), uint32_c(((1024 < ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))) ? 1024 : ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))), uint32_c(((64 < ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))))) ? 64 : ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))))));
-    dim3 _grid(uint32_c(((_size_field_0) % (((128 < _size_field_0) ? 128 : _size_field_0)) == 0 ? (int64_t)(_size_field_0) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)) : ((int64_t)(_size_field_0) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))) + 1)), uint32_c(((_size_field_1) % (((1024 < ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))) ? 1024 : ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))) == 0 ? (int64_t)(_size_field_1) / (int64_t)(((1024 < ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))) ? 1024 : ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))) : ((int64_t)(_size_field_1) / (int64_t)(((1024 < ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))) ? 1024 : ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) + 1)), uint32_c(((_size_field_2) % (((64 < ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))))) ? 64 : ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))))) == 0 ? (int64_t)(_size_field_2) / (int64_t)(((64 < ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))))) ? 64 : ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))))) : ((int64_t)(_size_field_2) / (int64_t)(((64 < ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))))) ? 64 : ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))))))) + 1)));
-    internal_pack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE::pack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE<<<_grid, _block, 0, stream>>>(_data_buffer, _data_field, _size_field_0, _size_field_1, _size_field_2, _stride_field_0, _stride_field_1, _stride_field_2, _stride_field_3);
+    dim3 _block(
+        uint32_c(((128 < _size_field_0) ? 128 : _size_field_0)),
+        uint32_c(
+            ((1024 <
+              ((_size_field_1 <
+                2 * ((int64_t)(128) /
+                     (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))
+                   ? _size_field_1
+                   : 2 * ((int64_t)(128) /
+                          (int64_t)(((128 < _size_field_0) ? 128
+                                                           : _size_field_0)))))
+                 ? 1024
+                 : ((_size_field_1 <
+                     2 * ((int64_t)(128) /
+                          (int64_t)(((128 < _size_field_0) ? 128
+                                                           : _size_field_0))))
+                        ? _size_field_1
+                        : 2 * ((int64_t)(128) /
+                               (int64_t)(((128 < _size_field_0)
+                                              ? 128
+                                              : _size_field_0)))))),
+        uint32_c((
+            (64 <
+             ((_size_field_2 <
+               ((int64_t)(256) /
+                (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) *
+                          ((_size_field_1 <
+                            2 * ((int64_t)(128) /
+                                 (int64_t)(((128 < _size_field_0)
+                                                ? 128
+                                                : _size_field_0))))
+                               ? _size_field_1
+                               : 2 * ((int64_t)(128) /
+                                      (int64_t)(((128 < _size_field_0)
+                                                     ? 128
+                                                     : _size_field_0)))))))
+                  ? _size_field_2
+                  : ((int64_t)(256) /
+                     (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) *
+                               ((_size_field_1 <
+                                 2 * ((int64_t)(128) /
+                                      (int64_t)(((128 < _size_field_0)
+                                                     ? 128
+                                                     : _size_field_0))))
+                                    ? _size_field_1
+                                    : 2 * ((int64_t)(128) /
+                                           (int64_t)((
+                                               (128 < _size_field_0)
+                                                   ? 128
+                                                   : _size_field_0))))))))
+                ? 64
+                : ((_size_field_2 <
+                    ((int64_t)(256) /
+                     (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) *
+                               ((_size_field_1 <
+                                 2 * ((int64_t)(128) /
+                                      (int64_t)(((128 < _size_field_0)
+                                                     ? 128
+                                                     : _size_field_0))))
+                                    ? _size_field_1
+                                    : 2 * ((int64_t)(128) /
+                                           (int64_t)(((128 < _size_field_0)
+                                                          ? 128
+                                                          : _size_field_0)))))))
+                       ? _size_field_2
+                       : ((int64_t)(256) /
+                          (int64_t)(((128 < _size_field_0) ? 128
+                                                           : _size_field_0) *
+                                    ((_size_field_1 <
+                                      2 * ((int64_t)(128) /
+                                           (int64_t)(((128 < _size_field_0)
+                                                          ? 128
+                                                          : _size_field_0))))
+                                         ? _size_field_1
+                                         : 2 * ((int64_t)(128) /
+                                                (int64_t)((
+                                                    (128 < _size_field_0)
+                                                        ? 128
+                                                        : _size_field_0))))))))));
+    dim3 _grid(
+        uint32_c((
+            (_size_field_0) % (((128 < _size_field_0) ? 128 : _size_field_0)) ==
+                    0
+                ? (int64_t)(_size_field_0) /
+                      (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))
+                : ((int64_t)(_size_field_0) /
+                   (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))) +
+                      1)),
+        uint32_c((
+            (_size_field_1) %
+                        (((1024 <
+                           ((_size_field_1 <
+                             2 * ((int64_t)(128) /
+                                  (int64_t)(((128 < _size_field_0)
+                                                 ? 128
+                                                 : _size_field_0))))
+                                ? _size_field_1
+                                : 2 * ((int64_t)(128) /
+                                       (int64_t)(((128 < _size_field_0)
+                                                      ? 128
+                                                      : _size_field_0)))))
+                              ? 1024
+                              : ((_size_field_1 <
+                                  2 * ((int64_t)(128) /
+                                       (int64_t)(((128 < _size_field_0)
+                                                      ? 128
+                                                      : _size_field_0))))
+                                     ? _size_field_1
+                                     : 2 * ((int64_t)(128) /
+                                            (int64_t)((
+                                                (128 < _size_field_0)
+                                                    ? 128
+                                                    : _size_field_0)))))) ==
+                    0
+                ? (int64_t)(_size_field_1) /
+                      (int64_t)((
+                          (1024 <
+                           ((_size_field_1 <
+                             2 * ((int64_t)(128) /
+                                  (int64_t)(((128 < _size_field_0)
+                                                 ? 128
+                                                 : _size_field_0))))
+                                ? _size_field_1
+                                : 2 * ((int64_t)(128) /
+                                       (int64_t)(((128 < _size_field_0)
+                                                      ? 128
+                                                      : _size_field_0)))))
+                              ? 1024
+                              : ((_size_field_1 <
+                                  2 * ((int64_t)(128) /
+                                       (int64_t)(((128 < _size_field_0)
+                                                      ? 128
+                                                      : _size_field_0))))
+                                     ? _size_field_1
+                                     : 2 * ((int64_t)(128) /
+                                            (int64_t)(((128 < _size_field_0)
+                                                           ? 128
+                                                           : _size_field_0))))))
+                : ((int64_t)(_size_field_1) /
+                   (int64_t)((
+                       (1024 < ((_size_field_1 <
+                                 2 * ((int64_t)(128) /
+                                      (int64_t)(((128 < _size_field_0)
+                                                     ? 128
+                                                     : _size_field_0))))
+                                    ? _size_field_1
+                                    : 2 * ((int64_t)(128) /
+                                           (int64_t)(((128 < _size_field_0)
+                                                          ? 128
+                                                          : _size_field_0)))))
+                           ? 1024
+                           : ((_size_field_1 <
+                               2 * ((int64_t)(128) /
+                                    (int64_t)(((128 < _size_field_0)
+                                                   ? 128
+                                                   : _size_field_0))))
+                                  ? _size_field_1
+                                  : 2 * ((int64_t)(128) /
+                                         (int64_t)(((128 < _size_field_0)
+                                                        ? 128
+                                                        : _size_field_0))))))) +
+                      1)),
+        uint32_c((
+            (_size_field_2) %
+                        (((64 <
+                           ((_size_field_2 <
+                             ((int64_t)(256) /
+                              (int64_t)(((128 < _size_field_0)
+                                             ? 128
+                                             : _size_field_0) *
+                                        ((_size_field_1 <
+                                          2 * ((int64_t)(128) /
+                                               (int64_t)((
+                                                   (128 < _size_field_0)
+                                                       ? 128
+                                                       : _size_field_0))))
+                                             ? _size_field_1
+                                             : 2 * ((int64_t)(128) /
+                                                    (int64_t)((
+                                                        (128 < _size_field_0)
+                                                            ? 128
+                                                            : _size_field_0)))))))
+                                ? _size_field_2
+                                : ((int64_t)(256) /
+                                   (int64_t)(((128 < _size_field_0)
+                                                  ? 128
+                                                  : _size_field_0) *
+                                             ((_size_field_1 <
+                                               2 * ((int64_t)(128) /
+                                                    (int64_t)((
+                                                        (128 < _size_field_0)
+                                                            ? 128
+                                                            : _size_field_0))))
+                                                  ? _size_field_1
+                                                  : 2 * ((int64_t)(128) /
+                                                         (int64_t)((
+                                                             (128 <
+                                                              _size_field_0)
+                                                                 ? 128
+                                                                 : _size_field_0))))))))
+                              ? 64
+                              : ((_size_field_2 <
+                                  ((int64_t)(256) /
+                                   (int64_t)(((128 < _size_field_0)
+                                                  ? 128
+                                                  : _size_field_0) *
+                                             ((_size_field_1 <
+                                               2 * ((int64_t)(128) /
+                                                    (int64_t)((
+                                                        (128 < _size_field_0)
+                                                            ? 128
+                                                            : _size_field_0))))
+                                                  ? _size_field_1
+                                                  : 2 * ((int64_t)(128) /
+                                                         (int64_t)((
+                                                             (128 <
+                                                              _size_field_0)
+                                                                 ? 128
+                                                                 : _size_field_0)))))))
+                                     ? _size_field_2
+                                     : ((int64_t)(256) /
+                                        (int64_t)(((128 < _size_field_0)
+                                                       ? 128
+                                                       : _size_field_0) *
+                                                  ((_size_field_1 <
+                                                    2 * ((int64_t)(128) /
+                                                         (int64_t)((
+                                                             (128 <
+                                                              _size_field_0)
+                                                                 ? 128
+                                                                 : _size_field_0))))
+                                                       ? _size_field_1
+                                                       : 2 * ((int64_t)(128) /
+                                                              (int64_t)((
+                                                                  (128 <
+                                                                   _size_field_0)
+                                                                      ? 128
+                                                                      : _size_field_0))))))))) ==
+                    0
+                ? (int64_t)(_size_field_2) /
+                      (int64_t)((
+                          (64 <
+                           ((_size_field_2 <
+                             ((int64_t)(256) /
+                              (int64_t)(((128 < _size_field_0)
+                                             ? 128
+                                             : _size_field_0) *
+                                        ((_size_field_1 <
+                                          2 * ((int64_t)(128) /
+                                               (int64_t)((
+                                                   (128 < _size_field_0)
+                                                       ? 128
+                                                       : _size_field_0))))
+                                             ? _size_field_1
+                                             : 2 * ((int64_t)(128) /
+                                                    (int64_t)((
+                                                        (128 < _size_field_0)
+                                                            ? 128
+                                                            : _size_field_0)))))))
+                                ? _size_field_2
+                                : ((int64_t)(256) /
+                                   (int64_t)(((128 < _size_field_0)
+                                                  ? 128
+                                                  : _size_field_0) *
+                                             ((_size_field_1 <
+                                               2 * ((int64_t)(128) /
+                                                    (int64_t)((
+                                                        (128 < _size_field_0)
+                                                            ? 128
+                                                            : _size_field_0))))
+                                                  ? _size_field_1
+                                                  : 2 * ((int64_t)(128) /
+                                                         (int64_t)((
+                                                             (128 <
+                                                              _size_field_0)
+                                                                 ? 128
+                                                                 : _size_field_0))))))))
+                              ? 64
+                              : ((_size_field_2 <
+                                  ((int64_t)(256) /
+                                   (int64_t)(((128 < _size_field_0)
+                                                  ? 128
+                                                  : _size_field_0) *
+                                             ((_size_field_1 <
+                                               2 * ((int64_t)(128) /
+                                                    (int64_t)((
+                                                        (128 < _size_field_0)
+                                                            ? 128
+                                                            : _size_field_0))))
+                                                  ? _size_field_1
+                                                  : 2 * ((int64_t)(128) /
+                                                         (int64_t)((
+                                                             (128 <
+                                                              _size_field_0)
+                                                                 ? 128
+                                                                 : _size_field_0)))))))
+                                     ? _size_field_2
+                                     : ((int64_t)(256) /
+                                        (int64_t)(((128 < _size_field_0)
+                                                       ? 128
+                                                       : _size_field_0) *
+                                                  ((_size_field_1 <
+                                                    2 * ((int64_t)(128) /
+                                                         (int64_t)((
+                                                             (128 <
+                                                              _size_field_0)
+                                                                 ? 128
+                                                                 : _size_field_0))))
+                                                       ? _size_field_1
+                                                       : 2 * ((int64_t)(128) /
+                                                              (int64_t)((
+                                                                  (128 <
+                                                                   _size_field_0)
+                                                                      ? 128
+                                                                      : _size_field_0)))))))))
+                : ((int64_t)(_size_field_2) /
+                   (int64_t)((
+                       (64 <
+                        ((_size_field_2 <
+                          ((int64_t)(256) /
+                           (int64_t)(((128 < _size_field_0) ? 128
+                                                            : _size_field_0) *
+                                     ((_size_field_1 <
+                                       2 * ((int64_t)(128) /
+                                            (int64_t)(((128 < _size_field_0)
+                                                           ? 128
+                                                           : _size_field_0))))
+                                          ? _size_field_1
+                                          : 2 * ((int64_t)(128) /
+                                                 (int64_t)((
+                                                     (128 < _size_field_0)
+                                                         ? 128
+                                                         : _size_field_0)))))))
+                             ? _size_field_2
+                             : ((int64_t)(256) /
+                                (int64_t)(((128 < _size_field_0)
+                                               ? 128
+                                               : _size_field_0) *
+                                          ((_size_field_1 <
+                                            2 * ((int64_t)(128) /
+                                                 (int64_t)((
+                                                     (128 < _size_field_0)
+                                                         ? 128
+                                                         : _size_field_0))))
+                                               ? _size_field_1
+                                               : 2 * ((int64_t)(128) /
+                                                      (int64_t)((
+                                                          (128 < _size_field_0)
+                                                              ? 128
+                                                              : _size_field_0))))))))
+                           ? 64
+                           : ((_size_field_2 <
+                               ((int64_t)(256) /
+                                (int64_t)(((128 < _size_field_0)
+                                               ? 128
+                                               : _size_field_0) *
+                                          ((_size_field_1 <
+                                            2 * ((int64_t)(128) /
+                                                 (int64_t)((
+                                                     (128 < _size_field_0)
+                                                         ? 128
+                                                         : _size_field_0))))
+                                               ? _size_field_1
+                                               : 2 * ((int64_t)(128) /
+                                                      (int64_t)((
+                                                          (128 < _size_field_0)
+                                                              ? 128
+                                                              : _size_field_0)))))))
+                                  ? _size_field_2
+                                  : ((int64_t)(256) /
+                                     (int64_t)(((128 < _size_field_0)
+                                                    ? 128
+                                                    : _size_field_0) *
+                                               ((_size_field_1 <
+                                                 2 * ((int64_t)(128) /
+                                                      (int64_t)((
+                                                          (128 < _size_field_0)
+                                                              ? 128
+                                                              : _size_field_0))))
+                                                    ? _size_field_1
+                                                    : 2 * ((int64_t)(128) /
+                                                           (int64_t)((
+                                                               (128 <
+                                                                _size_field_0)
+                                                                   ? 128
+                                                                   : _size_field_0)))))))))) +
+                      1)));
+    internal_pack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE::
+        pack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE<<<_grid, _block,
+                                                                 0, stream>>>(
+            _data_buffer, _data_field, _size_field_0, _size_field_1,
+            _size_field_2, _stride_field_0, _stride_field_1, _stride_field_2,
+            _stride_field_3);
     break;
   }
 
@@ -154,7 +586,9 @@ void PackInfoVecDoublePrecisionCUDA::pack(Direction dir, unsigned char *byte_buf
   }
 }
 
-void PackInfoVecDoublePrecisionCUDA::unpack(Direction dir, unsigned char *byte_buffer, IBlock *block, gpuStream_t stream) {
+void PackInfoVecDoublePrecisionCUDA::unpack(Direction dir,
+                                            unsigned char *byte_buffer,
+                                            IBlock *block, gpuStream_t stream) {
   double *buffer = reinterpret_cast<double *>(byte_buffer);
 
   auto field = block->getData<gpu::GPUField<double>>(fieldID);
@@ -187,20 +621,414 @@ void PackInfoVecDoublePrecisionCUDA::unpack(Direction dir, unsigned char *byte_b
     WALBERLA_ASSERT_GREATER_EQUAL(ci.xMin(), -int_c(field->nrOfGhostLayers()))
     WALBERLA_ASSERT_GREATER_EQUAL(ci.yMin(), -int_c(field->nrOfGhostLayers()))
     WALBERLA_ASSERT_GREATER_EQUAL(ci.zMin(), -int_c(field->nrOfGhostLayers()))
-    double *RESTRICT _data_field = field->dataAt(ci.xMin(), ci.yMin(), ci.zMin(), 0);
-    WALBERLA_ASSERT_GREATER_EQUAL(field->xSizeWithGhostLayer(), int64_t(int64_c(ci.xSize()) + 0))
+    double *RESTRICT _data_field =
+        field->dataAt(ci.xMin(), ci.yMin(), ci.zMin(), 0);
+    WALBERLA_ASSERT_GREATER_EQUAL(field->xSizeWithGhostLayer(),
+                                  int64_t(int64_c(ci.xSize()) + 0))
     const int64_t _size_field_0 = int64_t(int64_c(ci.xSize()) + 0);
-    WALBERLA_ASSERT_GREATER_EQUAL(field->ySizeWithGhostLayer(), int64_t(int64_c(ci.ySize()) + 0))
+    WALBERLA_ASSERT_GREATER_EQUAL(field->ySizeWithGhostLayer(),
+                                  int64_t(int64_c(ci.ySize()) + 0))
     const int64_t _size_field_1 = int64_t(int64_c(ci.ySize()) + 0);
-    WALBERLA_ASSERT_GREATER_EQUAL(field->zSizeWithGhostLayer(), int64_t(int64_c(ci.zSize()) + 0))
+    WALBERLA_ASSERT_GREATER_EQUAL(field->zSizeWithGhostLayer(),
+                                  int64_t(int64_c(ci.zSize()) + 0))
     const int64_t _size_field_2 = int64_t(int64_c(ci.zSize()) + 0);
     const int64_t _stride_field_0 = int64_t(field->xStride());
     const int64_t _stride_field_1 = int64_t(field->yStride());
     const int64_t _stride_field_2 = int64_t(field->zStride());
     const int64_t _stride_field_3 = int64_t(1 * int64_t(field->fStride()));
-    dim3 _block(uint32_c(((128 < _size_field_0) ? 128 : _size_field_0)), uint32_c(((1024 < ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))) ? 1024 : ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))), uint32_c(((64 < ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))))) ? 64 : ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))))));
-    dim3 _grid(uint32_c(((_size_field_0) % (((128 < _size_field_0) ? 128 : _size_field_0)) == 0 ? (int64_t)(_size_field_0) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)) : ((int64_t)(_size_field_0) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))) + 1)), uint32_c(((_size_field_1) % (((1024 < ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))) ? 1024 : ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))) == 0 ? (int64_t)(_size_field_1) / (int64_t)(((1024 < ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))) ? 1024 : ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))) : ((int64_t)(_size_field_1) / (int64_t)(((1024 < ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))) ? 1024 : ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) + 1)), uint32_c(((_size_field_2) % (((64 < ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))))) ? 64 : ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))))) == 0 ? (int64_t)(_size_field_2) / (int64_t)(((64 < ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))))) ? 64 : ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))))) : ((int64_t)(_size_field_2) / (int64_t)(((64 < ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))))) ? 64 : ((_size_field_2 < ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))))) ? _size_field_2 : ((int64_t)(256) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) * ((_size_field_1 < 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))) ? _size_field_1 : 2 * ((int64_t)(128) / (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0)))))))))) + 1)));
-    internal_unpack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE::unpack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE<<<_grid, _block, 0, stream>>>(_data_buffer, _data_field, _size_field_0, _size_field_1, _size_field_2, _stride_field_0, _stride_field_1, _stride_field_2, _stride_field_3);
+    dim3 _block(
+        uint32_c(((128 < _size_field_0) ? 128 : _size_field_0)),
+        uint32_c(
+            ((1024 <
+              ((_size_field_1 <
+                2 * ((int64_t)(128) /
+                     (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))))
+                   ? _size_field_1
+                   : 2 * ((int64_t)(128) /
+                          (int64_t)(((128 < _size_field_0) ? 128
+                                                           : _size_field_0)))))
+                 ? 1024
+                 : ((_size_field_1 <
+                     2 * ((int64_t)(128) /
+                          (int64_t)(((128 < _size_field_0) ? 128
+                                                           : _size_field_0))))
+                        ? _size_field_1
+                        : 2 * ((int64_t)(128) /
+                               (int64_t)(((128 < _size_field_0)
+                                              ? 128
+                                              : _size_field_0)))))),
+        uint32_c((
+            (64 <
+             ((_size_field_2 <
+               ((int64_t)(256) /
+                (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) *
+                          ((_size_field_1 <
+                            2 * ((int64_t)(128) /
+                                 (int64_t)(((128 < _size_field_0)
+                                                ? 128
+                                                : _size_field_0))))
+                               ? _size_field_1
+                               : 2 * ((int64_t)(128) /
+                                      (int64_t)(((128 < _size_field_0)
+                                                     ? 128
+                                                     : _size_field_0)))))))
+                  ? _size_field_2
+                  : ((int64_t)(256) /
+                     (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) *
+                               ((_size_field_1 <
+                                 2 * ((int64_t)(128) /
+                                      (int64_t)(((128 < _size_field_0)
+                                                     ? 128
+                                                     : _size_field_0))))
+                                    ? _size_field_1
+                                    : 2 * ((int64_t)(128) /
+                                           (int64_t)((
+                                               (128 < _size_field_0)
+                                                   ? 128
+                                                   : _size_field_0))))))))
+                ? 64
+                : ((_size_field_2 <
+                    ((int64_t)(256) /
+                     (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0) *
+                               ((_size_field_1 <
+                                 2 * ((int64_t)(128) /
+                                      (int64_t)(((128 < _size_field_0)
+                                                     ? 128
+                                                     : _size_field_0))))
+                                    ? _size_field_1
+                                    : 2 * ((int64_t)(128) /
+                                           (int64_t)(((128 < _size_field_0)
+                                                          ? 128
+                                                          : _size_field_0)))))))
+                       ? _size_field_2
+                       : ((int64_t)(256) /
+                          (int64_t)(((128 < _size_field_0) ? 128
+                                                           : _size_field_0) *
+                                    ((_size_field_1 <
+                                      2 * ((int64_t)(128) /
+                                           (int64_t)(((128 < _size_field_0)
+                                                          ? 128
+                                                          : _size_field_0))))
+                                         ? _size_field_1
+                                         : 2 * ((int64_t)(128) /
+                                                (int64_t)((
+                                                    (128 < _size_field_0)
+                                                        ? 128
+                                                        : _size_field_0))))))))));
+    dim3 _grid(
+        uint32_c((
+            (_size_field_0) % (((128 < _size_field_0) ? 128 : _size_field_0)) ==
+                    0
+                ? (int64_t)(_size_field_0) /
+                      (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))
+                : ((int64_t)(_size_field_0) /
+                   (int64_t)(((128 < _size_field_0) ? 128 : _size_field_0))) +
+                      1)),
+        uint32_c((
+            (_size_field_1) %
+                        (((1024 <
+                           ((_size_field_1 <
+                             2 * ((int64_t)(128) /
+                                  (int64_t)(((128 < _size_field_0)
+                                                 ? 128
+                                                 : _size_field_0))))
+                                ? _size_field_1
+                                : 2 * ((int64_t)(128) /
+                                       (int64_t)(((128 < _size_field_0)
+                                                      ? 128
+                                                      : _size_field_0)))))
+                              ? 1024
+                              : ((_size_field_1 <
+                                  2 * ((int64_t)(128) /
+                                       (int64_t)(((128 < _size_field_0)
+                                                      ? 128
+                                                      : _size_field_0))))
+                                     ? _size_field_1
+                                     : 2 * ((int64_t)(128) /
+                                            (int64_t)((
+                                                (128 < _size_field_0)
+                                                    ? 128
+                                                    : _size_field_0)))))) ==
+                    0
+                ? (int64_t)(_size_field_1) /
+                      (int64_t)((
+                          (1024 <
+                           ((_size_field_1 <
+                             2 * ((int64_t)(128) /
+                                  (int64_t)(((128 < _size_field_0)
+                                                 ? 128
+                                                 : _size_field_0))))
+                                ? _size_field_1
+                                : 2 * ((int64_t)(128) /
+                                       (int64_t)(((128 < _size_field_0)
+                                                      ? 128
+                                                      : _size_field_0)))))
+                              ? 1024
+                              : ((_size_field_1 <
+                                  2 * ((int64_t)(128) /
+                                       (int64_t)(((128 < _size_field_0)
+                                                      ? 128
+                                                      : _size_field_0))))
+                                     ? _size_field_1
+                                     : 2 * ((int64_t)(128) /
+                                            (int64_t)(((128 < _size_field_0)
+                                                           ? 128
+                                                           : _size_field_0))))))
+                : ((int64_t)(_size_field_1) /
+                   (int64_t)((
+                       (1024 < ((_size_field_1 <
+                                 2 * ((int64_t)(128) /
+                                      (int64_t)(((128 < _size_field_0)
+                                                     ? 128
+                                                     : _size_field_0))))
+                                    ? _size_field_1
+                                    : 2 * ((int64_t)(128) /
+                                           (int64_t)(((128 < _size_field_0)
+                                                          ? 128
+                                                          : _size_field_0)))))
+                           ? 1024
+                           : ((_size_field_1 <
+                               2 * ((int64_t)(128) /
+                                    (int64_t)(((128 < _size_field_0)
+                                                   ? 128
+                                                   : _size_field_0))))
+                                  ? _size_field_1
+                                  : 2 * ((int64_t)(128) /
+                                         (int64_t)(((128 < _size_field_0)
+                                                        ? 128
+                                                        : _size_field_0))))))) +
+                      1)),
+        uint32_c((
+            (_size_field_2) %
+                        (((64 <
+                           ((_size_field_2 <
+                             ((int64_t)(256) /
+                              (int64_t)(((128 < _size_field_0)
+                                             ? 128
+                                             : _size_field_0) *
+                                        ((_size_field_1 <
+                                          2 * ((int64_t)(128) /
+                                               (int64_t)((
+                                                   (128 < _size_field_0)
+                                                       ? 128
+                                                       : _size_field_0))))
+                                             ? _size_field_1
+                                             : 2 * ((int64_t)(128) /
+                                                    (int64_t)((
+                                                        (128 < _size_field_0)
+                                                            ? 128
+                                                            : _size_field_0)))))))
+                                ? _size_field_2
+                                : ((int64_t)(256) /
+                                   (int64_t)(((128 < _size_field_0)
+                                                  ? 128
+                                                  : _size_field_0) *
+                                             ((_size_field_1 <
+                                               2 * ((int64_t)(128) /
+                                                    (int64_t)((
+                                                        (128 < _size_field_0)
+                                                            ? 128
+                                                            : _size_field_0))))
+                                                  ? _size_field_1
+                                                  : 2 * ((int64_t)(128) /
+                                                         (int64_t)((
+                                                             (128 <
+                                                              _size_field_0)
+                                                                 ? 128
+                                                                 : _size_field_0))))))))
+                              ? 64
+                              : ((_size_field_2 <
+                                  ((int64_t)(256) /
+                                   (int64_t)(((128 < _size_field_0)
+                                                  ? 128
+                                                  : _size_field_0) *
+                                             ((_size_field_1 <
+                                               2 * ((int64_t)(128) /
+                                                    (int64_t)((
+                                                        (128 < _size_field_0)
+                                                            ? 128
+                                                            : _size_field_0))))
+                                                  ? _size_field_1
+                                                  : 2 * ((int64_t)(128) /
+                                                         (int64_t)((
+                                                             (128 <
+                                                              _size_field_0)
+                                                                 ? 128
+                                                                 : _size_field_0)))))))
+                                     ? _size_field_2
+                                     : ((int64_t)(256) /
+                                        (int64_t)(((128 < _size_field_0)
+                                                       ? 128
+                                                       : _size_field_0) *
+                                                  ((_size_field_1 <
+                                                    2 * ((int64_t)(128) /
+                                                         (int64_t)((
+                                                             (128 <
+                                                              _size_field_0)
+                                                                 ? 128
+                                                                 : _size_field_0))))
+                                                       ? _size_field_1
+                                                       : 2 * ((int64_t)(128) /
+                                                              (int64_t)((
+                                                                  (128 <
+                                                                   _size_field_0)
+                                                                      ? 128
+                                                                      : _size_field_0))))))))) ==
+                    0
+                ? (int64_t)(_size_field_2) /
+                      (int64_t)((
+                          (64 <
+                           ((_size_field_2 <
+                             ((int64_t)(256) /
+                              (int64_t)(((128 < _size_field_0)
+                                             ? 128
+                                             : _size_field_0) *
+                                        ((_size_field_1 <
+                                          2 * ((int64_t)(128) /
+                                               (int64_t)((
+                                                   (128 < _size_field_0)
+                                                       ? 128
+                                                       : _size_field_0))))
+                                             ? _size_field_1
+                                             : 2 * ((int64_t)(128) /
+                                                    (int64_t)((
+                                                        (128 < _size_field_0)
+                                                            ? 128
+                                                            : _size_field_0)))))))
+                                ? _size_field_2
+                                : ((int64_t)(256) /
+                                   (int64_t)(((128 < _size_field_0)
+                                                  ? 128
+                                                  : _size_field_0) *
+                                             ((_size_field_1 <
+                                               2 * ((int64_t)(128) /
+                                                    (int64_t)((
+                                                        (128 < _size_field_0)
+                                                            ? 128
+                                                            : _size_field_0))))
+                                                  ? _size_field_1
+                                                  : 2 * ((int64_t)(128) /
+                                                         (int64_t)((
+                                                             (128 <
+                                                              _size_field_0)
+                                                                 ? 128
+                                                                 : _size_field_0))))))))
+                              ? 64
+                              : ((_size_field_2 <
+                                  ((int64_t)(256) /
+                                   (int64_t)(((128 < _size_field_0)
+                                                  ? 128
+                                                  : _size_field_0) *
+                                             ((_size_field_1 <
+                                               2 * ((int64_t)(128) /
+                                                    (int64_t)((
+                                                        (128 < _size_field_0)
+                                                            ? 128
+                                                            : _size_field_0))))
+                                                  ? _size_field_1
+                                                  : 2 * ((int64_t)(128) /
+                                                         (int64_t)((
+                                                             (128 <
+                                                              _size_field_0)
+                                                                 ? 128
+                                                                 : _size_field_0)))))))
+                                     ? _size_field_2
+                                     : ((int64_t)(256) /
+                                        (int64_t)(((128 < _size_field_0)
+                                                       ? 128
+                                                       : _size_field_0) *
+                                                  ((_size_field_1 <
+                                                    2 * ((int64_t)(128) /
+                                                         (int64_t)((
+                                                             (128 <
+                                                              _size_field_0)
+                                                                 ? 128
+                                                                 : _size_field_0))))
+                                                       ? _size_field_1
+                                                       : 2 * ((int64_t)(128) /
+                                                              (int64_t)((
+                                                                  (128 <
+                                                                   _size_field_0)
+                                                                      ? 128
+                                                                      : _size_field_0)))))))))
+                : ((int64_t)(_size_field_2) /
+                   (int64_t)((
+                       (64 <
+                        ((_size_field_2 <
+                          ((int64_t)(256) /
+                           (int64_t)(((128 < _size_field_0) ? 128
+                                                            : _size_field_0) *
+                                     ((_size_field_1 <
+                                       2 * ((int64_t)(128) /
+                                            (int64_t)(((128 < _size_field_0)
+                                                           ? 128
+                                                           : _size_field_0))))
+                                          ? _size_field_1
+                                          : 2 * ((int64_t)(128) /
+                                                 (int64_t)((
+                                                     (128 < _size_field_0)
+                                                         ? 128
+                                                         : _size_field_0)))))))
+                             ? _size_field_2
+                             : ((int64_t)(256) /
+                                (int64_t)(((128 < _size_field_0)
+                                               ? 128
+                                               : _size_field_0) *
+                                          ((_size_field_1 <
+                                            2 * ((int64_t)(128) /
+                                                 (int64_t)((
+                                                     (128 < _size_field_0)
+                                                         ? 128
+                                                         : _size_field_0))))
+                                               ? _size_field_1
+                                               : 2 * ((int64_t)(128) /
+                                                      (int64_t)((
+                                                          (128 < _size_field_0)
+                                                              ? 128
+                                                              : _size_field_0))))))))
+                           ? 64
+                           : ((_size_field_2 <
+                               ((int64_t)(256) /
+                                (int64_t)(((128 < _size_field_0)
+                                               ? 128
+                                               : _size_field_0) *
+                                          ((_size_field_1 <
+                                            2 * ((int64_t)(128) /
+                                                 (int64_t)((
+                                                     (128 < _size_field_0)
+                                                         ? 128
+                                                         : _size_field_0))))
+                                               ? _size_field_1
+                                               : 2 * ((int64_t)(128) /
+                                                      (int64_t)((
+                                                          (128 < _size_field_0)
+                                                              ? 128
+                                                              : _size_field_0)))))))
+                                  ? _size_field_2
+                                  : ((int64_t)(256) /
+                                     (int64_t)(((128 < _size_field_0)
+                                                    ? 128
+                                                    : _size_field_0) *
+                                               ((_size_field_1 <
+                                                 2 * ((int64_t)(128) /
+                                                      (int64_t)((
+                                                          (128 < _size_field_0)
+                                                              ? 128
+                                                              : _size_field_0))))
+                                                    ? _size_field_1
+                                                    : 2 * ((int64_t)(128) /
+                                                           (int64_t)((
+                                                               (128 <
+                                                                _size_field_0)
+                                                                   ? 128
+                                                                   : _size_field_0)))))))))) +
+                      1)));
+    internal_unpack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE::
+        unpack_SW_BW_W_TW_NW_BS_S_TS_B_C_T_BN_N_TN_SE_BE_E_TE_NE<<<
+            _grid, _block, 0, stream>>>(
+            _data_buffer, _data_field, _size_field_0, _size_field_1,
+            _size_field_2, _stride_field_0, _stride_field_1, _stride_field_2,
+            _stride_field_3);
     break;
   }
 
@@ -209,7 +1037,8 @@ void PackInfoVecDoublePrecisionCUDA::unpack(Direction dir, unsigned char *byte_b
   }
 }
 
-uint_t PackInfoVecDoublePrecisionCUDA::size(stencil::Direction dir, IBlock *block) {
+uint_t PackInfoVecDoublePrecisionCUDA::size(stencil::Direction dir,
+                                            IBlock *block) {
   auto field = block->getData<gpu::GPUField<double>>(fieldID);
 
   CellInterval ci;
