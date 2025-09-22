@@ -17,13 +17,13 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 """
-Demonstrates the ESPREsSo to ASE interface
+Demonstrate the ESPResSo to ASE interface.
 Simulate a Lennard-Jones fluid maintained at a fixed temperature
 by a Langevin thermostat.
 """
 import numpy as np
 import espressomd
-import espressomd.plugins.ase 
+import espressomd.plugins.ase
 from ase.calculators.lj import LennardJones
 
 required_features = ["LENNARD_JONES"]
@@ -42,24 +42,21 @@ system = espressomd.System(box_l=[box_l] * 3)
 system.time_step = 0.005
 system.cell_system.skin = 0.4
 
-p1 = system.part.add(pos=[0,0,0])
-p2 = system.part.add(pos=[-0.92,0,0])
+p1 = system.part.add(pos=[0, 0, 0])
+p2 = system.part.add(pos=[-0.92, 0, 0])
 
 
 ## Setup of ase interface and Lennard-Jones calculator
 
 # Mapping of ESPResSo types to ASE types
 
-type_mapping = {0:0} 
+type_mapping = {0: 0}
 
 ase = espressomd.plugins.ase.ASEInterface(
-     system, type_mapping, system.part.all())
+    system, type_mapping, system.part.all())
 
 # ASE calculator tor provide Lennard-Jones forces
-lj = LennardJones(sigma=lj_sig,    
-                    epsilon=lj_eps,    
-                    rc=lj_cut,        
-                    smooth=False) 
+lj = LennardJones(sigma=lj_sig, epsilon=lj_eps, rc=lj_cut, smooth=False)
 ase.atoms.calc = lj
 
 system.integrator.set_vv()
@@ -69,18 +66,19 @@ v_saved = system.part.all().v
 ase_forces = []
 
 for i in range(4):
-  print(i)
-  ase.integrate(1,lj)
-  ase_forces.append(p1.f)
-  print(p1.pos)
+    print(i)
+    ase.integrate(1, lj)
+    ase_forces.append(p1.f)
+    print(p1.pos)
 system.part.all().pos = pos_saved
 system.part.all().v = v_saved
-system.non_bonded_inter[0,0].lennard_jones.set_params(epsilon=lj_eps,sigma=lj_sig, cutoff=lj_cut,shift="auto")
-es_forces= []
-system.part.all().ext_force = [0,0,0]
+system.non_bonded_inter[0, 0].lennard_jones.set_params(
+    epsilon=lj_eps, sigma=lj_sig, cutoff=lj_cut, shift="auto")
+es_forces = []
+system.part.all().ext_force = [0, 0, 0]
 for i in range(3):
-  p1.pos=p1.pos
-  system.integrator.run(1,reuse_forces=False)
-  es_forces.append(p1.f)
+    p1.pos = p1.pos
+    system.integrator.run(1, reuse_forces=False)
+    es_forces.append(p1.f)
 
-np.testing.assert_allclose(ase_forces,es_forces)
+np.testing.assert_allclose(ase_forces, es_forces)

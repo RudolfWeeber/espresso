@@ -16,7 +16,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import dataclasses
 import typing
 import ase
 import numpy as np
@@ -40,23 +39,22 @@ class ASEInterface:
 
         Parameters
         ----------
-        system : espressomd.system.System
-            The ESPResSo system object
-        type_mapping : dict
-            Mapping of ESPResSo particle types to ASE symbols. E.g. ``{0: "H", 1: "O"}``
-        particle_slice : espressomd.particle_data.ParticleSlice
-            The particle slice to work on
-        export_charges : bool, optional
-            Whether to make particle charges available to ASE
-        export_masses : bool, optional
-            Whether to make particle masses available to ASE
-        export_momenta : bool, optional
-            Whether to make particle momenta available to ASE
+        system : :obj:`espressomd.system.System`
+            The ESPResSo system object.
+        type_mapping : :obj:`dict`
+            Mapping of ESPResSo particle types to ASE symbols.
+            E.g. ``{0: "H", 1: "O"}``.
+        particle_slice : :obj:`espressomd.particle_data.ParticleSlice`
+            The particle slice to work on.
+        export_charges : :obj:`bool`, optional
+            Whether to make particle charges available to ASE.
+        export_masses : :obj:`bool`, optional
+            Whether to make particle masses available to ASE.
+        export_momenta : :obj:`bool`, optional
+            Whether to make particle momenta available to ASE.
         """
         # Check that EXTERNAL_FORCES feature is available
-        if "EXTERNAL_FORCES" not in espressomd.code_info.features():
-            raise RuntimeError(
-                "ASE interface requires EXTERNAL_FORCES feature")
+        espressomd.assert_features(["EXTERNAL_FORCES"])
 
         self.type_mapping = type_mapping
         self._system = system
@@ -87,7 +85,7 @@ class ASEInterface:
         unknown_types = set(types) - set(self.type_mapping)
         if unknown_types:
             raise RuntimeError(
-                f"Particle types '{unknown_types}' haven't been registered in the ASE type map"
+                f"Particle types '{unknown_types}' haven't been registered in the ASE type map"  # nopep8
             )
 
         # Check for virtual sites
@@ -103,16 +101,17 @@ class ASEInterface:
         )
         self.update_ase()
 
-    def update_ase(self, skip_charge_update: bool = False, skip_mass_update: bool = False):
+    def update_ase(self, skip_charge_update: bool = False,
+                   skip_mass_update: bool = False):
         """
         Update the arrays in the atoms object based on the desired properties.
 
         Parameters
         ----------
-        skip_charge_update : bool, optional
-            Whether to skip updating charges
-        skip_mass_update : bool, optional
-            Whether to skip updating masses
+        skip_charge_update : :obj:`bool`, optional
+            Whether to skip updating charges.
+        skip_mass_update : :obj:`bool`, optional
+            Whether to skip updating masses.
         """
         if self.atoms is None:
             raise RuntimeError(
@@ -136,7 +135,7 @@ class ASEInterface:
         # Update momenta if requested
         if self.export_momenta:
             momenta = np.copy(particles.v) * \
-                        np.copy(particles.mass)[:, np.newaxis]
+                np.copy(particles.mass)[:, np.newaxis]
             self.atoms.set_momenta(momenta)
 
     def integrate(self, steps: int, calculator, skip_charge_update: bool = False, 
@@ -152,12 +151,12 @@ class ASEInterface:
 
         Parameters
         ----------
-        steps : int
-            Number of integration steps to perform
-        skip_charge_update : bool, optional
-            Whether to skip charge updates during ASE updates
-        skip_mass_update : bool, optional
-            Whether to skip mass updates during ASE updates
+        steps : :obj:`int`
+            Number of integration steps to perform.
+        skip_charge_update : :obj:`bool`, optional
+            Whether to skip charge updates during ASE updates.
+        skip_mass_update : :obj:`bool`, optional
+            Whether to skip mass updates during ASE updates.
 
         Returns
         -------
@@ -170,13 +169,14 @@ class ASEInterface:
         if self.atoms is None:
             raise RuntimeError(
                 "atoms object not initialized, call reset() first")
-        if not (np.allclose(self._system.box_l, self.atoms.cell.lengths())):
-            raise Exception("Box size has changed. Call the reset() method on the ase interface")
+        if not np.allclose(self._system.box_l, self.atoms.cell.lengths()):
+            raise RuntimeError(
+                "Box size has changed. Call the reset() method on the ase interface")
         self.atoms.calc = calculator
-        for step in range(steps):
+        for _ in range(steps):
             # Update ASE with current particle data
             self.update_ase(skip_charge_update=skip_charge_update, 
-                           skip_mass_update=skip_mass_update)
+                            skip_mass_update=skip_mass_update)
 
             # Get forces from ASE calculator
             forces = self.atoms.get_forces()
@@ -186,5 +186,5 @@ class ASEInterface:
 
             # Run one integration step
             self._system.integrator.run(1)
-        return steps
 
+        return steps

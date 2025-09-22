@@ -147,7 +147,6 @@ class System(ScriptInterfaceHelper):
             self.call_method("lock_system_creation")
             self._setup_atexit()
 
-
     def _setup_atexit(self):
         import atexit
 
@@ -272,8 +271,6 @@ class System(ScriptInterfaceHelper):
             if lb is not None:
                 lb.call_method("activate")
                 self._lb = lb
-
-
 
     @property
     def ekcontainer(self):

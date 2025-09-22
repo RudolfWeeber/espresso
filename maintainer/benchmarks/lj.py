@@ -125,8 +125,8 @@ print("Tune skin: {:.3f}".format(system.cell_system.tune_skin(
     min_skin=min_skin, max_skin=max_skin, tol=0.05, int_steps=100)))
 print("Equilibration")
 for i in range(10000):
-  system.part.all().q=0
-  system.integrator.run(1)
+    system.part.all().q = 0
+    system.integrator.run(1)
 
 
 system.integrator.run(min(5 * measurement_steps, 60000))
