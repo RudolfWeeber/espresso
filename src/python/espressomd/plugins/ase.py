@@ -1,4 +1,5 @@
-# Copyright (C) 2024 The ESPResSo project
+#
+# Copyright (C) 2024-2025 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -19,7 +20,7 @@
 import typing
 import ase
 import numpy as np
-import espressomd.code_info
+import espressomd
 if typing.TYPE_CHECKING:
     from espressomd.system import System
     from espressomd.particle_data import ParticleSlice
@@ -30,9 +31,9 @@ class ASEInterface:
     ASE interface for ESPResSo with enhanced functionality for calculator integration.
     """
 
-    def __init__(self, system: "System", type_mapping: dict, 
-                 particle_slice: "ParticleSlice", 
-                 export_charges: bool = False, export_masses: bool = False, 
+    def __init__(self, system: "System", type_mapping: dict,
+                 particle_slice: "ParticleSlice",
+                 export_charges: bool = False, export_masses: bool = False,
                  export_momenta: bool = False):
         """
         Initialize ASE interface.
@@ -53,7 +54,6 @@ class ASEInterface:
         export_momenta : :obj:`bool`, optional
             Whether to make particle momenta available to ASE.
         """
-        # Check that EXTERNAL_FORCES feature is available
         espressomd.assert_features(["EXTERNAL_FORCES"])
 
         self.type_mapping = type_mapping
@@ -68,7 +68,10 @@ class ASEInterface:
         self.update_ase()
 
     def __getstate__(self):
-        return {"type_mapping": self.type_mapping}
+        raise NotImplementedError("ASE plugin doesn't support checkpointing")
+
+    def __setstate__(self, state):
+        raise NotImplementedError("ASE plugin doesn't support checkpointing")
 
     def reset(self):
         """
@@ -127,7 +130,7 @@ class ASEInterface:
             charges = np.copy(particles.q)
             self.atoms.set_initial_charges(charges)
 
-        # Update masses if requested and not skipped  
+        # Update masses if requested and not skipped
         if self.export_masses and not skip_mass_update:
             masses = np.copy(particles.mass)
             self.atoms.set_masses(masses)
@@ -138,7 +141,7 @@ class ASEInterface:
                 np.copy(particles.mass)[:, np.newaxis]
             self.atoms.set_momenta(momenta)
 
-    def integrate(self, steps: int, calculator, skip_charge_update: bool = False, 
+    def integrate(self, steps: int, calculator, skip_charge_update: bool = False,
                   skip_mass_update: bool = False) -> int:
         """
         Integrate the system for the specified number of steps.
@@ -175,7 +178,7 @@ class ASEInterface:
         self.atoms.calc = calculator
         for _ in range(steps):
             # Update ASE with current particle data
-            self.update_ase(skip_charge_update=skip_charge_update, 
+            self.update_ase(skip_charge_update=skip_charge_update,
                             skip_mass_update=skip_mass_update)
 
             # Get forces from ASE calculator
