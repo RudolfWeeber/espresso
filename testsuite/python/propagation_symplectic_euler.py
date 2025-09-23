@@ -18,10 +18,8 @@
 #
 import espressomd
 import espressomd.propagation
-import itertools
 import numpy as np
 import unittest as ut
-import unittest_decorators as utx
 
 
 class SymplecticEuler(ut.TestCase):
