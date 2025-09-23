@@ -54,7 +54,7 @@ class SymplecticEulerLangevin(ut.TestCase):
 
     def test_no_thermostat_compatibility(self):
         """Test that symplectic Euler works without thermostat."""
-        p = self.system.part.add(pos=[0, 0, 0], v=[1, 0, 0], mass=1.0)
+        self.system.part.add(pos=[0, 0, 0], v=[1, 0, 0], mass=1.0)
 
         # No thermostat
         self.system.thermostat.turn_off()
