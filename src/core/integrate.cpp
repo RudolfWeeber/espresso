@@ -31,8 +31,8 @@
 #include "integrators/brownian_inline.hpp"
 #include "integrators/steepest_descent.hpp"
 #include "integrators/stokesian_dynamics_inline.hpp"
-#include "integrators/velocity_verlet_inline.hpp"
 #include "integrators/symplectic_euler_inline.hpp"
+#include "integrators/velocity_verlet_inline.hpp"
 #include "integrators/velocity_verlet_npt.hpp"
 
 #include "BoxGeometry.hpp"
@@ -133,7 +133,7 @@ void Propagation::update_default_propagation(int thermo_switch) {
   case INTEG_METHOD_STEEPEST_DESCENT:
     default_propagation = PropagationMode::NONE;
     break;
-  case INTEG_METHOD_NVT: 
+  case INTEG_METHOD_NVT:
   case INTEG_METHOD_SYMPLECTIC_EULER: {
     // NOLINTNEXTLINE(bugprone-branch-clone)
     if ((thermo_switch & THERMO_LB) and (thermo_switch & THERMO_LANGEVIN)) {

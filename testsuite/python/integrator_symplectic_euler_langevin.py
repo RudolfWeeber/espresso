@@ -37,34 +37,34 @@ class SymplecticEulerLangevin(ut.TestCase):
         # Add test particles
         p1 = self.system.part.add(pos=[0, 0, 0], v=[1, 0, 0], mass=1.0)
         p2 = self.system.part.add(pos=[2, 0, 0], v=[0, 1, 0], mass=2.0)
-        
+
         # Set Langevin thermostat
         self.system.thermostat.set_langevin(kT=1.0, gamma=0.5, seed=42)
-        
+
         # Set symplectic Euler integrator (should work)
         self.system.integrator.set_symplectic_euler()
-        
+
         # Run integration (should not raise exception)
         initial_pos = np.copy([p1.pos, p2.pos])
         self.system.integrator.run(10)
         final_pos = np.copy([p1.pos, p2.pos])
-        
+
         # Particles should have moved
         self.assertFalse(np.allclose(initial_pos, final_pos))
 
     def test_no_thermostat_compatibility(self):
         """Test that symplectic Euler works without thermostat."""
         p = self.system.part.add(pos=[0, 0, 0], v=[1, 0, 0], mass=1.0)
-        
+
         # No thermostat
         self.system.thermostat.turn_off()
-        
+
         # Set symplectic Euler integrator (should work)
         self.system.integrator.set_symplectic_euler()
-        
+
         # Run integration (should not raise exception)
         self.system.integrator.run(10)
-        
+
         # Should work fine
         self.assertTrue(True)
 
@@ -73,37 +73,39 @@ class SymplecticEulerLangevin(ut.TestCase):
         # Add many particles for better statistics
         n_particles = 5000
         target_kT = 2.5
-        
-        self.system.part.add(pos=np.random.random((n_particles,3)))
-        
+
+        self.system.part.add(pos=np.random.random((n_particles, 3)))
+
         # Set strong thermostat
         self.system.thermostat.set_langevin(kT=target_kT, gamma=3.0, seed=42)
         self.system.integrator.set_symplectic_euler()
-        
+
         # Run long enough for thermalization
-        
+
         # Calculate instantaneous temperature
         particles = self.system.part.all()
         for _ in range(3):
-          self.system.integrator.run(200)
-          kinetic_energy = sum(0.5 * p.mass * np.sum(p.v**2) for p in particles)
-          temperature = 2.0 * kinetic_energy / (3.0 * n_particles)
-          # Should be reasonably close to target temperature
-          self.assertAlmostEqual(temperature, target_kT, delta=target_kT/20)
+            self.system.integrator.run(200)
+            kinetic_energy = sum(0.5 * p.mass * np.sum(p.v**2)
+                                 for p in particles)
+            temperature = 2.0 * kinetic_energy / (3.0 * n_particles)
+            # Should be reasonably close to target temperature
+            self.assertAlmostEqual(
+                temperature, target_kT, delta=target_kT / 20)
 
     def test_friction_effects(self):
         """Test that friction effects are applied."""
         # High velocity particle should slow down due to friction
         p = self.system.part.add(pos=[0, 0, 0], v=[10, 0, 0], mass=1.0)
-        
+
         # Set thermostat with high friction, low temperature
         self.system.thermostat.set_langevin(kT=0.1, gamma=5.0, seed=42)
         self.system.integrator.set_symplectic_euler()
-        
+
         initial_v = np.linalg.norm(p.v)
         self.system.integrator.run(100)
         final_v = np.linalg.norm(p.v)
-        
+
         # Velocity should decrease due to friction
         self.assertLess(final_v, initial_v)
 
@@ -111,15 +113,15 @@ class SymplecticEulerLangevin(ut.TestCase):
         """Test that stochastic forces are applied."""
         # Particle at rest should start moving due to random forces
         p = self.system.part.add(pos=[0, 0, 0], v=[0, 0, 0], mass=1.0)
-        
+
         # Set thermostat with temperature but no initial velocity
         self.system.thermostat.set_langevin(kT=1.0, gamma=1.0, seed=42)
         self.system.integrator.set_symplectic_euler()
-        
+
         initial_pos = np.copy(p.pos)
         self.system.integrator.run(100)
         final_pos = np.copy(p.pos)
-        
+
         # Particle should move due to random forces
         displacement = np.linalg.norm(final_pos - initial_pos)
         self.assertGreater(displacement, 0.1)
