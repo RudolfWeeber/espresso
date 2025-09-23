@@ -64,7 +64,8 @@ class SymplecticEuler(ut.TestCase):
             system.integrator.run(1)
 
         # Check that the time has passed
-        np.testing.assert_allclose(system.time, 12. + total_steps * system.time_step)
+        np.testing.assert_allclose(
+            system.time, 12. + total_steps * system.time_step)
 
         # Newton's 2nd law
         if espressomd.has_features("EXTERNAL_FORCES"):
@@ -79,19 +80,23 @@ class SymplecticEuler(ut.TestCase):
                 v0 = np.copy(p.v)
                 ext_force = np.array([-2., 1.3, 1.])
                 p.ext_force = ext_force
-                system.time_step = 0.001 * 2 ** t #0.03
+                system.time_step = 0.001 * 2 ** t  # 0.03
                 local_error = list()
                 for i in range(total_steps):
                     ref_pos = self.calc_pos(p, pos0, v0)
-                    np.testing.assert_allclose(np.copy(p.pos), ref_pos, rtol=1E-1, atol=1E-4)
+                    np.testing.assert_allclose(
+                        np.copy(p.pos), ref_pos, rtol=1E-1, atol=1E-4)
                     local_error.append(max(abs(p.pos - ref_pos)))
                     system.integrator.run(1)
                 max_local_error.append(max(local_error))
 
             # Maximum local error of position within symplectic euler is approximately proportial to dt ** 2
-            self.assertAlmostEqual(max_local_error[1] / max_local_error[0] , 4.0, delta=0.4)
-            self.assertAlmostEqual(max_local_error[2] / max_local_error[1] , 4.0, delta=0.4)
-            self.assertAlmostEqual(max_local_error[3] / max_local_error[2] , 4.0, delta=0.4)
+            self.assertAlmostEqual(
+                max_local_error[1] / max_local_error[0], 4.0, delta=0.4)
+            self.assertAlmostEqual(
+                max_local_error[2] / max_local_error[1], 4.0, delta=0.4)
+            self.assertAlmostEqual(
+                max_local_error[3] / max_local_error[2], 4.0, delta=0.4)
 
 
 if __name__ == "__main__":
