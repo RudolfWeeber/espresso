@@ -19,6 +19,7 @@
 import espressomd
 import numpy as np
 import unittest as ut
+import unittest_decorators as utx
 
 
 class SymplecticEulerLangevin(ut.TestCase):
@@ -32,11 +33,12 @@ class SymplecticEulerLangevin(ut.TestCase):
         self.system.thermostat.turn_off()
         self.system.integrator.set_vv()
 
+    @utx.skipIfMissingFeatures(["MASS"])
     def test_langevin_thermostat_compatibility(self):
         """Test that symplectic Euler works with Langevin thermostat."""
         # Add test particles
-        p1 = self.system.part.add(pos=[0, 0, 0], v=[1, 0, 0], mass=1.0)
-        p2 = self.system.part.add(pos=[2, 0, 0], v=[0, 1, 0], mass=2.0)
+        p1 = self.system.part.add(pos=[0, 0, 0], v=[1, 0, 0], mass=1.)
+        p2 = self.system.part.add(pos=[2, 0, 0], v=[0, 1, 0], mass=2.)
 
         # Set Langevin thermostat
         self.system.thermostat.set_langevin(kT=1.0, gamma=0.5, seed=42)
@@ -54,7 +56,7 @@ class SymplecticEulerLangevin(ut.TestCase):
 
     def test_no_thermostat_compatibility(self):
         """Test that symplectic Euler works without thermostat."""
-        self.system.part.add(pos=[0, 0, 0], v=[1, 0, 0], mass=1.0)
+        self.system.part.add(pos=[0, 0, 0], v=[1, 0, 0])
 
         # No thermostat
         self.system.thermostat.turn_off()
@@ -71,7 +73,7 @@ class SymplecticEulerLangevin(ut.TestCase):
     def test_friction_effects(self):
         """Test that friction effects are applied."""
         # High velocity particle should slow down due to friction
-        p = self.system.part.add(pos=[0, 0, 0], v=[10, 0, 0], mass=1.0)
+        p = self.system.part.add(pos=[0, 0, 0], v=[10, 0, 0])
 
         # Set thermostat with high friction, low temperature
         self.system.thermostat.set_langevin(kT=0.1, gamma=5.0, seed=42)
@@ -87,7 +89,7 @@ class SymplecticEulerLangevin(ut.TestCase):
     def test_stochastic_force(self):
         """Test that stochastic forces are applied."""
         # Particle at rest should start moving due to random forces
-        p = self.system.part.add(pos=[0, 0, 0], v=[0, 0, 0], mass=1.0)
+        p = self.system.part.add(pos=[0, 0, 0], v=[0, 0, 0])
 
         # Set thermostat with temperature but no initial velocity
         self.system.thermostat.set_langevin(kT=1.0, gamma=1.0, seed=42)
