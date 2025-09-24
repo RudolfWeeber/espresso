@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2013-2025 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -48,13 +48,13 @@ class SymplecticEuler(ut.TestCase):
     def test_free_particle_propagation(self):
         """Test free particle propagation with symplectic Euler."""
         # Add a free particle
-        v_init = [1, 2, -3.5]
+        v_init = [1., 2., -3.5]
         p = self.system.part.add(pos=[0, 0, 0], v=v_init)
 
         self.system.integrator.set_symplectic_euler()
 
         dt = self.system.time_step
-        expected_pos = np.copy(3 * dt * p.v)
+        expected_pos = np.copy(3. * dt * p.v)
 
         self.system.integrator.run(3)
 
@@ -62,13 +62,13 @@ class SymplecticEuler(ut.TestCase):
         np.testing.assert_allclose(np.copy(p.pos), expected_pos)
 
         # Check velocity (should remain unchanged for free particle)
-        np.testing.assert_allclose(p.v, v_init)
+        np.testing.assert_allclose(np.copy(p.v), v_init)
 
     def test_velocity_update_order(self):
         """Test that velocity is updated before position in symplectic Euler."""
         # Add particle with force (use external force for simplicity)
-        p = self.system.part.add(pos=[0, 0, 0], v=[0, 0, 0], mass=2.0)
-        p.ext_force = [1.0, 2.5, -1]  # Constant external force
+        p = self.system.part.add(pos=[0, 0, 0], v=[0, 0, 0], mass=2.)
+        p.ext_force = [1.0, 2.5, -1.]  # Constant external force
 
         self.system.integrator.set_symplectic_euler()
 

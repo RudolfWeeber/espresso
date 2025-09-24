@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2013-2025 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -36,10 +36,6 @@ class SymplecticEuler(ut.TestCase):
     def calc_pos(self, p, x0, v0):
         t = self.system.time
         return np.copy(0.5 * p.ext_force / p.mass * t**2 + v0 * t + x0)
-
-    def calc_vel(self, p, v0):
-        t = self.system.time
-        return np.copy(p.ext_force / p.mass * t + v0)
 
     def test_newton_laws(self):
         """
@@ -78,7 +74,7 @@ class SymplecticEuler(ut.TestCase):
                 v0 = np.copy(p.v)
                 ext_force = np.array([-2., 1.3, 1.])
                 p.ext_force = ext_force
-                system.time_step = 0.001 * 2 ** t  # 0.03
+                system.time_step = 0.001 * 2**t
                 local_error = list()
                 for i in range(total_steps):
                     ref_pos = self.calc_pos(p, pos0, v0)
@@ -88,13 +84,11 @@ class SymplecticEuler(ut.TestCase):
                     system.integrator.run(1)
                 max_local_error.append(max(local_error))
 
-            # Maximum local error of position within symplectic euler is approximately proportial to dt ** 2
-            self.assertAlmostEqual(
-                max_local_error[1] / max_local_error[0], 4.0, delta=0.4)
-            self.assertAlmostEqual(
-                max_local_error[2] / max_local_error[1], 4.0, delta=0.4)
-            self.assertAlmostEqual(
-                max_local_error[3] / max_local_error[2], 4.0, delta=0.4)
+            # Maximum local error of position within symplectic Euler is
+            # approximately proportional to dt^2
+            for i in range(3):
+                self.assertAlmostEqual(
+                    max_local_error[i + 1] / max_local_error[i], 4.0, delta=0.4)
 
 
 if __name__ == "__main__":

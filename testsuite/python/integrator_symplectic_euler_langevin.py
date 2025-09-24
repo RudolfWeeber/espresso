@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2013-2025 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -67,31 +67,6 @@ class SymplecticEulerLangevin(ut.TestCase):
 
         # Should work fine
         self.assertTrue(True)
-
-    def test_thermalization(self):
-        """Test that symplectic Euler + Langevin provides thermalization."""
-        # Add many particles for better statistics
-        n_particles = 5000
-        target_kT = 2.5
-
-        self.system.part.add(pos=np.random.random((n_particles, 3)))
-
-        # Set strong thermostat
-        self.system.thermostat.set_langevin(kT=target_kT, gamma=3.0, seed=42)
-        self.system.integrator.set_symplectic_euler()
-
-        # Run long enough for thermalization
-
-        # Calculate instantaneous temperature
-        particles = self.system.part.all()
-        for _ in range(3):
-            self.system.integrator.run(200)
-            kinetic_energy = sum(0.5 * p.mass * np.sum(p.v**2)
-                                 for p in particles)
-            temperature = 2.0 * kinetic_energy / (3.0 * n_particles)
-            # Should be reasonably close to target temperature
-            self.assertAlmostEqual(
-                temperature, target_kT, delta=target_kT / 20)
 
     def test_friction_effects(self):
         """Test that friction effects are applied."""

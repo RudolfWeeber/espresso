@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2025 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,11 +19,9 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
 #include "Particle.hpp"
-#include "ParticleRange.hpp"
-#include "cell_system/CellStructure.hpp"
 #include "rotation.hpp"
 
 /** Propagate the velocities and positions. Integration steps before force
@@ -47,7 +45,7 @@ inline void symplectic_euler_propagator_1(Particle &p, double time_step) {
  *  For symplectic Euler, there is no second step as all updates
  *  are done in step 1.
  */
-inline void symplectic_euler_propagator_2(Particle &p, double time_step) {
+inline void symplectic_euler_propagator_2(Particle &, double) {
   // No second step needed for symplectic Euler
   // All propagation is done in step 1
 }
@@ -62,7 +60,7 @@ inline void symplectic_euler_rotator_1(Particle &p, double time_step) {
   }
 }
 
-inline void symplectic_euler_rotator_2(Particle &p, double time_step) {
+inline void symplectic_euler_rotator_2(Particle &, double) {
   // No second step needed for symplectic Euler rotation
 }
 #endif // ESPRESSO_ROTATION
