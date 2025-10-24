@@ -39,6 +39,7 @@ struct CellStructure::AoSoA_pack {
   using IdViewType = Kokkos::View<int *, Kokkos::HostSpace>;
   using TypeViewType = Kokkos::View<int *, Kokkos::HostSpace>;
   using IdToIndexViewType = Kokkos::View<int *, Kokkos::HostSpace>;
+  using FlagsViewType = Kokkos::View<short int *, Kokkos::HostSpace>;
 
   PositionViewType position;
   VelocityViewType velocity;
@@ -48,6 +49,7 @@ struct CellStructure::AoSoA_pack {
   IdViewType id;
   TypeViewType type;
   IdToIndexViewType id_to_index;
+  FlagsViewType flags;
 
   AoSoA_pack() = default;
 
@@ -62,6 +64,7 @@ struct CellStructure::AoSoA_pack {
 #endif
       id = IdViewType("id", num_particles);
       type = TypeViewType("type", num_particles);
+      flags = FlagsViewType("flags", num_particles);
 #ifdef ESPRESSO_DPD
       velocity = PositionViewType("velocity", num_particles);
 #endif
@@ -79,6 +82,7 @@ struct CellStructure::AoSoA_pack {
 #endif
       Kokkos::realloc(id, num_particles);
       Kokkos::realloc(type, num_particles);
+      Kokkos::realloc(flags, num_particles);
 #ifdef ESPRESSO_DPD
       Kokkos::realloc(velocity, num_particles);
 #endif
@@ -106,6 +110,12 @@ struct CellStructure::AoSoA_pack {
     view(i, 1) = value[1];
     view(i, 2) = value[2];
   }
+
+  void set_has_exclusion(int i, bool value) {
+    flags(i) = value ? 1 : 0;
+  }
+
+  bool has_exclusion(int i) const { return flags(i) == 1; }
 };
 
 #endif // ESPRESSO_SHARED_MEMORY_PARALLELISM

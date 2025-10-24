@@ -52,13 +52,12 @@ kokkos_parallel_range_for(auto const &name, auto start, auto end,
 
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 commit_particle(Particle const &p, auto const index,
-                CellStructure::AoSoA_pack &aosoa) {
-  aosoa.id(index) = p.id();
+                CellStructure::AoSoA_pack &aosoa, bool const rebuild) {
+  // Always commit: positions, velocities, charges, directors, dipm
+  aosoa.set_vector_at(aosoa.position, index, p.pos());
 #ifdef ESPRESSO_ELECTROSTATICS
   aosoa.charge(index) = p.q();
 #endif
-  aosoa.type(index) = p.type();
-  aosoa.set_vector_at(aosoa.position, index, p.pos());
 #ifdef ESPRESSO_DPD
   aosoa.set_vector_at(aosoa.velocity, index, p.v());
 #endif
@@ -69,6 +68,17 @@ commit_particle(Particle const &p, auto const index,
 #ifdef ESPRESSO_DIPOLES
   aosoa.dipm(index) = p.dipm();
 #endif
+
+  // Only commit on rebuild: id, type, exclusion flags
+  if (rebuild) {
+    aosoa.id(index) = p.id();
+    aosoa.type(index) = p.type();
+#ifdef ESPRESSO_EXCLUSIONS
+    aosoa.set_has_exclusion(index, !p.exclusions().empty());
+#else
+    aosoa.flags(index) = 0;
+#endif
+  }
 }
 
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
@@ -161,7 +171,7 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
         "AoSoA write", std::size_t{0}, n_part,
         [&unique_particles, &aosoa, &id_to_index](int const index) {
           auto const &p = *unique_particles.at(index);
-          commit_particle(p, index, aosoa);
+          commit_particle(p, index, aosoa, true);
           id_to_index(p.id()) = index;
         });
     Kokkos::fence();
@@ -200,7 +210,7 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
         "AoSoA write", std::size_t{0}, n_part,
         [&unique_particles, &aosoa](int const index) {
           auto const &p = *unique_particles.at(index);
-          commit_particle(p, index, aosoa);
+          commit_particle(p, index, aosoa, false);
         });
     Kokkos::fence();
   }

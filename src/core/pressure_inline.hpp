@@ -66,7 +66,7 @@ inline void add_non_bonded_pair_virials(
   if (do_nonbonded(p1, p2))
 #endif
   {
-    auto const force = calc_central_radial_force(ia_params, d, dist).f +
+    auto const force = calc_central_radial_force(ia_params, d, dist) +
 #ifdef ESPRESSO_THOLE
                        thole_pair_force(p1, p2, ia_params, d, dist, bonded_ias,
                                         kernel_forces) +
