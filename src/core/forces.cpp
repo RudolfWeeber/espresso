@@ -220,14 +220,8 @@ void System::System::calculate_forces() {
                                            collision_detection_cutoff};
 
 #ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
-#ifdef ESPRESSO_CALIPER
-  CALI_MARK_BEGIN("convert particles AoS to SoA");
-#endif
   update_cabana_state(*cell_structure, verlet_criterion,
                       get_interaction_range(), propagation->integ_switch);
-#ifdef ESPRESSO_CALIPER
-  CALI_MARK_END("convert particles AoS to SoA");
-#endif
 #endif
 #ifdef ESPRESSO_ELECTROSTATICS
   if (coulomb.impl->extension) {

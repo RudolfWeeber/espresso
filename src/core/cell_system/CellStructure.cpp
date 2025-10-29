@@ -67,6 +67,11 @@
 #include <variant>
 #include <vector>
 
+#ifdef ESPRESSO_CALIPER
+#include <caliper/cali.h>
+#endif
+
+
 CellStructure::~CellStructure() {
 #ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
   clear_local_properties();
@@ -112,6 +117,9 @@ static auto estimate_max_counts(double pair_cutoff,
 }
 
 void CellStructure::rebuild_local_properties(double const pair_cutoff) {
+#ifdef ESPRESSO_CALIPER
+CALI_CXX_MARK_FUNCTION;
+#endif
   assert(m_kokkos_handle);
   using execution_space = Kokkos::DefaultExecutionSpace;
   auto const num_threads = execution_space().concurrency();
@@ -160,6 +168,9 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
 }
 
 void CellStructure::reset_local_force() {
+#ifdef ESPRESSO_CALIPER
+CALI_CXX_MARK_FUNCTION;
+#endif
   Kokkos::deep_copy(get_local_force(), 0.);
 }
 
@@ -175,6 +186,9 @@ void CellStructure::reset_local_properties() {
 }
 
 void CellStructure::set_index_map() {
+#ifdef ESPRESSO_CALIPER
+CALI_CXX_MARK_FUNCTION;
+#endif
   auto &unique_particles = m_unique_particles;
   unique_particles.clear();
   unique_particles.resize(count_local_particles());

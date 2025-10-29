@@ -32,6 +32,10 @@
 #include <Cabana_Core.hpp>
 #include <Cabana_NeighborList.hpp>
 
+#ifdef ESPRESSO_CALIPER
+#include <caliper/cali.h>
+#endif
+
 #include <iterator>
 #include <span>
 #include <utility>
@@ -165,8 +169,11 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
     auto &id_to_index = cell_structure.get_id_to_index();
 
     // ===================================================
-    // Fill particle storage
+    // Fill particle storage (full commit)
     // ===================================================
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_BEGIN("AoSoA commit full");
+#endif
     kokkos_parallel_range_for<policy_type>(
         "AoSoA write", std::size_t{0}, n_part,
         [&unique_particles, &aosoa, &id_to_index](int const index) {
@@ -175,12 +182,18 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
           id_to_index(p.id()) = index;
         });
     Kokkos::fence();
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_END("AoSoA commit full");
+#endif
 
     // ===================================================
     // Get Verlet pairs and fill Verlet list
     // ===================================================
     bool rebuild_vl = (integ_switch != INTEG_METHOD_STEEPEST_DESCENT and
                        cell_structure.use_verlet_list);
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_BEGIN("Verlet list creation");
+#endif
     cell_structure.rebuild_verlet_list_cabana(
         [&](std::span<Cell *const> cells, BoxGeometry const &box,
             CellStructure::ListType &verlet_list) {
@@ -202,10 +215,16 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
           }
         },
         rebuild_vl);
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_END("Verlet list creation");
+#endif
   } else {
     // ===================================================
-    // Fill particle storage
+    // Fill particle storage (partial update)
     // ===================================================
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_BEGIN("AoSoA commit partial");
+#endif
     kokkos_parallel_range_for<policy_type>(
         "AoSoA write", std::size_t{0}, n_part,
         [&unique_particles, &aosoa](int const index) {
@@ -213,6 +232,9 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
           commit_particle(p, index, aosoa, false);
         });
     Kokkos::fence();
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_END("AoSoA commit partial");
+#endif
   }
 }
 
