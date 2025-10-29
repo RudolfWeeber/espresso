@@ -113,8 +113,8 @@ struct ForcesKernel {
   ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION bool
   thole_active(IA_parameters const &ia_params) const {
 #ifdef ESPRESSO_THOLE
-    return (ia_params.thole.scaling_coeff != 0. &&
-            ia_params.thole.q1q2 != 0. && coulomb_kernel != nullptr);
+    return (ia_params.thole.scaling_coeff != 0. && ia_params.thole.q1q2 != 0. &&
+            coulomb_kernel != nullptr);
 #else
     return false;
 #endif
@@ -146,13 +146,16 @@ struct ForcesKernel {
     auto const dist = d.norm();
 
     // Determine which data needs to be loaded based on active algorithms
-#if defined(ESPRESSO_DIPOLES) || defined(ESPRESSO_GAY_BERNE)    
-    bool const need_directors = gay_berne_active(dist, ia_params) || dipoles_active();
+#if defined(ESPRESSO_DIPOLES) || defined(ESPRESSO_GAY_BERNE)
+    bool const need_directors =
+        gay_berne_active(dist, ia_params) || dipoles_active();
 #else
-    constexpr const bool need_directors=false;
+    constexpr const bool need_directors = false;
 #endif
 #if defined(ESPRESSO_EXCLUSIONS) || defined(ESPRESSO_THOLE)
-    bool const need_particle_pointers = aosoa.has_exclusion(i) || aosoa.has_exclusion(j) or thole_active(ia_params);
+    bool const need_particle_pointers = aosoa.has_exclusion(i) ||
+                                        aosoa.has_exclusion(j) or
+                                        thole_active(ia_params);
     Particle const *p1_ptr = nullptr;
     Particle const *p2_ptr = nullptr;
     if (need_particle_pointers) {
@@ -171,7 +174,6 @@ struct ForcesKernel {
       dir2 = aosoa.get_vector_at(aosoa.director, j);
     }
 #endif
-
 
     /***********************************************/
     /* non-bonded pair potentials                  */
@@ -204,7 +206,6 @@ struct ForcesKernel {
 #endif
       } // not skip_non_bonded
     }
-    
 
     /*********************************************************************/
     /* everything before this contributes to the virial pressure in NpT, */
@@ -240,19 +241,19 @@ struct ForcesKernel {
     Utils::Vector3d f2_asym{};
     // real-space electrostatic charge-charge interaction
     if (coulomb_kernel != nullptr) {
-    auto const q1q2 = aosoa.charge(i) * aosoa.charge(j);
-    if (q1q2 != 0) {
-      pf.f += (*coulomb_kernel)(q1q2, d, dist);
-      if (elc_kernel) {
-        (*elc_kernel)(pos1, pos2, f1_asym, f2_asym, q1q2);
-      }
+      auto const q1q2 = aosoa.charge(i) * aosoa.charge(j);
+      if (q1q2 != 0) {
+        pf.f += (*coulomb_kernel)(q1q2, d, dist);
+        if (elc_kernel) {
+          (*elc_kernel)(pos1, pos2, f1_asym, f2_asym, q1q2);
+        }
 #ifdef ESPRESSO_NPT
-      if (npt_active()) {
-        virial[0] += (*coulomb_u_kernel)(pos1, pos2, q1q2, d, dist);
-      }
+        if (npt_active()) {
+          virial[0] += (*coulomb_u_kernel)(pos1, pos2, q1q2, d, dist);
+        }
 #endif // ESPRESSO_NPT
+      }
     }
-  }
 #endif // ESPRESSO_ELECTROSTATICS
 
     // Only call dipole force kernel if active
@@ -265,7 +266,6 @@ struct ForcesKernel {
       }
     }
 #endif // ESPRESSO_DIPOLES
-    
 
     auto opf = calc_opposing_force(pf, d);
 #ifdef ESPRESSO_ELECTROSTATICS

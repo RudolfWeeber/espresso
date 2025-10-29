@@ -332,7 +332,8 @@ struct ElectrostaticLayerCorrection
   void add_pair_force_corrections(Utils::Vector3d const &pos1,
                                   Utils::Vector3d const &pos2,
                                   Utils::Vector3d &p1f_asym,
-                                  Utils::Vector3d &p2f_asym, double q1q2) const {
+                                  Utils::Vector3d &p2f_asym,
+                                  double q1q2) const {
     if (elc.dielectric_contrast_on) {
       std::visit(
           [this, &pos1, &pos2, &p1f_asym, &p2f_asym, q1q2](auto &p3m_ptr) {

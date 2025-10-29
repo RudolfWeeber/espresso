@@ -125,12 +125,13 @@ ParticleForce ShapeBasedConstraint::force(Particle const &p,
 #endif
     } else if (m_penetrable && (dist <= 0)) {
       if ((!m_only_positive) && (dist < 0)) {
-        pf.f = calc_central_radial_force(ia_params, dist_vec, -dist) +
+        pf.f =
+            calc_central_radial_force(ia_params, dist_vec, -dist) +
 #ifdef ESPRESSO_THOLE
-               thole_pair_force(p, part_rep, ia_params, dist_vec, -dist,
-                                *system.bonded_ias, get_ptr(coulomb_kernel)) +
+            thole_pair_force(p, part_rep, ia_params, dist_vec, -dist,
+                             *system.bonded_ias, get_ptr(coulomb_kernel)) +
 #endif
-               calc_non_central_force(p, part_rep, ia_params, dist_vec, -dist).f;
+            calc_non_central_force(p, part_rep, ia_params, dist_vec, -dist).f;
 
 #ifdef ESPRESSO_DPD
         if (system.thermostat->thermo_switch & THERMO_DPD) {
