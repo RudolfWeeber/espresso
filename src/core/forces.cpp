@@ -306,11 +306,11 @@ void System::System::calculate_forces() {
   auto collision_kernel = [&collision_detection = *collision_detection](
                               Particle const &p1, Particle const &p2,
                               Distance const &d) {
-    if (not collision_detection.is_off()) {
-      collision_detection.detect_collision(p1, p2, d.dist2);
-    }
+    collision_detection.detect_collision(p1, p2, d.dist2);
   };
-  cell_structure->non_bonded_loop(collision_kernel, verlet_criterion);
+  if (not collision_detection->is_off()) {
+    cell_structure->non_bonded_loop(collision_kernel, verlet_criterion);
+  }
 #endif
 
 #ifdef ESPRESSO_CALIPER
