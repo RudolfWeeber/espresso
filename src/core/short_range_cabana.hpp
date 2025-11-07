@@ -157,6 +157,9 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
                     double const pair_cutoff, auto const integ_switch) {
+#ifdef ESPRESSO_CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   using execution_space = Kokkos::DefaultExecutionSpace;
   using policy_type = Kokkos::RangePolicy<execution_space>;
   auto const rebuild = cell_structure.prepare_verlet_list_cabana(pair_cutoff);
@@ -263,11 +266,20 @@ void cabana_short_range(auto const &bond_kernel, auto const &forces_kernel,
   assert(cell_structure.get_resort_particles() == Cells::RESORT_NONE);
 
   if (bond_cutoff >= 0.) {
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_BEGIN("cabana_bond_loop");
+#endif
     cell_structure.bond_loop(bond_kernel);
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_END("cabana_bond_loop");
+#endif
   }
 
   // Cabana short range loop
   if (pair_cutoff > 0.) {
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_BEGIN("cabana_pair_loop");
+#endif
     if (integ_switch != INTEG_METHOD_STEEPEST_DESCENT and
         cell_structure.use_verlet_list) {
       auto const &verlet_list = cell_structure.get_verlet_list_cabana();
@@ -294,6 +306,9 @@ void cabana_short_range(auto const &bond_kernel, auto const &forces_kernel,
           });
     }
     Kokkos::fence();
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_END("cabana_pair_loop");
+#endif
   }
 }
 
