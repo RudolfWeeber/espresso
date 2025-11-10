@@ -73,16 +73,18 @@ commit_particle(Particle const &p, auto const index,
   aosoa.dipm(index) = p.dipm();
 #endif
 
-  // Only commit on rebuild: id, type, exclusion flags
+  // Only commit on rebuild: id, type
   if (rebuild) {
     aosoa.id(index) = p.id();
     aosoa.type(index) = p.type();
-#ifdef ESPRESSO_EXCLUSIONS
-    aosoa.set_has_exclusion(index, !p.exclusions().empty());
-#else
-    aosoa.flags(index) = 0;
-#endif
   }
+
+  // Always update exclusion flags (they can change during simulation)
+#ifdef ESPRESSO_EXCLUSIONS
+  aosoa.set_has_exclusion(index, !p.exclusions().empty());
+#else
+  aosoa.flags(index) = 0;
+#endif
 }
 
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
