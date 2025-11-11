@@ -111,9 +111,11 @@ struct CellStructure::AoSoA_pack {
     view(i, 2) = value[2];
   }
 
-  void set_has_exclusion(int i, bool value) { flags(i) = value ? 1 : 0; }
+  void set_has_exclusion(std::size_t i, bool value) {
+    flags(i) = value ? 1 : 0;
+  }
 
-  bool has_exclusion(int i) const { return flags(i) == 1; }
+  bool has_exclusion(std::size_t i) const { return flags(i) == 1; }
 };
 
 #endif // ESPRESSO_SHARED_MEMORY_PARALLELISM
