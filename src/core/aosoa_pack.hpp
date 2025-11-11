@@ -27,6 +27,8 @@
 
 #include <Kokkos_Core.hpp>
 
+#include <cstdint>
+
 struct CellStructure::AoSoA_pack {
   using PositionViewType =
       Kokkos::View<double *[3], Kokkos::LayoutRight, Kokkos::HostSpace>;
@@ -39,7 +41,7 @@ struct CellStructure::AoSoA_pack {
   using IdViewType = Kokkos::View<int *, Kokkos::HostSpace>;
   using TypeViewType = Kokkos::View<int *, Kokkos::HostSpace>;
   using IdToIndexViewType = Kokkos::View<int *, Kokkos::HostSpace>;
-  using FlagsViewType = Kokkos::View<short int *, Kokkos::HostSpace>;
+  using FlagsViewType = Kokkos::View<uint8_t *, Kokkos::HostSpace>;
 
   PositionViewType position;
   VelocityViewType velocity;
@@ -112,10 +114,10 @@ struct CellStructure::AoSoA_pack {
   }
 
   void set_has_exclusion(std::size_t i, bool value) {
-    flags(i) = value ? 1 : 0;
+    flags(i) = value ? uint8_t{1} : uint8_t{0};
   }
 
-  bool has_exclusion(std::size_t i) const { return flags(i) == 1; }
+  bool has_exclusion(std::size_t i) const { return flags(i) == uint8_t{1}; }
 };
 
 #endif // ESPRESSO_SHARED_MEMORY_PARALLELISM

@@ -19,7 +19,7 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
 #ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
 
@@ -32,6 +32,7 @@
 
 #include <omp.h>
 
+#include <cstddef>
 #include <vector>
 
 #if defined(__GNUG__) or defined(__clang__)
@@ -93,46 +94,36 @@ struct ForcesKernel {
   }
 
   // Helper functions to check if specific algorithms are active
+#ifdef ESPRESSO_GAY_BERNE
   ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION bool
   gay_berne_active(double dist, IA_parameters const &ia_params) const {
-#ifdef ESPRESSO_GAY_BERNE
     return dist < ia_params.gay_berne.cut;
-#else
-    return false;
-#endif
   }
+#endif
 
-  ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION bool npt_active() const {
 #ifdef ESPRESSO_NPT
+  ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION bool npt_active() const {
     return global_virial != nullptr;
-#else
-    return false;
-#endif
   }
+#endif
 
+#ifdef ESPRESSO_THOLE
   ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION bool
   thole_active(IA_parameters const &ia_params) const {
-#ifdef ESPRESSO_THOLE
-    return (ia_params.thole.scaling_coeff != 0. && ia_params.thole.q1q2 != 0. &&
-            coulomb_kernel != nullptr);
-#else
-    return false;
-#endif
+    return (ia_params.thole.scaling_coeff != 0. and
+            ia_params.thole.q1q2 != 0. and coulomb_kernel != nullptr);
   }
+#endif
 
+#ifdef ESPRESSO_DIPOLES
   ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION bool
   dipoles_active() const {
-#ifdef ESPRESSO_DIPOLES
     return dipoles_kernel != nullptr;
-#else
-    return false;
-#endif
   }
+#endif
 
   ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION void
   operator()(std::size_t i, std::size_t j) const {
-
-    auto const thread_id = omp_get_thread_num();
 
     auto const &ia_params =
         nonbonded_ias.get_ia_param(aosoa.type(i), aosoa.type(j));
@@ -146,14 +137,12 @@ struct ForcesKernel {
     auto const dist = d.norm();
 
     // Determine which data needs to be loaded based on active algorithms
-#if defined(ESPRESSO_DIPOLES) || defined(ESPRESSO_GAY_BERNE)
+#if defined(ESPRESSO_DIPOLES) or defined(ESPRESSO_GAY_BERNE)
     bool const need_directors =
-        gay_berne_active(dist, ia_params) || dipoles_active();
-#else
-    constexpr const bool need_directors = false;
+        gay_berne_active(dist, ia_params) or dipoles_active();
 #endif
-#if defined(ESPRESSO_EXCLUSIONS) || defined(ESPRESSO_THOLE)
-    bool const need_particle_pointers = aosoa.has_exclusion(i) ||
+#if defined(ESPRESSO_EXCLUSIONS) or defined(ESPRESSO_THOLE)
+    bool const need_particle_pointers = aosoa.has_exclusion(i) or
                                         aosoa.has_exclusion(j) or
                                         thole_active(ia_params);
     Particle const *p1_ptr = nullptr;
@@ -162,8 +151,6 @@ struct ForcesKernel {
       p1_ptr = unique_particles.at(i);
       p2_ptr = unique_particles.at(j);
     }
-#else
-    bool const constexpr need_particle_pointers = false;
 #endif
 
     // Load directors only if needed
@@ -183,7 +170,7 @@ struct ForcesKernel {
 #ifdef ESPRESSO_EXCLUSIONS
       bool skip_non_bonded = false;
       if (aosoa.has_exclusion(i) or aosoa.has_exclusion(j)) {
-        skip_non_bonded = !do_nonbonded(*p1_ptr, *p2_ptr);
+        skip_non_bonded = not do_nonbonded(*p1_ptr, *p2_ptr);
       }
 #else
       constexpr bool skip_non_bonded = false;
@@ -272,6 +259,8 @@ struct ForcesKernel {
     pf.f += f1_asym;
     opf.f += f2_asym;
 #endif // ESPRESSO_ELECTROSTATICS
+
+    auto const thread_id = omp_get_thread_num();
 
     local_force(i, thread_id, 0) += pf.f[0];
     local_force(i, thread_id, 1) += pf.f[1];

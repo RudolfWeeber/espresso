@@ -44,6 +44,10 @@
 #include <utils/math/int_pow.hpp>
 #include <utils/math/sqr.hpp>
 
+#ifdef ESPRESSO_CALIPER
+#include <caliper/cali.h>
+#endif
+
 #include <boost/mpi/collectives/all_reduce.hpp>
 
 #ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
@@ -56,6 +60,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -66,10 +71,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-#ifdef ESPRESSO_CALIPER
-#include <caliper/cali.h>
-#endif
 
 CellStructure::~CellStructure() {
 #ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
@@ -140,7 +141,7 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
     Kokkos::deep_copy(get_id_to_index(), -1);
     // Resize particle views using AoSoA_pack's resize method
     m_aosoa->resize(num_part);
-    Kokkos::deep_copy(m_aosoa->flags, static_cast<short int>(0));
+    Kokkos::deep_copy(m_aosoa->flags, uint8_t{0});
     m_verlet_list_cabana->reallocData(num_part, max_counts);
   } else { // local properties are initialized
     m_local_force =
@@ -156,7 +157,7 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
     // Create AoSoA_pack and initialize with resize
     m_aosoa = std::make_unique<AoSoA_pack>();
     m_aosoa->resize(num_part);
-    Kokkos::deep_copy(m_aosoa->flags, static_cast<short int>(0));
+    Kokkos::deep_copy(m_aosoa->flags, uint8_t{0});
 
     m_verlet_list_cabana =
         std::make_unique<ListType>(0ul, num_part, max_counts);
@@ -181,7 +182,7 @@ void CellStructure::reset_local_properties() {
 #ifdef ESPRESSO_NPT
   Kokkos::deep_copy(get_local_virial(), 0.);
 #endif
-  Kokkos::deep_copy(get_aosoa().flags, static_cast<short int>(0));
+  Kokkos::deep_copy(get_aosoa().flags, uint8_t{0});
 }
 
 void CellStructure::set_index_map() {
