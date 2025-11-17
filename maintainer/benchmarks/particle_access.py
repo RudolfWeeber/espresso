@@ -22,6 +22,30 @@ import numpy as np
 import argparse
 import time
 
+
+def benchmark_operation(operation_func, n_iter):
+    """Execute an operation multiple times and return timing statistics."""
+    timings = []
+    for _ in range(n_iter):
+        tick = time.time()
+        operation_func()
+        tock = time.time()
+        timings.append(tock - tick)
+    return np.mean(timings), np.std(timings)
+
+
+def print_section_header(title):
+    """Print a formatted section header."""
+    print("=" * 60)
+    print(title)
+    print("=" * 60)
+
+
+def filter_available_properties(properties, particle):
+    """Filter properties to only those available for the given particle."""
+    return [prop for prop in properties if hasattr(particle, prop)]
+
+
 parser = argparse.ArgumentParser(
     description="Benchmark particle creation and property access.")
 parser.add_argument("--particles_per_core", metavar="N", action="store",
@@ -60,41 +84,31 @@ print(f"  Additional properties: {
 print()
 
 # Test 1: Bulk particle creation without providing IDs
-print("=" * 60)
-print("Test 1: Bulk particle creation without IDs")
-print("=" * 60)
-timings = []
-for i in range(args.n_iter):
+print_section_header("Test 1: Bulk particle creation without IDs")
+
+
+def create_particles_no_ids():
     system.part.clear()
     positions = np.random.random((n_part, 3)) * system.box_l
-    tick = time.time()
     system.part.add(pos=positions)
-    tock = time.time()
-    t = tock - tick
-    timings.append(t)
 
-avg = np.mean(timings)
-std = np.std(timings)
+
+avg, std = benchmark_operation(create_particles_no_ids, args.n_iter)
 print(f"Average: {avg:.6f} s ± {std:.6f} s ({n_part / avg:.0f} particles/s)")
 print()
 
 # Test 2: Bulk particle creation with linear IDs
-print("=" * 60)
-print("Test 2: Bulk particle creation with linear IDs")
-print("=" * 60)
-timings = []
-for i in range(args.n_iter):
+print_section_header("Test 2: Bulk particle creation with linear IDs")
+
+
+def create_particles_with_ids():
     system.part.clear()
     positions = np.random.random((n_part, 3)) * system.box_l
     ids = np.arange(n_part, dtype=int)
-    tick = time.time()
     system.part.add(pos=positions, id=ids)
-    tock = time.time()
-    t = tock - tick
-    timings.append(t)
 
-avg = np.mean(timings)
-std = np.std(timings)
+
+avg, std = benchmark_operation(create_particles_with_ids, args.n_iter)
 print(f"Average: {avg:.6f} s ± {std:.6f} s ({n_part / avg:.0f} particles/s)")
 print()
 
@@ -104,137 +118,134 @@ positions = np.random.random((n_part, 3)) * system.box_l
 system.part.add(pos=positions)
 
 # Test 3: Single particle property access
-print("=" * 60)
-print("Test 3: Single particle property access")
-print("=" * 60)
+print_section_header("Test 3: Single particle property access")
 
 # Base properties to test
 base_properties_read = ['pos', 'pos_folded', 'q', 'f']
 base_properties_write = ['pos', 'q']
 
-# Add additional properties
-all_props_read = base_properties_read + additional_props
-all_props_write = base_properties_write + \
-    [p for p in additional_props if p not in ['f', 'pos_folded']]
+# Add additional properties and filter by availability
+test_particle = system.part.by_id(0)
+all_props_read = filter_available_properties(
+    base_properties_read + additional_props, test_particle)
+all_props_write = filter_available_properties(
+    base_properties_write +
+    [p for p in additional_props if p not in ['f', 'pos_folded']],
+    test_particle)
+
+
+def benchmark_property_access(properties, access_func, time_scale=1e6, time_unit="µs"):
+    """Benchmark property access (read or write) and print results."""
+    for prop in properties:
+        avg, std = benchmark_operation(
+            lambda: access_func(prop), args.n_iter)
+        print(f"  {prop}: {avg * time_scale:.3f} {time_unit} ± {std *
+              time_scale:.3f} {time_unit}, {1 / avg:.0f} particles/s")
+
 
 # Test single particle read
 print("\nSingle particle property READ:")
-for prop in all_props_read:
-    timings = []
-    for i in range(args.n_iter):
-        tick = time.time()
-        _ = getattr(system.part.by_id(0), prop)
-        tock = time.time()
-        timings.append(tock - tick)
-    avg = np.mean(timings)
-    std = np.std(timings)
-    print(f"  {prop}: {avg * 1e6:.3f} µs ± {std *
-          1e6:.3f} µs, {1 / avg} particles/s")
+benchmark_property_access(
+    all_props_read,
+    lambda prop: getattr(test_particle, prop)
+)
 
 # Test single particle write
 print("\nSingle particle property WRITE:")
-for prop in all_props_write:
-    timings = []
-    # Read valid value from particle 0
-    test_value = getattr(system.part.by_id(0), prop)
 
-    for i in range(args.n_iter):
-        tick = time.time()
-        setattr(system.part.by_id(0), prop, test_value)
-        tock = time.time()
-        timings.append(tock - tick)
-    avg = np.mean(timings)
-    std = np.std(timings)
-    print(f"  {prop}: {avg * 1e6:.3f} µs ± {std *
-          1e6:.3f} µs, {1 / avg} particles/s")
 
+def write_property(prop):
+    test_value = getattr(test_particle, prop)
+    setattr(test_particle, prop, test_value)
+
+
+benchmark_property_access(all_props_write, write_property)
 print()
 
 # Test 4: Slice property access (re-instantiating slice)
-print("=" * 60)
-print("Test 4: Slice property access (re-instantiating slice)")
-print("=" * 60)
+print_section_header("Test 4: Slice property access (re-instantiating slice)")
+
+
+def benchmark_slice_access(properties, access_func, description, time_scale=1e3, time_unit="ms"):
+    """Benchmark slice property access and print results."""
+    print(f"\n{description}:")
+    for prop in properties:
+        avg, std = benchmark_operation(
+            lambda: access_func(prop), args.n_iter)
+        print(f"  {prop}: {avg * time_scale:.3f} {time_unit} ± {std *
+              time_scale:.3f} {time_unit} ({n_part / avg:.0f} particles/s)")
+
 
 # Test slice read - re-instantiating slice on every access
-print("\nSlice property READ (re-instantiating slice):")
-for prop in all_props_read:
-    timings = []
-    for i in range(args.n_iter):
-        tick = time.time()
-        _ = getattr(system.part.all(), prop)
-        tock = time.time()
-        timings.append(tock - tick)
-    avg = np.mean(timings)
-    std = np.std(timings)
-    print(f"  {prop}: {avg * 1e3:.3f} ms ± {std *
-          1e3:.3f} ms ({n_part / avg:.0f} particles/s)")
+benchmark_slice_access(
+    all_props_read,
+    lambda prop: getattr(system.part.all(), prop),
+    "Slice property READ (re-instantiating slice)"
+)
 
 # Test slice write - re-instantiating slice on every access
-print("\nSlice property WRITE (re-instantiating slice):")
-for prop in all_props_write:
-    timings = []
-    # Read valid value from particle 0 to get correct type/shape
-    test_value = getattr(system.part.by_id(0), prop)
+
+
+def write_slice_property(prop):
+    test_value = getattr(test_particle, prop)
     test_array = np.array([test_value] * n_part)
+    setattr(system.part.all(), prop, test_array)
 
-    for i in range(args.n_iter):
-        tick = time.time()
-        setattr(system.part.all(), prop, test_array)
-        tock = time.time()
-        timings.append(tock - tick)
-    avg = np.mean(timings)
-    std = np.std(timings)
-    print(f"  {prop}: {avg * 1e3:.3f} ms ± {std *
-          1e3:.3f} ms ({n_part / avg:.0f} particles/s)")
 
+benchmark_slice_access(
+    all_props_write,
+    write_slice_property,
+    "Slice property WRITE (re-instantiating slice)"
+)
 print()
 
 # Test 5: Slice property access (cached slice)
-print("=" * 60)
-print("Test 5: Slice property access (cached slice)")
-print("=" * 60)
+print_section_header("Test 5: Slice property access (cached slice)")
+
+
+def benchmark_cached_slice_access(properties, access_func, warmup_func, description):
+    """Benchmark cached slice property access with warmup."""
+    print(f"\n{description}:")
+    for prop in properties:
+        timings = []
+        for _ in range(args.n_iter):
+            particle_slice = system.part.all()
+            # Warm-up access
+            warmup_func(particle_slice, prop)
+            # Timed access
+            tick = time.time()
+            access_func(particle_slice, prop)
+            tock = time.time()
+            timings.append(tock - tick)
+        avg = np.mean(timings)
+        std = np.std(timings)
+        print(f"  {prop}: {avg * 1e3:.3f} ms ± {std *
+              1e3:.3f} ms ({n_part / avg:.0f} particles/s)")
+
 
 # Test slice read - cached slice
-print("\nSlice property READ (cached slice):")
-for prop in all_props_read:
-    timings = []
-    for i in range(args.n_iter):
-        particle_slice = system.part.all()
-        # Warm-up access
-        _ = getattr(particle_slice, prop)
-        # Timed access
-        tick = time.time()
-        _ = getattr(particle_slice, prop)
-        tock = time.time()
-        timings.append(tock - tick)
-    avg = np.mean(timings)
-    std = np.std(timings)
-    print(f"  {prop}: {avg * 1e3:.3f} ms ± {std *
-          1e3:.3f} ms ({n_part / avg:.0f} particles/s)")
+benchmark_cached_slice_access(
+    all_props_read,
+    lambda slice_obj, prop: getattr(slice_obj, prop),
+    lambda slice_obj, prop: getattr(slice_obj, prop),
+    "Slice property READ (cached slice)"
+)
 
 # Test slice write - cached slice
-print("\nSlice property WRITE (cached slice):")
-for prop in all_props_write:
-    timings = []
-    # Read valid value from particle 0 to get correct type/shape
-    test_value = getattr(system.part.by_id(0), prop)
-    test_array = np.array([test_value] * n_part)
 
-    for i in range(args.n_iter):
-        particle_slice = system.part.all()
-        # Warm-up write
-        setattr(particle_slice, prop, test_array)
-        # Timed write
-        tick = time.time()
-        setattr(particle_slice, prop, test_array)
-        tock = time.time()
-        timings.append(tock - tick)
-    avg = np.mean(timings)
-    std = np.std(timings)
-    print(f"  {prop}: {avg * 1e3:.3f} ms ± {std *
-          1e3:.3f} ms ({n_part / avg:.0f} particles/s)")
+
+def write_cached_slice(slice_obj, prop):
+    test_value = getattr(test_particle, prop)
+    test_array = np.array([test_value] * n_part)
+    setattr(slice_obj, prop, test_array)
+
+
+benchmark_cached_slice_access(
+    all_props_write,
+    write_cached_slice,
+    write_cached_slice,
+    "Slice property WRITE (cached slice)"
+)
 
 print()
-print("=" * 60)
-print("Benchmark completed")
-print("=" * 60)
+print_section_header("Benchmark completed")
