@@ -31,7 +31,7 @@ parser.add_argument("--additional_properties", metavar="PROPS", action="store",
                     type=str, default="", required=False,
                     help="Comma-separated list of additional properties to test (e.g., 'mass,type,v')")
 parser.add_argument("--n_iter", metavar="N", action="store",
-                    type=int, default=10, required=False,
+                    type=int, default=100, required=False,
                     help="Number of iterations for timing (default: 10)")
 
 args = parser.parse_args()
@@ -135,15 +135,8 @@ for prop in all_props_read:
 print("\nSingle particle property WRITE:")
 for prop in all_props_write:
     timings = []
-    # Prepare test value
-    if prop in ['pos', 'v']:
-        test_value = np.array([1.0, 1.0, 1.0])
-    elif prop in ['q', 'mass', 'charge']:
-        test_value = 1.0
-    elif prop == 'type':
-        test_value = 0
-    else:
-        test_value = 1.0
+    # Read valid value from particle 0
+    test_value = getattr(system.part.by_id(0), prop)
 
     for i in range(args.n_iter):
         tick = time.time()
@@ -157,83 +150,101 @@ for prop in all_props_write:
 
 print()
 
-# Test 4: Slice property access
+# Test 4: Slice property access (re-instantiating slice)
 print("=" * 60)
-print("Test 4: Slice property access (all particles)")
+print("Test 4: Slice property access (re-instantiating slice)")
 print("=" * 60)
 
-# Test slice read - first access
-print("\nSlice property READ (first access):")
+# Test slice read - re-instantiating slice on every access
+print("\nSlice property READ (re-instantiating slice):")
 for prop in all_props_read:
     timings = []
     for i in range(args.n_iter):
-        particle_slice = system.part.all()
         tick = time.time()
-        try:
-            _ = getattr(particle_slice, prop)
-        except Exception as e:
-            print(f"  {prop}: ERROR - {e}")
-            break
+        _ = getattr(system.part.all(), prop)
         tock = time.time()
         timings.append(tock - tick)
-    else:
-        avg = np.mean(timings)
-        std = np.std(timings)
-        print(f"  {prop}: {avg * 1e3:.3f} ms ± {std *
-              1e3:.3f} ms ({n_part / avg:.0f} particles/s)")
+    avg = np.mean(timings)
+    std = np.std(timings)
+    print(f"  {prop}: {avg * 1e3:.3f} ms ± {std *
+          1e3:.3f} ms ({n_part / avg:.0f} particles/s)")
 
-# Test slice read - second access (cached)
-print("\nSlice property READ (second access, potentially cached):")
-for prop in all_props_read:
-    timings = []
-    for i in range(args.n_iter):
-        particle_slice = system.part.all()
-        # First access
-        _ = getattr(particle_slice, prop)
-        # Second access (timed)
-        tick = time.time()
-        try:
-            _ = getattr(particle_slice, prop)
-        except Exception as e:
-            print(f"  {prop}: ERROR - {e}")
-            break
-        tock = time.time()
-        timings.append(tock - tick)
-    else:
-        avg = np.mean(timings)
-        std = np.std(timings)
-        print(f"  {prop}: {avg * 1e3:.3f} ms ± {std *
-              1e3:.3f} ms ({n_part / avg:.0f} particles/s)")
-
-# Test slice write
-print("\nSlice property WRITE:")
+# Test slice write - re-instantiating slice on every access
+print("\nSlice property WRITE (re-instantiating slice):")
 for prop in all_props_write:
     timings = []
+    # Read valid value from particle 0 to get correct type/shape
+    test_value = getattr(system.part.by_id(0), prop)
     # Prepare test array
     if prop in ['pos', 'v']:
-        test_array = np.random.random((n_part, 3))
-    elif prop in ['q', 'mass', 'charge']:
-        test_array = np.random.random(n_part)
-    elif prop == 'type':
-        test_array = np.zeros(n_part, dtype=int)
+        test_array = np.tile(test_value, (n_part, 1))
+    elif prop in ['q', 'mass', 'charge', 'type']:
+        test_array = np.full(n_part, test_value)
     else:
-        test_array = np.random.random(n_part)
+        test_array = np.full(n_part, test_value)
+
+    for i in range(args.n_iter):
+        tick = time.time()
+        setattr(system.part.all(), prop, test_array)
+        tock = time.time()
+        timings.append(tock - tick)
+    avg = np.mean(timings)
+    std = np.std(timings)
+    print(f"  {prop}: {avg * 1e3:.3f} ms ± {std *
+          1e3:.3f} ms ({n_part / avg:.0f} particles/s)")
+
+print()
+
+# Test 5: Slice property access (cached slice)
+print("=" * 60)
+print("Test 5: Slice property access (cached slice)")
+print("=" * 60)
+
+# Test slice read - cached slice
+print("\nSlice property READ (cached slice):")
+for prop in all_props_read:
+    timings = []
+    for i in range(args.n_iter):
+        particle_slice = system.part.all()
+        # Warm-up access
+        _ = getattr(particle_slice, prop)
+        # Timed access
+        tick = time.time()
+        _ = getattr(particle_slice, prop)
+        tock = time.time()
+        timings.append(tock - tick)
+    avg = np.mean(timings)
+    std = np.std(timings)
+    print(f"  {prop}: {avg * 1e3:.3f} ms ± {std *
+          1e3:.3f} ms ({n_part / avg:.0f} particles/s)")
+
+# Test slice write - cached slice
+print("\nSlice property WRITE (cached slice):")
+for prop in all_props_write:
+    timings = []
+    # Read valid value from particle 0 to get correct type/shape
+    test_value = getattr(system.part.by_id(0), prop)
+    # Prepare test array
+    if prop in ['pos', 'v']:
+        test_array = np.tile(test_value, (n_part, 1))
+    elif prop in ['q', 'mass', 'charge', 'type']:
+        test_array = np.full(n_part, test_value)
+    else:
+        test_array = np.full(n_part, test_value)
 
     for i in range(args.n_iter):
         particle_slice = system.part.all()
+        # Warm-up write
+        setattr(particle_slice, prop, test_array)
+        # Timed write
         tick = time.time()
-        try:
-            setattr(particle_slice, prop, test_array)
-        except Exception as e:
-            print(f"  {prop}: ERROR - {e}")
-            break
+        setattr(particle_slice, prop, test_array)
         tock = time.time()
         timings.append(tock - tick)
-    else:
-        avg = np.mean(timings)
-        std = np.std(timings)
-        print(f"  {prop}: {avg * 1e3:.3f} ms ± {std *
-              1e3:.3f} ms ({n_part / avg:.0f} particles/s)")
+    avg = np.mean(timings)
+    std = np.std(timings)
+    print(f"  {prop}: {avg * 1e3:.3f} ms ± {std *
+          1e3:.3f} ms ({n_part / avg:.0f} particles/s)")
 
 print()
 print("=" * 60)
