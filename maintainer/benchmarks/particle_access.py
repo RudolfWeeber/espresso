@@ -31,7 +31,7 @@ parser.add_argument("--additional_properties", metavar="PROPS", action="store",
                     type=str, default="", required=False,
                     help="Comma-separated list of additional properties to test (e.g., 'mass,type,v')")
 parser.add_argument("--n_iter", metavar="N", action="store",
-                    type=int, default=100, required=False,
+                    type=int, default=20, required=False,
                     help="Number of iterations for timing (default: 10)")
 
 args = parser.parse_args()
@@ -175,13 +175,7 @@ for prop in all_props_write:
     timings = []
     # Read valid value from particle 0 to get correct type/shape
     test_value = getattr(system.part.by_id(0), prop)
-    # Prepare test array
-    if prop in ['pos', 'v']:
-        test_array = np.tile(test_value, (n_part, 1))
-    elif prop in ['q', 'mass', 'charge', 'type']:
-        test_array = np.full(n_part, test_value)
-    else:
-        test_array = np.full(n_part, test_value)
+    test_array = np.array([test_value] * n_part)
 
     for i in range(args.n_iter):
         tick = time.time()
@@ -224,13 +218,7 @@ for prop in all_props_write:
     timings = []
     # Read valid value from particle 0 to get correct type/shape
     test_value = getattr(system.part.by_id(0), prop)
-    # Prepare test array
-    if prop in ['pos', 'v']:
-        test_array = np.tile(test_value, (n_part, 1))
-    elif prop in ['q', 'mass', 'charge', 'type']:
-        test_array = np.full(n_part, test_value)
-    else:
-        test_array = np.full(n_part, test_value)
+    test_array = np.array([test_value] * n_part)
 
     for i in range(args.n_iter):
         particle_slice = system.part.all()
