@@ -182,47 +182,29 @@ path set to ``pypresso``.
 Running in the cloud
 ~~~~~~~~~~~~~~~~~~~~
 
-A `Gitpod <https://gitpod.io>`__ config file is provided to automatically
-build |es| in its default configuration (`direct link
-<https://gitpod.io/#https://github.com/espressomd/espresso>`__), which is
-sufficient to run most tutorials. The Gitpod workspace can be accessed from
-the `terminal via SSH <https://www.gitpod.io/docs/configure/ssh>`__ or from
-a `web browser <https://www.gitpod.io/docs/configure/browser-settings>`__,
-which uses the VS Code IDE.
+.. _Using Binder:
 
-To execute the tutorials, choose a Jupyter backend:
+Using Binder
+""""""""""""
 
-* VS Code Jupyter: navigate to ``ESPRESSO/build/doc/tutorials`` in the
-  project tree and open the notebook files; if the kernel drop-down menu
-  doesn't offer ``build/pypresso`` as a kernel, restart the VS Code IDE:
-  quit the workspace by closing the browser tab, re-open the tab and
-  click ``espressomd-espresso-...`` in the popup to restart the IDE
-  (don't click on the green button "New Workspace")
+A pre-compiled version of |es| is available
+for the `Binder platform <https://mybinder.org>`__ :cite:`jupyter18a`
+(`direct link <https://mybinder.org/v2/gh/jngrad/espresso-binder/HEAD>`__),
+which uses the JupyterLab IDE.
 
-* Jupyter Notebook:
+.. _Using Codespaces:
 
-  .. code-block:: bash
+Using Codespaces
+""""""""""""""""
 
-      cd ${GITPOD_REPO_ROOT}/build/doc/tutorials
-      ../../ipypresso notebook --NotebookApp.allow_origin="$(gp url 8888)" \
-          --port=8888 --no-browser
-
-* JupyterLab:
-
-  .. code-block:: bash
-
-      cd ${GITPOD_REPO_ROOT}/build/doc/tutorials
-      ../../ipypresso lab --NotebookApp.allow_origin="$(gp url 8888)" \
-          --port=8888 --no-browser
-
-For both Jupyter Notebook and JupyterLab, a notification will appear and say
-that a new port 8888 has been made available. Click the orange "Make public"
-button to open that port and then Ctrl+click one of the urls in the terminal
-output to open the Jupyter backed in a pop-up window.
-
-To start a workspace from a specific branch, use a link in the following form:
-``https://gitpod.io/#https://github.com/user_name/espresso/tree/branch_name``,
-where ``user_name`` and ``branch_name`` need to be adapted.
+A `Codespaces <https://github.com/features/codespaces>`__ config file is provided
+to facilitate the building of |es| in the default configuration (`direct link
+<https://codespaces.new/espressomd/espresso>`__).
+The codepace can be accessed from the terminal via the `GitHub CLI ssh command
+<https://cli.github.com/manual/gh_codespace_ssh>`__
+or from a web browser (default), which uses the VS Code IDE.
+Instructions to build |es| and execute the tutorials are available
+in file :file:`.devcontainer/Readme.md`.
 
 
 .. _Parallel computing:
@@ -606,8 +588,6 @@ no arguments are passed, sensible default values will be used instead.
     +------------------------+-------------------------------------------------------------+
     | ``--cuda-gdb``         | ``cuda-gdb --args python script.py``                        |
     +------------------------+-------------------------------------------------------------+
-    | ``--cuda-memcheck``    | ``cuda-memcheck python script.py``                          |
-    +------------------------+-------------------------------------------------------------+
     | ``--cuda-sanitizer``   | ``compute-sanitizer --leak-check full python script.py``    |
     +------------------------+-------------------------------------------------------------+
     | ``--kernprof``         | ``kernprof --line-by-line --view script.py``                |
@@ -648,8 +628,15 @@ To catch a runtime error, use e.g. ``catch throw std::runtime_error``.
 To catch a specific function, use ``break`` followed by the function name
 (answer yes to the prompt about pending the breakpoint), or alternatively
 provide the absolute filepath and line number separated by a colon symbol.
+Use ``step`` to execute the next line, ``next`` to execute the next line
+without traversing function calls, and ``skip -gfi /usr/include/c++/``
+to make ``step`` execute the next line without traversing function calls
+of the C++ standard library. Use ``print`` followed by a variable name
+to show its contents. Simple expressions like pointer dereferencing
+and calling inlined pure functions are also allowed in most situations.
+
 For a segmentation fault, no action is needed since it is automatically
-caught via the SIGSEV signal. Run the simulation with ``run`` and wait
+caught via the SIGSEV signal; run the simulation with ``run`` and wait
 for GDB to suspend the program execution. At this point, use ``bt`` to
 show the complete backtrace, then use ``frame <n>`` with ``<n>`` the number
 of the innermost frame that is located inside the |es| source directory,
@@ -687,6 +674,16 @@ The same syntax is used for C++ unit tests:
 
     mpiexec -np 2 xterm -fa 'Monospace' -fs 12 \
         -e gdb src/core/unit_tests/EspressoSystemStandAlone_test
+
+GDB automatically breaks on signals and assertions.
+To break on thrown exceptions, waLBerla diagnostics and MPI fatal errors:
+
+.. code-block:: bash
+
+    set breakpoint pending on
+    catch throw std::runtime_error
+    break walberla::debug::printStacktrace
+    break MPI_Abort
 
 .. _GDB-example:
 
@@ -790,6 +787,13 @@ On affected environments, one can temporarily reduce the entropy via
 ``sudo sysctl vm.mmap_rnd_bits=28`` (default is usually 32 bits)
 for the time of the ASAN analysis, and then revert back to the default value.
 
+GDB can investigate ASAN reports with break points:
+
+.. code-block:: bash
+
+    set breakpoint pending on
+    break __asan_report_error
+
 .. _UBSAN:
 
 UBSAN
@@ -803,6 +807,28 @@ UBSAN
 The UndefinedBehaviorSanitizer (UBSAN) :cite:`misc-ubsan` is a detection tool
 for undefined behavior. It detects bugs caused by dangling references,
 array accesses out of bounds, signed integer overflows, etc.
+
+GDB can investigate UBSAN reports with break points:
+
+.. code-block:: bash
+
+    set breakpoint pending on
+    break __ubsan::Diag::~Diag
+
+Depending on the environment, GDB might be unable to add a break point.
+In that case, the application needs to run once to load all UBSAN symbols,
+then break points can be added to all UBSAN handlers except ``dynamic_type_cache_miss``:
+
+.. code-block:: bash
+
+    set breakpoint pending on
+    run
+    rbreak ^__ubsan_handle_[^d]
+    rbreak ^__ubsan_handle_d[^y]
+    run
+
+Alternatively, one can use ``-D CMAKE_CXX_FLAGS="-fsanitize-undefined-trap-on-error"``
+to replace the UBSAN diagnostic report by a signal trap that GDB can capture.
 
 For more details, please consult the tool online documentation [6]_.
 
@@ -1023,6 +1049,47 @@ To detect access to uninitialized data:
 
 Checking for uninitialized data is quite expensive
 for the GPU and can slow down other running GPU processes.
+
+.. _Nsight Systems:
+
+Nsight Systems
+~~~~~~~~~~~~~~
+
+.. note::
+
+    Requires a CUDA build, enabled with the CMake options
+    ``-D ESPRESSO_BUILD_WITH_CUDA=ON``.
+
+The NVIDIA Nsight Systems profiles CUDA, MPI, OpenMP and Python applications to
+reveal bottlenecks. It uses :ref:`perf` under the hood to collect CPU information,
+and therefore requires the same kernel settings change explained in :ref:`perf`.
+
+Command line usage:
+
+.. code-block:: bash
+
+    nsys profile --trace=cuda -o ./report-nsys-nbody --force-overwrite=true src/walberla_bridge/tests/PoissonSolver_test
+    nsys analyze ./report-nsys-nbody.nsys-rep
+
+Graphical interface usage:
+
+.. code-block:: bash
+
+    nsys-ui
+
+In the UI, create a new project. Under section "Target application",
+paste ``./pypresso ../testsuite/python/ek_fluctuations.py EKFluctuationsGPU``
+in the "Command line" field and provide the absolute path of the build directory
+in the "Working directory" field. Under section "Environment variables",
+set any relevant variables, such as OpenMP-specific variables when applicable.
+Enable OpenMP tracing, when applicable. Enable CUDA tracing.
+Under section "Network profiling options", enable MPI tracing and choose
+the correct MPI vendor for the target environment, and enable UCX if the
+MPI library was configured with UCX support.
+Under section "Python profiling options", enable Python backtrace samples.
+Finally, click on the Start button to collect samples.
+Once inside the report, open "Timeline View" and unroll all "CUDA HW" timelines
+to display the performance profile of the application.
 
 .. _perf:
 

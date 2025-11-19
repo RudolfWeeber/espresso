@@ -34,7 +34,10 @@ class ASEInterface:
     def __init__(self, system: "System", type_mapping: dict,
                  particle_slice: "ParticleSlice",
                  export_charges: bool = False, export_masses: bool = False,
-                 export_momenta: bool = False):
+                 export_momenta: bool = False,
+                 assume_constant_charges: bool = False,
+                 assume_constant_masses: bool = False,
+                 assume_constant_types: bool = False):
         """
         Initialize ASE interface.
 
@@ -53,6 +56,15 @@ class ASEInterface:
             Whether to make particle masses available to ASE.
         export_momenta : :obj:`bool`, optional
             Whether to make particle momenta available to ASE.
+        assume_constant_charges : :obj:`bool`, optional
+            Assumes that the particles' charges are not changed while this instance
+            is valid (faster update).
+        assume_constant_masses : :obj:`bool`, optional
+            Assumes that the particles' masses are not changed while this instance
+            is valid (faster update).
+        assume_constant_types : :obj:`bool`, optional
+            Assumes that the particles' types are not changed while this instance
+            is valid (faster update).
         """
         espressomd.assert_features(["EXTERNAL_FORCES"])
 
@@ -62,10 +74,12 @@ class ASEInterface:
         self.export_charges = export_charges
         self.export_masses = export_masses
         self.export_momenta = export_momenta
+        self.assume_constant_charges = assume_constant_charges
+        self.assume_constant_masses = assume_constant_masses
+        self.assume_constant_types = assume_constant_types
         self.atoms = None
 
         self.reset()
-        self.update_ase()
 
     def __getstate__(self):
         raise NotImplementedError("ASE plugin doesn't support checkpointing")
@@ -78,7 +92,8 @@ class ASEInterface:
         Re-create the ASE atoms object using ESPResSo system properties.
 
         Uses the current particle slice to create a new ASE atoms object with
-        positions, types, periodicity and box dimensions.
+        positions, types, periodicity and box dimensions. If export flags are set,
+        also initializes charges, masses, and/or momenta.
         """
         particles = self.particle_slice
         positions = np.copy(particles.pos)
@@ -102,19 +117,34 @@ class ASEInterface:
             pbc=np.copy(self._system.periodicity),
             cell=np.copy(self._system.box_l),
         )
-        self.update_ase()
 
-    def update_ase(self, skip_charge_update: bool = False,
-                   skip_mass_update: bool = False):
+        # Initialize charges if requested (always set on reset)
+        if self.export_charges:
+            charges = np.copy(particles.q)
+            self.atoms.set_initial_charges(charges)
+
+        # Initialize masses if requested (always set on reset)
+        if self.export_masses:
+            masses = np.copy(particles.mass)
+            self.atoms.set_masses(masses)
+
+        # Initialize momenta if requested (always set on reset)
+        if self.export_momenta:
+            momenta = np.copy(particles.v) * \
+                np.copy(particles.mass)[:, np.newaxis]
+            self.atoms.set_momenta(momenta)
+
+    def set_slice(self, particles):
+        """Set the slice of particles to work on. This results in the re-creation of the ASE atoms object."""
+        self.particles = particles
+        self.reset()
+
+    def update_ase(self):
         """
         Update the arrays in the atoms object based on the desired properties.
 
-        Parameters
-        ----------
-        skip_charge_update : :obj:`bool`, optional
-            Whether to skip updating charges.
-        skip_mass_update : :obj:`bool`, optional
-            Whether to skip updating masses.
+        Uses the assume_constant_* flags from the constructor to determine
+        which properties to update.
         """
         if self.atoms is None:
             raise RuntimeError(
@@ -125,13 +155,13 @@ class ASEInterface:
         # Always update positions (pos -> positions)
         self.atoms.positions[:] = np.copy(particles.pos)
 
-        # Update charges if requested and not skipped
-        if self.export_charges and not skip_charge_update:
+        # Update charges if requested and not assumed constant
+        if self.export_charges and not self.assume_constant_charges:
             charges = np.copy(particles.q)
             self.atoms.set_initial_charges(charges)
 
-        # Update masses if requested and not skipped
-        if self.export_masses and not skip_mass_update:
+        # Update masses if requested and not assumed constant
+        if self.export_masses and not self.assume_constant_masses:
             masses = np.copy(particles.mass)
             self.atoms.set_masses(masses)
 
@@ -141,8 +171,7 @@ class ASEInterface:
                 np.copy(particles.mass)[:, np.newaxis]
             self.atoms.set_momenta(momenta)
 
-    def integrate(self, steps: int, calculator, skip_charge_update: bool = False,
-                  skip_mass_update: bool = False) -> int:
+    def integrate(self, steps: int, calculator) -> int:
         """
         Integrate the system for the specified number of steps.
 
@@ -156,10 +185,8 @@ class ASEInterface:
         ----------
         steps : :obj:`int`
             Number of integration steps to perform.
-        skip_charge_update : :obj:`bool`, optional
-            Whether to skip charge updates during ASE updates.
-        skip_mass_update : :obj:`bool`, optional
-            Whether to skip mass updates during ASE updates.
+        calculator : :obj:`ase.calculators.calculator.Calculator`
+            ASE calculator to use for force calculations.
 
         Returns
         -------
@@ -178,8 +205,7 @@ class ASEInterface:
         self.atoms.calc = calculator
         for _ in range(steps):
             # Update ASE with current particle data
-            self.update_ase(skip_charge_update=skip_charge_update,
-                            skip_mass_update=skip_mass_update)
+            self.update_ase()
 
             # Get forces from ASE calculator
             forces = self.atoms.get_forces()

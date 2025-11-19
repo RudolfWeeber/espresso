@@ -28,10 +28,9 @@ This means, however, that learning how to compile is a necessary evil.
 The build system of |es| uses CMake to compile
 software easily on a wide range of platforms.
 
-Users who only need a "default" installation of |es| and have an account
-on the `Gitpod <https://gitpod.io>`__ platform can build the software
-automatically in the cloud and skip this chapter. For more details on
-running |es| in Gitpod, go to section :ref:`Running in the cloud`.
+Users who only need a "default" installation of |es| and have a GitHub account
+can build the software automatically in the cloud and directly go to section
+:ref:`Using Codespaces`.
 
 Quickstart
 ----------
@@ -351,7 +350,9 @@ Installing requirements on macOS
 
 The first step is to install a C++ compiler, such as Xcode [10]_.
 Xcode is missing OpenMP, which is needed to enable shared-memory parallelization,
-but the "R for macOS Developers" project provides binaries [11]_.
+but binaries are available from Homebrew
+(formula `libomp <https://formulae.brew.sh/formula/libomp>`__)
+or from the "R for macOS Developers" project [11]_.
 
 To install libraries, a package manager will be needed.
 While our instructions below are specific to Homebrew,
@@ -480,10 +481,6 @@ General features
 -  ``ELECTROSTATICS`` This enables the use of the various electrostatics algorithms, such as P3M.
 
    .. seealso:: :ref:`Electrostatics`
-
--  ``MMM1D_MACHINE_PREC``: This enables high-precision Bessel functions
-   for MMM1D on CPU. Comes with a 60% slow-down penalty. The low-precision
-   functions are enabled by default and are precise enough for most applications.
 
 -  ``DIPOLES`` This activates the dipole-moment property of particles and switches
    on various magnetostatics algorithms
@@ -641,24 +638,34 @@ They are added by CMake if the corresponding dependency was found on the
 system. Some of these external features are optional and must be activated
 using a CMake flag (see :ref:`Options and Variables`).
 
-- ``CUDA`` Enables GPU-specific features.
+- ``CUDA``: enable offloading to Nvidia GPUs for features that support it
+  (see :ref:`CUDA acceleration`)
 
-- ``FFTW`` Enables features relying on the fast Fourier transforms, e.g. P3M.
+- ``FFTW``: enables features relying on the fast Fourier transforms,
+  such as the P3M method (see :ref:`Coulomb P3M` and :ref:`Dipolar P3M`)
 
-- ``H5MD`` Write data to H5MD-formatted hdf5 files (see :ref:`Writing H5MD-files`)
+- ``H5MD``: enable parallel input/output to hdf5 files with H5MD specification
+  (see :ref:`Writing hdf5 files`)
 
-- ``SCAFACOS`` Enables features relying on the ScaFaCoS library (see
+- ``WALBERLA``: enable continuum-based solvers: lattice-Boltzmann method,
+  diffusion-advection-reaction equations solver, and Poisson equation solver
+  if ``FFTW`` is enabled (see :ref:`Lattice-Boltzmann` and :ref:`Electrokinetics`)
+
+- ``SCAFACOS``: enables features from the ScaFaCoS library (see
   :ref:`ScaFaCoS electrostatics`, :ref:`ScaFaCoS magnetostatics`).
 
-- ``GSL`` Enables features relying on the GNU Scientific Library, e.g.
-  :meth:`espressomd.cluster_analysis.Cluster.fractal_dimension`.
+- ``GSL``: enables features relying on the GNU Scientific Library, e.g.
+  :meth:`espressomd.cluster_analysis.Cluster.fractal_dimension` and
+  :class:`espressomd.electrostatics.MMM1D`.
 
-- ``STOKESIAN_DYNAMICS`` Enables the Stokesian Dynamics feature
+- ``STOKESIAN_DYNAMICS``: enable the Stokesian Dynamics propagator
   (see :ref:`Stokesian Dynamics`). Requires BLAS and LAPACK.
 
-- ``SHARED_MEMORY_PARALLELISM`` Enables shared-memory parallelism.
+- ``SHARED_MEMORY_PARALLELISM``: enable shared-memory parallelism
+  (OpenMP, Kokkos, Cabana)
 
-
+- ``CALIPER``, ``VALGRIND``, ``FPE``: enable various instrumentation tools
+  (see :ref:`Instrumentation`)
 
 .. _Configuring:
 
@@ -926,32 +933,11 @@ The repository URLs can be found in the ``GIT_REPOSITORY`` field of the
 corresponding ``FetchContent_Declare()`` commands. The ``GIT_TAG`` field
 provides the commit. Clone these repositories locally and edit the |es|
 build system such that ``GIT_REPOSITORY`` points to the absolute path of
-the clone. You can automate this task by adapting the following commands:
+the clone. You can automate this text substitution by adapting the following command:
 
-* ``ESPRESSO_BUILD_WITH_WALBERLA``
+.. code-block:: bash
 
-  .. code-block:: bash
-
-    sed -ri 's|GIT_REPOSITORY +.+/walberla.git|GIT_REPOSITORY /work/username/walberla|' CMakeLists.txt
-
-* ``ESPRESSO_BUILD_WITH_HDF5``
-
-  .. code-block:: bash
-
-    sed -ri 's|GIT_REPOSITORY +.+h5xx.git|GIT_REPOSITORY /work/username/h5xx|' CMakeLists.txt
-
-* ``ESPRESSO_BUILD_WITH_STOKESIAN_DYNAMICS``
-
-  .. code-block:: bash
-
-    sed -ri 's|GIT_REPOSITORY +.+stokesian-dynamics.git|GIT_REPOSITORY /work/username/stokesian_dynamics|' CMakeLists.txt
-
-* ``ESPRESSO_BUILD_WITH_CALIPER``
-
-  .. code-block:: bash
-
-    sed -ri 's|GIT_REPOSITORY +.+/Caliper.git|GIT_REPOSITORY /work/username/caliper|' CMakeLists.txt
-
+   sed -ri 's|GIT_REPOSITORY +.+/([^/]+).git|GIT_REPOSITORY /work/username/\1|' CMakeLists.txt
 
 Compiling, testing and installing
 ---------------------------------

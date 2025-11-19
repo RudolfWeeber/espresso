@@ -66,13 +66,9 @@ espresso_unit_test(SRC field_coupling_force_field_test.cpp DEPENDS
 espresso_unit_test(
   SRC field_layout_helpers_test.cpp DEPENDS espresso::utils espresso::core
   $<$<BOOL:${ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM}>:Kokkos::kokkos>)
-set_target_properties(field_layout_helpers_test
-                      PROPERTIES CXX_CLANG_TIDY "${CABANA_CXX_CLANG_TIDY}")
 espresso_unit_test(
   SRC particle_reduction_test.cpp DEPENDS espresso::utils espresso::core
   $<$<BOOL:${ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM}>:Kokkos::kokkos>)
-set_target_properties(particle_reduction_test
-                      PROPERTIES CXX_CLANG_TIDY "${CABANA_CXX_CLANG_TIDY}")
 espresso_unit_test(SRC periodic_fold_test.cpp)
 espresso_unit_test(SRC grid_test.cpp DEPENDS espresso::core)
 espresso_unit_test(SRC lees_edwards_test.cpp DEPENDS espresso::core)
@@ -86,11 +82,6 @@ espresso_unit_test(SRC BondList_test.cpp DEPENDS espresso::core)
 espresso_unit_test(SRC energy_test.cpp DEPENDS espresso::core)
 espresso_unit_test(SRC bonded_interactions_map_test.cpp DEPENDS espresso::core)
 espresso_unit_test(SRC bond_breakage_test.cpp DEPENDS espresso::core)
-if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-  # AppleClang doesn't implement C++17's mathematical special functions
-  espresso_unit_test(SRC specfunc_test.cpp DEPENDS espresso::utils
-                     espresso::core)
-endif()
 if(ESPRESSO_BUILD_WITH_WALBERLA)
   espresso_unit_test(SRC lb_particle_coupling_test.cpp DEPENDS espresso::core
                      Boost::mpi MPI::MPI_CXX NUM_PROC 2)
@@ -98,9 +89,10 @@ if(ESPRESSO_BUILD_WITH_WALBERLA)
                      Boost::mpi MPI::MPI_CXX NUM_PROC 2)
   target_link_libraries(
     lb_particle_coupling_test PRIVATE espresso::walberla
-                                      espresso::walberla::cpp_flags)
-  target_link_libraries(ek_interface_test PRIVATE espresso::walberla
-                                                  espresso::walberla::cpp_flags)
+                                      espresso::walberla::compiler_flags)
+  target_link_libraries(
+    ek_interface_test PRIVATE espresso::walberla
+                              espresso::walberla::compiler_flags)
 endif()
 
 if(ESPRESSO_BUILD_WITH_FFTW)
@@ -110,12 +102,10 @@ if(ESPRESSO_BUILD_WITH_FFTW)
   espresso_unit_test(
     SRC fft_test.cpp DEPENDS espresso::utils espresso::core
     $<$<BOOL:${ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM}>:Kokkos::kokkos>)
-  set_target_properties(fft_test PROPERTIES CXX_CLANG_TIDY
-                                            "${CABANA_CXX_CLANG_TIDY}")
   espresso_unit_test(SRC math_test.cpp DEPENDS espresso::utils espresso::core)
 endif()
 
 if(ESPRESSO_BUILD_WITH_CUDA)
   espresso_unit_test(SRC cuda_test.cu DEPENDS espresso::utils espresso::core
-                     espresso::cuda)
+                     CUDA::cudart)
 endif()

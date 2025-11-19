@@ -25,7 +25,6 @@
 
 #include "h5md.hpp"
 
-#include "core/MpiCallbacks.hpp"
 #include "core/cell_system/CellStructure.hpp"
 #include "core/communication.hpp"
 #include "core/io/writer/h5md_core.hpp"
@@ -75,8 +74,7 @@ H5md::~H5md() {
   m_mpi_env_lock.reset();
 }
 
-Variant H5md::do_call_method(const std::string &name,
-                             const VariantMap &parameters) {
+Variant H5md::do_call_method(std::string const &name, VariantMap const &) {
   if (name == "write") {
     auto const &system = ::System::get_system();
     auto const particles = system.cell_structure->local_particles();

@@ -79,8 +79,8 @@ struct ShortRangeForceCorrectionsKernel {
     auto const &actor = *ptr;
     return kernel_type{[&actor](Utils::Vector3d const &pos1,
                                 Utils::Vector3d const &pos2,
-                                ParticleForce &p1f_asym,
-                                ParticleForce &p2f_asym, double q1q2) {
+                                Utils::Vector3d &p1f_asym,
+                                Utils::Vector3d &p2f_asym, double q1q2) {
       actor.add_pair_force_corrections(pos1, pos2, p1f_asym, p2f_asym, q1q2);
     }};
   }
@@ -137,12 +137,14 @@ struct ShortRangeEnergyKernel {
         }};
   }
 #endif // ESPRESSO_P3M
+#ifdef ESPRESSO_GSL
   result_type operator()(std::shared_ptr<CoulombMMM1D> const &actor) const {
     return kernel_type{
         [&actor](Utils::Vector3d const &, Utils::Vector3d const &, double q1q2,
                  Utils::Vector3d const &d,
                  double dist) { return actor->pair_energy(q1q2, d, dist); }};
   }
+#endif // ESPRESSO_GSL
 #endif // ESPRESSO_ELECTROSTATICS
 };
 

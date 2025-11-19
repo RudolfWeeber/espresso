@@ -18,7 +18,7 @@ source codegen/bin/activate
 python3 -m pip install -c "$(git rev-parse --show-toplevel)/requirements.txt" \
     numpy cython sympy islpy jinja2 setuptools packaging
 python3 -m pip install \
-  git+https://i10git.cs.fau.de/pycodegen/lbmpy.git@d3f62364cf512cd9d93a93d89170cfea1bb2b0a1 \
+  git+https://i10git.cs.fau.de/jngrad/lbmpy.git@5018a189398551b44644cf91b3f2c33ded8e348d \
   git+https://i10git.cs.fau.de/jngrad/pystencils.git@dfd203a3f6318f5fb4cfa09f9f8c12bb45463bd7
 deactivate
 ```
@@ -46,18 +46,18 @@ function format_kernels {
 
 # LB kernels
 cd $(git rev-parse --show-toplevel)/src/walberla_bridge/src/lattice_boltzmann/generated_kernels/
-generate_lb_kernels
-generate_lb_kernels --single-precision
-generate_lb_kernels --gpu
-generate_lb_kernels --gpu --single-precision
+generate_lb_kernels --kernels all
+generate_lb_kernels --kernels all --single-precision
+generate_lb_kernels --kernels all --gpu
+generate_lb_kernels --kernels all --gpu --single-precision
 format_kernels
 
 # EK kernels
 cd $(git rev-parse --show-toplevel)/src/walberla_bridge/src/electrokinetics/generated_kernels/
-generate_ek_kernels
-generate_ek_kernels --single-precision
-generate_ek_kernels --gpu
-generate_ek_kernels --gpu --single-precision
+generate_ek_kernels --kernels all
+generate_ek_kernels --kernels all --single-precision
+generate_ek_kernels --kernels all --gpu
+generate_ek_kernels --kernels all --gpu --single-precision
 format_kernels
 mv ReactionKernel*.{cpp,h,cu} $(git rev-parse --show-toplevel)/src/walberla_bridge/src/electrokinetics/reactions/generated_kernels/
 ```
