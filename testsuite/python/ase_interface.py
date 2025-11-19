@@ -145,6 +145,33 @@ class ASEInterfaceTest(ut.TestCase):
             [[0.2, 0.4, 0.6], [0.6, 0.75, 0.9], [2.1, 2.4, 2.7]])
         np.testing.assert_allclose(atoms.get_momenta(), expected_momenta)
 
+    def test_ase_interface_none_type_mapping(self):
+        """Test ASE interface creation with type_mapping=None."""
+        ase_interface = espressomd.plugins.ase.ASEInterface(
+            system=system,
+            type_mapping=None,
+            particle_slice=system.part.all()
+        )
+
+        # Check that interface is properly initialized
+        self.assertIsNotNone(ase_interface.atoms)
+        self.assertIsNone(ase_interface.type_mapping)
+
+        # Verify atoms object has correct basic properties
+        atoms = ase_interface.atoms
+        self.assertEqual(len(atoms), 3)
+
+        # When type_mapping is None, symbols should not be set (or be None/empty)
+        # ASE may use placeholder symbols like 'X' or None
+        # Just verify positions are correct
+        np.testing.assert_allclose(
+            atoms.positions, [[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]])
+
+        # Verify we can still update positions
+        system.part.by_id(0).pos = [10., 11., 12.]
+        ase_interface.update_ase()
+        np.testing.assert_allclose(atoms.positions[0], [10., 11., 12.])
+
     def test_update_ase_basic_no_exports(self):
         """Test update_ase() with no exports enabled - only positions should update."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
@@ -166,33 +193,35 @@ class ASEInterfaceTest(ut.TestCase):
         expected_positions = system.part.all().pos
         np.testing.assert_allclose(atoms.positions, expected_positions)
 
-    def test_update_ase_charges_no_skip(self):
-        """Test update_ase() with charges enabled and no skip."""
+    def test_update_ase_charges_not_constant(self):
+        """Test update_ase() with charges enabled and not assumed constant."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
             system=system,
             type_mapping=self.type_mapping,
             particle_slice=system.part.all(),
-            export_charges=True
+            export_charges=True,
+            assume_constant_charges=False
         )
 
         # Change particle charges
         system.part.all().q = [5., -2., 3.5]
 
-        # Update ASE without skipping charge update
-        ase_interface.update_ase(skip_charge_update=False)
+        # Update ASE (charges should be updated)
+        ase_interface.update_ase()
 
         # Check that charges are updated
         atoms = ase_interface.atoms
         np.testing.assert_allclose(
             atoms.get_initial_charges(), np.copy(system.part.all().q))
 
-    def test_update_ase_charges_with_skip(self):
-        """Test update_ase() with charges enabled but skip_charge_update=True."""
+    def test_update_ase_charges_assumed_constant(self):
+        """Test update_ase() with charges enabled but assumed constant."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
             system=system,
             type_mapping=self.type_mapping,
             particle_slice=system.part.all(),
-            export_charges=True
+            export_charges=True,
+            assume_constant_charges=True
         )
 
         # Store original charges
@@ -200,8 +229,8 @@ class ASEInterfaceTest(ut.TestCase):
 
         # Change particle charges
         system.part.all().q = [5., -2., 3.5]
-        # Update ASE with skip_charge_update=True
-        ase_interface.update_ase(skip_charge_update=True)
+        # Update ASE (charges should NOT be updated due to assume_constant_charges)
+        ase_interface.update_ase()
 
         # Check that charges are NOT updated (should still be original)
         atoms = ase_interface.atoms
@@ -209,33 +238,35 @@ class ASEInterfaceTest(ut.TestCase):
             atoms.get_initial_charges(),
             original_charges)
 
-    def test_update_ase_masses_no_skip(self):
-        """Test update_ase() with masses enabled and no skip."""
+    def test_update_ase_masses_not_constant(self):
+        """Test update_ase() with masses enabled and not assumed constant."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
             system=system,
             type_mapping=self.type_mapping,
             particle_slice=system.part.all(),
-            export_masses=True
+            export_masses=True,
+            assume_constant_masses=False
         )
 
         # Change particle masses
         system.part.all().mass = [10.0, 5.5, 7.2]
 
-        # Update ASE without skipping mass update
-        ase_interface.update_ase(skip_mass_update=False)
+        # Update ASE (masses should be updated)
+        ase_interface.update_ase()
 
         # Check that masses are updated
         atoms = ase_interface.atoms
         np.testing.assert_allclose(
             atoms.get_masses(), np.copy(system.part.all().mass))
 
-    def test_update_ase_masses_with_skip(self):
-        """Test update_ase() with masses enabled but skip_mass_update=True."""
+    def test_update_ase_masses_assumed_constant(self):
+        """Test update_ase() with masses enabled but assumed constant."""
         ase_interface = espressomd.plugins.ase.ASEInterface(
             system=system,
             type_mapping=self.type_mapping,
             particle_slice=system.part.all(),
-            export_masses=True
+            export_masses=True,
+            assume_constant_masses=True
         )
 
         # Store original masses
@@ -244,8 +275,8 @@ class ASEInterfaceTest(ut.TestCase):
         # Change particle masses
         system.part.by_id(2).mass = 7.2
 
-        # Update ASE with skip_mass_update=True
-        ase_interface.update_ase(skip_mass_update=True)
+        # Update ASE (masses should NOT be updated due to assume_constant_masses)
+        ase_interface.update_ase()
 
         # Check that masses are NOT updated (should still be original)
         atoms = ase_interface.atoms
@@ -289,6 +320,104 @@ class ASEInterfaceTest(ut.TestCase):
         # Should raise RuntimeError
         with self.assertRaisesRegex(RuntimeError, "atoms object not initialized"):
             ase_interface.update_ase()
+
+    def test_folded_positions_default(self):
+        """Test that folded positions are used by default (when not specified)."""
+        # Place a particle outside the box
+        system.part.by_id(0).pos = [25., 25., 25.]  # Box is [20, 20, 20]
+
+        # Create interface WITHOUT specifying use_folded_positions (should default to True)
+        ase_interface = espressomd.plugins.ase.ASEInterface(
+            system=system,
+            type_mapping=self.type_mapping,
+            particle_slice=system.part.all()
+        )
+
+        # Verify the default value is True
+        self.assertEqual(ase_interface.use_folded_positions, True)
+
+        # Get folded position from ESPResSo
+        folded_pos = np.copy(system.part.by_id(0).pos_folded)
+
+        # Check that ASE atoms use folded position
+        atoms = ase_interface.atoms
+        np.testing.assert_allclose(atoms.positions[0], folded_pos)
+
+        # Folded position should be inside box
+        self.assertTrue(np.all(folded_pos >= 0))
+        self.assertTrue(np.all(folded_pos < system.box_l))
+
+    def test_folded_positions_true(self):
+        """Test that folded positions are used when use_folded_positions=True."""
+        # Place a particle outside the box
+        system.part.by_id(0).pos = [25., 25., 25.]  # Box is [20, 20, 20]
+
+        # Create interface with folded positions explicitly set
+        ase_interface = espressomd.plugins.ase.ASEInterface(
+            system=system,
+            type_mapping=self.type_mapping,
+            particle_slice=system.part.all(),
+            use_folded_positions=True
+        )
+
+        # Get folded position from ESPResSo
+        folded_pos = np.copy(system.part.by_id(0).pos_folded)
+
+        # Check that ASE atoms use folded position
+        atoms = ase_interface.atoms
+        np.testing.assert_allclose(atoms.positions[0], folded_pos)
+
+        # Folded position should be inside box
+        self.assertTrue(np.all(folded_pos >= 0))
+        self.assertTrue(np.all(folded_pos < system.box_l))
+
+    def test_folded_positions_false(self):
+        """Test that unfolded positions are used when use_folded_positions=False."""
+        # Place a particle outside the box
+        system.part.by_id(0).pos = [25., 25., 25.]  # Box is [20, 20, 20]
+
+        # Create interface with unfolded positions
+        ase_interface = espressomd.plugins.ase.ASEInterface(
+            system=system,
+            type_mapping=self.type_mapping,
+            particle_slice=system.part.all(),
+            use_folded_positions=False
+        )
+
+        # Get unfolded position from ESPResSo
+        unfolded_pos = np.copy(system.part.by_id(0).pos)
+
+        # Check that ASE atoms use unfolded position
+        atoms = ase_interface.atoms
+        np.testing.assert_allclose(atoms.positions[0], unfolded_pos)
+
+        # Unfolded position should match what we set (outside box)
+        np.testing.assert_allclose(unfolded_pos, [25., 25., 25.])
+
+    def test_folded_positions_update(self):
+        """Test that folded positions are updated correctly during update_ase()."""
+        # Create interface with folded positions
+        ase_interface = espressomd.plugins.ase.ASEInterface(
+            system=system,
+            type_mapping=self.type_mapping,
+            particle_slice=system.part.all(),
+            use_folded_positions=True
+        )
+
+        # Move particle outside box
+        system.part.by_id(0).pos = [22., 23., 24.]
+
+        # Update ASE
+        ase_interface.update_ase()
+
+        # Check that folded position is used
+        folded_pos = np.copy(system.part.by_id(0).pos_folded)
+        atoms = ase_interface.atoms
+        np.testing.assert_allclose(atoms.positions[0], folded_pos)
+
+        # Folded position should be inside box
+        self.assertTrue(np.all(atoms.positions[0] >= 0))
+        self.assertTrue(np.all(atoms.positions[0] < system.box_l))
 
 
 class FixedForceCalculator(Calculator):

@@ -31,13 +31,14 @@ class ASEInterface:
     ASE interface for ESPResSo with enhanced functionality for calculator integration.
     """
 
-    def __init__(self, system: "System", type_mapping: dict,
+    def __init__(self, system: "System", type_mapping: typing.Optional[dict],
                  particle_slice: "ParticleSlice",
                  export_charges: bool = False, export_masses: bool = False,
                  export_momenta: bool = False,
                  assume_constant_charges: bool = False,
                  assume_constant_masses: bool = False,
-                 assume_constant_types: bool = False):
+                 assume_constant_types: bool = False,
+                 use_folded_positions: bool = True):
         """
         Initialize ASE interface.
 
@@ -45,9 +46,11 @@ class ASEInterface:
         ----------
         system : :obj:`espressomd.system.System`
             The ESPResSo system object.
-        type_mapping : :obj:`dict`
+        type_mapping : :obj:`dict` or None
             Mapping of ESPResSo particle types to ASE symbols.
-            E.g. ``{0: "H", 1: "O"}``.
+            E.g. ``{0: "H", 1: "O"}``. If None, no symbols are set on the
+            ASE atoms object (useful when symbols will be set later or are
+            not needed).
         particle_slice : :obj:`espressomd.particle_data.ParticleSlice`
             The particle slice to work on.
         export_charges : :obj:`bool`, optional
@@ -65,6 +68,9 @@ class ASEInterface:
         assume_constant_types : :obj:`bool`, optional
             Assumes that the particles' types are not changed while this instance
             is valid (faster update).
+        use_folded_positions : :obj:`bool`, optional
+            If True, use folded positions (particles.pos_folded) which are always
+            within the simulation box. If False, use unfolded positions (particles.pos).
         """
         espressomd.assert_features(["EXTERNAL_FORCES"])
 
@@ -77,6 +83,7 @@ class ASEInterface:
         self.assume_constant_charges = assume_constant_charges
         self.assume_constant_masses = assume_constant_masses
         self.assume_constant_types = assume_constant_types
+        self.use_folded_positions = use_folded_positions
         self.atoms = None
 
         self.reset()
@@ -93,18 +100,26 @@ class ASEInterface:
 
         Uses the current particle slice to create a new ASE atoms object with
         positions, types, periodicity and box dimensions. If export flags are set,
-        also initializes charges, masses, and/or momenta.
+        also initializes charges, masses, and/or momenta. If type_mapping is None,
+        creates atoms without symbols.
         """
         particles = self.particle_slice
-        positions = np.copy(particles.pos)
+        positions = np.copy(
+            particles.pos_folded if self.use_folded_positions else particles.pos)
         types = np.copy(particles.type)
 
-        # Check that all types are in the type mapping
-        unknown_types = set(types) - set(self.type_mapping)
-        if unknown_types:
-            raise RuntimeError(
-                f"Particle types '{unknown_types}' haven't been registered in the ASE type map"  # nopep8
-            )
+        # Prepare symbols if type mapping is provided
+        if self.type_mapping is not None:
+            # Check that all types are in the type mapping
+            unknown_types = set(types) - set(self.type_mapping)
+            if unknown_types:
+                raise RuntimeError(
+                    f"Particle types '{unknown_types}' haven't been registered in the ASE type map"  # nopep8
+                )
+            symbols = [self.type_mapping[t] for t in types]
+        else:
+            # No type mapping provided, don't set symbols
+            symbols = None
 
         # Check for virtual sites
         if any(p.is_virtual() for p in particles):
@@ -113,7 +128,7 @@ class ASEInterface:
         # Create new atoms object
         self.atoms = ase.Atoms(
             positions=positions,
-            symbols=[self.type_mapping[t] for t in types],
+            symbols=symbols,
             pbc=np.copy(self._system.periodicity),
             cell=np.copy(self._system.box_l),
         )
@@ -153,7 +168,8 @@ class ASEInterface:
         particles = self.particle_slice
 
         # Always update positions (pos -> positions)
-        self.atoms.positions[:] = np.copy(particles.pos)
+        self.atoms.positions[:] = np.copy(
+            particles.pos_folded if self.use_folded_positions else particles.pos)
 
         # Update charges if requested and not assumed constant
         if self.export_charges and not self.assume_constant_charges:
