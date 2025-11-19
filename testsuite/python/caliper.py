@@ -25,25 +25,39 @@ import pathlib
 import sys
 import os
 
+HAS_CABANA = espressomd.has_features(["SHARED_MEMORY_PARALLELISM"])
+
 EXPECTED_LABELS = """
 integrate
+  {update_cabana}
   Initial Force Calculation
     calculate_forces
-      copy_particles_to_GPU
-      init_forces_and_thermost
+      {gpu_to}
+      {update_cabana}
+      init_forces_and_thermostat
       calc_long_range_forces
-      short_range_loop
-      copy_forces_from_GPU
+      {short_range}
+      {gpu_from}
   Integration loop
+    integrator_step_1
+    resort_particles_if_needed
     calculate_forces
-      copy_particles_to_GPU
-      init_forces_and_thermost
+      {gpu_to}
+      {update_cabana}
+      init_forces_and_thermostat
       calc_long_range_forces
-      short_range_loop
-      copy_forces_from_GPU
+      {short_range}
+      {gpu_from}
+    integrator_step_2
 calc_energies
+  {update_cabana}
   short_range_loop
-"""
+""".format(
+    update_cabana='update_cabana_state' if HAS_CABANA else '',
+    short_range='cabana_short_range' if HAS_CABANA else 'serial_short_range',
+    gpu_to='copy_particles_to_GPU',
+    gpu_from='copy_forces_from_GPU'
+)
 
 
 @utx.skipIfMissingFeatures(["CALIPER"])
@@ -68,11 +82,10 @@ class Test(ut.TestCase):
         header = "Path\tMin time/rank\tMax time/rank\tAvg time/rank\tTime %"
         self.assertEqual(lines[0].split(), header.split(),
                          msg=f"Caliper summary should start with '{header}'")
-        labels = [line[:30].strip() for line in lines[1:]]
-        labels_ref = [x.strip() for x in EXPECTED_LABELS.strip().split("\n")
-                      if "GPU" not in x.upper() or has_cuda]
-        self.assertEqual(labels[:len(labels_ref)], labels_ref,
-                         msg=f"Caliper returned this summary:\n{stderr}")
+        labels = [line[:36].rstrip() for line in lines[1:]]
+        labels_ref = [x.rstrip() for x in EXPECTED_LABELS.strip().split("\n")
+                      if x.rstrip() and ("GPU" not in x.upper() or has_cuda)]
+        for l in labels_ref: assert l in labels, f"Label {l} not in profile"
 
     def test_interface(self):
         cali = espressomd.profiler.Caliper()

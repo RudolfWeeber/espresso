@@ -21,7 +21,7 @@
 
 #include "config/config.hpp"
 
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
 
 #include "core/system/System.hpp"
 
@@ -116,8 +116,7 @@ public:
   }
 
 protected:
-  Variant do_call_method(std::string const &name,
-                         VariantMap const &params) override {
+  Variant do_call_method(std::string const &name, VariantMap const &) override {
     if (name == "clear") {
       reset_solver();
       return {};
@@ -128,4 +127,4 @@ protected:
 
 } // namespace ScriptInterface::Coulomb
 
-#endif // ELECTROSTATICS
+#endif // ESPRESSO_ELECTROSTATICS

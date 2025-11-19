@@ -115,47 +115,47 @@ static auto get_summary(::System::System const &system,
     }
   }
 
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
   {
     auto const values = get_obs_contribs(obs.coulomb);
     for (std::size_t i = 0ul; i < values.size(); ++i) {
       dict["coulomb," + std::to_string(i)] = values[i];
     }
   }
-#endif // ELECTROSTATICS
+#endif // ESPRESSO_ELECTROSTATICS
 
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
   {
     auto const values = get_obs_contribs(obs.dipolar);
     for (std::size_t i = 0ul; i < values.size(); ++i) {
       dict["dipolar," + std::to_string(i)] = values[i];
     }
   }
-#endif // DIPOLES
+#endif // ESPRESSO_DIPOLES
 
-#ifdef VIRTUAL_SITES
+#ifdef ESPRESSO_VIRTUAL_SITES
   {
     auto const values = get_obs_contribs(obs.virtual_sites);
     for (std::size_t i = 0ul; i < values.size(); ++i) {
       dict["virtual_sites," + std::to_string(i)] = values[i];
     }
   }
-#endif // VIRTUAL_SITES
+#endif // ESPRESSO_VIRTUAL_SITES
 
-#ifdef DPD
+#ifdef ESPRESSO_DPD
   {
     auto const values = get_obs_contribs(obs.dpd);
     for (std::size_t i = 0ul; i < values.size(); ++i) {
       dict["dpd," + std::to_string(i)] = values[i];
     }
   }
-#endif // DPD
+#endif // ESPRESSO_DPD
 
   return dict;
 }
 
 Variant ObservableStat::do_call_method(std::string const &name,
-                                       VariantMap const &parameters) {
+                                       VariantMap const &) {
   auto &system = get_system();
   if (name == "calculate_energy") {
     auto const obs = system.calculate_energy();

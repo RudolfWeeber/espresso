@@ -34,7 +34,7 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
 #include <utils/Vector.hpp>
 
@@ -43,18 +43,19 @@
 #include <vector>
 
 /** This value indicates metallic boundary conditions. */
-auto constexpr P3M_EPSILON_METALLIC = 0.0;
+inline auto constexpr P3M_EPSILON_METALLIC = 0.0;
 
-#if defined(P3M) or defined(DP3M)
+#if defined(ESPRESSO_P3M) or defined(ESPRESSO_DP3M)
 
 #include "LocalBox.hpp"
 
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <stdexcept>
 
 /** @brief P3M kernel architecture. */
-enum class Arch { CPU, GPU };
+enum class Arch { CPU, CUDA };
 
 /** @brief Structure to hold P3M parameters and some dependent variables. */
 struct P3MParameters {
@@ -136,7 +137,7 @@ struct P3MParameters {
     if (not(mesh_off >= Utils::Vector3d::broadcast(0.) and
             mesh_off <= Utils::Vector3d::broadcast(1.))) {
       if (mesh_off == Utils::Vector3d::broadcast(-1.)) {
-        this->mesh_off = Utils::Vector3d::broadcast(P3M_MESHOFF);
+        this->mesh_off = Utils::Vector3d::broadcast(0.5);
       } else {
         throw std::domain_error("Parameter 'mesh_off' must be >= 0 and <= 1");
       }
@@ -177,8 +178,8 @@ struct P3MLocalMesh {
   /** dimension (size) of local mesh including halo layers. */
   Utils::Vector3i dim;
   Utils::Vector3i dim_no_halo;
-  /** number of local mesh points. */
-  int size;
+  /** number of local mesh points including halo layers. */
+  std::size_t size;
   /** index of lower left corner of the
       local mesh in the global mesh. */
   Utils::Vector3i ld_ind;
@@ -244,7 +245,13 @@ template <typename FloatType> struct P3MFFTMesh {
   int ks_pnum = 0;
 };
 
-#endif // defined(P3M) or defined(DP3M)
+struct TuningParameters {
+  int timings;
+  std::pair<std::optional<int>, std::optional<int>> limits;
+  bool verbose;
+};
+
+#endif // defined(ESPRESSO_P3M) or defined(ESPRESSO_DP3M)
 
 /** @brief Calculate indices that shift @ref P3MParameters::mesh by `mesh/2`.
  *  For each mesh size @f$ n @f$ in @c mesh_size, create a sequence of integer

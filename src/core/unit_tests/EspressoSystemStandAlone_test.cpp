@@ -41,7 +41,6 @@ namespace utf = boost::unit_test;
 #include "cuda/utils.hpp"
 #include "electrostatics/coulomb.hpp"
 #include "electrostatics/p3m.hpp"
-#include "electrostatics/p3m.impl.hpp"
 #include "energy_inline.hpp"
 #include "forces_inline.hpp"
 #include "galilei/Galilei.hpp"
@@ -49,7 +48,6 @@ namespace utf = boost::unit_test;
 #include "integrators/Propagation.hpp"
 #include "magnetostatics/dipoles.hpp"
 #include "magnetostatics/dp3m.hpp"
-#include "magnetostatics/dp3m.impl.hpp"
 #include "nonbonded_interactions/lj.hpp"
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
 #include "observables/ParticleVelocities.hpp"
@@ -68,7 +66,6 @@ namespace utf = boost::unit_test;
 
 #include <boost/mpi.hpp>
 #include <boost/mpi/collectives/all_reduce.hpp>
-#include <boost/variant.hpp>
 
 #include <cassert>
 #include <cmath>
@@ -82,6 +79,7 @@ namespace utf = boost::unit_test;
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace espresso {
@@ -113,7 +111,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
   auto const comm = boost::mpi::communicator();
   auto const rank = comm.rank();
   auto const n_nodes = comm.size();
-#if defined(FPE)
+#if defined(ESPRESSO_FPE)
   auto const trap = fe_trap::make_unique_scoped();
 #endif
 
@@ -242,7 +240,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
   }
 
   // check electrostatics
-#ifdef P3M
+#ifdef ESPRESSO_P3M
   {
     // add charges
     set_particle_property(pid1, &Particle::q, +0.5);
@@ -250,8 +248,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
 
     // set up P3M
     auto const prefactor = 2.;
-    auto const mesh_range = std::pair<std::optional<int>, std::optional<int>>{
-        std::nullopt, std::nullopt};
+    auto tuning = TuningParameters{1, {std::nullopt, std::nullopt}, false};
     auto p3m = P3MParameters{false,
                              0.0,
                              3.5,
@@ -260,8 +257,8 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
                              5,
                              0.615,
                              1e-3};
-    auto solver = new_coulomb_p3m<double, Arch::CPU>(
-        std::move(p3m), prefactor, 1, false, mesh_range, true);
+    auto solver =
+        new_coulomb_p3m(std::move(p3m), tuning, prefactor, false, Arch::CPU);
     add_actor(comm, espresso::system, system.coulomb.impl->solver, solver,
               [&system]() { system.on_coulomb_change(); });
     BOOST_CHECK(not solver->is_gpu());
@@ -291,9 +288,9 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
           BOOST_CHECK_CLOSE(pf->f[0u], -energy_ref / r, 0.02);
           BOOST_CHECK_LE(std::abs(pf->f[1u]), 1e-12);
           BOOST_CHECK_LE(std::abs(pf->f[2u]), 1e-12);
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
           BOOST_CHECK_EQUAL(pf->torque.norm(), 0.);
-#endif // ROTATION
+#endif // ESPRESSO_ROTATION
         }
       }
     }
@@ -309,10 +306,10 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
       BOOST_CHECK_EQUAL(energy_p3m, 0.);
     }
   }
-#endif // P3M
+#endif // ESPRESSO_P3M
 
   // check magnetostatics
-#ifdef DP3M
+#ifdef ESPRESSO_DP3M
   {
     // add charges
     set_particle_property(pid1, &Particle::dipm, +0.5);
@@ -320,8 +317,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
 
     // set up P3M
     auto const prefactor = 2.;
-    auto const mesh_range = std::pair<std::optional<int>, std::optional<int>>{
-        std::nullopt, std::nullopt};
+    auto tuning = TuningParameters{1, {std::nullopt, std::nullopt}, false};
     auto p3m = P3MParameters{false,
                              0.0,
                              3.5,
@@ -331,8 +327,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
                              0.615,
                              1e-3};
     auto solver =
-        new_dp3m_handle<double, Arch::CPU, FFTBackendLegacy, FFTBuffersLegacy>(
-            std::move(p3m), prefactor, 1, false, mesh_range);
+        new_dipolar_p3m(std::move(p3m), tuning, prefactor, false, Arch::CPU);
     add_actor(comm, espresso::system, system.dipoles.impl->solver, solver,
               [&system]() { system.on_dipoles_change(); });
     BOOST_CHECK(not solver->is_gpu());
@@ -378,10 +373,10 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
       BOOST_CHECK_EQUAL(energy_p3m, 0.);
     }
   }
-#endif // DP3M
+#endif // ESPRESSO_DP3M
 
   // check non-bonded energies
-#ifdef LENNARD_JONES
+#ifdef ESPRESSO_LENNARD_JONES
   {
     // distance between particles
     auto const dist = 0.2;
@@ -417,7 +412,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
       }
     }
   }
-#endif // LENNARD_JONES
+#endif // ESPRESSO_LENNARD_JONES
 
   // check bonded energies
   {
@@ -440,9 +435,9 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
       system.bonded_ias->insert(fene_bond_id, bond_ia);
     }
     auto const &harm_bond =
-        *boost::get<HarmonicBond>(system.bonded_ias->at(harm_bond_id).get());
+        std::get<HarmonicBond>(*system.bonded_ias->at(harm_bond_id));
     auto const &fene_bond =
-        *boost::get<FeneBond>(system.bonded_ias->at(fene_bond_id).get());
+        std::get<FeneBond>(*system.bonded_ias->at(fene_bond_id));
     insert_particle_bond(pid2, harm_bond_id, {pid1});
     insert_particle_bond(pid2, fene_bond_id, {pid3});
 
@@ -585,7 +580,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
     BOOST_CHECK_THROW(throw BondUnknownTypeError(), std::exception);
     BOOST_CHECK_THROW(throw BondInvalidSizeError(2), std::exception);
     BOOST_CHECK_EQUAL(BondInvalidSizeError(2).size, 2);
-#ifdef COLLISION_DETECTION
+#ifdef ESPRESSO_COLLISION_DETECTION
     BOOST_CHECK_THROW(CollisionDetection::get_part(*system.cell_structure, 777),
                       std::runtime_error);
 #endif
@@ -631,7 +626,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
     BOOST_CHECK_THROW(force_kernel(1u), BondUnknownTypeError);
     BOOST_CHECK_THROW(force_kernel(2u), BondUnknownTypeError);
     BOOST_CHECK_THROW(force_kernel(3u), BondUnknownTypeError);
-#ifdef CUDA
+#ifdef ESPRESSO_CUDA
     BOOST_CHECK_THROW(
         invoke_skip_cuda_exceptions([]() { throw std::runtime_error(""); }),
         std::runtime_error);

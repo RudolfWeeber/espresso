@@ -21,7 +21,7 @@
 
 #include "config/config.hpp"
 
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
 
 #include "core/system/System.hpp"
 
@@ -81,8 +81,7 @@ public:
   }
 
 protected:
-  Variant do_call_method(std::string const &name,
-                         VariantMap const &params) override {
+  Variant do_call_method(std::string const &name, VariantMap const &) override {
     if (name == "clear") {
       reset_solver();
       return {};
@@ -93,4 +92,4 @@ protected:
 
 } // namespace ScriptInterface::Dipoles
 
-#endif // DIPOLES
+#endif // ESPRESSO_DIPOLES

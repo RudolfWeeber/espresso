@@ -23,7 +23,7 @@
 
 #include "config/config.hpp"
 
-#if defined(P3M) or defined(DP3M)
+#if defined(ESPRESSO_P3M) or defined(ESPRESSO_DP3M)
 
 #include "common.hpp"
 #include "data_struct.hpp"
@@ -48,7 +48,6 @@ class FFTBackendLegacy : public FFTBackend<FloatType> {
                 "FFTW only implements float and double");
   std::unique_ptr<fft::fft_data_struct<FloatType>> fft;
   using FFTBackend<FloatType>::local_mesh;
-  using FFTBackend<FloatType>::check_complex_residuals;
   int ca_mesh_size = -1;
   int ks_pnum = -1;
 
@@ -80,4 +79,4 @@ public:
   }
 };
 
-#endif // defined(P3M) or defined(DP3M)
+#endif // defined(ESPRESSO_P3M) or defined(ESPRESSO_DP3M)

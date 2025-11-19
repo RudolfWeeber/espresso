@@ -35,9 +35,9 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef ELECTROSTATICS
+#if defined(ESPRESSO_ELECTROSTATICS) and defined(ESPRESSO_GSL)
 
 #include "electrostatics/actor.hpp"
 
@@ -130,4 +130,4 @@ private:
   void sanity_checks_cell_structure() const;
 };
 
-#endif // ELECTROSTATICS
+#endif // defined(ESPRESSO_ELECTROSTATICS) and defined(ESPRESSO_GSL)

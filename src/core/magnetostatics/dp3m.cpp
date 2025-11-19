@@ -25,9 +25,9 @@
  *  By default the magnetic epsilon is metallic = 0.
  */
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef DP3M
+#ifdef ESPRESSO_DP3M
 
 #include "magnetostatics/dp3m.hpp"
 #include "magnetostatics/dp3m.impl.hpp"
@@ -51,6 +51,7 @@
 #include "errorhandling.hpp"
 #include "integrators/Propagation.hpp"
 #include "npt.hpp"
+#include "short_range_cabana.hpp"
 #include "system/System.hpp"
 #include "tuning.hpp"
 
@@ -61,6 +62,11 @@
 
 #include <boost/mpi/collectives/all_reduce.hpp>
 #include <boost/mpi/collectives/reduce.hpp>
+
+#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
+#include <Kokkos_Core.hpp>
+#include <omp.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -98,16 +104,17 @@ void DipolarP3MImpl<FloatType, Architecture>::count_magnetic_particles() {
 }
 
 static double dp3m_k_space_error(double box_size, int mesh, int cao,
-                                 int n_c_part, double sum_q2, double alpha_L);
+                                 std::size_t n_c_part, double sum_q2,
+                                 double alpha_L);
 
 static double dp3m_real_space_error(double box_size, double r_cut_iL,
-                                    int n_c_part, double sum_q2,
+                                    std::size_t n_c_part, double sum_q2,
                                     double alpha_L);
 
 /** Compute the value of alpha through a bisection method.
  *  Based on eq. (33) @cite wang01a.
  */
-double dp3m_rtbisection(double box_size, double r_cut_iL, int n_c_part,
+double dp3m_rtbisection(double box_size, double r_cut_iL, std::size_t n_c_part,
                         double sum_q2, double x1, double x2, double xacc,
                         double tuned_accuracy);
 
@@ -129,7 +136,7 @@ DipolarP3MImpl<FloatType, Architecture>::calc_average_self_energy_k_space()
 template <typename FloatType, Arch Architecture>
 void DipolarP3MImpl<FloatType, Architecture>::init_cpu_kernels() {
   assert(dp3m.params.mesh >= Utils::Vector3i::broadcast(1));
-  assert(dp3m.params.cao >= 1 and dp3m.params.cao <= 7);
+  assert(dp3m.params.cao >= p3m_min_cao and dp3m.params.cao <= p3m_max_cao);
   assert(dp3m.params.alpha > 0.);
 
   auto const &system = get_system();
@@ -157,6 +164,49 @@ void DipolarP3MImpl<FloatType, Architecture>::init_cpu_kernels() {
 
 namespace {
 template <int cao> struct AssignDipole {
+#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
+  void operator()(auto &dp3m, auto &cell_structure) {
+    using value_type =
+        typename std::remove_reference_t<decltype(dp3m)>::value_type;
+    auto constexpr memory_order = Utils::MemoryOrder::ROW_MAJOR;
+    auto const &aosoa = cell_structure.get_aosoa();
+    auto const &unique_particles = cell_structure.get_unique_particles();
+    auto const n_part = cell_structure.count_local_particles();
+    dp3m.inter_weights.zfill(n_part); // allocate buffer for parallel write
+    kokkos_parallel_range_for(
+        "InterpolateDipoles", std::size_t{0u}, n_part, [&](auto p_index) {
+          auto const tid = omp_get_thread_num();
+          auto const p_pos = aosoa.get_vector_at(aosoa.position, p_index);
+          auto const dip = unique_particles.at(p_index)->calc_dip();
+          auto const weights =
+              p3m_calculate_interpolation_weights<cao, memory_order>(
+                  p_pos, dp3m.params.ai, dp3m.local_mesh);
+          dp3m.inter_weights.store_at(p_index, weights);
+          p3m_interpolate(
+              dp3m.local_mesh, weights, [&dip, tid, &dp3m](int ind, double w) {
+                dp3m.rs_fields_kokkos(tid, 0u, ind) += value_type(w * dip[0u]);
+                dp3m.rs_fields_kokkos(tid, 1u, ind) += value_type(w * dip[1u]);
+                dp3m.rs_fields_kokkos(tid, 2u, ind) += value_type(w * dip[2u]);
+              });
+        });
+    Kokkos::fence();
+    using execution_space = Kokkos::DefaultExecutionSpace;
+    int num_threads = execution_space().concurrency();
+    Kokkos::RangePolicy<execution_space> policy(std::size_t{0},
+                                                dp3m.local_mesh.size);
+    Kokkos::parallel_for("ReduceInterpolatedDipoles", policy,
+                         [&dp3m, num_threads](std::size_t const i) {
+                           for (int dir = 0; dir < 3; ++dir) {
+                             value_type acc{};
+                             for (int tid = 0; tid < num_threads; ++tid) {
+                               acc += dp3m.rs_fields_kokkos(tid, dir, i);
+                             }
+                             dp3m.mesh.rs_fields[dir][i] += acc;
+                           }
+                         });
+    Kokkos::fence();
+  }
+#else  // ESPRESSO_SHARED_MEMORY_PARALLELISM
   void operator()(auto &dp3m, Utils::Vector3d const &real_pos,
                   Utils::Vector3d const &dip) const {
     using value_type =
@@ -173,75 +223,137 @@ template <int cao> struct AssignDipole {
 
     dp3m.inter_weights.template store<cao>(weights);
   }
+#endif // ESPRESSO_SHARED_MEMORY_PARALLELISM
 };
 } // namespace
 
 template <typename FloatType, Arch Architecture>
 void DipolarP3MImpl<FloatType, Architecture>::dipole_assign(
-    ParticleRange const &particles) {
-  dp3m.inter_weights.reset(dp3m.params.cao);
+    [[maybe_unused]] ParticleRange const &particles) {
+  prepare_fft_mesh();
 
-  /* prepare local FFT mesh */
-  for (auto &rs_mesh_field : dp3m.mesh.rs_fields)
-    for (int j = 0; j < dp3m.local_mesh.size; j++)
-      rs_mesh_field[j] = 0.;
-
+#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
+  Utils::integral_parameter<int, AssignDipole, p3m_min_cao, p3m_max_cao>(
+      dp3m.params.cao, dp3m, *get_system().cell_structure);
+#else  // ESPRESSO_SHARED_MEMORY_PARALLELISM
   for (auto const &p : particles) {
     if (p.dipm() != 0.) {
-      Utils::integral_parameter<int, AssignDipole, 1, 7>(dp3m.params.cao, dp3m,
-                                                         p.pos(), p.calc_dip());
+      Utils::integral_parameter<int, AssignDipole, p3m_min_cao, p3m_max_cao>(
+          dp3m.params.cao, dp3m, p.pos(), p.calc_dip());
     }
   }
+#endif // ESPRESSO_SHARED_MEMORY_PARALLELISM
 }
 
 namespace {
 template <int cao> struct AssignTorques {
   void operator()(auto &dp3m, double prefac, int d_rs,
-                  ParticleRange const &particles) const {
+#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
+                  CellStructure &cell_structure
+#else
+                  ParticleRange const &particles
+#endif
+  ) const {
 
+    assert(cao == dp3m.inter_weights.cao());
+
+    auto const kernel = [d_rs, &dp3m](auto const &pref, auto &p_torque,
+                                      std::size_t p_index) {
+      auto const weights = dp3m.inter_weights.template load<cao>(p_index);
+      Utils::Vector3d E{};
+      p3m_interpolate(dp3m.local_mesh, weights,
+                      [&E, &dp3m, d_rs](int ind, double w) {
+                        E[d_rs] += w * double(dp3m.mesh.rs_scalar[ind]);
+                      });
+
+      auto const torque = vector_product(pref, E);
+#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
+      auto const thread_id = omp_get_thread_num();
+      p_torque(p_index, thread_id, 0) -= torque[0];
+      p_torque(p_index, thread_id, 1) -= torque[1];
+      p_torque(p_index, thread_id, 2) -= torque[2];
+#else
+      p_torque -= torque;
+#endif
+    };
+
+#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
+    auto const n_part = dp3m.inter_weights.size();
+    auto const &unique_particles = cell_structure.get_unique_particles();
+    auto &local_torque = cell_structure.get_local_torque();
+    kokkos_parallel_range_for(
+        "AssignTorques", std::size_t{0u}, n_part, [&](std::size_t p_index) {
+          auto const &p = *unique_particles.at(p_index);
+          if (p.dipm() != 0.) {
+            kernel(p.calc_dip() * prefac, local_torque, p_index);
+          }
+        });
+#else  // ESPRESSO_SHARED_MEMORY_PARALLELISM
     /* magnetic particle index */
     auto p_index = std::size_t{0ul};
 
     for (auto &p : particles) {
       if (p.dipm() != 0.) {
-        auto const weights = dp3m.inter_weights.template load<cao>(p_index);
-
-        Utils::Vector3d E{};
-        p3m_interpolate(dp3m.local_mesh, weights,
-                        [&E, &dp3m, d_rs](int ind, double w) {
-                          E[d_rs] += w * double(dp3m.mesh.rs_scalar[ind]);
-                        });
-
-        p.torque() -= vector_product(p.calc_dip(), prefac * E);
+        kernel(p.calc_dip() * prefac, p.torque(), p_index);
         ++p_index;
       }
     }
+#endif // ESPRESSO_SHARED_MEMORY_PARALLELISM
   }
 };
 
 template <int cao> struct AssignForces {
   void operator()(auto &dp3m, double prefac, int d_rs,
-                  ParticleRange const &particles) const {
+#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
+                  CellStructure &cell_structure
+#else
+                  ParticleRange const &particles
+#endif
+  ) const {
 
+    assert(cao == dp3m.inter_weights.cao());
+
+    auto const kernel = [d_rs, &dp3m](auto const &pref, auto &p_force,
+                                      std::size_t p_index) {
+      auto const weights = dp3m.inter_weights.template load<cao>(p_index);
+
+      Utils::Vector3d E{};
+      p3m_interpolate(dp3m.local_mesh, weights, [&E, &dp3m](int ind, double w) {
+        E[0u] += w * double(dp3m.mesh.rs_fields[0u][ind]);
+        E[1u] += w * double(dp3m.mesh.rs_fields[1u][ind]);
+        E[2u] += w * double(dp3m.mesh.rs_fields[2u][ind]);
+      });
+
+#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
+      auto const thread_id = omp_get_thread_num();
+      p_force(p_index, thread_id, d_rs) += pref * E;
+#else
+      p_force[d_rs] += pref * E;
+#endif
+    };
+
+#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
+    auto const n_part = dp3m.inter_weights.size();
+    auto const &unique_particles = cell_structure.get_unique_particles();
+    auto &local_force = cell_structure.get_local_force();
+    kokkos_parallel_range_for(
+        "AssignForces", std::size_t{0u}, n_part, [&](std::size_t p_index) {
+          auto const &p = *unique_particles.at(p_index);
+          if (p.dipm() != 0.) {
+            kernel(p.calc_dip() * prefac, local_force, p_index);
+          }
+        });
+#else  // ESPRESSO_SHARED_MEMORY_PARALLELISM
     /* magnetic particle index */
     auto p_index = std::size_t{0ul};
 
     for (auto &p : particles) {
       if (p.dipm() != 0.) {
-        auto const weights = dp3m.inter_weights.template load<cao>(p_index);
-
-        Utils::Vector3d E{};
-        p3m_interpolate(dp3m.local_mesh, weights,
-                        [&E, &dp3m](int ind, double w) {
-                          E[0u] += w * double(dp3m.mesh.rs_fields[0u][ind]);
-                          E[1u] += w * double(dp3m.mesh.rs_fields[1u][ind]);
-                          E[2u] += w * double(dp3m.mesh.rs_fields[2u][ind]);
-                        });
-
-        p.force()[d_rs] += p.calc_dip() * prefac * E;
+        kernel(p.calc_dip() * prefac, p.force(), p_index);
         ++p_index;
       }
     }
+#endif // ESPRESSO_SHARED_MEMORY_PARALLELISM
   }
 };
 } // namespace
@@ -254,11 +366,8 @@ double DipolarP3MImpl<FloatType, Architecture>::long_range_kernel(
   auto const &system = get_system();
   auto const &box_geo = *system.box_geo;
   auto const dipole_prefac = prefactor / Utils::int_pow<3>(dp3m.params.mesh[0]);
-#ifdef NPT
-  auto const npt_flag =
-      force_flag and
-      ((system.propagation->integ_switch == INTEG_METHOD_NPT_ISO_AND) or
-       (system.propagation->integ_switch == INTEG_METHOD_NPT_ISO_MTK));
+#ifdef ESPRESSO_NPT
+  auto const npt_flag = force_flag and system.has_npt_enabled();
 #else
   auto constexpr npt_flag = false;
 #endif
@@ -376,8 +485,14 @@ double DipolarP3MImpl<FloatType, Architecture>::long_range_kernel(
         dp3m.fft_buffers->perform_scalar_halo_spread();
         /* Assign force component from mesh to particle */
         auto const d_rs = (d + dp3m.mesh.ks_pnum) % 3;
-        Utils::integral_parameter<int, AssignTorques, 1, 7>(
-            dp3m.params.cao, dp3m, dipole_prefac * wavenumber, d_rs, particles);
+#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
+        auto &particle_data = *system.cell_structure;
+#else
+        auto &particle_data = particles;
+#endif
+        Utils::integral_parameter<int, AssignTorques, p3m_min_cao, p3m_max_cao>(
+            dp3m.params.cao, dp3m, dipole_prefac * wavenumber, d_rs,
+            particle_data);
       }
 
       /***************************
@@ -432,9 +547,14 @@ double DipolarP3MImpl<FloatType, Architecture>::long_range_kernel(
         dp3m.fft_buffers->perform_vector_halo_spread();
         /* Assign force component from mesh to particle */
         auto const d_rs = (d + dp3m.mesh.ks_pnum) % 3;
-        Utils::integral_parameter<int, AssignForces, 1, 7>(
+#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
+        auto &particle_data = *system.cell_structure;
+#else
+        auto &particle_data = particles;
+#endif
+        Utils::integral_parameter<int, AssignForces, p3m_min_cao, p3m_max_cao>(
             dp3m.params.cao, dp3m, dipole_prefac * Utils::sqr(wavenumber), d_rs,
-            particles);
+            particle_data);
       }
     } /* if (dp3m.sum_mu2 > 0) */
   } /* if (force_flag) */
@@ -446,7 +566,7 @@ double DipolarP3MImpl<FloatType, Architecture>::long_range_kernel(
       energy += surface_term;
     }
   }
-#ifdef NPT
+#ifdef ESPRESSO_NPT
   if (npt_flag) {
     get_system().npt_add_virial_contribution(energy);
   }
@@ -681,8 +801,8 @@ void DipolarP3MImpl<FloatType, Architecture>::tune() {
     }
     try {
       DipolarTuningAlgorithm<FloatType, Architecture> parameters(
-          system, dp3m, prefactor, tune_timings, tune_limits);
-      parameters.setup_logger(tune_verbose);
+          system, dp3m, prefactor, tuning.timings, tuning.limits);
+      parameters.setup_logger(tuning.verbose);
       // parameter ranges
       parameters.determine_mesh_limits();
       parameters.determine_r_cut_limits();
@@ -731,7 +851,8 @@ static auto dp3m_tune_aliasing_sums(Utils::Vector3i const &shift, int mesh,
 
 /** Calculate the k-space error of dipolar-P3M */
 static double dp3m_k_space_error(double box_size, int mesh, int cao,
-                                 int n_c_part, double sum_q2, double alpha_L) {
+                                 std::size_t n_c_part, double sum_q2,
+                                 double alpha_L) {
 
   auto const cotangent_sum = math::get_analytic_cotangent_sum_kernel(cao);
   auto const mesh_i = 1. / static_cast<double>(mesh);
@@ -755,7 +876,7 @@ static double dp3m_k_space_error(double box_size, int mesh, int cao,
                            Utils::int_pow<3>(static_cast<double>(n2));
           /* at high precision, d can become negative due to extinction;
              also, don't take values that have no significant digits left*/
-          if (d > 0. and std::fabs(d / alias1) > ROUND_ERROR_PREC)
+          if (d > 0. and std::fabs(d / alias1) > round_error_prec)
             he_q += d;
         }
       },
@@ -764,7 +885,8 @@ static double dp3m_k_space_error(double box_size, int mesh, int cao,
       });
 
   return 8. * Utils::sqr(std::numbers::pi) / 3. * sum_q2 *
-         sqrt(he_q / n_c_part) / Utils::int_pow<4>(box_size);
+         sqrt(he_q / static_cast<double>(n_c_part)) /
+         Utils::int_pow<4>(box_size);
 }
 
 /** Calculate the value of the errors for the REAL part of the force in terms
@@ -774,7 +896,7 @@ static double dp3m_k_space_error(double box_size, int mesh, int cao,
  *  eq. (37), but eq. (33) which maintains all the powers in alpha.
  */
 static double dp3m_real_space_error(double box_size, double r_cut_iL,
-                                    int n_c_part, double sum_q2,
+                                    std::size_t n_c_part, double sum_q2,
                                     double alpha_L) {
   auto constexpr exp_min = -708.4; // for IEEE-compatible double
   double d_error_f, d_cc, d_dc, d_con;
@@ -807,7 +929,7 @@ static double dp3m_real_space_error(double box_size, double r_cut_iL,
  *  known to lie between x1 and x2. The root, returned as rtbis, will be
  *  refined until its accuracy is \f$\pm\f$ @p xacc.
  */
-double dp3m_rtbisection(double box_size, double r_cut_iL, int n_c_part,
+double dp3m_rtbisection(double box_size, double r_cut_iL, std::size_t n_c_part,
                         double sum_q2, double x1, double x2, double xacc,
                         double tuned_accuracy) {
   constexpr int JJ_RTBIS_MAX = 40;
@@ -920,15 +1042,37 @@ void DipolarP3MImpl<FloatType, Architecture>::calc_energy_correction() {
       -dp3m.sum_mu2 * (Ukp3m + Eself + 2. * std::numbers::pi / 3.);
 }
 
-#ifdef NPT
+#ifdef ESPRESSO_NPT
 template <typename FloatType, Arch Architecture>
 void DipolarP3MImpl<FloatType, Architecture>::npt_add_virial_contribution(
     double energy) const {
   get_system().npt_add_virial_contribution(energy);
 }
-#endif // NPT
+#endif // ESPRESSO_NPT
 
-template struct DipolarP3MImpl<float, Arch::CPU>;
-template struct DipolarP3MImpl<double, Arch::CPU>;
+template <typename FloatType, Arch Architecture>
+std::shared_ptr<DipolarP3M>
+new_dipolar_p3m_impl(P3MParameters &&p3m, TuningParameters const &tuning_params,
+                     double prefactor) {
+  auto obj = std::make_shared<DipolarP3MImpl<FloatType, Architecture>>(
+      std::make_unique<p3m_data_struct_dipoles<FloatType>>(std::move(p3m)),
+      tuning_params, prefactor);
+  obj->dp3m.template make_mesh_instance<FFTBuffersLegacy<FloatType>>();
+  obj->dp3m.template make_fft_instance<FFTBackendLegacy<FloatType>>();
+  return obj;
+}
 
-#endif // DP3M
+std::shared_ptr<DipolarP3M>
+new_dipolar_p3m(P3MParameters &&p3m_params,
+                TuningParameters const &tuning_params, double prefactor,
+                bool single_precision, Arch arch) {
+  auto fptr = &new_dipolar_p3m_impl<float, Arch::CPU>;
+  if (single_precision) {
+    fptr = new_dipolar_p3m_impl<float, Arch::CPU>;
+  } else {
+    fptr = new_dipolar_p3m_impl<double, Arch::CPU>;
+  }
+  return fptr(std::move(p3m_params), tuning_params, prefactor);
+}
+
+#endif // ESPRESSO_DP3M

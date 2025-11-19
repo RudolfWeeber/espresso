@@ -19,9 +19,9 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef CUDA
+#ifdef ESPRESSO_CUDA
 
 #include "ParticleRange.hpp"
 #include "cuda/CudaHostAllocator.hpp"
@@ -57,7 +57,8 @@ public:
     static constexpr std::size_t torque = 2;
     static constexpr std::size_t q = 3;
     static constexpr std::size_t dip = 4;
-    using bitset = std::bitset<5>;
+    static constexpr std::size_t dip_fld = 5;
+    using bitset = std::bitset<6>;
   };
 
   /** @brief Energies that are retrieved from the GPU. */
@@ -68,10 +69,10 @@ public:
   /** @brief Subset of @ref Particle which is copied to the GPU. */
   struct GpuParticle {
     Utils::Vector3f p;
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
     Utils::Vector3f dip;
 #endif
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
     float q;
 #endif
     int identity;
@@ -101,6 +102,10 @@ private:
   void particles_scatter_forces(ParticleRange const &particles,
                                 std::span<float> host_forces,
                                 std::span<float> host_torques) const;
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  void particles_scatter_dip_fld(ParticleRange const &particles,
+                                 std::span<float> host_dip_fld) const;
+#endif
 
 public:
   GpuParticleData() = default;
@@ -115,6 +120,9 @@ public:
   void enable_property(std::size_t property);
   void clear_energy_on_device();
   void copy_forces_to_host(ParticleRange const &particles, int this_node);
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  void copy_dip_fld_to_host(ParticleRange const &particles, int this_node);
+#endif
   std::size_t n_particles() const;
   bool has_compatible_device() const;
 
@@ -122,15 +130,18 @@ public:
   GpuEnergy *get_energy_device() const;
   float *get_particle_positions_device() const;
   float *get_particle_forces_device() const;
-#ifdef ROTATION
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  float *get_particle_dip_fld_device() const;
+#endif
+#ifdef ESPRESSO_ROTATION
   float *get_particle_torques_device() const;
 #endif
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
   float *get_particle_dipoles_device() const;
 #endif
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
   float *get_particle_charges_device() const;
 #endif
 };
 
-#endif // CUDA
+#endif // ESPRESSO_CUDA

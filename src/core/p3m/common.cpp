@@ -19,9 +19,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#if defined(P3M) or defined(DP3M)
+#if defined(ESPRESSO_P3M) or defined(ESPRESSO_DP3M)
 
 #include "common.hpp"
 
@@ -63,9 +63,9 @@ void P3MLocalMesh::calc_local_ca_mesh(P3MParameters const &params,
 
   /* correct roundoff errors at boundary */
   for (i = 0; i < 3; i++) {
-    if (inner_ur_grid_pos[i] - in_ur[i] < ROUND_ERROR_PREC)
+    if (inner_ur_grid_pos[i] - in_ur[i] < round_error_prec)
       in_ur[i]--;
-    if (inner_ld_grid_pos[i] - in_ld[i] + 1. < ROUND_ERROR_PREC)
+    if (inner_ld_grid_pos[i] - in_ld[i] + 1. < round_error_prec)
       in_ld[i]--;
   }
   /* inner grid dimensions */
@@ -89,10 +89,10 @@ void P3MLocalMesh::calc_local_ca_mesh(P3MParameters const &params,
     margin[(i * 2) + 1] = ind[i] - in_ur[i];
 
   /* grid dimension */
-  size = 1;
+  size = 1ull;
   for (i = 0; i < 3; i++) {
     dim[i] = ind[i] - ld_ind[i] + 1;
-    size *= dim[i];
+    size *= static_cast<std::size_t>(dim[i]);
   }
 
   /* reduce inner grid indices from global to local */
@@ -111,4 +111,4 @@ void P3MLocalMesh::calc_local_ca_mesh(P3MParameters const &params,
   dim_no_halo = ur_no_halo - ld_no_halo;
 }
 
-#endif // defined(P3M) or defined(DP3M)
+#endif // defined(ESPRESSO_P3M) or defined(ESPRESSO_DP3M)

@@ -135,12 +135,6 @@ Variant Analysis::do_call_method(std::string const &name,
     auto const local = system.particle_bond_energy(pid, bond_id, partners);
     return Utils::Mpi::reduce_optional(context()->get_comm(), local);
   }
-#ifdef DIPOLE_FIELD_TRACKING
-  if (name == "calc_long_range_fields") {
-    get_system().calculate_long_range_fields();
-    return {};
-  }
-#endif
   if (name == "particle_neighbor_pids") {
     auto &system = get_system();
     system.on_observable_calc();
@@ -154,12 +148,12 @@ Variant Analysis::do_call_method(std::string const &name,
     });
     return make_unordered_map_of_variants(dict);
   }
-#ifdef DPD
+#ifdef ESPRESSO_DPD
   if (name == "dpd_stress") {
     auto const result = dpd_stress(context()->get_comm());
     return result.as_vector();
   }
-#endif // DPD
+#endif // ESPRESSO_DPD
   if (name == "min_dist") {
     auto const p_types1 = get_value<std::vector<int>>(parameters, "p_types1");
     auto const p_types2 = get_value<std::vector<int>>(parameters, "p_types2");
@@ -296,14 +290,14 @@ Variant Analysis::do_call_method(std::string const &name,
   if (name == "calculate_pressure_tensor") {
     return m_obs_stat->do_call_method("calculate_pressure_tensor", {});
   }
-#ifdef NPT
+#ifdef ESPRESSO_NPT
   if (name == "get_instantaneous_pressure") {
     return get_system().npt_inst_pressure->p_inst[0];
   }
   if (name == "get_instantaneous_pressure_virial") {
     return get_system().npt_inst_pressure->p_inst[1];
   }
-#endif // NPT
+#endif // ESPRESSO_NPT
   return {};
 }
 

@@ -19,9 +19,9 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
 
 #include "EKSpecies.hpp"
 #include "LatticeIndices.hpp"
@@ -67,7 +67,11 @@ public:
 
   Variant do_call_method(std::string const &name,
                          VariantMap const &params) override;
+
+  ::LatticeWalberla const &get_lattice() const {
+    return m_ek_species->get_lattice();
+  }
 };
 } // namespace ScriptInterface::walberla
 
-#endif // WALBERLA
+#endif // ESPRESSO_WALBERLA

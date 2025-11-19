@@ -19,8 +19,8 @@
 
 #include <config/config.hpp>
 
-#ifdef COLLISION_DETECTION
-#ifdef VIRTUAL_SITES_RELATIVE
+#ifdef ESPRESSO_COLLISION_DETECTION
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
 
 #include "BindAtPointOfCollision.hpp"
 #include "CollisionPair.hpp"
@@ -132,7 +132,12 @@ void BindAtPointOfCollision::handle_collisions(
     auto const pos1 = p1->pos() - vec21 * vs_placement;
     auto const pos2 = p1->pos() - vec21 * (1. - vs_placement);
 
-    auto handle_particle = [&](Particle *p, Utils::Vector3d const &pos) {
+    auto handle_particle = [&
+#if defined(__clang__) and defined(__cray__)
+                            ,
+                            pid1 = pid1, pid2 = pid2
+#endif
+    ](Particle *p, Utils::Vector3d const &pos) {
       if (not p->is_ghost()) {
         place_vs_and_relate_to_particle(cell_structure, box_geo, part_type_vs,
                                         min_global_cut, current_vs_pid, pos,
@@ -173,7 +178,7 @@ void BindAtPointOfCollision::handle_collisions(
     }
   } // Loop over all collisions in the queue
 
-#ifdef ADDITIONAL_CHECKS
+#ifdef ESPRESSO_ADDITIONAL_CHECKS
   assert(Utils::Mpi::all_compare(::comm_cart, current_vs_pid) &&
          "Nodes disagree about current_vs_pid");
 #endif
@@ -189,5 +194,5 @@ void BindAtPointOfCollision::handle_collisions(
 
 } // namespace CollisionDetection
 
-#endif // VIRTUAL_SITES_RELATIVE
-#endif // COLLISION_DETECTION
+#endif // ESPRESSO_VIRTUAL_SITES_RELATIVE
+#endif // ESPRESSO_COLLISION_DETECTION

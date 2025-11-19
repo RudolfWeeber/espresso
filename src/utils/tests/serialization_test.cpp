@@ -28,6 +28,7 @@
 #include <utils/quaternion.hpp>
 #include <utils/serialization/optional.hpp>
 #include <utils/serialization/unordered_map.hpp>
+#include <utils/serialization/variant.hpp>
 
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
@@ -38,6 +39,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cassert>
 #include <cstddef>
 #include <functional>
@@ -201,18 +203,6 @@ auto sorted_view(InputIt const &buffer_it) {
   return subset;
 }
 
-/**
- * @brief Simplistic test for endianness.
- * Replace with @c std::endian once ESPResSo becomes a C++20 project.
- */
-bool is_big_endian() {
-#ifdef __BYTE_ORDER__
-  return __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__;
-#else
-  return false;
-#endif
-}
-
 BOOST_AUTO_TEST_CASE(serialization_level_test) {
   boost::mpi::communicator comm;
   auto const buffer = create_mpi_archive<std::array>(comm);
@@ -272,8 +262,8 @@ BOOST_AUTO_TEST_CASE(mpi_archive_test) {
   BOOST_TEST(buffer_vector == buffer_ref, boost::test_tools::per_element());
   BOOST_TEST(buffer_storage == buffer_ref, boost::test_tools::per_element());
   BOOST_TEST(buffer_quat == buffer_ref, boost::test_tools::per_element());
-  auto const index_lsb = (is_big_endian()) ? 1u : 0u;
-  auto const index_hsb = (is_big_endian()) ? 0u : 1u;
+  auto const index_lsb = (std::endian::native == std::endian::big) ? 1u : 0u;
+  auto const index_hsb = (std::endian::native == std::endian::big) ? 0u : 1u;
   BOOST_TEST(buffer_cv[index_lsb] == Testing::N);
   BOOST_TEST(buffer_cv[index_hsb] == 0);
   buffer_cv.erase(buffer_cv.begin());
@@ -365,6 +355,32 @@ BOOST_AUTO_TEST_CASE(std_optional_test) {
     boost::mpi::packed_iarchive ia{comm, buffer};
     ia >> value_recv;
     BOOST_REQUIRE(not value_recv.has_value());
+  }
+}
+
+BOOST_AUTO_TEST_CASE(std_variant_test) {
+  boost::mpi::communicator comm;
+  {
+    boost::mpi::packed_archive buffer;
+    std::variant<int, double> const value_send{-10};
+    std::variant<int, double> value_recv{1.};
+    boost::mpi::packed_oarchive oa{comm, buffer};
+    oa << value_send;
+    boost::mpi::packed_iarchive ia{comm, buffer};
+    ia >> value_recv;
+    BOOST_REQUIRE(std::holds_alternative<int>(value_recv));
+    BOOST_CHECK_EQUAL(std::get<int>(value_recv), std::get<int>(value_send));
+  }
+  {
+    boost::mpi::packed_archive buffer;
+    std::variant<int, double> const value_send{-2.};
+    std::variant<int> value_recv{1};
+    boost::mpi::packed_oarchive oa{comm, buffer};
+    oa << value_send;
+    boost::mpi::packed_iarchive ia{comm, buffer};
+    BOOST_CHECK_THROW((ia >> value_recv), std::domain_error);
+    BOOST_REQUIRE(std::holds_alternative<int>(value_recv));
+    BOOST_CHECK_EQUAL(std::get<int>(value_recv), 1);
   }
 }
 

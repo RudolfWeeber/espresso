@@ -21,7 +21,7 @@
 
 #include "config/config.hpp"
 
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
 
 #include <utils/Vector.hpp>
 
@@ -41,8 +41,8 @@ namespace LB {
 
 struct LBWalberlaParams {
   LBWalberlaParams(double agrid, double tau) : m_agrid(agrid), m_tau(tau) {}
-  double get_agrid() const { return m_agrid; };
-  double get_tau() const { return m_tau; };
+  double get_agrid() const { return m_agrid; }
+  double get_tau() const { return m_tau; }
 
 private:
   double m_agrid;
@@ -106,4 +106,4 @@ struct LBWalberla {
 
 } // namespace LB
 
-#endif // WALBERLA
+#endif // ESPRESSO_WALBERLA
