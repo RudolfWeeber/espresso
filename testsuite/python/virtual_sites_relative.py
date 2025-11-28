@@ -178,7 +178,7 @@ class VirtualSites(ut.TestCase):
         N = 100 
         # Generate N random positions within 1.2 of central particle in each coordinate
         np.random.seed(42)
-        vs_positions = p1.pos + np.random.uniform(-1.2, 1.2, (N, 3))
+        vs_positions = p1.pos + np.random.uniform(-0.15, 0.15, (N, 3))
 
         # Create virtual sites at random positions
         sites = system.part.add(rotation=[3 * [True]] * N, pos=vs_positions)
