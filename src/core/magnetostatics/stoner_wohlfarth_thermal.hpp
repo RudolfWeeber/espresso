@@ -17,20 +17,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <config/config.hpp>
+
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+
 #include "cell_system/CellStructure.hpp"
-#include "system/System.hpp"
+#include "thermostat.hpp"
 
-#include <vector>
+void run_magnetodynamics(CellStructure &cell_structure,
+                         Thermostat::Thermostat const &thermostat);
 
-bool add_bond(System::System &system, int bond_id,
-              std::vector<int> const &particle_ids) {
-  Particle *p = system.cell_structure->get_local_particle(particle_ids[0]);
-  if (p) {
-    // The bond view is stored in the bond list of the primary particle.
-    // Thus the bond views' partner list only contains the other particle id.
-    BondView bond(bond_id, {particle_ids.data() + 1, particle_ids.size() - 1});
-    p->bonds().insert(bond);
-    return true;
-  }
-  return false;
-}
+#endif // ESPRESSO_THERMAL_STONER_WOHLFARTH
