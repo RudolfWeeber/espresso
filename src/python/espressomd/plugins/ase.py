@@ -28,7 +28,7 @@ if typing.TYPE_CHECKING:
 
 class ASEInterface:
     """
-    ASE interface for ESPResSo with enhanced functionality for calculator integration.
+    Interface for ASE :cite:`hjorthlarsen17a` with calculator support.
     """
 
     def __init__(self, system: "System", type_mapping: typing.Optional[dict],
@@ -162,8 +162,7 @@ class ASEInterface:
         """
         Update the arrays in the atom objects based on the desired properties.
 
-        Uses the assume_constant_* flags from the constructor to determine
-        which properties to update.
+        The ``assume_constant_*`` flags determine which properties to update.
         """
         if self.atoms is None:
             raise RuntimeError(
@@ -196,10 +195,16 @@ class ASEInterface:
         Integrate the system for the specified number of steps.
 
         For each step:
+
         1. Update ASE with current particle data
         2. Get forces from calculator
         3. Set external forces on particles
         4. Run one integration step
+
+        Since the particle property :attr:`~espressomd.particle_data.ParticleHandle.ext_force`
+        is updated at every time step, cache invalidation is inevitable,
+        and the symplectic Euler method is needed to conserve momentum
+        (:class:`espressomd.integrate.SymplecticEuler`).
 
         Parameters
         ----------
