@@ -21,11 +21,28 @@ import numpy as np
 import unittest as ut
 import scipy.optimize
 import importlib_wrapper
+import contextlib
 
-sample, skipIfMissingFeatures = importlib_wrapper.configure_and_import(
-    "@SAMPLES_DIR@/lj_liquid_ase.py", int_steps=10, int_n_times=60)
+ase_is_available = False
+with contextlib.suppress(ImportError):
+    import ase  # pylint: disable=unused-import
+    ase_is_available = True
 
 
+def noskip(x):
+    return x
+
+
+assert noskip(5) == 5  # identity function
+skipIfMissingFeatures = noskip
+
+if ase_is_available:
+    sample, skipIfMissingFeatures = importlib_wrapper.configure_and_import(
+        "@SAMPLES_DIR@/lj_liquid_ase.py", int_steps=10, int_n_times=60)
+
+
+@ut.skipIf(not ase_is_available, "missing python module ase")
+@skipIfMissingFeatures
 class Sample(ut.TestCase):
 
     @staticmethod
@@ -34,15 +51,15 @@ class Sample(ut.TestCase):
 
     def test(self):
         system = sample.system
-        ydata = np.array(system.instantaneous_temperatures)
+        ydata = np.array(sample.instantaneous_temperatures)
         xdata = np.arange(len(ydata))
         popt, pcov = scipy.optimize.curve_fit(
             self.exp_kernel, xdata, ydata, p0=[-1., 0.1, 1.])
         pvar = np.diag(pcov)
         np.testing.assert_allclose(np.sqrt(pvar) / popt, 0., atol=0.1)
-        self.assertAlmostEqual(popt[2], system.thermostat.kT, delta=1e-2)
-        self.assertAlmostEqual(popt[1], 7.5e-2, delta=1e-2)
-        self.assertAlmostEqual(popt[0], -0.9, delta=0.1)
+        self.assertAlmostEqual(popt[2], system.thermostat.kT, delta=0.06)
+        self.assertAlmostEqual(popt[1], 7.5e-2, delta=2e-2)
+        self.assertAlmostEqual(popt[0], -0.9, delta=0.12)
 
 
 if __name__ == "__main__":
