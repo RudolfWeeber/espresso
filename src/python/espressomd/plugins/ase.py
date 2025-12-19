@@ -46,9 +46,9 @@ class ASEInterface:
         ----------
         system : :obj:`espressomd.system.System`
             The ESPResSo system object.
-        type_mapping : :obj:`dict` or None
+        type_mapping : :obj:`dict` or ``None``
             Mapping of ESPResSo particle types to ASE symbols.
-            E.g. ``{0: "H", 1: "O"}``. If None, no symbols are set on the
+            E.g. ``{0: "H", 1: "O"}``. If ``None``, no symbols are set on the
             ASE atoms object (useful when symbols will be set later or are
             not needed).
         particle_slice : :obj:`espressomd.particle_data.ParticleSlice`
@@ -60,13 +60,13 @@ class ASEInterface:
         export_momenta : :obj:`bool`, optional
             Whether to make particle momenta available to ASE.
         assume_constant_charges : :obj:`bool`, optional
-            Assumes that the particles' charges are not changed while this instance
+            Assume that the particles' charges won't change while this instance
             is valid (faster update).
         assume_constant_masses : :obj:`bool`, optional
-            Assumes that the particles' masses are not changed while this instance
+            Assume that the particles' masses won't change while this instance
             is valid (faster update).
         assume_constant_types : :obj:`bool`, optional
-            Assumes that the particles' types are not changed while this instance
+            Assume that the particles' types won't change while this instance
             is valid (faster update).
         use_folded_positions : :obj:`bool`, optional
             If True, use folded positions (particles.pos_folded) which are always
@@ -98,14 +98,15 @@ class ASEInterface:
         """
         Re-create the ASE atoms object using ESPResSo system properties.
 
-        Uses the current particle slice to create a new ASE atoms object with
-        positions, types, periodicity and box dimensions. If export flags are set,
-        also initializes charges, masses, and/or momenta. If type_mapping is None,
-        creates atoms without symbols.
+        New ASE atom objects are created from the current particle slice
+        with positions, types, periodicity and box dimensions.
+        If export flags are set, charges, masses, and/or momenta are also
+        initialized.
+        If type_mapping is ``None``, atoms are created without symbols.
         """
+        pos_attr = "pos_folded" if self.use_folded_positions else "pos"
         particles = self.particle_slice
-        positions = np.copy(
-            particles.pos_folded if self.use_folded_positions else particles.pos)
+        positions = np.copy(getattr(particles, pos_attr))
         types = np.copy(particles.type)
 
         # Prepare symbols if type mapping is provided
@@ -150,13 +151,16 @@ class ASEInterface:
             self.atoms.set_momenta(momenta)
 
     def set_slice(self, particles):
-        """Set the slice of particles to work on. This results in the re-creation of the ASE atoms object."""
+        """
+        Set the slice of particles to work on.
+        This results in the re-creation of the ASE atom objects.
+        """
         self.particles = particles
         self.reset()
 
     def update_ase(self):
         """
-        Update the arrays in the atoms object based on the desired properties.
+        Update the arrays in the atom objects based on the desired properties.
 
         Uses the assume_constant_* flags from the constructor to determine
         which properties to update.
@@ -165,11 +169,11 @@ class ASEInterface:
             raise RuntimeError(
                 "atoms object not initialized, call reset() first")
 
+        pos_attr = "pos_folded" if self.use_folded_positions else "pos"
         particles = self.particle_slice
 
         # Always update positions (pos -> positions)
-        self.atoms.positions[:] = np.copy(
-            particles.pos_folded if self.use_folded_positions else particles.pos)
+        self.atoms.positions[:] = np.copy(getattr(particles, pos_attr))
 
         # Update charges if requested and not assumed constant
         if self.export_charges and not self.assume_constant_charges:

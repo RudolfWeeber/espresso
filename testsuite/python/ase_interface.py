@@ -229,7 +229,8 @@ class ASEInterfaceTest(ut.TestCase):
 
         # Change particle charges
         system.part.all().q = [5., -2., 3.5]
-        # Update ASE (charges should NOT be updated due to assume_constant_charges)
+        # Update ASE (charges should NOT be updated due to
+        # assume_constant_charges)
         ase_interface.update_ase()
 
         # Check that charges are NOT updated (should still be original)
@@ -275,7 +276,8 @@ class ASEInterfaceTest(ut.TestCase):
         # Change particle masses
         system.part.by_id(2).mass = 7.2
 
-        # Update ASE (masses should NOT be updated due to assume_constant_masses)
+        # Update ASE (masses should NOT be updated due to
+        # assume_constant_masses)
         ase_interface.update_ase()
 
         # Check that masses are NOT updated (should still be original)
@@ -326,7 +328,8 @@ class ASEInterfaceTest(ut.TestCase):
         # Place a particle outside the box
         system.part.by_id(0).pos = [25., 25., 25.]  # Box is [20, 20, 20]
 
-        # Create interface WITHOUT specifying use_folded_positions (should default to True)
+        # Create interface WITHOUT specifying use_folded_positions (should
+        # default to True)
         ase_interface = espressomd.plugins.ase.ASEInterface(
             system=system,
             type_mapping=self.type_mapping,

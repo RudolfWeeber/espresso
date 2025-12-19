@@ -42,6 +42,7 @@ import espressomd.bond_breakage
 import espressomd.reaction_methods
 import espressomd.propagation
 
+
 config = utg.TestGenerator()
 modes = config.get_modes()
 

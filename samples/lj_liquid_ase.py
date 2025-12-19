@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2025 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -30,12 +30,10 @@ required_features = ["LENNARD_JONES"]
 espressomd.assert_features(required_features)
 
 # System parameters
-
 box_l = 10.7437
 density = 0.7
 
 # Interaction parameters (repulsive Lennard-Jones)
-
 lj_eps = 1.0
 lj_sig = 1.0
 lj_cut = 2.**(1 / 6) * lj_sig
@@ -51,55 +49,42 @@ warm_steps = 10
 int_steps = 100
 int_n_times = 50
 
-
 # Particle setup
-
 volume = system.volume()
 n_part = int(volume * density)
 
 system.part.add(pos=np.random.random((n_part, 3)) * system.box_l)
 
-
-## Setup of ase interface and Lennard-Jones calculator
+## Setup of ASE interface and Lennard-Jones calculator
 
 # Mapping of ESPResSo types to ASE types
-
 type_mapping = {0: 0}
-
 ase = espressomd.plugins.ase.ASEInterface(
     system, type_mapping, system.part.all())
 
 # ASE calculator tor provide Lennard-Jones forces
 lj = LennardJones(sigma=lj_sig, epsilon=lj_eps, rc=lj_cut, smooth=False)
 ase.atoms.calc = lj
+
 # Overlap removal via steepest descent
-
-system.integrator.set_steepest_descent(f_max=0, gamma=1e-3,
-                                       max_displacement=lj_sig / 100)
-
-
-# Integrate one step to get valid particle forces
-ase.integrate(1, lj)
-
+system.integrator.set_steepest_descent(f_max=0., gamma=1e-3,
+                                       max_displacement=lj_sig / 100.)
+ase.integrate(1, lj)  # integrate one step to get valid particle forces
 max_force = np.abs(np.amax(system.part.all().f))
 while max_force > 10:
     ase.integrate(warm_steps, lj)
     max_force = np.abs(np.amax(system.part.all().f))
-    print("Overlap removal:", max_force)
-
+    print(f"Overlap removal: {max_force:.2e}")
 
 # Normal integration
-
-
 system.integrator.set_vv()
-
-
-# system.non_bonded_inter[0,0].lennard_jones.set_params(epsilon=lj_eps,sigma=lj_sig, cutoff=lj_cut, shift='auto')
 system.integrator.run(0, reuse_forces=False)
 forces = system.part.all().f
 ase.update_ase()
-ase_pos = [a.position for a in ase.atoms]
-np.testing.assert_allclose(ase_pos, system.part.all().pos)
+box_l = np.copy(system.box_l)
+ase_pos = np.remainder(np.array([a.position for a in ase.atoms]), box_l)
+np.testing.assert_allclose(
+    np.remainder(ase_pos - np.copy(system.part.all().pos), box_l), 0.)
 
 lj = LennardJones(sigma=lj_sig, epsilon=lj_eps, rc=lj_cut, smooth=False)
 ase.atoms.calc = lj
@@ -107,16 +92,14 @@ ase.update_ase()
 ase_forces = ase.atoms.get_forces()
 
 # activate thermostat
-system.thermostat.set_langevin(kT=1, gamma=1.0, seed=42)
+system.thermostat.set_langevin(kT=1., gamma=1., seed=42)
 p = system.part.by_id(0)
 print(p.f, p.ext_force, p.v)
 for i in range(10):
     ase.integrate(1, lj)
     print(p.f, p.ext_force, p.v)
 
-
 for i in range(int_n_times):
     print(f"run {i} at time={system.time:.2f}")
-
     ase.integrate(int_steps, lj)
     print(1 / n_part * np.sum(system.part.all().v**2) / 2)
