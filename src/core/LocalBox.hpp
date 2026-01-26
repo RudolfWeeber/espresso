@@ -61,6 +61,11 @@ public:
   /** Return cell structure type. */
   auto const &cell_structure_type() const { return m_cell_structure_type; }
 
+  /** Volume of the local box. */
+  double volume() const {
+    return m_local_box_l[0] * m_local_box_l[1] * m_local_box_l[2];
+  }
+
   /** Set cell structure type. */
   void set_cell_structure_type(CellStructureType cell_structure_type) {
     m_cell_structure_type = cell_structure_type;
