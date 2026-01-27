@@ -119,7 +119,8 @@ static auto estimate_max_counts(double pair_cutoff,
           : 0.;
   auto const cutoff_sphere_volume =
       (4. / 3.) * std::numbers::pi * Utils::int_pow<3>(pair_cutoff);
-  const double fluctuation_factor = 2.;
+  const double fluctuation_factor =
+      2.; // account for local fluctuations. Empirical.
   auto max_counts = static_cast<std::size_t>(
       std::ceil(fluctuation_factor * local_density * cutoff_sphere_volume));
   std::size_t constexpr threshold_num = 16;
