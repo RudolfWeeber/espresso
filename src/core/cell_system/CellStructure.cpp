@@ -59,6 +59,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -110,8 +111,8 @@ static auto estimate_max_counts(double pair_cutoff,
   if (pair_cutoff < 0.) {
     pair_cutoff = 0.;
   }
-  // Estimate number of neighbors based on local density and cutoff sphere
-  // volume n_neighbors = rho * (4/3) * pi * r^3 where rho = n_particles /
+  // Estimate number of neighbors based on local density and cutoff sphere:
+  // volume n_neighbors = rho * (4/3) * pi * r^3, where rho = n_particles /
   // volume
   auto const local_density =
       (local_box_volume > 0. && num_local_particles > 0)
@@ -119,8 +120,8 @@ static auto estimate_max_counts(double pair_cutoff,
           : 0.;
   auto const cutoff_sphere_volume =
       (4. / 3.) * std::numbers::pi * Utils::int_pow<3>(pair_cutoff);
-  const double fluctuation_factor =
-      2.; // account for local fluctuations. Empirical.
+  // account for local fluctuations. Empirical.
+  auto const fluctuation_factor = 2.;
   auto max_counts = static_cast<std::size_t>(
       std::ceil(fluctuation_factor * local_density * cutoff_sphere_volume));
   std::size_t constexpr threshold_num = 16;

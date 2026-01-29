@@ -45,6 +45,7 @@
 #include <algorithm>
 #include <cassert>
 #include <concepts>
+#include <cstddef>
 #include <functional>
 #include <iterator>
 #include <memory>

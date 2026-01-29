@@ -98,9 +98,9 @@ class CellSystem(ut.TestCase):
     def test_verlet_list_overflow(self):
         system = self.system
         system.part.clear()
-        system.part.add(pos=[[0, 0, 0]] * 1000)      
-        system.non_bonded_inter[0, 0].wca.set_params(
-            epsilon=1, sigma=.01)
+        # place all particles on top of each other
+        system.part.add(pos=[[0, 0, 0]] * 1000)
+        system.non_bonded_inter[0, 0].wca.set_params(epsilon=1., sigma=0.01)
         system.integrator.set_vv()
 
         system.cell_system.use_verlet_lists = True
