@@ -374,9 +374,9 @@ void System::System::calculate_forces() {
                       &collision_detection = *collision_detection,
 #endif
                       &box_geo = *box_geo,
-                      max_cutoff2 = Utils::sqr(maximal_cutoff())](
+                      system_max_cutoff2 = Utils::sqr(maximal_cutoff())](
                          Particle &p1, Particle &p2, Distance const &d) {
-    if (d.dist2 > max_cutoff2)
+    if (d.dist2 > system_max_cutoff2)
       return;
     auto const &ia_params = nonbonded_ias.get_ia_param(p1.type(), p2.type());
     add_non_bonded_pair_force(
