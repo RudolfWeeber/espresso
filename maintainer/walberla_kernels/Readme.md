@@ -37,6 +37,10 @@ function generate_lb_kernels {
 function generate_ek_kernels {
   python3 $(git rev-parse --show-toplevel)/maintainer/walberla_kernels/generate_ek_kernels.py $@
 }
+function generate_cg_kernels {
+  python3 $(git rev-parse --show-toplevel)/maintainer/walberla_kernels/generate_cg_kernels.py $@
+}
+
 function format_kernels {
   $(git rev-parse --show-toplevel)/maintainer/format/clang-format.sh -i *.h
   $(git rev-parse --show-toplevel)/maintainer/format/clang-format.sh -i *.cpp -style "{Language: Cpp, ColumnLimit: 0}"
@@ -60,6 +64,14 @@ generate_ek_kernels --kernels all --gpu
 generate_ek_kernels --kernels all --gpu --single-precision
 format_kernels
 mv ReactionKernel*.{cpp,h,cu} $(git rev-parse --show-toplevel)/src/walberla_bridge/src/electrokinetics/reactions/generated_kernels/
+
+# CG kernels
+cd $(git rev-parse --show-toplevel)/src/walberla_bridge/src/color_gradient/generated_kernels/
+generate_cg_kernels --kernels all
+generate_cg_kernels --kernels all --single-precision
+generate_cg_kernels --kernels all --gpu
+generate_cg_kernels --kernels all --gpu --single-precision
+format_kernels
 ```
 
 The code generation is not deterministic, therefore the list of changes might
