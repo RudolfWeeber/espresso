@@ -240,4 +240,40 @@ void copy_block_buffer(CellInterval const &bci, CellInterval const &ci,
   }
 }
 
+/**
+ * @brief Iterate over all local blocks that overlap a given 3D slice,
+ *        invoking a visitor for each such block.
+ *
+ * This encapsulates the common boilerplate shared by every
+ * @c get_slice_* / @c set_slice_* method in LB and EK:
+ * get_interval → loop blocks → get_block_corner → get_block_interval → visit.
+ *
+ * @param lattice       The lattice
+ * @param lower_corner  Lower corner of the 3D slice (inclusive)
+ * @param upper_corner  Upper corner of the 3D slice (exclusive)
+ * @param visitor       Callable with signature
+ *     <tt>(IBlock &block, CellInterval const &bci,
+ *          CellInterval const &ci, Utils::Vector3i const &block_offset)</tt>
+ *
+ * @return The global @c CellInterval of the slice, or @c std::nullopt
+ *         when the slice does not overlap the local domain.
+ */
+template <typename Visitor>
+auto for_each_block_in_slice(::LatticeWalberla const &lattice,
+                             Utils::Vector3i const &lower_corner,
+                             Utils::Vector3i const &upper_corner,
+                             Visitor &&visitor) -> std::optional<CellInterval> {
+  auto const ci = get_interval(lattice, lower_corner, upper_corner);
+  if (ci) {
+    for (auto &block : *lattice.get_blocks()) {
+      auto const block_offset = lattice.get_block_corner(block, true);
+      if (auto const bci = get_block_interval(
+              lattice, lower_corner, upper_corner, block_offset, block)) {
+        visitor(block, *bci, *ci, block_offset);
+      }
+    }
+  }
+  return ci;
+}
+
 } // namespace walberla

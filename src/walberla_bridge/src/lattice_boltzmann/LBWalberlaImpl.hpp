@@ -201,49 +201,9 @@ public:
     return std::is_same_v<FloatType, double>;
   }
 
-private:
-  class StreamCollideSweepVisitor {
-  public:
-    using StructuredBlockStorage = LatticeWalberla::Lattice_T;
-
-    void operator()(StreamCollisionModelThermalized &cm, IBlock *b) {
-      cm.configure(m_storage, b);
-      cm(b);
-    }
-
-    void operator()(StreamCollisionModelLeesEdwards &cm, IBlock *b) {
-      cm.setV_s(static_cast<decltype(cm.getV_s())>(
-          m_lees_edwards_callbacks->get_shear_velocity()));
-      cm(b);
-    }
-
-    StreamCollideSweepVisitor() = default;
-    StreamCollideSweepVisitor(std::shared_ptr<StructuredBlockStorage> storage) {
-      m_storage = std::move(storage);
-    }
-    StreamCollideSweepVisitor(std::shared_ptr<StructuredBlockStorage> storage,
-                              std::shared_ptr<LeesEdwardsPack> callbacks) {
-      m_storage = std::move(storage);
-      m_lees_edwards_callbacks = std::move(callbacks);
-    }
-
-  private:
-    std::shared_ptr<StructuredBlockStorage> m_storage{};
-    std::shared_ptr<LeesEdwardsPack> m_lees_edwards_callbacks{};
-  };
-  StreamCollideSweepVisitor m_run_stream_collide_sweep{};
-
-  FloatType shear_mode_relaxation_rate() const {
-    return FloatType{2} / (FloatType{6} * m_viscosity + FloatType{1});
-  }
-
-  FloatType odd_mode_relaxation_rate(
-      FloatType shear_relaxation,
-      FloatType magic_number = FloatType{3} / FloatType{16}) const {
-    return (FloatType{4} - FloatType{2} * shear_relaxation) /
-           (FloatType{4} * magic_number * shear_relaxation + FloatType{2} -
-            shear_relaxation);
-  }
+// Collision model setup (StreamCollideSweepVisitor, relaxation rates,
+// set_collision_model, check_lebc)
+#include "LBCollisionSetup.hpp"
 
   void reset_boundary_handling(std::shared_ptr<BlockStorage> const &blocks) {
     auto const [lc, uc] = m_lattice->get_local_grid_range(true);
@@ -269,23 +229,6 @@ private:
       tensor[i] *= revert_factor;
     }
   }
-
-  class interpolation_illegal_access : public std::runtime_error {
-  public:
-    interpolation_illegal_access(std::string const &field,
-                                 Utils::Vector3d const &pos,
-                                 std::array<int, 3> const &node, double weight)
-        : std::runtime_error("Access to LB " + field + " field failed") {
-      std::cerr << "pos [" << pos << "], node [" << Utils::Vector3i(node)
-                << "], weight " << weight << "\n";
-    }
-  };
-
-  class vtk_runtime_error : public std::runtime_error {
-  public:
-    vtk_runtime_error(std::string const &vtk_uid, std::string const &reason)
-        : std::runtime_error("VTKOutput object '" + vtk_uid + "' " + reason) {}
-  };
 
 protected:
   // Member variables
@@ -696,92 +639,6 @@ public:
     apply_lees_edwards_last_applied_force_interpolation(blocks);
   }
 
-  void set_collision_model(double kT, unsigned int seed) override {
-    auto const omega = shear_mode_relaxation_rate();
-    auto const omega_odd = odd_mode_relaxation_rate(omega);
-    auto const blocks = get_lattice().get_blocks();
-    m_kT = FloatType_c(kT);
-    m_seed = seed;
-    auto obj = StreamCollisionModelThermalized(
-        m_last_applied_force_field_id, m_pdf_field_id,
-        zero_centered_to_lb(m_kT), omega, omega, omega_odd, omega, seed,
-        uint32_t{0u});
-    m_collision_model = std::make_shared<CollisionModel>(std::move(obj));
-    m_run_stream_collide_sweep = StreamCollideSweepVisitor(blocks);
-    setup_streaming_communicator();
-  }
-
-  void set_collision_model(
-      std::unique_ptr<LeesEdwardsPack> &&lees_edwards_pack) override {
-    assert(m_kT == 0.);
-#if defined(__CUDACC__)
-    if constexpr (Architecture == lbmpy::Arch::GPU) {
-      throw std::runtime_error("Lees-Edwards LB doesn't support GPU yet");
-    }
-#endif
-    auto const shear_direction = lees_edwards_pack->shear_direction;
-    auto const shear_plane_normal = lees_edwards_pack->shear_plane_normal;
-    auto const shear_vel = FloatType_c(lees_edwards_pack->get_shear_velocity());
-    auto const omega = shear_mode_relaxation_rate();
-    auto const omega_odd = odd_mode_relaxation_rate(omega);
-    if (shear_plane_normal != 1u) {
-      throw std::domain_error(
-          "Lees-Edwards LB only supports shear_plane_normal=\"y\"");
-    }
-    auto const &lattice = get_lattice();
-    auto const n_ghost_layers = lattice.get_ghost_layers();
-    auto const blocks = lattice.get_blocks();
-    if (lattice.get_node_grid()[shear_direction] != 1 or
-        blocks->getSize(shear_direction) != 1ul or
-        blocks->getSize(shear_plane_normal) !=
-            lattice.get_node_grid()[shear_plane_normal]) {
-      throw std::domain_error("LB LEbc doesn't support domain decomposition "
-                              "along the shear direction, nor multiple blocks "
-                              "along the normal direction");
-    }
-    auto const &grid_dimensions = lattice.get_grid_dimensions();
-    auto const block_origin = lattice.get_local_grid_range(false).first;
-    auto const lebc_slab_origin = block_origin[shear_plane_normal];
-    auto const lebc_slab_total_thickness = grid_dimensions[shear_plane_normal];
-    auto const lebc_bot_index = 0 - lebc_slab_origin;
-    auto const lebc_top_index = lebc_slab_total_thickness - lebc_slab_origin;
-    m_collision_model =
-        std::make_shared<CollisionModel>(StreamCollisionModelLeesEdwards(
-            m_last_applied_force_field_id, m_pdf_field_id, lebc_bot_index,
-            lebc_top_index, omega, omega, omega_odd, omega, shear_vel));
-    m_lees_edwards_callbacks = std::move(lees_edwards_pack);
-    m_run_stream_collide_sweep =
-        StreamCollideSweepVisitor(blocks, m_lees_edwards_callbacks);
-    m_lees_edwards_pdf_interpol_sweep =
-        std::make_shared<InterpolateAndShiftAtBoundary<_PdfField, FloatType>>(
-            blocks, m_pdf_field_id, m_pdf_tmp_field_id, n_ghost_layers,
-            shear_direction, shear_plane_normal,
-            m_lees_edwards_callbacks->get_pos_offset);
-    m_lees_edwards_vel_interpol_sweep = std::make_shared<
-        InterpolateAndShiftAtBoundary<_VectorField, FloatType>>(
-        blocks, m_velocity_field_id, m_vel_tmp_field_id, n_ghost_layers,
-        shear_direction, shear_plane_normal,
-        m_lees_edwards_callbacks->get_pos_offset,
-        m_lees_edwards_callbacks->get_shear_velocity);
-    m_lees_edwards_last_applied_force_interpol_sweep = std::make_shared<
-        InterpolateAndShiftAtBoundary<_VectorField, FloatType>>(
-        blocks, m_last_applied_force_field_id, m_vel_tmp_field_id,
-        n_ghost_layers, shear_direction, shear_plane_normal,
-        m_lees_edwards_callbacks->get_pos_offset);
-    setup_streaming_communicator();
-  }
-
-  void check_lebc(unsigned int shear_direction,
-                  unsigned int shear_plane_normal) const override {
-    if (m_lees_edwards_callbacks) {
-      if (m_lees_edwards_callbacks->shear_direction != shear_direction or
-          m_lees_edwards_callbacks->shear_plane_normal != shear_plane_normal) {
-        throw std::runtime_error(
-            "MD and LB Lees-Edwards boundary conditions disagree");
-      }
-    }
-  }
-
   void set_viscosity(double viscosity) override {
     m_viscosity = FloatType_c(viscosity);
   }
@@ -873,19 +730,15 @@ public:
   get_slice_velocity(Utils::Vector3i const &lower_corner,
                      Utils::Vector3i const &upper_corner) const override {
     std::vector<double> out;
-    uint_t values_size = 0;
-    auto const &lattice = get_lattice();
-    if (auto const ci = get_interval(lattice, lower_corner, upper_corner)) {
-      out = std::vector<double>(3u * ci->numCells());
-      for (auto &block : *lattice.get_blocks()) {
-        auto const block_offset = lattice.get_block_corner(block, true);
-        if (auto const bci = get_block_interval(
-                lattice, lower_corner, upper_corner, block_offset, block)) {
+    auto const ci = for_each_block_in_slice(
+        get_lattice(), lower_corner, upper_corner,
+        [&](auto &block, auto const &bci, auto const &ci,
+            auto const &block_offset) {
+          if (out.empty())
+            out.resize(3u * ci.numCells());
           auto const field =
               block.template getData<VectorField>(m_velocity_field_id);
-          auto values = lbm::accessor::Vector::get(field, *bci);
-          assert(values.size() == 3u * bci->numCells());
-          values_size += 3u * bci->numCells();
+          auto values = lbm::accessor::Vector::get(field, bci);
 
           auto kernel = [&values, &out, this](unsigned const block_index,
                                               unsigned const local_index,
@@ -903,11 +756,8 @@ public:
             }
           };
 
-          copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
-        }
-      }
-      assert(values_size == 3u * ci->numCells());
-    }
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+        });
     return out;
   }
 
@@ -916,19 +766,17 @@ public:
                           std::vector<double> const &velocity) override {
     m_pending_ghost_comm.set(GhostComm::PDF);
     m_pending_ghost_comm.set(GhostComm::VEL);
-    auto const &lattice = get_lattice();
-    if (auto const ci = get_interval(lattice, lower_corner, upper_corner)) {
-      assert(velocity.size() == 3u * ci->numCells());
-      for (auto &block : *lattice.get_blocks()) {
-        auto const block_offset = lattice.get_block_corner(block, true);
-        if (auto const bci = get_block_interval(
-                lattice, lower_corner, upper_corner, block_offset, block)) {
+    for_each_block_in_slice(
+        get_lattice(), lower_corner, upper_corner,
+        [&](auto &block, auto const &bci, auto const &ci,
+            auto const &block_offset) {
+          assert(velocity.size() == 3u * ci.numCells());
           auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
           auto force_field = block.template getData<VectorField>(
               m_last_applied_force_field_id);
           auto vel_field =
               block.template getData<VectorField>(m_velocity_field_id);
-          std::vector<FloatType> values(3u * bci->numCells());
+          std::vector<FloatType> values(3u * bci.numCells());
 
           auto kernel = [&values, &velocity](unsigned const block_index,
                                              unsigned const local_index,
@@ -939,277 +787,18 @@ public:
             }
           };
 
-          copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
           lbm::accessor::Velocity::set(pdf_field, vel_field, force_field,
-                                       values, *bci);
-        }
-      }
-    }
+                                       values, bci);
+        });
   }
 
   [[nodiscard]] bool is_gpu() const noexcept override {
     return Architecture == lbmpy::Arch::GPU;
   }
 
-  std::function<bool(Utils::Vector3d const &)>
-  make_lattice_position_checker(bool consider_points_in_halo) const override {
-    auto const &lat = *m_lattice;
-    if (consider_points_in_halo) {
-      return [&](Utils::Vector3d const &p) { return lat.pos_in_local_halo(p); };
-    }
-    return [&](Utils::Vector3d const &p) { return lat.pos_in_local_domain(p); };
-  }
-
-  void add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
-                         std::vector<Utils::Vector3d> const &forces) override {
-    assert(pos.size() == forces.size());
-    if (pos.empty()) {
-      return;
-    }
-    if constexpr (Architecture == lbmpy::Arch::CPU) {
-      auto const kernel = make_force_interpolation_kernel();
-      for (std::size_t i = 0ul; i < pos.size(); ++i) {
-        kernel(pos[i], forces[i]);
-      }
-    }
-#if defined(__CUDACC__)
-    if constexpr (Architecture == lbmpy::Arch::GPU) {
-      auto const &lattice = get_lattice();
-      auto const &block = *(lattice.get_blocks()->begin());
-      auto const origin = block.getAABB().min();
-      std::vector<FloatType> host_pos;
-      std::vector<FloatType> host_force;
-      host_pos.reserve(3ul * pos.size());
-      host_force.reserve(3ul * forces.size());
-      assert(lattice.get_blocks()->getNumberOfBlocks() == 1u);
-      for (auto const &vec : pos) {
-#pragma unroll
-        for (std::size_t i : {0ul, 1ul, 2ul}) {
-          host_pos.emplace_back(static_cast<FloatType>(vec[i] - origin[i]));
-        }
-      }
-      for (auto const &vec : forces) {
-#pragma unroll
-        for (std::size_t i : {0ul, 1ul, 2ul}) {
-          host_force.emplace_back(static_cast<FloatType>(vec[i]));
-        }
-      }
-      zero_centered_to_lb_in_place(host_force);
-      auto const gl = lattice.get_ghost_layers();
-      auto field = block.template uncheckedFastGetData<VectorField>(
-          m_force_to_be_applied_id);
-      lbm::accessor::Interpolation::add_force(field, host_pos, host_force, gl);
-    }
-#endif
-  }
-
-  auto make_force_interpolation_kernel() const {
-    auto const &lattice = *m_lattice;
-    auto const &blocks = *lattice.get_blocks();
-    assert(lattice.get_ghost_layers() == 1u);
-    return [&](Utils::Vector3d const &pos, Utils::Vector3d const &force) {
-      if (not get_block_extended(lattice, pos, 1u)) {
-        return;
-      }
-      interpolate_bspline_at_pos(
-          pos, [&, conv = m_zc_to_lb, field_id = m_force_to_be_applied_id](
-                   std::array<int, 3> const node, double weight) {
-            auto block = get_block_extended(lattice, node, 0u);
-            if (!block)
-              block = get_block_extended(lattice, node, 1u);
-            if (block) {
-              auto cell = to_cell(node);
-              blocks.transformGlobalToBlockLocalCell(cell, *block);
-              weight *= conv;
-              auto const weighted_force = to_vector3<FloatType>(weight * force);
-              auto field =
-                  block->template uncheckedFastGetData<VectorField>(field_id);
-              lbm::accessor::Vector::add(field, weighted_force, cell);
-            }
-          });
-    };
-  }
-
-  auto make_velocity_interpolation_kernel() const {
-    auto const &lattice = *m_lattice;
-    auto const &blocks = *lattice.get_blocks();
-    assert(lattice.get_ghost_layers() == 1u);
-    return [&](Utils::Vector3d const &pos) {
-      Utils::Vector3d acc{0., 0., 0.};
-      interpolate_bspline_at_pos(pos, [&, field_id = m_velocity_field_id](
-                                          std::array<int, 3> const node,
-                                          double weight) {
-        // Nodes with zero weight might not be accessible, because they can be
-        // outside ghost layers
-        if (weight != 0.) {
-          auto block = get_block_extended(lattice, node, 1u);
-          if (!block)
-            throw interpolation_illegal_access("velocity", pos, node, weight);
-          Vector3<FloatType> vel;
-          if (m_has_boundaries and m_boundary->node_is_boundary(node)) {
-            vel = m_boundary->get_node_value_at_boundary(node);
-          } else {
-            auto cell = to_cell(node);
-            blocks.transformGlobalToBlockLocalCell(cell, *block);
-            auto field =
-                block->template uncheckedFastGetData<VectorField>(field_id);
-            vel = lbm::accessor::Vector::get(field, cell);
-          }
-          acc += to_vector3d(vel) * weight;
-        }
-      });
-      return acc;
-    };
-  }
-
-  auto make_density_interpolation_kernel() const {
-    auto const &lattice = *m_lattice;
-    auto const &blocks = *lattice.get_blocks();
-    assert(lattice.get_ghost_layers() == 1u);
-    return [&](Utils::Vector3d const &pos) {
-      double acc = 0.;
-      interpolate_bspline_at_pos(pos, [&, density = m_density,
-                                       field_id = m_pdf_field_id](
-                                          std::array<int, 3> const node,
-                                          double weight) {
-        // Nodes with zero weight might not be accessible, because they can be
-        // outside ghost layers
-        if (weight != 0.) {
-          auto block = get_block_extended(lattice, node, 1u);
-          if (!block)
-            throw interpolation_illegal_access("density", pos, node, weight);
-          auto cell = to_cell(node);
-          blocks.transformGlobalToBlockLocalCell(cell, *block);
-          auto field = block->template uncheckedFastGetData<PdfField>(field_id);
-          auto const rho = lbm::accessor::Density::get(field, density, cell);
-          acc += rho * weight;
-        }
-      });
-      return acc;
-    };
-  }
-
-  std::vector<Utils::Vector3d>
-  get_velocities_at_pos(std::vector<Utils::Vector3d> const &pos) override {
-    if (pos.empty()) {
-      return {};
-    }
-    std::vector<Utils::Vector3d> vel{};
-    vel.reserve(pos.size());
-    if constexpr (Architecture == lbmpy::Arch::CPU) {
-      auto const kernel = make_velocity_interpolation_kernel();
-      std::ranges::transform(pos, std::back_inserter(vel), kernel);
-    }
-#if defined(__CUDACC__)
-    if constexpr (Architecture == lbmpy::Arch::GPU) {
-      auto const &lattice = get_lattice();
-      auto const &block = *(lattice.get_blocks()->begin());
-      auto const origin = block.getAABB().min();
-      std::vector<FloatType> host_pos;
-      host_pos.reserve(3ul * pos.size());
-      assert(lattice.get_blocks()->getNumberOfBlocks() == 1u);
-      for (auto const &vec : pos) {
-#pragma unroll
-        for (std::size_t i : {0ul, 1ul, 2ul}) {
-          host_pos.emplace_back(static_cast<FloatType>(vec[i] - origin[i]));
-        }
-      }
-      auto const gl = lattice.get_ghost_layers();
-      auto field =
-          block.template uncheckedFastGetData<VectorField>(m_velocity_field_id);
-      // the velocity field has indeterminate values inside boundary regions;
-      // we overwrite them with boundary slip velocities before interpolation
-      auto const [dev_idx, dev_vel] = m_boundary->get_flattened_map_device();
-      if (not dev_idx->empty()) {
-        lbm::accessor::Vector::set_from_list(field, *dev_idx, *dev_vel, gl);
-      }
-      auto const res =
-          lbm::accessor::Interpolation::get_vel(field, host_pos, gl);
-      for (auto it = res.begin(); it != res.end(); it += 3) {
-        vel.emplace_back(Utils::Vector3d{static_cast<double>(*(it + 0)),
-                                         static_cast<double>(*(it + 1)),
-                                         static_cast<double>(*(it + 2))});
-      }
-    }
-#endif
-    return vel;
-  }
-
-  std::vector<double>
-  get_densities_at_pos(std::vector<Utils::Vector3d> const &pos) override {
-    if (pos.empty()) {
-      return {};
-    }
-    std::vector<double> rho{};
-    rho.reserve(pos.size());
-    if constexpr (Architecture == lbmpy::Arch::CPU) {
-      auto const kernel = make_density_interpolation_kernel();
-      std::ranges::transform(pos, std::back_inserter(rho), kernel);
-    }
-#if defined(__CUDACC__)
-    if constexpr (Architecture == lbmpy::Arch::GPU) {
-      auto const &lattice = get_lattice();
-      auto const &block = *(lattice.get_blocks()->begin());
-      auto const origin = block.getAABB().min();
-      std::vector<FloatType> host_pos;
-      host_pos.reserve(3ul * pos.size());
-      assert(lattice.get_blocks()->getNumberOfBlocks() == 1u);
-      for (auto const &vec : pos) {
-#pragma unroll
-        for (std::size_t i : {0ul, 1ul, 2ul}) {
-          host_pos.emplace_back(static_cast<FloatType>(vec[i] - origin[i]));
-        }
-      }
-      auto const gl = lattice.get_ghost_layers();
-      auto field =
-          block.template uncheckedFastGetData<PdfField>(m_pdf_field_id);
-      auto res =
-          lbm::accessor::Interpolation::get_rho(field, host_pos, m_density, gl);
-      if constexpr (std::is_same_v<FloatType, double>) {
-        std::swap(rho, res);
-      } else {
-        for (auto const &v : res) {
-          rho.emplace_back(static_cast<double>(v));
-        }
-      }
-    }
-#endif
-    return rho;
-  }
-
-  std::optional<Utils::Vector3d>
-  get_velocity_at_pos(Utils::Vector3d const &pos,
-                      bool consider_points_in_halo = false) const override {
-    assert(not m_pending_ghost_comm.test(GhostComm::VEL));
-    assert(not m_pending_ghost_comm.test(GhostComm::UBB));
-    if (!consider_points_in_halo and !m_lattice->pos_in_local_domain(pos))
-      return std::nullopt;
-    if (consider_points_in_halo and !m_lattice->pos_in_local_halo(pos))
-      return std::nullopt;
-    auto const kernel = make_velocity_interpolation_kernel();
-    return {kernel(pos)};
-  }
-
-  std::optional<double>
-  get_density_at_pos(Utils::Vector3d const &pos,
-                     bool consider_points_in_halo = false) const override {
-    assert(not m_pending_ghost_comm.test(GhostComm::PDF));
-    if (!consider_points_in_halo and !m_lattice->pos_in_local_domain(pos))
-      return std::nullopt;
-    if (consider_points_in_halo and !m_lattice->pos_in_local_halo(pos))
-      return std::nullopt;
-    auto const kernel = make_density_interpolation_kernel();
-    return {kernel(pos)};
-  }
-
-  bool add_force_at_pos(Utils::Vector3d const &pos,
-                        Utils::Vector3d const &force) override {
-    if (!m_lattice->pos_in_local_halo(pos))
-      return false;
-    auto const kernel = make_force_interpolation_kernel();
-    kernel(pos, force);
-    return true;
-  }
+// Position-based interpolation methods
+#include "LBInterpolation.hpp"
 
   std::optional<Utils::Vector3d>
   get_node_force_to_be_applied(Utils::Vector3i const &node) const override {
@@ -1261,17 +850,15 @@ public:
       Utils::Vector3i const &lower_corner,
       Utils::Vector3i const &upper_corner) const override {
     std::vector<double> out;
-    auto const &lattice = get_lattice();
-    if (auto const ci = get_interval(lattice, lower_corner, upper_corner)) {
-      out = std::vector<double>(3u * ci->numCells());
-      for (auto const &block : *lattice.get_blocks()) {
-        auto const block_offset = lattice.get_block_corner(block, true);
-        if (auto const bci = get_block_interval(
-                lattice, lower_corner, upper_corner, block_offset, block)) {
+    for_each_block_in_slice(
+        get_lattice(), lower_corner, upper_corner,
+        [&](auto const &block, auto const &bci, auto const &ci,
+            auto const &block_offset) {
+          if (out.empty())
+            out.resize(3u * ci.numCells());
           auto const field = block.template getData<VectorField>(
               m_last_applied_force_field_id);
-          auto const values = lbm::accessor::Vector::get(field, *bci);
-          assert(values.size() == 3u * bci->numCells());
+          auto const values = lbm::accessor::Vector::get(field, bci);
 
           auto kernel = [&values, &out](unsigned const block_index,
                                         unsigned const local_index,
@@ -1281,10 +868,8 @@ public:
             }
           };
 
-          copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
-        }
-      }
-    }
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+        });
     zero_centered_to_md_in_place(out);
     return out;
   }
@@ -1294,19 +879,17 @@ public:
                                     std::vector<double> const &force) override {
     m_pending_ghost_comm.set(GhostComm::VEL);
     m_pending_ghost_comm.set(GhostComm::LAF);
-    auto const &lattice = get_lattice();
-    if (auto const ci = get_interval(lattice, lower_corner, upper_corner)) {
-      assert(force.size() == 3u * ci->numCells());
-      for (auto &block : *lattice.get_blocks()) {
-        auto const block_offset = lattice.get_block_corner(block, true);
-        if (auto const bci = get_block_interval(
-                lattice, lower_corner, upper_corner, block_offset, block)) {
+    for_each_block_in_slice(
+        get_lattice(), lower_corner, upper_corner,
+        [&](auto &block, auto const &bci, auto const &ci,
+            auto const &block_offset) {
+          assert(force.size() == 3u * ci.numCells());
           auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
           auto force_field = block.template getData<VectorField>(
               m_last_applied_force_field_id);
           auto vel_field =
               block.template getData<VectorField>(m_velocity_field_id);
-          std::vector<FloatType> values(3u * bci->numCells());
+          std::vector<FloatType> values(3u * bci.numCells());
 
           auto kernel = [&values, &force](unsigned const block_index,
                                           unsigned const local_index,
@@ -1317,12 +900,10 @@ public:
             }
           };
 
-          copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
           lbm::accessor::Force::set(pdf_field, vel_field, force_field, values,
-                                    m_density, *bci);
-        }
-      }
-    }
+                                    m_density, bci);
+        });
   }
 
   // Population
@@ -1371,17 +952,15 @@ public:
   get_slice_population(Utils::Vector3i const &lower_corner,
                        Utils::Vector3i const &upper_corner) const override {
     std::vector<double> out;
-    auto const &lattice = get_lattice();
-    if (auto const ci = get_interval(lattice, lower_corner, upper_corner)) {
-      out = std::vector<double>(stencil_size() * ci->numCells());
-      for (auto const &block : *lattice.get_blocks()) {
-        auto const block_offset = lattice.get_block_corner(block, true);
-        if (auto const bci = get_block_interval(
-                lattice, lower_corner, upper_corner, block_offset, block)) {
+    for_each_block_in_slice(
+        get_lattice(), lower_corner, upper_corner,
+        [&](auto const &block, auto const &bci, auto const &ci,
+            auto const &block_offset) {
+          if (out.empty())
+            out.resize(stencil_size() * ci.numCells());
           auto const pdf_field =
               block.template getData<PdfField>(m_pdf_field_id);
-          auto const values = lbm::accessor::Population::get(pdf_field, *bci);
-          assert(values.size() == stencil_size() * bci->numCells());
+          auto const values = lbm::accessor::Population::get(pdf_field, bci);
 
           auto kernel = [&values, &out, this](unsigned const block_index,
                                               unsigned const local_index,
@@ -1392,29 +971,25 @@ public:
             }
           };
 
-          copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
-        }
-      }
-    }
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+        });
     return out;
   }
 
   void set_slice_population(Utils::Vector3i const &lower_corner,
                             Utils::Vector3i const &upper_corner,
                             std::vector<double> const &population) override {
-    auto const &lattice = get_lattice();
-    if (auto const ci = get_interval(lattice, lower_corner, upper_corner)) {
-      assert(population.size() == stencil_size() * ci->numCells());
-      for (auto &block : *lattice.get_blocks()) {
-        auto const block_offset = lattice.get_block_corner(block, true);
-        if (auto const bci = get_block_interval(
-                lattice, lower_corner, upper_corner, block_offset, block)) {
+    for_each_block_in_slice(
+        get_lattice(), lower_corner, upper_corner,
+        [&](auto &block, auto const &bci, auto const &ci,
+            auto const &block_offset) {
+          assert(population.size() == stencil_size() * ci.numCells());
           auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
           auto force_field = block.template getData<VectorField>(
               m_last_applied_force_field_id);
           auto vel_field =
               block.template getData<VectorField>(m_velocity_field_id);
-          std::vector<FloatType> values(stencil_size() * bci->numCells());
+          std::vector<FloatType> values(stencil_size() * bci.numCells());
 
           auto kernel = [&values, &population, this](unsigned const block_index,
                                                      unsigned const local_index,
@@ -1426,12 +1001,10 @@ public:
             }
           };
 
-          copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
           lbm::accessor::Population::set(pdf_field, vel_field, force_field,
-                                         values, *bci);
-        }
-      }
-    }
+                                         values, bci);
+        });
   }
 
   // Density
@@ -1467,18 +1040,16 @@ public:
   get_slice_density(Utils::Vector3i const &lower_corner,
                     Utils::Vector3i const &upper_corner) const override {
     std::vector<double> out;
-    auto const &lattice = get_lattice();
-    if (auto const ci = get_interval(lattice, lower_corner, upper_corner)) {
-      out = std::vector<double>(ci->numCells());
-      for (auto const &block : *lattice.get_blocks()) {
-        auto const block_offset = lattice.get_block_corner(block, true);
-        if (auto const bci = get_block_interval(
-                lattice, lower_corner, upper_corner, block_offset, block)) {
+    for_each_block_in_slice(
+        get_lattice(), lower_corner, upper_corner,
+        [&](auto const &block, auto const &bci, auto const &ci,
+            auto const &block_offset) {
+          if (out.empty())
+            out.resize(ci.numCells());
           auto const pdf_field =
               block.template getData<PdfField>(m_pdf_field_id);
           auto const values =
-              lbm::accessor::Density::get(pdf_field, m_density, *bci);
-          assert(values.size() == bci->numCells());
+              lbm::accessor::Density::get(pdf_field, m_density, bci);
 
           auto kernel = [&values, &out](unsigned const block_index,
                                         unsigned const local_index,
@@ -1486,10 +1057,8 @@ public:
             out[local_index] = values[block_index];
           };
 
-          copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
-        }
-      }
-    }
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+        });
     return out;
   }
 
@@ -1497,15 +1066,13 @@ public:
                          Utils::Vector3i const &upper_corner,
                          std::vector<double> const &density) override {
     m_pending_ghost_comm.set(GhostComm::PDF);
-    auto const &lattice = get_lattice();
-    if (auto const ci = get_interval(lattice, lower_corner, upper_corner)) {
-      assert(density.size() == ci->numCells());
-      for (auto &block : *lattice.get_blocks()) {
-        auto const block_offset = lattice.get_block_corner(block, true);
-        if (auto const bci = get_block_interval(
-                lattice, lower_corner, upper_corner, block_offset, block)) {
+    for_each_block_in_slice(
+        get_lattice(), lower_corner, upper_corner,
+        [&](auto &block, auto const &bci, auto const &ci,
+            auto const &block_offset) {
+          assert(density.size() == ci.numCells());
           auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
-          std::vector<FloatType> values(bci->numCells());
+          std::vector<FloatType> values(bci.numCells());
 
           auto kernel = [&values, &density](unsigned const block_index,
                                             unsigned const local_index,
@@ -1513,186 +1080,13 @@ public:
             values[block_index] = numeric_cast<FloatType>(density[local_index]);
           };
 
-          copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
-          lbm::accessor::Density::set(pdf_field, values, m_density, *bci);
-        }
-      }
-    }
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+          lbm::accessor::Density::set(pdf_field, values, m_density, bci);
+        });
   }
 
-  std::optional<Utils::Vector3d>
-  get_node_velocity_at_boundary(Utils::Vector3i const &node,
-                                bool consider_ghosts = false) const override {
-    assert(not(consider_ghosts and m_pending_ghost_comm.test(GhostComm::UBB)));
-    auto const bc = get_block_and_cell(get_lattice(), node, consider_ghosts);
-    if (!bc or !m_boundary->node_is_boundary(node))
-      return std::nullopt;
-
-    return {to_vector3d(m_boundary->get_node_value_at_boundary(node))};
-  }
-
-  bool set_node_velocity_at_boundary(Utils::Vector3i const &node,
-                                     Utils::Vector3d const &velocity) override {
-    on_boundary_add();
-    m_pending_ghost_comm.set(GhostComm::UBB);
-    auto bc = get_block_and_cell(get_lattice(), node, false);
-    if (!bc) {
-      bc = get_block_and_cell(get_lattice(), node, true);
-    }
-    if (bc) {
-      m_boundary->set_node_value_at_boundary(
-          node, to_vector3<FloatType>(velocity), *bc);
-    }
-    return bc.has_value();
-  }
-
-  std::vector<std::optional<Utils::Vector3d>> get_slice_velocity_at_boundary(
-      Utils::Vector3i const &lower_corner,
-      Utils::Vector3i const &upper_corner) const override {
-    std::vector<std::optional<Utils::Vector3d>> out;
-    auto const &lattice = get_lattice();
-    if (auto const ci = get_interval(lattice, lower_corner, upper_corner)) {
-      out = std::vector<std::optional<Utils::Vector3d>>(ci->numCells());
-      for (auto const &block : *lattice.get_blocks()) {
-        auto const block_offset = lattice.get_block_corner(block, true);
-        if (auto const bci = get_block_interval(
-                lattice, lower_corner, upper_corner, block_offset, block)) {
-
-          auto kernel = [&out, this](unsigned const, unsigned const local_index,
-                                     Utils::Vector3i const &node) {
-            if (m_boundary->node_is_boundary(node)) {
-              out[local_index] =
-                  to_vector3d(m_boundary->get_node_value_at_boundary(node));
-            } else {
-              out[local_index] = std::nullopt;
-            }
-          };
-
-          copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
-        }
-      }
-      assert(out.size() == ci->numCells());
-    }
-    return out;
-  }
-
-  void set_slice_velocity_at_boundary(
-      Utils::Vector3i const &lower_corner, Utils::Vector3i const &upper_corner,
-      std::vector<std::optional<Utils::Vector3d>> const &velocity) override {
-    on_boundary_add();
-    m_pending_ghost_comm.set(GhostComm::UBB);
-    auto const &lattice = get_lattice();
-    if (auto const ci = get_interval(lattice, lower_corner, upper_corner)) {
-      assert(velocity.size() == ci->numCells());
-      for (auto &block : *lattice.get_blocks()) {
-        auto const block_offset = lattice.get_block_corner(block, true);
-        if (auto const bci = get_block_interval(
-                lattice, lower_corner, upper_corner, block_offset, block)) {
-
-          auto kernel = [&, this](unsigned const, unsigned const local_index,
-                                  Utils::Vector3i const &node) {
-            auto const bc = get_block_and_cell(lattice, node, false);
-            assert(bc->block->getAABB() == block.getAABB());
-            auto const &opt = velocity[local_index];
-            if (opt) {
-              m_boundary->set_node_value_at_boundary(
-                  node, to_vector3<FloatType>(*opt), *bc);
-            } else {
-              m_boundary->remove_node_from_boundary(node, *bc);
-            }
-          };
-
-          copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
-        }
-      }
-    }
-  }
-
-  std::optional<Utils::Vector3d>
-  get_node_boundary_force(Utils::Vector3i const &node) const override {
-    auto const bc = get_block_and_cell(get_lattice(), node, true);
-    if (!bc or !m_boundary->node_is_boundary(node))
-      return std::nullopt;
-
-    return get_node_last_applied_force(node, true);
-  }
-
-  bool remove_node_from_boundary(Utils::Vector3i const &node) override {
-    auto bc = get_block_and_cell(get_lattice(), node, false);
-    if (!bc) {
-      bc = get_block_and_cell(get_lattice(), node, true);
-    }
-    if (bc) {
-      m_boundary->remove_node_from_boundary(node, *bc);
-    }
-    return bc.has_value();
-  }
-
-  std::optional<bool>
-  get_node_is_boundary(Utils::Vector3i const &node,
-                       bool consider_ghosts = false) const override {
-    assert(not(consider_ghosts and m_pending_ghost_comm.test(GhostComm::UBB)));
-    auto const bc = get_block_and_cell(get_lattice(), node, consider_ghosts);
-    if (!bc)
-      return std::nullopt;
-
-    return {m_boundary->node_is_boundary(node)};
-  }
-
-  std::vector<bool>
-  get_slice_is_boundary(Utils::Vector3i const &lower_corner,
-                        Utils::Vector3i const &upper_corner) const override {
-    std::vector<bool> out;
-    auto const &lattice = get_lattice();
-    if (auto const ci = get_interval(lattice, lower_corner, upper_corner)) {
-      out = std::vector<bool>(ci->numCells());
-      for (auto const &block : *lattice.get_blocks()) {
-        auto const block_offset = lattice.get_block_corner(block, true);
-        if (auto const bci = get_block_interval(
-                lattice, lower_corner, upper_corner, block_offset, block)) {
-
-          auto kernel = [&out, this](unsigned const, unsigned const local_index,
-                                     Utils::Vector3i const &node) {
-            out[local_index] = m_boundary->node_is_boundary(node);
-          };
-
-          copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
-        }
-      }
-      assert(out.size() == ci->numCells());
-    }
-    return out;
-  }
-
-  void reallocate_ubb_field() override { m_boundary->boundary_update(); }
-
-  void on_boundary_add() {
-    if (not m_has_boundaries) {
-      m_has_boundaries = true;
-      setup_streaming_communicator();
-    }
-    m_has_boundaries = true;
-  }
-
-  void clear_boundaries() override {
-    reset_boundary_handling(get_lattice().get_blocks());
-    m_pending_ghost_comm.set(GhostComm::UBB);
-    ghost_communication();
-    m_has_boundaries = false;
-    setup_streaming_communicator();
-  }
-
-  void
-  update_boundary_from_shape(std::vector<int> const &raster_flat,
-                             std::vector<double> const &data_flat) override {
-    on_boundary_add();
-    m_pending_ghost_comm.set(GhostComm::UBB);
-    auto const &grid_size = get_lattice().get_grid_dimensions();
-    auto data = fill_3D_vector_array(data_flat, grid_size);
-    set_boundary_from_grid(*m_boundary, get_lattice(), raster_flat, data);
-    ghost_communication();
-    reallocate_ubb_field();
-  }
+// Boundary access methods
+#include "LBBoundaryAccess.hpp"
 
   // Pressure tensor
   std::optional<Utils::VectorXd<9>>
@@ -1712,18 +1106,16 @@ public:
       Utils::Vector3i const &lower_corner,
       Utils::Vector3i const &upper_corner) const override {
     std::vector<double> out;
-    auto const &lattice = get_lattice();
-    if (auto const ci = get_interval(lattice, lower_corner, upper_corner)) {
-      out = std::vector<double>(9u * ci->numCells());
-      for (auto const &block : *lattice.get_blocks()) {
-        auto const block_offset = lattice.get_block_corner(block, true);
-        if (auto const bci = get_block_interval(
-                lattice, lower_corner, upper_corner, block_offset, block)) {
+    for_each_block_in_slice(
+        get_lattice(), lower_corner, upper_corner,
+        [&](auto const &block, auto const &bci, auto const &ci,
+            auto const &block_offset) {
+          if (out.empty())
+            out.resize(9u * ci.numCells());
           auto const pdf_field =
               block.template getData<PdfField>(m_pdf_field_id);
           auto values =
-              lbm::accessor::PressureTensor::get(pdf_field, m_density, *bci);
-          assert(values.size() == 9u * bci->numCells());
+              lbm::accessor::PressureTensor::get(pdf_field, m_density, bci);
 
           auto kernel = [&values, &out, this](unsigned const block_index,
                                               unsigned const local_index,
@@ -1735,73 +1127,11 @@ public:
             }
           };
 
-          copy_block_buffer(*bci, *ci, block_offset, lower_corner, kernel);
-        }
-      }
-    }
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+        });
     return out;
   }
 
-  [[nodiscard]] Utils::Vector3i flat_index_to_node(int index) const {
-    Utils::Vector3i node({0, 0, 0});
-    auto const &grid_size = get_lattice().get_grid_dimensions();
-    node[2] = index % grid_size[2];
-    int tmp = index / grid_size[2];
-    node[1] = tmp % grid_size[1];
-    node[0] = tmp / grid_size[1];
-    return node;
-  }
-
-  [[nodiscard]] Utils::Vector3i get_neighbor_node(Utils::Vector3i const &node,
-                                                  int dir) const {
-    Utils::Vector3i neighbor({0, 0, 0});
-    auto const &grid_size = get_lattice().get_grid_dimensions();
-    auto constexpr neighbor_offset = DynamicUBB::neighborOffset;
-    for (int i = 0; i < neighbor.size(); i++) {
-      neighbor[i] =
-          (node[i] - neighbor_offset[i][dir] + grid_size[i]) % grid_size[i];
-    }
-    return neighbor;
-  }
-
-  [[nodiscard]] Utils::Vector3d get_boundary_force_from_shape(
-      std::vector<int> const &raster_flat) const override {
-    Utils::Vector3d force({0, 0, 0});
-    auto const &grid_size = get_lattice().get_grid_dimensions();
-    for (auto &block : *get_lattice().get_blocks()) {
-      auto const offset = get_lattice().get_block_corner(block, true);
-      auto const &force_field = m_boundary->get_force_vector(&block);
-      auto const &index_field = m_boundary->get_index_vector(&block);
-      for (int i = 0; i < raster_flat.size(); i++) {
-        if (raster_flat[i] != 0) {
-          auto node = flat_index_to_node(i);
-          if (get_lattice().node_in_local_halo(node)) {
-            // shift node to local frame
-            node = (node - offset + grid_size) % grid_size;
-            for (int j = 0; j < index_field.size(); j++) {
-              auto neighbor_node = get_neighbor_node(node, index_field[j].dir);
-              if (index_field[j].x == neighbor_node[0] &&
-                  index_field[j].y == neighbor_node[1] &&
-                  index_field[j].z == neighbor_node[2]) {
-                force[0] += force_field[j].F_0;
-                force[1] += force_field[j].F_1;
-                force[2] += force_field[j].F_2;
-              }
-            }
-          }
-        }
-      }
-    }
-    return zero_centered_to_md(force);
-  }
-  // Global boundary force
-  [[nodiscard]] Utils::Vector3d get_boundary_force() const override {
-    Vector3<double> force(0.);
-    for (auto &block : *get_lattice().get_blocks()) {
-      force += m_boundary->get_total_force(&block);
-    }
-    return zero_centered_to_md(to_vector3d(force));
-  }
   // Global pressure tensor
   [[nodiscard]] Utils::VectorXd<9> get_pressure_tensor() const override {
     Matrix3<FloatType> tensor(FloatType{0});
@@ -1883,151 +1213,8 @@ public:
     vtk_obj.addCellExclusionFilter(fluid_filter);
   }
 
-protected:
-  template <typename Field_T, uint_t F_SIZE_ARG, typename OutputType>
-  class VTKWriter : public vtk::BlockCellDataWriter<OutputType, F_SIZE_ARG> {
-  public:
-    VTKWriter(ConstBlockDataID const &block_id, std::string const &id,
-              FloatType unit_conversion)
-        : vtk::BlockCellDataWriter<OutputType, F_SIZE_ARG>(id),
-          m_block_id(block_id), m_field(nullptr),
-          m_conversion(unit_conversion) {}
-
-  protected:
-    void configure() override {
-      WALBERLA_ASSERT_NOT_NULLPTR(this->block_);
-      m_field = this->block_->template getData<Field_T>(m_block_id);
-    }
-
-    ConstBlockDataID const m_block_id;
-    Field_T const *m_field;
-    FloatType const m_conversion;
-  };
-
-  template <typename OutputType = float>
-  class DensityVTKWriter : public VTKWriter<PdfField, 1u, OutputType> {
-  public:
-    using Base = VTKWriter<PdfField, 1u, OutputType>;
-    using Base::Base;
-    using Base::evaluate;
-
-  protected:
-    OutputType evaluate(cell_idx_t const x, cell_idx_t const y,
-                        cell_idx_t const z, cell_idx_t const) override {
-      WALBERLA_ASSERT_NOT_NULLPTR(this->m_field);
-      auto const density =
-          lbm::accessor::Density::get(this->m_field, 1., {x, y, z});
-      return numeric_cast<OutputType>(this->m_conversion * density);
-    }
-  };
-
-  template <typename OutputType = float>
-  class VelocityVTKWriter : public VTKWriter<VectorField, 3u, OutputType> {
-  public:
-    using Base = VTKWriter<VectorField, 3u, OutputType>;
-    using Base::Base;
-    using Base::evaluate;
-
-  protected:
-    OutputType evaluate(cell_idx_t const x, cell_idx_t const y,
-                        cell_idx_t const z, cell_idx_t const f) override {
-      WALBERLA_ASSERT_NOT_NULLPTR(this->m_field);
-      auto const velocity =
-          lbm::accessor::Vector::get(this->m_field, {x, y, z});
-      return numeric_cast<OutputType>(this->m_conversion * velocity[uint_c(f)]);
-    }
-  };
-
-  template <typename OutputType = float>
-  class PressureTensorVTKWriter : public VTKWriter<PdfField, 9u, OutputType> {
-  public:
-    using Base = VTKWriter<PdfField, 9u, OutputType>;
-    using Base::Base;
-    using Base::evaluate;
-
-    PressureTensorVTKWriter(ConstBlockDataID const &block_id,
-                            std::string const &id, FloatType unit_conversion,
-                            FloatType off_diag_factor)
-        : Base(block_id, id, unit_conversion),
-          m_off_diag_factor(off_diag_factor) {}
-
-  protected:
-    OutputType evaluate(cell_idx_t const x, cell_idx_t const y,
-                        cell_idx_t const z, cell_idx_t const f) override {
-      WALBERLA_ASSERT_NOT_NULLPTR(this->m_field);
-      auto const pressure =
-          lbm::accessor::PressureTensor::get(this->m_field, 1., {x, y, z});
-      auto const revert_factor =
-          (f == 0 or f == 4 or f == 8) ? FloatType{1} : m_off_diag_factor;
-      return numeric_cast<OutputType>(this->m_conversion * revert_factor *
-                                      pressure[uint_c(f)]);
-    }
-    FloatType const m_off_diag_factor;
-  };
-
-public:
-  void register_vtk_field_writers(walberla::vtk::VTKOutput &vtk_obj,
-                                  LatticeModel::units_map const &units,
-                                  int flag_observables) override {
-#if defined(__CUDACC__)
-    auto const allocate_cpu_field_if_empty =
-        [&]<typename Field>(auto const &blocks, std::string name,
-                            std::optional<BlockDataID> &cpu_field) {
-          if (not cpu_field) {
-            cpu_field = field::addToStorage<Field>(
-                blocks, name, FloatType{0}, field::fzyx,
-                m_lattice->get_ghost_layers(), m_host_field_allocator);
-          }
-        };
-#endif
-    if (flag_observables & static_cast<int>(OutputVTK::density)) {
-      auto const unit_conversion =
-          FloatType_c(zero_centered_to_md(units.at("density")));
-#if defined(__CUDACC__)
-      if constexpr (Architecture == lbmpy::Arch::GPU) {
-        auto const &blocks = m_lattice->get_blocks();
-        allocate_cpu_field_if_empty.template operator()<PdfFieldCpu>(
-            blocks, "pdfs_cpu", m_pdf_cpu_field_id);
-        vtk_obj.addBeforeFunction(gpu::fieldCpyFunctor<PdfFieldCpu, PdfField>(
-            blocks, *m_pdf_cpu_field_id, m_pdf_field_id));
-      }
-#endif
-      vtk_obj.addCellDataWriter(std::make_shared<DensityVTKWriter<float>>(
-          m_pdf_field_id, "density", unit_conversion));
-    }
-    if (flag_observables & static_cast<int>(OutputVTK::velocity_vector)) {
-      auto const unit_conversion = FloatType_c(units.at("velocity"));
-#if defined(__CUDACC__)
-      if constexpr (Architecture == lbmpy::Arch::GPU) {
-        auto const &blocks = m_lattice->get_blocks();
-        allocate_cpu_field_if_empty.template operator()<VectorFieldCpu>(
-            blocks, "vel_cpu", m_vel_cpu_field_id);
-        vtk_obj.addBeforeFunction(
-            gpu::fieldCpyFunctor<VectorFieldCpu, VectorField>(
-                blocks, *m_vel_cpu_field_id, m_velocity_field_id));
-      }
-#endif
-      vtk_obj.addCellDataWriter(std::make_shared<VelocityVTKWriter<float>>(
-          m_velocity_field_id, "velocity_vector", unit_conversion));
-    }
-    if (flag_observables & static_cast<int>(OutputVTK::pressure_tensor)) {
-      auto const unit_conversion =
-          FloatType_c(zero_centered_to_md(units.at("pressure")));
-#if defined(__CUDACC__)
-      if constexpr (Architecture == lbmpy::Arch::GPU) {
-        auto const &blocks = m_lattice->get_blocks();
-        allocate_cpu_field_if_empty.template operator()<PdfFieldCpu>(
-            blocks, "pdfs_cpu", m_pdf_cpu_field_id);
-        vtk_obj.addBeforeFunction(gpu::fieldCpyFunctor<PdfFieldCpu, PdfField>(
-            blocks, *m_pdf_cpu_field_id, m_pdf_field_id));
-      }
-#endif
-      vtk_obj.addCellDataWriter(
-          std::make_shared<PressureTensorVTKWriter<float>>(
-              m_pdf_field_id, "pressure_tensor", unit_conversion,
-              pressure_tensor_correction_factor()));
-    }
-  }
+// VTK writer classes and registration
+#include "LBWalberlaVTK.hpp"
 
   ~LBWalberlaImpl() override = default;
 };
