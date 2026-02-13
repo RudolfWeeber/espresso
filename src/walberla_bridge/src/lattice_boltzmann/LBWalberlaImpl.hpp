@@ -92,22 +92,12 @@ namespace walberla {
 template <typename FloatType, lbmpy::Arch Architecture>
 class LBWalberlaImpl : public LBWalberlaBase {
 protected:
-  using StreamCollisionModelLeesEdwards =
-      detail::KernelTrait<FloatType,
-                          Architecture>::StreamCollisionModelLeesEdwards;
-  using StreamCollisionModelThermalized =
-      detail::KernelTrait<FloatType,
-                          Architecture>::StreamCollisionModelThermalized;
-  using UpdateVelFromPDF =
-      detail::KernelTrait<FloatType, Architecture>::UpdateVelFromPDF;
-  using InitialPDFsSetter =
-      detail::KernelTrait<FloatType, Architecture>::InitialPDFsSetter;
-  using DynamicUBB =
-      detail::BoundaryHandlingTrait<FloatType, Architecture>::DynamicUBB;
-  using BoundaryModel =
-      BoundaryHandling<FloatType, Vector3<FloatType>, DynamicUBB>;
-  using CollisionModel = std::variant<StreamCollisionModelThermalized,
-                                      StreamCollisionModelLeesEdwards>;
+  using Kernels = detail::KernelTrait<FloatType, Architecture>;
+  using BoundaryModel = BoundaryHandling<FloatType, Vector3<FloatType>,
+                                         typename Kernels::DynamicUBB>;
+  using CollisionModel =
+      std::variant<typename Kernels::StreamCollisionModelThermalized,
+                   typename Kernels::StreamCollisionModelLeesEdwards>;
 
 public:
   /** @brief Stencil for collision and streaming operations. */
@@ -207,12 +197,14 @@ private:
   public:
     using StructuredBlockStorage = LatticeWalberla::Lattice_T;
 
-    void operator()(StreamCollisionModelThermalized &cm, IBlock *b) {
+    void operator()(typename Kernels::StreamCollisionModelThermalized &cm,
+                    IBlock *b) {
       cm.configure(m_storage, b);
       cm(b);
     }
 
-    void operator()(StreamCollisionModelLeesEdwards &cm, IBlock *b) {
+    void operator()(typename Kernels::StreamCollisionModelLeesEdwards &cm,
+                    IBlock *b) {
       cm.setV_s(static_cast<decltype(cm.getV_s())>(
           m_lees_edwards_callbacks->get_shear_velocity()));
       cm(b);
@@ -346,7 +338,8 @@ protected:
   std::shared_ptr<ResetForce<PdfField, VectorField>> m_reset_force;
 
   // velocity update sweep
-  std::shared_ptr<UpdateVelFromPDF> m_update_velocities_from_pdf;
+  std::shared_ptr<typename Kernels::UpdateVelFromPDF>
+      m_update_velocities_from_pdf;
 
   // Lees-Edwards boundary interpolation
   std::shared_ptr<LeesEdwardsPack> m_lees_edwards_callbacks;
@@ -457,7 +450,7 @@ public:
 #endif
 
     // Initialize and register pdf field with zero centered density
-    auto pdf_setter = InitialPDFsSetter(
+    auto pdf_setter = typename Kernels::InitialPDFsSetter(
         m_force_to_be_applied_id, m_pdf_field_id, m_velocity_field_id, 1.0);
     for (auto &block : *blocks) {
       pdf_setter(&block);
@@ -509,8 +502,9 @@ public:
         m_last_applied_force_field_id, m_force_to_be_applied_id);
 
     // Instantiate velocity update sweep
-    m_update_velocities_from_pdf = std::make_shared<UpdateVelFromPDF>(
-        m_last_applied_force_field_id, m_pdf_field_id, m_velocity_field_id);
+    m_update_velocities_from_pdf =
+        std::make_shared<typename Kernels::UpdateVelFromPDF>(
+            m_last_applied_force_field_id, m_pdf_field_id, m_velocity_field_id);
   }
 
 private:
@@ -520,14 +514,16 @@ private:
       auto const block_variant = std::variant<IBlock *>(&block);
       std::visit(m_run_stream_collide_sweep, cm_variant, block_variant);
     }
-    if (auto *cm = std::get_if<StreamCollisionModelThermalized>(&cm_variant)) {
+    if (auto *cm =
+            std::get_if<typename Kernels::StreamCollisionModelThermalized>(
+                &cm_variant)) {
       cm->setTime_step(cm->getTime_step() + 1u);
     }
   }
 
   auto has_lees_edwards_bc() const {
-    return std::holds_alternative<StreamCollisionModelLeesEdwards>(
-        *m_collision_model);
+    return std::holds_alternative<
+        typename Kernels::StreamCollisionModelLeesEdwards>(*m_collision_model);
   }
 
   void apply_lees_edwards_pdf_interpolation(
@@ -1287,7 +1283,8 @@ public:
 
   [[nodiscard]] std::optional<uint64_t> get_rng_state() const override {
     auto const cm =
-        std::get_if<StreamCollisionModelThermalized>(&*m_collision_model);
+        std::get_if<typename Kernels::StreamCollisionModelThermalized>(
+            &*m_collision_model);
     if (!cm or m_kT == 0.) {
       return std::nullopt;
     }
@@ -1296,7 +1293,8 @@ public:
 
   void set_rng_state(uint64_t counter) override {
     auto const cm =
-        std::get_if<StreamCollisionModelThermalized>(&*m_collision_model);
+        std::get_if<typename Kernels::StreamCollisionModelThermalized>(
+            &*m_collision_model);
     if (!cm or m_kT == 0.) {
       throw std::runtime_error("This LB instance is unthermalized");
     }

@@ -222,7 +222,7 @@ Utils::Vector3i LBWalberlaImpl<FloatType, Architecture>::get_neighbor_node(
     Utils::Vector3i const &node, int dir) const {
   Utils::Vector3i neighbor({0, 0, 0});
   auto const &grid_size = get_lattice().get_grid_dimensions();
-  auto constexpr neighbor_offset = DynamicUBB::neighborOffset;
+  auto constexpr neighbor_offset = Kernels::DynamicUBB::neighborOffset;
   for (int i = 0; i < neighbor.size(); i++) {
     neighbor[i] =
         (node[i] - neighbor_offset[i][dir] + grid_size[i]) % grid_size[i];

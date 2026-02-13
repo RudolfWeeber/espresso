@@ -47,7 +47,7 @@ void LBWalberlaImpl<FloatType, Architecture>::set_collision_model(
   auto const blocks = get_lattice().get_blocks();
   m_kT = FloatType_c(kT);
   m_seed = seed;
-  auto obj = StreamCollisionModelThermalized(
+  auto obj = typename Kernels::StreamCollisionModelThermalized(
       m_last_applied_force_field_id, m_pdf_field_id, zero_centered_to_lb(m_kT),
       omega, omega, omega_odd, omega, seed, uint32_t{0u});
   m_collision_model = std::make_shared<CollisionModel>(std::move(obj));
@@ -90,8 +90,8 @@ void LBWalberlaImpl<FloatType, Architecture>::set_collision_model(
   auto const lebc_slab_total_thickness = grid_dimensions[shear_plane_normal];
   auto const lebc_bot_index = 0 - lebc_slab_origin;
   auto const lebc_top_index = lebc_slab_total_thickness - lebc_slab_origin;
-  m_collision_model =
-      std::make_shared<CollisionModel>(StreamCollisionModelLeesEdwards(
+  m_collision_model = std::make_shared<CollisionModel>(
+      typename Kernels::StreamCollisionModelLeesEdwards(
           m_last_applied_force_field_id, m_pdf_field_id, lebc_bot_index,
           lebc_top_index, omega, omega, omega_odd, omega, shear_vel));
   m_lees_edwards_callbacks = std::move(lees_edwards_pack);
