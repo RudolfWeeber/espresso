@@ -201,9 +201,51 @@ public:
     return std::is_same_v<FloatType, double>;
   }
 
-// Collision model setup (StreamCollideSweepVisitor, relaxation rates,
-// set_collision_model, check_lebc)
-#include "LBCollisionSetup.hpp"
+  // ---- Collision model inner class and member ----
+private:
+  class StreamCollideSweepVisitor {
+  public:
+    using StructuredBlockStorage = LatticeWalberla::Lattice_T;
+
+    void operator()(StreamCollisionModelThermalized &cm, IBlock *b) {
+      cm.configure(m_storage, b);
+      cm(b);
+    }
+
+    void operator()(StreamCollisionModelLeesEdwards &cm, IBlock *b) {
+      cm.setV_s(static_cast<decltype(cm.getV_s())>(
+          m_lees_edwards_callbacks->get_shear_velocity()));
+      cm(b);
+    }
+
+    StreamCollideSweepVisitor() = default;
+    StreamCollideSweepVisitor(std::shared_ptr<StructuredBlockStorage> storage) {
+      m_storage = std::move(storage);
+    }
+    StreamCollideSweepVisitor(std::shared_ptr<StructuredBlockStorage> storage,
+                              std::shared_ptr<LeesEdwardsPack> callbacks) {
+      m_storage = std::move(storage);
+      m_lees_edwards_callbacks = std::move(callbacks);
+    }
+
+  private:
+    std::shared_ptr<StructuredBlockStorage> m_storage{};
+    std::shared_ptr<LeesEdwardsPack> m_lees_edwards_callbacks{};
+  };
+  StreamCollideSweepVisitor m_run_stream_collide_sweep{};
+
+  // ---- Collision model method declarations ----
+  FloatType shear_mode_relaxation_rate() const;
+  FloatType odd_mode_relaxation_rate(
+      FloatType shear_relaxation,
+      FloatType magic_number = FloatType{3} / FloatType{16}) const;
+
+public:
+  void set_collision_model(double kT, unsigned int seed) override;
+  void set_collision_model(
+      std::unique_ptr<LeesEdwardsPack> &&lees_edwards_pack) override;
+  void check_lebc(unsigned int shear_direction,
+                  unsigned int shear_plane_normal) const override;
 
   void reset_boundary_handling(std::shared_ptr<BlockStorage> const &blocks) {
     auto const [lc, uc] = m_lattice->get_local_grid_range(true);
@@ -797,8 +839,41 @@ public:
     return Architecture == lbmpy::Arch::GPU;
   }
 
-// Position-based interpolation methods
-#include "LBInterpolation.hpp"
+  // ---- Interpolation inner class ----
+private:
+  class interpolation_illegal_access : public std::runtime_error {
+  public:
+    interpolation_illegal_access(std::string const &field,
+                                 Utils::Vector3d const &pos,
+                                 std::array<int, 3> const &node, double weight)
+        : std::runtime_error("Access to LB " + field + " field failed") {
+      std::cerr << "pos [" << pos << "], node [" << Utils::Vector3i(node)
+                << "], weight " << weight << "\n";
+    }
+  };
+
+  // ---- Interpolation method declarations ----
+  auto make_force_interpolation_kernel() const;
+  auto make_velocity_interpolation_kernel() const;
+  auto make_density_interpolation_kernel() const;
+
+public:
+  std::function<bool(Utils::Vector3d const &)>
+  make_lattice_position_checker(bool consider_points_in_halo) const override;
+  void add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
+                         std::vector<Utils::Vector3d> const &forces) override;
+  std::vector<Utils::Vector3d>
+  get_velocities_at_pos(std::vector<Utils::Vector3d> const &pos) override;
+  std::vector<double>
+  get_densities_at_pos(std::vector<Utils::Vector3d> const &pos) override;
+  std::optional<Utils::Vector3d>
+  get_velocity_at_pos(Utils::Vector3d const &pos,
+                      bool consider_points_in_halo = false) const override;
+  std::optional<double>
+  get_density_at_pos(Utils::Vector3d const &pos,
+                     bool consider_points_in_halo = false) const override;
+  bool add_force_at_pos(Utils::Vector3d const &pos,
+                        Utils::Vector3d const &force) override;
 
   std::optional<Utils::Vector3d>
   get_node_force_to_be_applied(Utils::Vector3i const &node) const override {
@@ -1085,9 +1160,44 @@ public:
         });
   }
 
-// Boundary access methods
-#include "LBBoundaryAccess.hpp"
+  // ---- Boundary access method declarations ----
+public:
+  std::optional<Utils::Vector3d>
+  get_node_velocity_at_boundary(Utils::Vector3i const &node,
+                                bool consider_ghosts = false) const override;
+  bool set_node_velocity_at_boundary(Utils::Vector3i const &node,
+                                     Utils::Vector3d const &velocity) override;
+  std::vector<std::optional<Utils::Vector3d>> get_slice_velocity_at_boundary(
+      Utils::Vector3i const &lower_corner,
+      Utils::Vector3i const &upper_corner) const override;
+  void set_slice_velocity_at_boundary(
+      Utils::Vector3i const &lower_corner, Utils::Vector3i const &upper_corner,
+      std::vector<std::optional<Utils::Vector3d>> const &velocity) override;
+  std::optional<Utils::Vector3d>
+  get_node_boundary_force(Utils::Vector3i const &node) const override;
+  bool remove_node_from_boundary(Utils::Vector3i const &node) override;
+  std::optional<bool>
+  get_node_is_boundary(Utils::Vector3i const &node,
+                       bool consider_ghosts = false) const override;
+  std::vector<bool>
+  get_slice_is_boundary(Utils::Vector3i const &lower_corner,
+                        Utils::Vector3i const &upper_corner) const override;
+  void reallocate_ubb_field() override;
+  void on_boundary_add();
+  void clear_boundaries() override;
+  void
+  update_boundary_from_shape(std::vector<int> const &raster_flat,
+                             std::vector<double> const &data_flat) override;
+  [[nodiscard]] Utils::Vector3d get_boundary_force_from_shape(
+      std::vector<int> const &raster_flat) const override;
+  [[nodiscard]] Utils::Vector3d get_boundary_force() const override;
 
+private:
+  [[nodiscard]] Utils::Vector3i flat_index_to_node(int index) const;
+  [[nodiscard]] Utils::Vector3i get_neighbor_node(Utils::Vector3i const &node,
+                                                  int dir) const;
+
+public:
   // Pressure tensor
   std::optional<Utils::VectorXd<9>>
   get_node_pressure_tensor(Utils::Vector3i const &node) const override {
@@ -1213,10 +1323,102 @@ public:
     vtk_obj.addCellExclusionFilter(fluid_filter);
   }
 
-// VTK writer classes and registration
-#include "LBWalberlaVTK.hpp"
+  // ---- VTK writer inner classes ----
+protected:
+  template <typename Field_T, uint_t F_SIZE_ARG, typename OutputType>
+  class VTKWriter : public vtk::BlockCellDataWriter<OutputType, F_SIZE_ARG> {
+  public:
+    VTKWriter(ConstBlockDataID const &block_id, std::string const &id,
+              FloatType unit_conversion)
+        : vtk::BlockCellDataWriter<OutputType, F_SIZE_ARG>(id),
+          m_block_id(block_id), m_field(nullptr),
+          m_conversion(unit_conversion) {}
+
+  protected:
+    void configure() override {
+      WALBERLA_ASSERT_NOT_NULLPTR(this->block_);
+      m_field = this->block_->template getData<Field_T>(m_block_id);
+    }
+
+    ConstBlockDataID const m_block_id;
+    Field_T const *m_field;
+    FloatType const m_conversion;
+  };
+
+  template <typename OutputType = float>
+  class DensityVTKWriter : public VTKWriter<PdfField, 1u, OutputType> {
+  public:
+    using Base = VTKWriter<PdfField, 1u, OutputType>;
+    using Base::Base;
+    using Base::evaluate;
+
+  protected:
+    OutputType evaluate(cell_idx_t const x, cell_idx_t const y,
+                        cell_idx_t const z, cell_idx_t const) override {
+      WALBERLA_ASSERT_NOT_NULLPTR(this->m_field);
+      auto const density =
+          lbm::accessor::Density::get(this->m_field, 1., {x, y, z});
+      return numeric_cast<OutputType>(this->m_conversion * density);
+    }
+  };
+
+  template <typename OutputType = float>
+  class VelocityVTKWriter : public VTKWriter<VectorField, 3u, OutputType> {
+  public:
+    using Base = VTKWriter<VectorField, 3u, OutputType>;
+    using Base::Base;
+    using Base::evaluate;
+
+  protected:
+    OutputType evaluate(cell_idx_t const x, cell_idx_t const y,
+                        cell_idx_t const z, cell_idx_t const f) override {
+      WALBERLA_ASSERT_NOT_NULLPTR(this->m_field);
+      auto const velocity =
+          lbm::accessor::Vector::get(this->m_field, {x, y, z});
+      return numeric_cast<OutputType>(this->m_conversion * velocity[uint_c(f)]);
+    }
+  };
+
+  template <typename OutputType = float>
+  class PressureTensorVTKWriter : public VTKWriter<PdfField, 9u, OutputType> {
+  public:
+    using Base = VTKWriter<PdfField, 9u, OutputType>;
+    using Base::Base;
+    using Base::evaluate;
+
+    PressureTensorVTKWriter(ConstBlockDataID const &block_id,
+                            std::string const &id, FloatType unit_conversion,
+                            FloatType off_diag_factor)
+        : Base(block_id, id, unit_conversion),
+          m_off_diag_factor(off_diag_factor) {}
+
+  protected:
+    OutputType evaluate(cell_idx_t const x, cell_idx_t const y,
+                        cell_idx_t const z, cell_idx_t const f) override {
+      WALBERLA_ASSERT_NOT_NULLPTR(this->m_field);
+      auto const pressure =
+          lbm::accessor::PressureTensor::get(this->m_field, 1., {x, y, z});
+      auto const revert_factor =
+          (f == 0 or f == 4 or f == 8) ? FloatType{1} : m_off_diag_factor;
+      return numeric_cast<OutputType>(this->m_conversion * revert_factor *
+                                      pressure[uint_c(f)]);
+    }
+    FloatType const m_off_diag_factor;
+  };
+
+  // ---- VTK method declaration ----
+public:
+  void register_vtk_field_writers(walberla::vtk::VTKOutput &vtk_obj,
+                                  LatticeModel::units_map const &units,
+                                  int flag_observables) override;
 
   ~LBWalberlaImpl() override = default;
 };
+
+// Out-of-class template method definitions
+#include "LBBoundaryAccess.impl.hpp"
+#include "LBCollisionSetup.impl.hpp"
+#include "LBInterpolation.impl.hpp"
+#include "LBWalberlaVTK.impl.hpp"
 
 } // namespace walberla

@@ -19,27 +19,16 @@
 
 /**
  * @file
- * Position-based interpolation methods for @ref walberla::LBWalberlaImpl.
- * This file is included inside the class body of LBWalberlaImpl.
+ * Out-of-class position-based interpolation definitions for
+ * @ref walberla::LBWalberlaImpl.
  */
 
-// ---- Interpolation methods (included inside LBWalberlaImpl) ----
+// ---- Interpolation methods (out-of-class definitions) ----
 
-private:
-class interpolation_illegal_access : public std::runtime_error {
-public:
-  interpolation_illegal_access(std::string const &field,
-                               Utils::Vector3d const &pos,
-                               std::array<int, 3> const &node, double weight)
-      : std::runtime_error("Access to LB " + field + " field failed") {
-    std::cerr << "pos [" << pos << "], node [" << Utils::Vector3i(node)
-              << "], weight " << weight << "\n";
-  }
-};
-
-public:
+template <typename FloatType, lbmpy::Arch Architecture>
 std::function<bool(Utils::Vector3d const &)>
-make_lattice_position_checker(bool consider_points_in_halo) const override {
+LBWalberlaImpl<FloatType, Architecture>::make_lattice_position_checker(
+    bool consider_points_in_halo) const {
   auto const &lat = *m_lattice;
   if (consider_points_in_halo) {
     return [&](Utils::Vector3d const &p) { return lat.pos_in_local_halo(p); };
@@ -47,8 +36,10 @@ make_lattice_position_checker(bool consider_points_in_halo) const override {
   return [&](Utils::Vector3d const &p) { return lat.pos_in_local_domain(p); };
 }
 
-void add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
-                       std::vector<Utils::Vector3d> const &forces) override {
+template <typename FloatType, lbmpy::Arch Architecture>
+void LBWalberlaImpl<FloatType, Architecture>::add_forces_at_pos(
+    std::vector<Utils::Vector3d> const &pos,
+    std::vector<Utils::Vector3d> const &forces) {
   assert(pos.size() == forces.size());
   if (pos.empty()) {
     return;
@@ -90,7 +81,9 @@ void add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
 #endif
 }
 
-auto make_force_interpolation_kernel() const {
+template <typename FloatType, lbmpy::Arch Architecture>
+auto LBWalberlaImpl<FloatType, Architecture>::make_force_interpolation_kernel()
+    const {
   auto const &lattice = *m_lattice;
   auto const &blocks = *lattice.get_blocks();
   assert(lattice.get_ghost_layers() == 1u);
@@ -117,7 +110,9 @@ auto make_force_interpolation_kernel() const {
   };
 }
 
-auto make_velocity_interpolation_kernel() const {
+template <typename FloatType, lbmpy::Arch Architecture>
+auto LBWalberlaImpl<FloatType,
+                    Architecture>::make_velocity_interpolation_kernel() const {
   auto const &lattice = *m_lattice;
   auto const &blocks = *lattice.get_blocks();
   assert(lattice.get_ghost_layers() == 1u);
@@ -149,7 +144,9 @@ auto make_velocity_interpolation_kernel() const {
   };
 }
 
-auto make_density_interpolation_kernel() const {
+template <typename FloatType, lbmpy::Arch Architecture>
+auto LBWalberlaImpl<FloatType,
+                    Architecture>::make_density_interpolation_kernel() const {
   auto const &lattice = *m_lattice;
   auto const &blocks = *lattice.get_blocks();
   assert(lattice.get_ghost_layers() == 1u);
@@ -176,8 +173,10 @@ auto make_density_interpolation_kernel() const {
   };
 }
 
+template <typename FloatType, lbmpy::Arch Architecture>
 std::vector<Utils::Vector3d>
-get_velocities_at_pos(std::vector<Utils::Vector3d> const &pos) override {
+LBWalberlaImpl<FloatType, Architecture>::get_velocities_at_pos(
+    std::vector<Utils::Vector3d> const &pos) {
   if (pos.empty()) {
     return {};
   }
@@ -221,8 +220,10 @@ get_velocities_at_pos(std::vector<Utils::Vector3d> const &pos) override {
   return vel;
 }
 
+template <typename FloatType, lbmpy::Arch Architecture>
 std::vector<double>
-get_densities_at_pos(std::vector<Utils::Vector3d> const &pos) override {
+LBWalberlaImpl<FloatType, Architecture>::get_densities_at_pos(
+    std::vector<Utils::Vector3d> const &pos) {
   if (pos.empty()) {
     return {};
   }
@@ -262,9 +263,10 @@ get_densities_at_pos(std::vector<Utils::Vector3d> const &pos) override {
   return rho;
 }
 
+template <typename FloatType, lbmpy::Arch Architecture>
 std::optional<Utils::Vector3d>
-get_velocity_at_pos(Utils::Vector3d const &pos,
-                    bool consider_points_in_halo = false) const override {
+LBWalberlaImpl<FloatType, Architecture>::get_velocity_at_pos(
+    Utils::Vector3d const &pos, bool consider_points_in_halo) const {
   assert(not m_pending_ghost_comm.test(GhostComm::VEL));
   assert(not m_pending_ghost_comm.test(GhostComm::UBB));
   if (!consider_points_in_halo and !m_lattice->pos_in_local_domain(pos))
@@ -275,9 +277,10 @@ get_velocity_at_pos(Utils::Vector3d const &pos,
   return {kernel(pos)};
 }
 
+template <typename FloatType, lbmpy::Arch Architecture>
 std::optional<double>
-get_density_at_pos(Utils::Vector3d const &pos,
-                   bool consider_points_in_halo = false) const override {
+LBWalberlaImpl<FloatType, Architecture>::get_density_at_pos(
+    Utils::Vector3d const &pos, bool consider_points_in_halo) const {
   assert(not m_pending_ghost_comm.test(GhostComm::PDF));
   if (!consider_points_in_halo and !m_lattice->pos_in_local_domain(pos))
     return std::nullopt;
@@ -287,8 +290,9 @@ get_density_at_pos(Utils::Vector3d const &pos,
   return {kernel(pos)};
 }
 
-bool add_force_at_pos(Utils::Vector3d const &pos,
-                      Utils::Vector3d const &force) override {
+template <typename FloatType, lbmpy::Arch Architecture>
+bool LBWalberlaImpl<FloatType, Architecture>::add_force_at_pos(
+    Utils::Vector3d const &pos, Utils::Vector3d const &force) {
   if (!m_lattice->pos_in_local_halo(pos))
     return false;
   auto const kernel = make_force_interpolation_kernel();

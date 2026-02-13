@@ -19,16 +19,16 @@
 
 /**
  * @file
- * Boundary access methods for @ref walberla::LBWalberlaImpl.
- * This file is included inside the class body of LBWalberlaImpl.
+ * Out-of-class boundary access definitions for
+ * @ref walberla::LBWalberlaImpl.
  */
 
-// ---- Boundary access methods (included inside LBWalberlaImpl) ----
+// ---- Boundary access methods (out-of-class definitions) ----
 
-public:
+template <typename FloatType, lbmpy::Arch Architecture>
 std::optional<Utils::Vector3d>
-get_node_velocity_at_boundary(Utils::Vector3i const &node,
-                              bool consider_ghosts = false) const override {
+LBWalberlaImpl<FloatType, Architecture>::get_node_velocity_at_boundary(
+    Utils::Vector3i const &node, bool consider_ghosts) const {
   assert(not(consider_ghosts and m_pending_ghost_comm.test(GhostComm::UBB)));
   auto const bc = get_block_and_cell(get_lattice(), node, consider_ghosts);
   if (!bc or !m_boundary->node_is_boundary(node))
@@ -37,8 +37,9 @@ get_node_velocity_at_boundary(Utils::Vector3i const &node,
   return {to_vector3d(m_boundary->get_node_value_at_boundary(node))};
 }
 
-bool set_node_velocity_at_boundary(Utils::Vector3i const &node,
-                                   Utils::Vector3d const &velocity) override {
+template <typename FloatType, lbmpy::Arch Architecture>
+bool LBWalberlaImpl<FloatType, Architecture>::set_node_velocity_at_boundary(
+    Utils::Vector3i const &node, Utils::Vector3d const &velocity) {
   on_boundary_add();
   m_pending_ghost_comm.set(GhostComm::UBB);
   auto bc = get_block_and_cell(get_lattice(), node, false);
@@ -52,9 +53,11 @@ bool set_node_velocity_at_boundary(Utils::Vector3i const &node,
   return bc.has_value();
 }
 
-std::vector<std::optional<Utils::Vector3d>> get_slice_velocity_at_boundary(
+template <typename FloatType, lbmpy::Arch Architecture>
+std::vector<std::optional<Utils::Vector3d>>
+LBWalberlaImpl<FloatType, Architecture>::get_slice_velocity_at_boundary(
     Utils::Vector3i const &lower_corner,
-    Utils::Vector3i const &upper_corner) const override {
+    Utils::Vector3i const &upper_corner) const {
   std::vector<std::optional<Utils::Vector3d>> out;
   for_each_block_in_slice(
       get_lattice(), lower_corner, upper_corner,
@@ -78,9 +81,10 @@ std::vector<std::optional<Utils::Vector3d>> get_slice_velocity_at_boundary(
   return out;
 }
 
-void set_slice_velocity_at_boundary(
+template <typename FloatType, lbmpy::Arch Architecture>
+void LBWalberlaImpl<FloatType, Architecture>::set_slice_velocity_at_boundary(
     Utils::Vector3i const &lower_corner, Utils::Vector3i const &upper_corner,
-    std::vector<std::optional<Utils::Vector3d>> const &velocity) override {
+    std::vector<std::optional<Utils::Vector3d>> const &velocity) {
   on_boundary_add();
   m_pending_ghost_comm.set(GhostComm::UBB);
   auto const &lattice = get_lattice();
@@ -107,8 +111,10 @@ void set_slice_velocity_at_boundary(
       });
 }
 
+template <typename FloatType, lbmpy::Arch Architecture>
 std::optional<Utils::Vector3d>
-get_node_boundary_force(Utils::Vector3i const &node) const override {
+LBWalberlaImpl<FloatType, Architecture>::get_node_boundary_force(
+    Utils::Vector3i const &node) const {
   auto const bc = get_block_and_cell(get_lattice(), node, true);
   if (!bc or !m_boundary->node_is_boundary(node))
     return std::nullopt;
@@ -116,7 +122,9 @@ get_node_boundary_force(Utils::Vector3i const &node) const override {
   return get_node_last_applied_force(node, true);
 }
 
-bool remove_node_from_boundary(Utils::Vector3i const &node) override {
+template <typename FloatType, lbmpy::Arch Architecture>
+bool LBWalberlaImpl<FloatType, Architecture>::remove_node_from_boundary(
+    Utils::Vector3i const &node) {
   auto bc = get_block_and_cell(get_lattice(), node, false);
   if (!bc) {
     bc = get_block_and_cell(get_lattice(), node, true);
@@ -127,9 +135,10 @@ bool remove_node_from_boundary(Utils::Vector3i const &node) override {
   return bc.has_value();
 }
 
+template <typename FloatType, lbmpy::Arch Architecture>
 std::optional<bool>
-get_node_is_boundary(Utils::Vector3i const &node,
-                     bool consider_ghosts = false) const override {
+LBWalberlaImpl<FloatType, Architecture>::get_node_is_boundary(
+    Utils::Vector3i const &node, bool consider_ghosts) const {
   assert(not(consider_ghosts and m_pending_ghost_comm.test(GhostComm::UBB)));
   auto const bc = get_block_and_cell(get_lattice(), node, consider_ghosts);
   if (!bc)
@@ -138,9 +147,11 @@ get_node_is_boundary(Utils::Vector3i const &node,
   return {m_boundary->node_is_boundary(node)};
 }
 
+template <typename FloatType, lbmpy::Arch Architecture>
 std::vector<bool>
-get_slice_is_boundary(Utils::Vector3i const &lower_corner,
-                      Utils::Vector3i const &upper_corner) const override {
+LBWalberlaImpl<FloatType, Architecture>::get_slice_is_boundary(
+    Utils::Vector3i const &lower_corner,
+    Utils::Vector3i const &upper_corner) const {
   std::vector<bool> out;
   for_each_block_in_slice(
       get_lattice(), lower_corner, upper_corner,
@@ -159,9 +170,13 @@ get_slice_is_boundary(Utils::Vector3i const &lower_corner,
   return out;
 }
 
-void reallocate_ubb_field() override { m_boundary->boundary_update(); }
+template <typename FloatType, lbmpy::Arch Architecture>
+void LBWalberlaImpl<FloatType, Architecture>::reallocate_ubb_field() {
+  m_boundary->boundary_update();
+}
 
-void on_boundary_add() {
+template <typename FloatType, lbmpy::Arch Architecture>
+void LBWalberlaImpl<FloatType, Architecture>::on_boundary_add() {
   if (not m_has_boundaries) {
     m_has_boundaries = true;
     setup_streaming_communicator();
@@ -169,7 +184,8 @@ void on_boundary_add() {
   m_has_boundaries = true;
 }
 
-void clear_boundaries() override {
+template <typename FloatType, lbmpy::Arch Architecture>
+void LBWalberlaImpl<FloatType, Architecture>::clear_boundaries() {
   reset_boundary_handling(get_lattice().get_blocks());
   m_pending_ghost_comm.set(GhostComm::UBB);
   ghost_communication();
@@ -177,8 +193,9 @@ void clear_boundaries() override {
   setup_streaming_communicator();
 }
 
-void update_boundary_from_shape(std::vector<int> const &raster_flat,
-                                std::vector<double> const &data_flat) override {
+template <typename FloatType, lbmpy::Arch Architecture>
+void LBWalberlaImpl<FloatType, Architecture>::update_boundary_from_shape(
+    std::vector<int> const &raster_flat, std::vector<double> const &data_flat) {
   on_boundary_add();
   m_pending_ghost_comm.set(GhostComm::UBB);
   auto const &grid_size = get_lattice().get_grid_dimensions();
@@ -188,8 +205,9 @@ void update_boundary_from_shape(std::vector<int> const &raster_flat,
   reallocate_ubb_field();
 }
 
-private:
-[[nodiscard]] Utils::Vector3i flat_index_to_node(int index) const {
+template <typename FloatType, lbmpy::Arch Architecture>
+Utils::Vector3i
+LBWalberlaImpl<FloatType, Architecture>::flat_index_to_node(int index) const {
   Utils::Vector3i node({0, 0, 0});
   auto const &grid_size = get_lattice().get_grid_dimensions();
   node[2] = index % grid_size[2];
@@ -199,8 +217,9 @@ private:
   return node;
 }
 
-[[nodiscard]] Utils::Vector3i get_neighbor_node(Utils::Vector3i const &node,
-                                                int dir) const {
+template <typename FloatType, lbmpy::Arch Architecture>
+Utils::Vector3i LBWalberlaImpl<FloatType, Architecture>::get_neighbor_node(
+    Utils::Vector3i const &node, int dir) const {
   Utils::Vector3i neighbor({0, 0, 0});
   auto const &grid_size = get_lattice().get_grid_dimensions();
   auto constexpr neighbor_offset = DynamicUBB::neighborOffset;
@@ -211,9 +230,10 @@ private:
   return neighbor;
 }
 
-public:
-[[nodiscard]] Utils::Vector3d get_boundary_force_from_shape(
-    std::vector<int> const &raster_flat) const override {
+template <typename FloatType, lbmpy::Arch Architecture>
+Utils::Vector3d
+LBWalberlaImpl<FloatType, Architecture>::get_boundary_force_from_shape(
+    std::vector<int> const &raster_flat) const {
   Utils::Vector3d force({0, 0, 0});
   auto const &grid_size = get_lattice().get_grid_dimensions();
   for (auto &block : *get_lattice().get_blocks()) {
@@ -243,8 +263,9 @@ public:
   return zero_centered_to_md(force);
 }
 
-// Global boundary force
-[[nodiscard]] Utils::Vector3d get_boundary_force() const override {
+template <typename FloatType, lbmpy::Arch Architecture>
+Utils::Vector3d
+LBWalberlaImpl<FloatType, Architecture>::get_boundary_force() const {
   Vector3<double> force(0.);
   for (auto &block : *get_lattice().get_blocks()) {
     force += m_boundary->get_total_force(&block);

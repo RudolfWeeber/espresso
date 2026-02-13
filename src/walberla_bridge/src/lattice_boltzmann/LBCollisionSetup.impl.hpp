@@ -19,58 +19,29 @@
 
 /**
  * @file
- * Collision model setup for @ref walberla::LBWalberlaImpl.
- * This file is included inside the class body of LBWalberlaImpl.
+ * Out-of-class collision model setup definitions for
+ * @ref walberla::LBWalberlaImpl.
  */
 
-// ---- Collision model setup (included inside LBWalberlaImpl) ----
+// ---- Collision model setup (out-of-class definitions) ----
 
-private:
-class StreamCollideSweepVisitor {
-public:
-  using StructuredBlockStorage = LatticeWalberla::Lattice_T;
-
-  void operator()(StreamCollisionModelThermalized &cm, IBlock *b) {
-    cm.configure(m_storage, b);
-    cm(b);
-  }
-
-  void operator()(StreamCollisionModelLeesEdwards &cm, IBlock *b) {
-    cm.setV_s(static_cast<decltype(cm.getV_s())>(
-        m_lees_edwards_callbacks->get_shear_velocity()));
-    cm(b);
-  }
-
-  StreamCollideSweepVisitor() = default;
-  StreamCollideSweepVisitor(std::shared_ptr<StructuredBlockStorage> storage) {
-    m_storage = std::move(storage);
-  }
-  StreamCollideSweepVisitor(std::shared_ptr<StructuredBlockStorage> storage,
-                            std::shared_ptr<LeesEdwardsPack> callbacks) {
-    m_storage = std::move(storage);
-    m_lees_edwards_callbacks = std::move(callbacks);
-  }
-
-private:
-  std::shared_ptr<StructuredBlockStorage> m_storage{};
-  std::shared_ptr<LeesEdwardsPack> m_lees_edwards_callbacks{};
-};
-StreamCollideSweepVisitor m_run_stream_collide_sweep{};
-
-FloatType shear_mode_relaxation_rate() const {
+template <typename FloatType, lbmpy::Arch Architecture>
+FloatType
+LBWalberlaImpl<FloatType, Architecture>::shear_mode_relaxation_rate() const {
   return FloatType{2} / (FloatType{6} * m_viscosity + FloatType{1});
 }
 
-FloatType odd_mode_relaxation_rate(
-    FloatType shear_relaxation,
-    FloatType magic_number = FloatType{3} / FloatType{16}) const {
+template <typename FloatType, lbmpy::Arch Architecture>
+FloatType LBWalberlaImpl<FloatType, Architecture>::odd_mode_relaxation_rate(
+    FloatType shear_relaxation, FloatType magic_number) const {
   return (FloatType{4} - FloatType{2} * shear_relaxation) /
          (FloatType{4} * magic_number * shear_relaxation + FloatType{2} -
           shear_relaxation);
 }
 
-public:
-void set_collision_model(double kT, unsigned int seed) override {
+template <typename FloatType, lbmpy::Arch Architecture>
+void LBWalberlaImpl<FloatType, Architecture>::set_collision_model(
+    double kT, unsigned int seed) {
   auto const omega = shear_mode_relaxation_rate();
   auto const omega_odd = odd_mode_relaxation_rate(omega);
   auto const blocks = get_lattice().get_blocks();
@@ -84,8 +55,9 @@ void set_collision_model(double kT, unsigned int seed) override {
   setup_streaming_communicator();
 }
 
-void set_collision_model(
-    std::unique_ptr<LeesEdwardsPack> &&lees_edwards_pack) override {
+template <typename FloatType, lbmpy::Arch Architecture>
+void LBWalberlaImpl<FloatType, Architecture>::set_collision_model(
+    std::unique_ptr<LeesEdwardsPack> &&lees_edwards_pack) {
   assert(m_kT == 0.);
 #if defined(__CUDACC__)
   if constexpr (Architecture == lbmpy::Arch::GPU) {
@@ -144,8 +116,9 @@ void set_collision_model(
   setup_streaming_communicator();
 }
 
-void check_lebc(unsigned int shear_direction,
-                unsigned int shear_plane_normal) const override {
+template <typename FloatType, lbmpy::Arch Architecture>
+void LBWalberlaImpl<FloatType, Architecture>::check_lebc(
+    unsigned int shear_direction, unsigned int shear_plane_normal) const {
   if (m_lees_edwards_callbacks) {
     if (m_lees_edwards_callbacks->shear_direction != shear_direction or
         m_lees_edwards_callbacks->shear_plane_normal != shear_plane_normal) {
