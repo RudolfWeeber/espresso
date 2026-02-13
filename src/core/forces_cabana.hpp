@@ -66,7 +66,7 @@ struct ForcesKernel {
 #ifdef ESPRESSO_P3M
   CoulombP3M const *p3m;
 #endif
-  double max_cutoff;
+  double system_max_cutoff;
 
   ForcesKernel(
       BondedInteractionsMap const &bonded_ias_,
@@ -86,7 +86,7 @@ struct ForcesKernel {
       Utils::Vector3d *const global_virial_,
       CellStructure::VirialType const &local_virial_,
 #endif
-      CellStructure::AoSoA_pack const &aosoa_, double max_cutoff_)
+      CellStructure::AoSoA_pack const &aosoa_, double system_max_cutoff_)
       : bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
         coulomb_kernel(coulomb_kernel_), dipoles_kernel(dipoles_kernel_),
         elc_kernel(elc_kernel_), coulomb_u_kernel(coulomb_u_kernel_),
@@ -98,7 +98,7 @@ struct ForcesKernel {
 #ifdef ESPRESSO_NPT
         global_virial(global_virial_), local_virial(local_virial_),
 #endif
-        aosoa(aosoa_), max_cutoff(max_cutoff_) {
+        aosoa(aosoa_), system_max_cutoff(system_max_cutoff_) {
 #ifdef ESPRESSO_P3M
     p3m = nullptr;
     if (auto &solver = coulomb_.impl->solver; solver.has_value()) {
@@ -150,7 +150,7 @@ struct ForcesKernel {
     auto const dist = d.norm();
 
     // Early exit if distance > maximal clobal cutoff
-    if (dist > max_cutoff)
+    if (dist > system_max_cutoff)
       return;
 
     auto const &ia_params =
