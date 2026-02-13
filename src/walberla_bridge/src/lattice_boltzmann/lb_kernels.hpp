@@ -33,17 +33,27 @@
 #include "generated_kernels/PackInfoVecSinglePrecision.h"
 #include "generated_kernels/UpdateVelFromPDFDoublePrecision.h"
 #include "generated_kernels/UpdateVelFromPDFSinglePrecision.h"
+#include "generated_kernels/ColorGradientInitialPDFsSetterDoublePrecision.h"
+#include "generated_kernels/ColorGradientInitialPDFsSetterSinglePrecision.h"
 
 #ifdef __AVX2__
 #include "generated_kernels/StreamCollideSweepLeesEdwardsDoublePrecisionAVX.h"
 #include "generated_kernels/StreamCollideSweepLeesEdwardsSinglePrecisionAVX.h"
 #include "generated_kernels/StreamCollideSweepThermalizedDoublePrecisionAVX.h"
 #include "generated_kernels/StreamCollideSweepThermalizedSinglePrecisionAVX.h"
+#include "generated_kernels/ColorGradientCollideSweepDoublePrecisionAVX.h"
+#include "generated_kernels/ColorGradientCollideSweepSinglePrecisionAVX.h"
+#include "generated_kernels/ColorGradientStreamSweepDoublePrecisionAVX.h"
+#include "generated_kernels/ColorGradientStreamSweepSinglePrecisionAVX.h"
 #else
 #include "generated_kernels/StreamCollideSweepLeesEdwardsDoublePrecision.h"
 #include "generated_kernels/StreamCollideSweepLeesEdwardsSinglePrecision.h"
 #include "generated_kernels/StreamCollideSweepThermalizedDoublePrecision.h"
 #include "generated_kernels/StreamCollideSweepThermalizedSinglePrecision.h"
+#include "generated_kernels/ColorGradientCollideSweepDoublePrecision.h"
+#include "generated_kernels/ColorGradientCollideSweepSinglePrecision.h"
+#include "generated_kernels/ColorGradientStreamSweepDoublePrecision.h"
+#include "generated_kernels/ColorGradientStreamSweepSinglePrecision.h"
 #endif
 
 namespace walberla {
@@ -56,16 +66,25 @@ struct KernelTrait {
       pystencils::StreamCollideSweepThermalizedDoublePrecisionAVX;
   using StreamCollisionModelLeesEdwards =
       pystencils::StreamCollideSweepLeesEdwardsDoublePrecisionAVX;
+  using StreamModelTwoComponent =
+      pystencils::ColorGradientStreamSweepDoublePrecisionAVX;
+  using CollideModelTwoComponent =
+      pystencils::ColorGradientCollideSweepDoublePrecisionAVX;
 #else
   using StreamCollisionModelThermalized =
       pystencils::StreamCollideSweepThermalizedDoublePrecision;
   using StreamCollisionModelLeesEdwards =
       pystencils::StreamCollideSweepLeesEdwardsDoublePrecision;
+  using StreamModelTwoComponent =
+      pystencils::ColorGradientStreamSweepDoublePrecision;
+  using CollideModelTwoComponent =
+      pystencils::ColorGradientCollideSweepDoublePrecision;
 #endif
   using InitialPDFsSetter = pystencils::InitialPDFsSetterDoublePrecision;
   using UpdateVelFromPDF = pystencils::UpdateVelFromPDFDoublePrecision;
   using PackInfoPdf = pystencils::PackInfoPdfDoublePrecision;
   using PackInfoVec = pystencils::PackInfoVecDoublePrecision;
+  using InitialPDFsSetterTwoComponent = pystencils::ColorGradientInitialPDFsSetterDoublePrecision;
   using DynamicUBB = lbm::DynamicUBBDoublePrecision;
 };
 
@@ -75,16 +94,25 @@ template <> struct KernelTrait<float, lbmpy::Arch::CPU> {
       pystencils::StreamCollideSweepThermalizedSinglePrecisionAVX;
   using StreamCollisionModelLeesEdwards =
       pystencils::StreamCollideSweepLeesEdwardsSinglePrecisionAVX;
+  using StreamModelTwoComponent =
+      pystencils::ColorGradientStreamSweepSinglePrecisionAVX;
+  using CollideModelTwoComponent =
+      pystencils::ColorGradientCollideSweepSinglePrecisionAVX;
 #else
   using StreamCollisionModelThermalized =
       pystencils::StreamCollideSweepThermalizedSinglePrecision;
   using StreamCollisionModelLeesEdwards =
       pystencils::StreamCollideSweepLeesEdwardsSinglePrecision;
+  using StreamModelTwoComponent =
+      pystencils::ColorGradientStreamSweepSinglePrecision;
+  using CollideModelTwoComponent =
+      pystencils::ColorGradientCollideSweepSinglePrecision;
 #endif
   using InitialPDFsSetter = pystencils::InitialPDFsSetterSinglePrecision;
   using UpdateVelFromPDF = pystencils::UpdateVelFromPDFSinglePrecision;
   using PackInfoPdf = pystencils::PackInfoPdfSinglePrecision;
   using PackInfoVec = pystencils::PackInfoVecSinglePrecision;
+  using InitialPDFsSetterTwoComponent = pystencils::ColorGradientInitialPDFsSetterSinglePrecision;
   using DynamicUBB = lbm::DynamicUBBSinglePrecision;
 };
 
