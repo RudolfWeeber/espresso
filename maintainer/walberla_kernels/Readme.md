@@ -54,6 +54,10 @@ generate_lb_kernels --kernels all
 generate_lb_kernels --kernels all --single-precision
 generate_lb_kernels --kernels all --gpu
 generate_lb_kernels --kernels all --gpu --single-precision
+generate_cg_kernels --kernels all
+generate_cg_kernels --kernels all --single-precision
+generate_cg_kernels --kernels all --gpu
+generate_cg_kernels --kernels all --gpu --single-precision
 format_kernels
 
 # EK kernels
@@ -65,13 +69,6 @@ generate_ek_kernels --kernels all --gpu --single-precision
 format_kernels
 mv ReactionKernel*.{cpp,h,cu} $(git rev-parse --show-toplevel)/src/walberla_bridge/src/electrokinetics/reactions/generated_kernels/
 
-# CG kernels
-cd $(git rev-parse --show-toplevel)/src/walberla_bridge/src/color_gradient/generated_kernels/
-generate_cg_kernels --kernels all
-generate_cg_kernels --kernels all --single-precision
-generate_cg_kernels --kernels all --gpu
-generate_cg_kernels --kernels all --gpu --single-precision
-format_kernels
 ```
 
 The code generation is not deterministic, therefore the list of changes might
