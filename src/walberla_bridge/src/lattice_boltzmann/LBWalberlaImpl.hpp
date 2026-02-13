@@ -55,6 +55,7 @@
 #if defined(__CUDACC__)
 #include "lb_kernels.cuh"
 #endif
+#include "lb_fields.hpp"
 
 #include <walberla_bridge/Architecture.hpp>
 #include <walberla_bridge/BlockAndCell.hpp>
@@ -108,63 +109,20 @@ public:
   using BlockStorage = LatticeWalberla::Lattice_T;
 
 protected:
-  template <typename FT, lbmpy::Arch AT = lbmpy::Arch::CPU> struct FieldTrait {
-    using PdfField = field::GhostLayerField<FT, Stencil::Size>;
-    using VectorField = field::GhostLayerField<FT, uint_t{3u}>;
-    template <class Field>
-    using PackInfo = field::communication::PackInfo<Field>;
-    using PackInfoStreamingPdf = detail::KernelTrait<FT, AT>::PackInfoPdf;
-    using PackInfoStreamingVec = detail::KernelTrait<FT, AT>::PackInfoVec;
-    template <class Stencil>
-    using RegularCommScheme =
-        blockforest::communication::UniformBufferedScheme<Stencil>;
-    template <class Stencil>
-    using BoundaryCommScheme =
-        blockforest::communication::UniformBufferedScheme<Stencil>;
-  };
-
-#if defined(__CUDACC__)
-  template <typename FT> struct FieldTrait<FT, lbmpy::Arch::GPU> {
-  private:
-    static auto constexpr AT = lbmpy::Arch::GPU;
-    template <class Field>
-    using MemcpyPackInfo = gpu::communication::MemcpyPackInfo<Field>;
-
-  public:
-    template <typename Stencil>
-    class UniformGPUScheme
-        : public gpu::communication::UniformGPUScheme<Stencil> {
-    public:
-      explicit UniformGPUScheme(auto const &bf)
-          : gpu::communication::UniformGPUScheme<Stencil>(
-                bf, /* sendDirectlyFromGPU */ false,
-                /* useLocalCommunication */ false) {}
-    };
-    using PdfField = gpu::GPUField<FT>;
-    using VectorField = gpu::GPUField<FT>;
-    template <class Field> using PackInfo = MemcpyPackInfo<Field>;
-    using PackInfoStreamingPdf = detail::KernelTrait<FT, AT>::PackInfoPdf;
-    using PackInfoStreamingVec = detail::KernelTrait<FT, AT>::PackInfoVec;
-    template <class Stencil>
-    using RegularCommScheme = UniformGPUScheme<Stencil>;
-    template <class Stencil>
-    using BoundaryCommScheme =
-        blockforest::communication::UniformBufferedScheme<Stencil>;
-  };
-#endif
-
   // "underlying" field types (`GPUField` has no f-size info at compile time)
-  using _PdfField = FieldTrait<FloatType>::PdfField;
-  using _VectorField = FieldTrait<FloatType>::VectorField;
+  using _PdfField = FieldTrait<FloatType, Stencil>::PdfField;
+  using _VectorField = FieldTrait<FloatType, Stencil>::VectorField;
 
 public:
-  using PdfField = FieldTrait<FloatType, Architecture>::PdfField;
-  using VectorField = FieldTrait<FloatType, Architecture>::VectorField;
+  using PdfField = FieldTrait<FloatType, Stencil, Architecture>::PdfField;
+  using VectorField = FieldTrait<FloatType, Stencil, Architecture>::VectorField;
   using FlagField = BoundaryModel::FlagField;
 #if defined(__CUDACC__)
   using GPUField = gpu::GPUField<FloatType>;
-  using PdfFieldCpu = FieldTrait<FloatType, lbmpy::Arch::CPU>::PdfField;
-  using VectorFieldCpu = FieldTrait<FloatType, lbmpy::Arch::CPU>::VectorField;
+  using PdfFieldCpu =
+      FieldTrait<FloatType, Stencil, lbmpy::Arch::CPU>::PdfField;
+  using VectorFieldCpu =
+      FieldTrait<FloatType, Stencil, lbmpy::Arch::CPU>::VectorField;
 #endif
 
   struct GhostComm {
@@ -306,20 +264,21 @@ protected:
    * of the ghost layer when setting cell velocities or populations.
    */
   using RegularFullCommunicator =
-      FieldTrait<FloatType,
+      FieldTrait<FloatType, Stencil,
                  Architecture>::template RegularCommScheme<stencil::D3Q27>;
   using BoundaryFullCommunicator =
-      FieldTrait<FloatType,
+      FieldTrait<FloatType, Stencil,
                  Architecture>::template BoundaryCommScheme<stencil::D3Q27>;
   /**
    * @brief Regular communicator.
    * We use the same directions as the stencil during integration.
    */
   using PDFStreamingCommunicator =
-      FieldTrait<FloatType, Architecture>::template RegularCommScheme<Stencil>;
+      FieldTrait<FloatType, Stencil,
+                 Architecture>::template RegularCommScheme<Stencil>;
   template <class Field>
   using PackInfo =
-      FieldTrait<FloatType, Architecture>::template PackInfo<Field>;
+      FieldTrait<FloatType, Stencil, Architecture>::template PackInfo<Field>;
 
   // communicators
   std::shared_ptr<BoundaryFullCommunicator> m_boundary_communicator;
@@ -414,7 +373,7 @@ protected:
       m_pdf_streaming_communicator->addPackInfo(
           std::make_shared<PackInfoVec>(m_last_applied_force_field_id));
     };
-    using FieldTrait = FieldTrait<FloatType, Architecture>;
+    using FieldTrait = FieldTrait<FloatType, Stencil, Architecture>;
     using PackInfoPdf = FieldTrait::PackInfoStreamingPdf;
     using PackInfoVec = FieldTrait::PackInfoStreamingVec;
     if (m_has_boundaries or (m_collision_model and has_lees_edwards_bc())) {
