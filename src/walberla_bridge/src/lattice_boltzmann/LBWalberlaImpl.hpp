@@ -794,19 +794,6 @@ public:
     return Architecture == lbmpy::Arch::GPU;
   }
 
-  // ---- Interpolation inner class ----
-private:
-  class interpolation_illegal_access : public std::runtime_error {
-  public:
-    interpolation_illegal_access(std::string const &field,
-                                 Utils::Vector3d const &pos,
-                                 std::array<int, 3> const &node, double weight)
-        : std::runtime_error("Access to LB " + field + " field failed") {
-      std::cerr << "pos [" << pos << "], node [" << Utils::Vector3i(node)
-                << "], weight " << weight << "\n";
-    }
-  };
-
   // ---- Interpolation method declarations ----
   auto make_force_interpolation_kernel() const;
   auto make_velocity_interpolation_kernel() const;
