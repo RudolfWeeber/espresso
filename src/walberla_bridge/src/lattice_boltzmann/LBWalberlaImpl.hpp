@@ -727,7 +727,7 @@ public:
   get_slice_velocity(Utils::Vector3i const &lower_corner,
                      Utils::Vector3i const &upper_corner) const override {
     std::vector<double> out;
-    auto const ci = for_each_block_in_slice(
+    for_each_block_in_slice(
         get_lattice(), lower_corner, upper_corner,
         [&](auto &block, auto const &bci, auto const &ci,
             auto const &block_offset) {
