@@ -306,6 +306,12 @@ protected:
   }
 
 private:
+  /**
+   * @brief One LB time step using the pull scheme.
+   * Sequence: reset forces, stream-collide, communicate PDFs,
+   * apply Lees-Edwards interpolation (if active), handle boundaries,
+   * update velocity field from PDFs.
+   */
   void integrate_pull_scheme() {
     assert(m_mpi_cart_comm_observer.is_valid());
     auto const &blocks = get_lattice().get_blocks();
@@ -364,8 +370,14 @@ private:
   }
 
   // ---- Collision Model ----
+  // @see LBCollisionSetup.impl.hpp
 
 private:
+  /**
+   * @brief Visitor for dispatching stream-collide sweeps.
+   * Handles both thermalized and Lees-Edwards collision models
+   * via @c std::visit on the @ref CollisionModel variant.
+   */
   class StreamCollideSweepVisitor {
   public:
     using StructuredBlockStorage = LatticeWalberla::Lattice_T;
@@ -399,7 +411,13 @@ private:
   };
   StreamCollideSweepVisitor m_run_stream_collide_sweep{};
 
+  /** @brief Relaxation rate omega from kinematic viscosity: 2/(6*nu+1). */
   FloatType shear_mode_relaxation_rate() const;
+  /**
+   * @brief Odd-mode relaxation rate for the magic parameter relation.
+   * Ensures optimal bounce-back wall location for the two-relaxation-time
+   * model. Default magic number is 3/16.
+   */
   FloatType odd_mode_relaxation_rate(
       FloatType shear_relaxation,
       FloatType magic_number = FloatType{3} / FloatType{16}) const;
@@ -414,6 +432,11 @@ public:
   // ---- Ghost Communication ----
 
 public:
+  /**
+   * @brief Perform all pending ghost layer updates.
+   * Uses a lazy scheme: ghost communications are only executed when
+   * they have been marked as pending by a preceding write operation.
+   */
   void ghost_communication() override {
     if (m_pending_ghost_comm.any()) {
       assert(m_mpi_cart_comm_observer.is_valid());
@@ -468,6 +491,7 @@ public:
     }
   }
 
+  /** @brief Communicate all fields at once using the D3Q27 stencil. */
   void ghost_communication_full() {
     assert(m_mpi_cart_comm_observer.is_valid());
     m_full_communicator->communicate();
@@ -514,6 +538,7 @@ public:
   }
 
   // ---- Node & Slice Accessors (by quantity) ----
+  // @see LBNodeAccess.impl.hpp, LBSliceAccess.impl.hpp
 
 public:
   // Velocity
@@ -577,10 +602,14 @@ public:
                             Utils::Vector3i const &upper_corner) const override;
 
   // ---- Interpolation (Position-Based Access) ----
+  // @see LBInterpolation.impl.hpp
 
 private:
+  /** @brief Return a B-spline interpolation kernel for force distribution. */
   auto make_force_interpolation_kernel() const;
+  /** @brief Return a B-spline interpolation kernel for velocity readout. */
   auto make_velocity_interpolation_kernel() const;
+  /** @brief Return a B-spline interpolation kernel for density readout. */
   auto make_density_interpolation_kernel() const;
 
 public:
@@ -602,6 +631,7 @@ public:
   get_densities_at_pos(std::vector<Utils::Vector3d> const &pos) override;
 
   // ---- Boundary Handling ----
+  // @see LBBoundaryAccess.impl.hpp
 
 public:
   void reset_boundary_handling(std::shared_ptr<BlockStorage> const &blocks) {
@@ -757,6 +787,11 @@ public:
     return m_force_to_be_applied_id;
   }
 
+  /**
+   * @brief Correction factor for off-diagonal pressure tensor elements.
+   * Compensates for the viscosity-dependent error in the non-equilibrium
+   * stress: factor = nu / (nu + 1/6).
+   */
   FloatType pressure_tensor_correction_factor() const {
     return m_viscosity / (m_viscosity + FloatType{1} / FloatType{6});
   }
@@ -776,6 +811,13 @@ public:
   }
 
 protected:
+  /**
+   * @brief Scale data by a conversion factor (in-place).
+   * Used for zero-centered density representation: LB internally stores
+   * density fluctuations around zero, while the user interface uses
+   * absolute densities. The conversion factors @ref m_zc_to_md and
+   * @ref m_zc_to_lb translate between these representations.
+   */
   template <typename T>
   void zero_centered_transform_impl(T &data, auto const factor) const {
     if constexpr (std::is_arithmetic_v<T>) {
@@ -809,6 +851,7 @@ protected:
   }
 
   // ---- VTK Output ----
+  // @see LBWalberlaVTK.impl.hpp
 
 public:
   void register_vtk_field_filters(walberla::vtk::VTKOutput &vtk_obj) override {
@@ -874,6 +917,11 @@ protected:
 #endif
   }
 
+  /**
+   * @brief Set up D3Q27 communicators for full ghost layer updates.
+   * Creates per-field communicators (PDF, velocity, last-applied force)
+   * as well as a combined communicator and the boundary communicator.
+   */
   void setup_full_communicator() {
     auto const &blocks = m_lattice->get_blocks();
 
@@ -907,6 +955,12 @@ protected:
     m_boundary_communicator->addPackInfo(boundary_packinfo);
   }
 
+  /**
+   * @brief Set up the communicator used during integration.
+   * Uses optimized streaming pack info when neither boundaries nor
+   * Lees-Edwards boundary conditions are active; falls back to the
+   * generic pack info otherwise.
+   */
   void setup_streaming_communicator() {
     auto const setup = [this]<typename PackInfoPdf, typename PackInfoVec>() {
       auto const &blocks = m_lattice->get_blocks();

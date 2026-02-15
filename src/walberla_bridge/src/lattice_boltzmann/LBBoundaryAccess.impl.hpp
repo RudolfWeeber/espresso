@@ -175,6 +175,11 @@ void LBWalberlaImpl<FloatType, Architecture>::reallocate_ubb_field() {
   m_boundary->boundary_update();
 }
 
+/**
+ * @brief Lazily enable boundary mode on first boundary addition.
+ * Switches the streaming communicator to the generic pack info,
+ * which correctly handles boundary-adjacent cells.
+ */
 template <typename FloatType, lbmpy::Arch Architecture>
 void LBWalberlaImpl<FloatType, Architecture>::on_boundary_add() {
   if (not m_has_boundaries) {
@@ -193,6 +198,12 @@ void LBWalberlaImpl<FloatType, Architecture>::clear_boundaries() {
   setup_streaming_communicator();
 }
 
+/**
+ * @brief Set boundary conditions from a rasterized shape.
+ * @param raster_flat  Flattened 3D mask (non-zero = boundary node).
+ * @param data_flat    Flattened 3D array of slip velocities (3 components
+ *                     per node, same ordering as @p raster_flat).
+ */
 template <typename FloatType, lbmpy::Arch Architecture>
 void LBWalberlaImpl<FloatType, Architecture>::update_boundary_from_shape(
     std::vector<int> const &raster_flat, std::vector<double> const &data_flat) {
@@ -205,6 +216,7 @@ void LBWalberlaImpl<FloatType, Architecture>::update_boundary_from_shape(
   reallocate_ubb_field();
 }
 
+/** @brief Convert a flat (row-major) index to a 3D grid coordinate. */
 template <typename FloatType, lbmpy::Arch Architecture>
 Utils::Vector3i
 LBWalberlaImpl<FloatType, Architecture>::flat_index_to_node(int index) const {
@@ -217,6 +229,10 @@ LBWalberlaImpl<FloatType, Architecture>::flat_index_to_node(int index) const {
   return node;
 }
 
+/**
+ * @brief Get the fluid neighbor of a boundary node along stencil direction
+ *        @p dir, with periodic wrapping.
+ */
 template <typename FloatType, lbmpy::Arch Architecture>
 Utils::Vector3i LBWalberlaImpl<FloatType, Architecture>::get_neighbor_node(
     Utils::Vector3i const &node, int dir) const {
@@ -230,6 +246,12 @@ Utils::Vector3i LBWalberlaImpl<FloatType, Architecture>::get_neighbor_node(
   return neighbor;
 }
 
+/**
+ * @brief Total force exerted by the fluid on a subset of boundary nodes.
+ * Only boundary nodes where @p raster_flat is non-zero are included.
+ * The force is accumulated from the UBB index/force vectors by matching
+ * each boundary node's stencil neighbors against the index field.
+ */
 template <typename FloatType, lbmpy::Arch Architecture>
 Utils::Vector3d
 LBWalberlaImpl<FloatType, Architecture>::get_boundary_force_from_shape(

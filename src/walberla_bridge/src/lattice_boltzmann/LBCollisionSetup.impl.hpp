@@ -39,6 +39,13 @@ FloatType LBWalberlaImpl<FloatType, Architecture>::odd_mode_relaxation_rate(
           shear_relaxation);
 }
 
+/**
+ * @brief Set up the thermalized collision model.
+ * Configures MRT relaxation rates from the viscosity and initializes the
+ * random number generator for fluctuating LB.
+ * When @p kT is zero, fluctuations are suppressed but the thermalized
+ * kernel is still used (required for RNG state tracking).
+ */
 template <typename FloatType, lbmpy::Arch Architecture>
 void LBWalberlaImpl<FloatType, Architecture>::set_collision_model(
     double kT, unsigned int seed) {
@@ -55,6 +62,14 @@ void LBWalberlaImpl<FloatType, Architecture>::set_collision_model(
   setup_streaming_communicator();
 }
 
+/**
+ * @brief Set up the Lees-Edwards collision model.
+ * Configures a modified collision step that applies the shear velocity
+ * at the Lees-Edwards boundary planes, and sets up the interpolation
+ * sweeps for PDFs, velocities, and forces at those boundaries.
+ * Currently restricted to shear_plane_normal="y" and no domain
+ * decomposition along the shear direction.
+ */
 template <typename FloatType, lbmpy::Arch Architecture>
 void LBWalberlaImpl<FloatType, Architecture>::set_collision_model(
     std::unique_ptr<LeesEdwardsPack> &&lees_edwards_pack) {
@@ -116,6 +131,7 @@ void LBWalberlaImpl<FloatType, Architecture>::set_collision_model(
   setup_streaming_communicator();
 }
 
+/** @brief Verify that MD and LB Lees-Edwards parameters are consistent. */
 template <typename FloatType, lbmpy::Arch Architecture>
 void LBWalberlaImpl<FloatType, Architecture>::check_lebc(
     unsigned int shear_direction, unsigned int shear_plane_normal) const {

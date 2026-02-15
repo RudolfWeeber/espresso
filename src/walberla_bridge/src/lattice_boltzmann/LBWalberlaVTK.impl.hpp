@@ -23,6 +23,15 @@
  * @ref walberla::LBWalberlaImpl.
  */
 
+/**
+ * @brief Base class for LB field VTK writers.
+ * Provides unit conversion and field access for cell-based VTK output.
+ * On GPU builds, the GPU field is copied to a CPU mirror before writing.
+ * @tparam FloatType   Internal LB precision (float or double).
+ * @tparam Field_T     waLBerla field type to read from.
+ * @tparam F_SIZE_ARG  Number of components per cell (1, 3, or 9).
+ * @tparam OutputType  VTK output precision (default: float).
+ */
 template <typename FloatType, typename Field_T, uint_t F_SIZE_ARG,
           typename OutputType>
 class VTKWriter : public vtk::BlockCellDataWriter<OutputType, F_SIZE_ARG> {

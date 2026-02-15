@@ -23,6 +23,8 @@
  * @ref walberla::LBWalberlaImpl.
  */
 
+/** @brief Exception for accessing a lattice node outside the local domain
+ *  and ghost layers during B-spline interpolation. */
 class interpolation_illegal_access : public std::runtime_error {
 public:
   interpolation_illegal_access(std::string const &field,
@@ -47,6 +49,12 @@ LBWalberlaImpl<FloatType, Architecture>::make_lattice_position_checker(
   return [&](Utils::Vector3d const &p) { return lat.pos_in_local_domain(p); };
 }
 
+/**
+ * @brief Distribute forces to the lattice at given positions.
+ * Uses B-spline interpolation to spread each force over the surrounding
+ * lattice nodes. On GPU, positions are transformed to block-local
+ * coordinates and the operation is performed in a single kernel launch.
+ */
 template <typename FloatType, lbmpy::Arch Architecture>
 void LBWalberlaImpl<FloatType, Architecture>::add_forces_at_pos(
     std::vector<Utils::Vector3d> const &pos,
@@ -184,6 +192,12 @@ auto LBWalberlaImpl<FloatType,
   };
 }
 
+/**
+ * @brief Interpolate velocities at given positions (batch version).
+ * On GPU, boundary slip velocities are written into the velocity field
+ * before interpolation, since the field has indeterminate values inside
+ * boundary regions.
+ */
 template <typename FloatType, lbmpy::Arch Architecture>
 std::vector<Utils::Vector3d>
 LBWalberlaImpl<FloatType, Architecture>::get_velocities_at_pos(
