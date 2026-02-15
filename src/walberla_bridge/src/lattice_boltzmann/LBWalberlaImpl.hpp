@@ -552,46 +552,9 @@ public:
   // Velocity
   std::optional<Utils::Vector3d>
   get_node_velocity(Utils::Vector3i const &node,
-                    bool consider_ghosts = false) const override {
-    assert(not(consider_ghosts and m_pending_ghost_comm.test(GhostComm::VEL)));
-    assert(not(consider_ghosts and m_pending_ghost_comm.test(GhostComm::UBB)));
-    if (m_has_boundaries) {
-      auto const is_boundary = get_node_is_boundary(node, consider_ghosts);
-      if (is_boundary and *is_boundary) {
-        return get_node_velocity_at_boundary(node, consider_ghosts);
-      }
-    }
-    auto const bc = get_block_and_cell(get_lattice(), node, consider_ghosts);
-    if (!bc)
-      return std::nullopt;
-
-    auto field = bc->block->template uncheckedFastGetData<VectorField>(
-        m_velocity_field_id);
-    auto const vec = lbm::accessor::Vector::get(field, bc->cell);
-    return to_vector3d(vec);
-  }
-
+                    bool consider_ghosts = false) const override;
   bool set_node_velocity(Utils::Vector3i const &node,
-                         Utils::Vector3d const &v) override {
-    m_pending_ghost_comm.set(GhostComm::PDF);
-    m_pending_ghost_comm.set(GhostComm::VEL);
-    auto bc = get_block_and_cell(get_lattice(), node, false);
-    if (!bc)
-      return false;
-
-    // We have to set both, the pdf and the stored velocity field
-    auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
-    auto vel_field =
-        bc->block->template getData<VectorField>(m_velocity_field_id);
-    auto force_field =
-        bc->block->template getData<VectorField>(m_last_applied_force_field_id);
-    auto vel = to_vector3<FloatType>(v);
-    lbm::accessor::Velocity::set(pdf_field, vel_field, force_field, vel,
-                                 bc->cell);
-
-    return true;
-  }
-
+                         Utils::Vector3d const &v) override;
   std::vector<double>
   get_slice_velocity(Utils::Vector3i const &lower_corner,
                      Utils::Vector3i const &upper_corner) const override;
@@ -602,32 +565,8 @@ public:
   // Density
   std::optional<double>
   get_node_density(Utils::Vector3i const &node,
-                   bool consider_ghosts = false) const override {
-    assert(not(consider_ghosts and m_pending_ghost_comm.test(GhostComm::PDF)));
-    auto bc = get_block_and_cell(get_lattice(), node, consider_ghosts);
-    if (!bc)
-      return std::nullopt;
-
-    auto pdf_field =
-        bc->block->template uncheckedFastGetData<PdfField>(m_pdf_field_id);
-    auto const density =
-        lbm::accessor::Density::get(pdf_field, m_density, bc->cell);
-    return {double_c(density)};
-  }
-
-  bool set_node_density(Utils::Vector3i const &node, double density) override {
-    m_pending_ghost_comm.set(GhostComm::PDF);
-    auto bc = get_block_and_cell(get_lattice(), node, false);
-    if (!bc)
-      return false;
-
-    auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
-    lbm::accessor::Density::set(pdf_field, FloatType_c(density), m_density,
-                                bc->cell);
-
-    return true;
-  }
-
+                   bool consider_ghosts = false) const override;
+  bool set_node_density(Utils::Vector3i const &node, double density) override;
   std::vector<double>
   get_slice_density(Utils::Vector3i const &lower_corner,
                     Utils::Vector3i const &upper_corner) const override;
@@ -638,45 +577,9 @@ public:
   // Population
   std::optional<std::vector<double>>
   get_node_population(Utils::Vector3i const &node,
-                      bool consider_ghosts = false) const override {
-    assert(not(consider_ghosts and m_pending_ghost_comm.test(GhostComm::PDF)));
-    auto bc = get_block_and_cell(get_lattice(), node, consider_ghosts);
-    if (!bc)
-      return std::nullopt;
-
-    auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
-    auto const pop = lbm::accessor::Population::get(pdf_field, bc->cell);
-    std::vector<double> population(Stencil::Size);
-    for (uint_t f = 0u; f < Stencil::Size; ++f) {
-      population[f] = double_c(pop[f]);
-    }
-
-    return {std::move(population)};
-  }
-
+                      bool consider_ghosts = false) const override;
   bool set_node_population(Utils::Vector3i const &node,
-                           std::vector<double> const &population) override {
-    m_pending_ghost_comm.set(GhostComm::PDF);
-    m_pending_ghost_comm.set(GhostComm::VEL);
-    auto bc = get_block_and_cell(get_lattice(), node, false);
-    if (!bc)
-      return false;
-
-    auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
-    auto force_field =
-        bc->block->template getData<VectorField>(m_last_applied_force_field_id);
-    auto vel_field =
-        bc->block->template getData<VectorField>(m_velocity_field_id);
-    std::array<FloatType, Stencil::Size> pop;
-    for (uint_t f = 0u; f < Stencil::Size; ++f) {
-      pop[f] = FloatType_c(population[f]);
-    }
-    lbm::accessor::Population::set(pdf_field, vel_field, force_field, pop,
-                                   bc->cell);
-
-    return true;
-  }
-
+                           std::vector<double> const &population) override;
   std::vector<double>
   get_slice_population(Utils::Vector3i const &lower_corner,
                        Utils::Vector3i const &upper_corner) const override;
@@ -686,51 +589,12 @@ public:
 
   // Force
   std::optional<Utils::Vector3d>
-  get_node_force_to_be_applied(Utils::Vector3i const &node) const override {
-    auto const bc = get_block_and_cell(get_lattice(), node, true);
-    if (!bc)
-      return std::nullopt;
-
-    auto field =
-        bc->block->template getData<VectorField>(m_force_to_be_applied_id);
-    auto const vec = lbm::accessor::Vector::get(field, bc->cell);
-    return zero_centered_to_md(to_vector3d(vec));
-  }
-
+  get_node_force_to_be_applied(Utils::Vector3i const &node) const override;
   std::optional<Utils::Vector3d>
   get_node_last_applied_force(Utils::Vector3i const &node,
-                              bool consider_ghosts = false) const override {
-    assert(not(consider_ghosts and m_pending_ghost_comm.test(GhostComm::LAF)));
-    auto const bc = get_block_and_cell(get_lattice(), node, consider_ghosts);
-    if (!bc)
-      return std::nullopt;
-
-    auto const field =
-        bc->block->template getData<VectorField>(m_last_applied_force_field_id);
-    auto const vec = lbm::accessor::Vector::get(field, bc->cell);
-    return zero_centered_to_md(to_vector3d(vec));
-  }
-
+                              bool consider_ghosts = false) const override;
   bool set_node_last_applied_force(Utils::Vector3i const &node,
-                                   Utils::Vector3d const &force) override {
-    m_pending_ghost_comm.set(GhostComm::VEL);
-    m_pending_ghost_comm.set(GhostComm::LAF);
-    auto bc = get_block_and_cell(get_lattice(), node, false);
-    if (!bc)
-      return false;
-
-    auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
-    auto force_field =
-        bc->block->template getData<VectorField>(m_last_applied_force_field_id);
-    auto vel_field =
-        bc->block->template getData<VectorField>(m_velocity_field_id);
-    auto const vec = to_vector3<FloatType>(force);
-    lbm::accessor::Force::set(pdf_field, vel_field, force_field, vec, m_density,
-                              bc->cell);
-
-    return true;
-  }
-
+                                   Utils::Vector3d const &force) override;
   std::vector<double> get_slice_last_applied_force(
       Utils::Vector3i const &lower_corner,
       Utils::Vector3i const &upper_corner) const override;
@@ -740,18 +604,7 @@ public:
 
   // Pressure tensor
   std::optional<Utils::VectorXd<9>>
-  get_node_pressure_tensor(Utils::Vector3i const &node) const override {
-    auto bc = get_block_and_cell(get_lattice(), node, false);
-    if (!bc)
-      return std::nullopt;
-
-    auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
-    auto tensor =
-        lbm::accessor::PressureTensor::get(pdf_field, m_density, bc->cell);
-    pressure_tensor_correction(tensor);
-    return to_vector9d(tensor);
-  }
-
+  get_node_pressure_tensor(Utils::Vector3i const &node) const override;
   std::vector<double>
   get_slice_pressure_tensor(Utils::Vector3i const &lower_corner,
                             Utils::Vector3i const &upper_corner) const override;
@@ -1079,6 +932,7 @@ protected:
 #include "LBBoundaryAccess.impl.hpp"
 #include "LBCollisionSetup.impl.hpp"
 #include "LBInterpolation.impl.hpp"
+#include "LBNodeAccess.impl.hpp"
 #include "LBSliceAccess.impl.hpp"
 #include "LBWalberlaVTK.impl.hpp"
 
