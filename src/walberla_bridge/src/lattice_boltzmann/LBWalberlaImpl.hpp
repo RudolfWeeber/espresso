@@ -66,13 +66,9 @@
 #include <walberla_bridge/walberla_init.hpp>
 
 #include <utils/Vector.hpp>
-#include <utils/index.hpp>
-#include <utils/interpolation/bspline_3d.hpp>
-#include <utils/math/make_lin_space.hpp>
 
 #include <array>
 #include <bitset>
-#include <cmath>
 #include <cstddef>
 #include <functional>
 #include <initializer_list>
@@ -81,7 +77,6 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
