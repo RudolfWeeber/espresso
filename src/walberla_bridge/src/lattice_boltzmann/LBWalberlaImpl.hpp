@@ -274,35 +274,7 @@ public:
 
     // Set up the communication and register fields
     setup_streaming_communicator();
-
-    m_full_communicator = std::make_shared<RegularFullCommunicator>(blocks);
-    m_full_communicator->addPackInfo(
-        std::make_shared<PackInfo<PdfField>>(m_pdf_field_id));
-    m_full_communicator->addPackInfo(
-        std::make_shared<PackInfo<VectorField>>(m_last_applied_force_field_id));
-    m_full_communicator->addPackInfo(
-        std::make_shared<PackInfo<VectorField>>(m_velocity_field_id));
-
-    m_pdf_communicator = std::make_shared<RegularFullCommunicator>(blocks);
-    m_vel_communicator = std::make_shared<RegularFullCommunicator>(blocks);
-    m_laf_communicator = std::make_shared<RegularFullCommunicator>(blocks);
-    m_pdf_communicator->addPackInfo(
-        std::make_shared<PackInfo<PdfField>>(m_pdf_field_id));
-    m_vel_communicator->addPackInfo(
-        std::make_shared<PackInfo<VectorField>>(m_velocity_field_id));
-    m_laf_communicator->addPackInfo(
-        std::make_shared<PackInfo<VectorField>>(m_last_applied_force_field_id));
-
-    m_boundary_communicator =
-        std::make_shared<BoundaryFullCommunicator>(blocks);
-    m_boundary_communicator->addPackInfo(
-        std::make_shared<field::communication::BoundaryFlagPackInfo<FlagField>>(
-            m_flag_field_id));
-    auto boundary_packinfo = std::make_shared<
-        field::communication::BoundaryPackInfo<FlagField, BoundaryModel>>(
-        m_flag_field_id);
-    boundary_packinfo->setup_boundary_handle(m_lattice, m_boundary);
-    m_boundary_communicator->addPackInfo(boundary_packinfo);
+    setup_full_communicator();
 
     m_pending_ghost_comm.set();
 
@@ -905,6 +877,39 @@ protected:
       return field_id;
     }
 #endif
+  }
+
+  void setup_full_communicator() {
+    auto const &blocks = m_lattice->get_blocks();
+
+    m_full_communicator = std::make_shared<RegularFullCommunicator>(blocks);
+    m_full_communicator->addPackInfo(
+        std::make_shared<PackInfo<PdfField>>(m_pdf_field_id));
+    m_full_communicator->addPackInfo(
+        std::make_shared<PackInfo<VectorField>>(m_last_applied_force_field_id));
+    m_full_communicator->addPackInfo(
+        std::make_shared<PackInfo<VectorField>>(m_velocity_field_id));
+
+    m_pdf_communicator = std::make_shared<RegularFullCommunicator>(blocks);
+    m_vel_communicator = std::make_shared<RegularFullCommunicator>(blocks);
+    m_laf_communicator = std::make_shared<RegularFullCommunicator>(blocks);
+    m_pdf_communicator->addPackInfo(
+        std::make_shared<PackInfo<PdfField>>(m_pdf_field_id));
+    m_vel_communicator->addPackInfo(
+        std::make_shared<PackInfo<VectorField>>(m_velocity_field_id));
+    m_laf_communicator->addPackInfo(
+        std::make_shared<PackInfo<VectorField>>(m_last_applied_force_field_id));
+
+    m_boundary_communicator =
+        std::make_shared<BoundaryFullCommunicator>(blocks);
+    m_boundary_communicator->addPackInfo(
+        std::make_shared<field::communication::BoundaryFlagPackInfo<FlagField>>(
+            m_flag_field_id));
+    auto boundary_packinfo = std::make_shared<
+        field::communication::BoundaryPackInfo<FlagField, BoundaryModel>>(
+        m_flag_field_id);
+    boundary_packinfo->setup_boundary_handle(m_lattice, m_boundary);
+    m_boundary_communicator->addPackInfo(boundary_packinfo);
   }
 
   void setup_streaming_communicator() {
