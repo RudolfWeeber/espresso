@@ -1,3 +1,5 @@
+#pragma once
+
 namespace walberla {
 template <typename FT, typename PdfStencil, lbmpy::Arch AT = lbmpy::Arch::CPU>
 struct FieldTrait {
