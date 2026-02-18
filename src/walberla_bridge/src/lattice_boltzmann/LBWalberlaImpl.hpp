@@ -98,6 +98,9 @@ protected:
       std::variant<typename Kernels::StreamCollisionModelThermalized,
                    typename Kernels::StreamCollisionModelLeesEdwards>;
 
+  using CollisionModelTwoComponent = typename Kernels::CollisionModelTwoComponent;
+  using StreamModelTwoComponent = typename Kernels::StreamModelTwoComponent;
+
 public:
   /** @brief Stencil for collision and streaming operations. */
   using Stencil = stencil::D3Q19;
@@ -173,8 +176,8 @@ protected:
   std::shared_ptr<LatticeWalberla> m_lattice;
 
   // Block data access handles
-  BlockDataID m_pdf_field_id;
-  BlockDataID m_pdf_tmp_field_id;
+  std::array<BlockDataID,2> m_pdf_field_id;
+  std::array<BlockDataID,2> m_pdf_tmp_field_id;
   BlockDataID m_flag_field_id;
 
   BlockDataID m_last_applied_force_field_id;
@@ -207,6 +210,10 @@ protected:
 
   // collision sweep
   std::shared_ptr<CollisionModel> m_collision_model;
+
+  // color gradient sweeps
+  std::shared_ptr<CollisionModelTwoComponent> m_collision_model_two_component;
+  std::shared_ptr<StreamModelTwoComponent> m_stream_model_two_component;
 
   // force reset sweep + external force handling
   std::shared_ptr<ResetForce<PdfField, VectorField>> m_reset_force;
@@ -259,8 +266,10 @@ public:
       throw std::runtime_error("At least one ghost layer must be used");
 
     // Initialize and register fields (must use the "underlying" types)
-    m_pdf_field_id = add_to_storage<_PdfField>("pdfs");
-    m_pdf_tmp_field_id = add_to_storage<_PdfField>("pdfs_tmp");
+    m_pdf_field_id[0] = add_to_storage<_PdfField>("pdfs_a");
+    m_pdf_field_id[1] = add_to_storage<_PdfField>("pdfs_b");
+    m_pdf_tmp_field_id[0] = add_to_storage<_PdfField>("pdfs_a_tmp");
+    m_pdf_tmp_field_id[1] = add_to_storage<_PdfField>("pdfs_b_tmp");
     m_last_applied_force_field_id = add_to_storage<_VectorField>("force last");
     m_force_to_be_applied_id = add_to_storage<_VectorField>("force next");
     m_velocity_field_id = add_to_storage<_VectorField>("velocity");
@@ -272,7 +281,7 @@ public:
 
     // Initialize and register pdf field with zero centered density
     auto pdf_setter = typename Kernels::InitialPDFsSetter(
-        m_force_to_be_applied_id, m_pdf_field_id, m_velocity_field_id, 1.0);
+        m_force_to_be_applied_id, m_pdf_field_id[0], m_velocity_field_id, 1.0);
     for (auto &block : *blocks) {
       pdf_setter(&block);
     }
@@ -297,7 +306,7 @@ public:
     // Instantiate velocity update sweep
     m_update_velocities_from_pdf =
         std::make_shared<typename Kernels::UpdateVelFromPDF>(
-            m_last_applied_force_field_id, m_pdf_field_id, m_velocity_field_id);
+            m_last_applied_force_field_id, m_pdf_field_id[0], m_velocity_field_id);
   }
 
   ~LBWalberlaImpl() override = default;
@@ -366,6 +375,16 @@ private:
                 &cm_variant)) {
       cm->setTime_step(cm->getTime_step() + 1u);
     }
+  }
+
+  void integrate_collide_two_component(std::shared_ptr<BlockStorage> const &blocks) {
+    for (auto &block : *blocks)
+    (*m_collision_model_two_component)(&block);
+  }
+
+  void integrate_stream_two_component(std::shared_ptr<BlockStorage> const &blocks) {
+    for (auto &block : *blocks)
+    (*m_stream_model_two_component)(&block);
   }
 
   void integrate_reset_force(std::shared_ptr<BlockStorage> const &blocks) {
@@ -648,7 +667,7 @@ public:
   void reset_boundary_handling(std::shared_ptr<BlockStorage> const &blocks) {
     auto const [lc, uc] = m_lattice->get_local_grid_range(true);
     m_boundary =
-        std::make_shared<BoundaryModel>(blocks, m_pdf_field_id, m_flag_field_id,
+        std::make_shared<BoundaryModel>(blocks, m_pdf_field_id[0], m_flag_field_id,
                                         CellInterval{to_cell(lc), to_cell(uc)});
   }
 
@@ -694,7 +713,7 @@ public:
   [[nodiscard]] Utils::VectorXd<9> get_pressure_tensor() const override {
     Matrix3<FloatType> tensor(FloatType{0});
     for (auto const &block : *get_lattice().get_blocks()) {
-      auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+      auto pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
       tensor += lbm::accessor::PressureTensor::reduce(pdf_field, m_density);
     }
     auto const &grid_size = get_lattice().get_grid_dimensions();
@@ -707,7 +726,7 @@ public:
   [[nodiscard]] Utils::Vector3d get_momentum() const override {
     Vector3<FloatType> mom(FloatType{0});
     for (auto const &block : *get_lattice().get_blocks()) {
-      auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+      auto pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
       auto force_field =
           block.template getData<VectorField>(m_last_applied_force_field_id);
       mom += lbm::accessor::MomentumDensity::reduce(pdf_field, force_field,
@@ -918,7 +937,7 @@ protected:
 
     m_full_communicator = std::make_shared<RegularFullCommunicator>(blocks);
     m_full_communicator->addPackInfo(
-        std::make_shared<PackInfo<PdfField>>(m_pdf_field_id));
+        std::make_shared<PackInfo<PdfField>>(m_pdf_field_id[0]));
     m_full_communicator->addPackInfo(
         std::make_shared<PackInfo<VectorField>>(m_last_applied_force_field_id));
     m_full_communicator->addPackInfo(
@@ -928,7 +947,7 @@ protected:
     m_vel_communicator = std::make_shared<RegularFullCommunicator>(blocks);
     m_laf_communicator = std::make_shared<RegularFullCommunicator>(blocks);
     m_pdf_communicator->addPackInfo(
-        std::make_shared<PackInfo<PdfField>>(m_pdf_field_id));
+        std::make_shared<PackInfo<PdfField>>(m_pdf_field_id[0]));
     m_vel_communicator->addPackInfo(
         std::make_shared<PackInfo<VectorField>>(m_velocity_field_id));
     m_laf_communicator->addPackInfo(
@@ -958,7 +977,7 @@ protected:
       m_pdf_streaming_communicator =
           std::make_shared<PDFStreamingCommunicator>(blocks);
       m_pdf_streaming_communicator->addPackInfo(
-          std::make_shared<PackInfoPdf>(m_pdf_field_id));
+          std::make_shared<PackInfoPdf>(m_pdf_field_id[0]));
       m_pdf_streaming_communicator->addPackInfo(
           std::make_shared<PackInfoVec>(m_last_applied_force_field_id));
     };
