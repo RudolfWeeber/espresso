@@ -61,7 +61,7 @@ void LBWalberlaImpl<FloatType, Architecture>::set_collision_model(
   m_kT = FloatType_c(kT);
   m_seed = seed;
   auto obj = typename Kernels::StreamCollisionModelThermalized(
-      m_last_applied_force_field_id, m_pdf_field_id, zero_centered_to_lb(m_kT),
+      m_last_applied_force_field_id, m_pdf_field_id[0], zero_centered_to_lb(m_kT),
       omega, omega, omega_odd, omega, seed, uint32_t{0u});
   m_collision_model = std::make_shared<CollisionModel>(std::move(obj));
   m_run_stream_collide_sweep = StreamCollideSweepVisitor(blocks);
@@ -113,14 +113,14 @@ void LBWalberlaImpl<FloatType, Architecture>::set_collision_model(
   auto const lebc_top_index = lebc_slab_total_thickness - lebc_slab_origin;
   m_collision_model = std::make_shared<CollisionModel>(
       typename Kernels::StreamCollisionModelLeesEdwards(
-          m_last_applied_force_field_id, m_pdf_field_id, lebc_bot_index,
+          m_last_applied_force_field_id, m_pdf_field_id[0], lebc_bot_index,
           lebc_top_index, omega, omega, omega_odd, omega, shear_vel));
   m_lees_edwards_callbacks = std::move(lees_edwards_pack);
   m_run_stream_collide_sweep =
       StreamCollideSweepVisitor(blocks, m_lees_edwards_callbacks);
   m_lees_edwards_pdf_interpol_sweep =
       std::make_shared<InterpolateAndShiftAtBoundary<_PdfField, FloatType>>(
-          blocks, m_pdf_field_id, m_pdf_tmp_field_id, n_ghost_layers,
+          blocks, m_pdf_field_id[0], m_pdf_tmp_field_id[0], n_ghost_layers,
           shear_direction, shear_plane_normal,
           m_lees_edwards_callbacks->get_pos_offset);
   m_lees_edwards_vel_interpol_sweep =
