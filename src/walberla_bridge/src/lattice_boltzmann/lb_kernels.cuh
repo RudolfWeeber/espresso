@@ -62,7 +62,7 @@ template <> struct KernelTrait<double, lbmpy::Arch::GPU> {
   using PackInfoVec = pystencils::PackInfoVecDoublePrecisionCUDA;
   using InitialPDFsSetterTwoComponent = pystencils::ColorGradientInitialPDFsSetterDoublePrecisionCUDA;
   using StreamModelTwoComponent = pystencils::ColorGradientStreamSweepDoublePrecisionCUDA;
-  using CollideModelTwoComponent = pystencils::ColorGradientCollideSweepDoublePrecisionCUDA;
+  using CollisionModelTwoComponent = pystencils::ColorGradientCollideSweepDoublePrecisionCUDA;
   using DynamicUBB = lbm::DynamicUBBDoublePrecisionCUDA;
 };
 
@@ -77,7 +77,7 @@ template <> struct KernelTrait<float, lbmpy::Arch::GPU> {
   using PackInfoVec = pystencils::PackInfoVecSinglePrecisionCUDA;
   using InitialPDFsSetterTwoComponent = pystencils::ColorGradientInitialPDFsSetterSinglePrecisionCUDA;
   using StreamModelTwoComponent = pystencils::ColorGradientStreamSweepSinglePrecisionCUDA;
-  using CollideModelTwoComponent = pystencils::ColorGradientCollideSweepSinglePrecisionCUDA;
+  using CollisionModelTwoComponent = pystencils::ColorGradientCollideSweepSinglePrecisionCUDA;
   using DynamicUBB = lbm::DynamicUBBSinglePrecisionCUDA;
 };
 
