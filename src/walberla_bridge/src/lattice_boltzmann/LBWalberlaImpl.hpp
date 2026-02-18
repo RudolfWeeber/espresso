@@ -115,6 +115,7 @@ protected:
   using _VectorField = FieldTrait<FloatType, Stencil>::VectorField;
 
 public:
+  using ScalarField = field::GhostLayerField<FloatType, 1>;
   using PdfField = FieldTrait<FloatType, Stencil, Architecture>::PdfField;
   using VectorField = FieldTrait<FloatType, Stencil, Architecture>::VectorField;
   using FlagField = BoundaryModel::FlagField;
@@ -133,6 +134,7 @@ public:
       VEL, ///< velocities communication
       LAF, ///< last applied forces communication
       UBB, ///< boundaries communication
+      PHI, ///< phasefield communication (two_component)
       SIZE
     };
   };
@@ -186,6 +188,12 @@ protected:
   BlockDataID m_velocity_field_id;
   BlockDataID m_vel_tmp_field_id;
 
+  // Color gradient fields
+  std::array<BlockDataID,2> m_rho_field_id;
+  BlockDataID m_phasefield_id;
+  std::array<BlockDataID,2> m_force_cg_field_id;
+
+
 #if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
   std::optional<BlockDataID> m_pdf_cpu_field_id;
   std::optional<BlockDataID> m_vel_cpu_field_id;
@@ -205,6 +213,10 @@ protected:
   std::shared_ptr<RegularFullCommunicator> m_vel_communicator;
   std::shared_ptr<RegularFullCommunicator> m_laf_communicator;
   std::shared_ptr<PDFStreamingCommunicator> m_pdf_streaming_communicator;
+  // Color gradient communicators
+  std::shared_ptr<RegularFullCommunicator> m_pdf_a_communicator;
+  std::shared_ptr<RegularFullCommunicator> m_pdf_b_communicator;
+  std::shared_ptr<RegularFullCommunicator> m_phasefield_communicator;
   std::bitset<GhostComm::SIZE> m_pending_ghost_comm;
   ResourceObserver m_mpi_cart_comm_observer;
 
@@ -274,6 +286,12 @@ public:
     m_force_to_be_applied_id = add_to_storage<_VectorField>("force next");
     m_velocity_field_id = add_to_storage<_VectorField>("velocity");
     m_vel_tmp_field_id = add_to_storage<_VectorField>("velocity_tmp");
+    m_rho_field_id[0] = add_to_storage<ScalarField>("rho_a");
+    m_rho_field_id[1] = add_to_storage<ScalarField>("rho_b");
+    m_phasefield_id = add_to_storage<ScalarField>("phasefield");
+    m_force_cg_field_id[0] = add_to_storage<_VectorField>("force_a");
+    m_force_cg_field_id[1] = add_to_storage<_VectorField>("force_b");
+
 #if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
     m_host_field_allocator =
         std::make_shared<gpu::HostFieldAllocator<FloatType>>();
@@ -339,19 +357,21 @@ private:
   void integrate_pull_scheme() {
     assert(m_mpi_cart_comm_observer.is_valid());
     auto const &blocks = get_lattice().get_blocks();
-    // Reset force fields
-    integrate_reset_force(blocks);
+    // Reset force fields (not used for CG — forces are direct inputs)
+    if (!has_two_components()) {
+      integrate_reset_force(blocks);
+    }
     if (has_two_components()) {
-      // CG collide
-      integrate_collide_two_component(blocks);
-      // Sync pdfs
-
-      // Update velocities from pdfs
-      integrate_update_velocities_from_pdf(blocks);
       // CG stream
       integrate_stream_two_component(blocks);
-      // Swap populations
-      // Sync phasefield
+       // Sync phasefield
+      m_phasefield_communicator->communicate();
+      
+      // CG collision
+      integrate_collide_two_component(blocks);
+      // Sync pdfs
+      m_pdf_a_communicator->communicate();
+      m_pdf_b_communicator->communicate();
     }
     else {
       // LB stream collide
@@ -477,6 +497,81 @@ public:
   void check_lebc(unsigned int shear_direction,
                   unsigned int shear_plane_normal) const override;
 
+  // ---- Two Component Model ----
+
+  auto has_two_components() const {
+    return m_collision_model_two_component != nullptr;
+  }
+
+  void set_collision_model_two_component(std::array<FloatType,2> viscosity) {
+    // Compute relaxation rates from viscosities: omega = 2/(6*nu + 1)
+    auto const omega_a = FloatType{2} / (FloatType{6} * viscosity[0] + FloatType{1});
+    auto const omega_odd_a = odd_mode_relaxation_rate(omega_a);
+    auto const omega_b = FloatType{2} / (FloatType{6} * viscosity[1] + FloatType{1});
+    auto const omega_odd_b = odd_mode_relaxation_rate(omega_b);
+
+    // Instantiate collide kernel
+    m_collision_model_two_component = std::make_shared<CollisionModelTwoComponent>(
+        m_force_cg_field_id[0], m_force_cg_field_id[1],
+        m_pdf_field_id[0], m_pdf_field_id[1],
+        m_phasefield_id,
+        m_rho_field_id[0], m_rho_field_id[1],
+        m_velocity_field_id,
+        omega_a, omega_b,      // omega_even
+        omega_odd_a, omega_odd_b,  // omega_odd
+        omega_a, omega_b       // omega_shear
+    );
+
+    // Instantiate stream kernel
+    m_stream_model_two_component = std::make_shared<StreamModelTwoComponent>(
+        m_force_cg_field_id[0], m_force_cg_field_id[1],
+        m_pdf_field_id[0], m_pdf_field_id[1],
+        m_phasefield_id,
+        m_rho_field_id[0], m_rho_field_id[1],
+        m_velocity_field_id
+    );
+
+    // Set up CG-specific communicators
+    setup_cg_communicators();
+  }
+
+  void setup_cg_communicators() {
+    auto const &blocks = m_lattice->get_blocks();
+
+    // PDF communicators for both components (D3Q27 for full ghost layer update)
+    m_pdf_a_communicator = std::make_shared<RegularFullCommunicator>(blocks);
+    m_pdf_a_communicator->addPackInfo(
+        std::make_shared<PackInfo<PdfField>>(m_pdf_field_id[0]));
+
+    m_pdf_b_communicator = std::make_shared<RegularFullCommunicator>(blocks);
+    m_pdf_b_communicator->addPackInfo(
+        std::make_shared<PackInfo<PdfField>>(m_pdf_field_id[1]));
+
+    // Phasefield communicator (D3Q27 — color gradient reads D3Q27 neighbors)
+    m_phasefield_communicator = std::make_shared<RegularFullCommunicator>(blocks);
+    m_phasefield_communicator->addPackInfo(
+        std::make_shared<PackInfo<ScalarField>>(m_phasefield_id));
+  }
+
+  void init_two_component() {
+    auto const &blocks = m_lattice->get_blocks();
+    auto cg_init = typename Kernels::InitialPDFsSetterTwoComponent(
+        m_force_cg_field_id[0], m_force_cg_field_id[1],
+        m_pdf_field_id[0], m_pdf_field_id[1],
+        m_phasefield_id,
+        m_rho_field_id[0], m_rho_field_id[1],
+        m_velocity_field_id
+    );
+    for (auto &block : *blocks) {
+        cg_init(&block);
+    }
+    // Communicate phasefield + PDFs after initialization
+    setup_cg_communicators();  // if not already set up
+    m_phasefield_communicator->communicate();
+    m_pdf_a_communicator->communicate();
+    m_pdf_b_communicator->communicate();
+  }
+
 public:
   // ---- Ghost Communication ----
 
@@ -489,6 +584,7 @@ public:
     if (m_pending_ghost_comm.any()) {
       assert(m_mpi_cart_comm_observer.is_valid());
       ghost_communication_boundary();
+      ghost_communication_phasefield();
       ghost_communication_pdf();
       ghost_communication_laf();
       ghost_communication_vel();
@@ -498,10 +594,15 @@ public:
   void ghost_communication_pdf() override {
     if (m_pending_ghost_comm.test(GhostComm::PDF)) {
       assert(m_mpi_cart_comm_observer.is_valid());
-      m_pdf_communicator->communicate();
-      if (has_lees_edwards_bc()) {
-        auto const &blocks = get_lattice().get_blocks();
-        apply_lees_edwards_pdf_interpolation(blocks);
+      if (has_two_components()) {
+        m_pdf_a_communicator->communicate();
+        m_pdf_b_communicator->communicate();
+      } else {
+        m_pdf_communicator->communicate();
+        if (has_lees_edwards_bc()) {
+          auto const &blocks = get_lattice().get_blocks();
+          apply_lees_edwards_pdf_interpolation(blocks);
+        }
       }
       m_pending_ghost_comm.reset(GhostComm::PDF);
     }
@@ -536,6 +637,14 @@ public:
       assert(m_mpi_cart_comm_observer.is_valid());
       m_boundary_communicator->communicate();
       m_pending_ghost_comm.reset(GhostComm::UBB);
+    }
+  }
+
+  void ghost_communication_phasefield() {
+    if (m_pending_ghost_comm.test(GhostComm::PHI)) {
+      assert(m_mpi_cart_comm_observer.is_valid());
+      m_phasefield_communicator->communicate();
+      m_pending_ghost_comm.reset(GhostComm::PHI);
     }
   }
 
@@ -811,6 +920,18 @@ public:
 
   [[nodiscard]] std::size_t get_force_field_id() const noexcept override {
     return m_force_to_be_applied_id;
+  }
+
+  [[nodiscard]] auto get_rho_field_id(int component) const noexcept {
+    return m_rho_field_id[component];
+  }
+
+  [[nodiscard]] auto get_phasefield_id() const noexcept {
+    return m_phasefield_id;
+  }
+
+  [[nodiscard]] auto get_force_cg_field_id(int component) const noexcept {
+    return m_force_cg_field_id[component];
   }
 
   /**
