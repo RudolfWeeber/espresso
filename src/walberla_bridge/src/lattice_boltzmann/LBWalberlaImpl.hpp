@@ -341,26 +341,41 @@ private:
     auto const &blocks = get_lattice().get_blocks();
     // Reset force fields
     integrate_reset_force(blocks);
-    // LB stream collide
-    integrate_stream_collide(blocks);
-    // Mark pending ghost layer updates
-    // As pdf and laf are communicated directly afterwards, they are not set
-    m_pending_ghost_comm.set(GhostComm::VEL);
-    m_pending_ghost_comm.set(GhostComm::LAF);
-    m_pdf_streaming_communicator->communicate();
-    if (has_lees_edwards_bc()) {
-      apply_lees_edwards_pdf_interpolation(blocks);
-      apply_lees_edwards_last_applied_force_interpolation(blocks);
-    }
-    // Handle boundaries
-    if (m_has_boundaries) {
-      integrate_boundaries(blocks);
-    }
-    // Update velocities from pdfs
-    integrate_update_velocities_from_pdf(blocks);
+    if (has_two_components()) {
+      // CG collide
+      integrate_collide_two_component(blocks);
+      // Sync pdfs
 
-    if (has_lees_edwards_bc()) {
-      apply_lees_edwards_vel_interpolation_and_shift(blocks);
+      // Update velocities from pdfs
+      integrate_update_velocities_from_pdf(blocks);
+      // CG stream
+      integrate_stream_two_component(blocks);
+      // Swap populations
+      // Sync phasefield
+    }
+    else {
+      // LB stream collide
+      integrate_stream_collide(blocks);
+      // Mark pending ghost layer updates
+      // As pdf and laf are communicated directly afterwards, they are not set
+      m_pending_ghost_comm.set(GhostComm::VEL);
+      m_pending_ghost_comm.set(GhostComm::LAF);
+      m_pdf_streaming_communicator->communicate();
+      if (has_lees_edwards_bc()) {
+        apply_lees_edwards_pdf_interpolation(blocks);
+        apply_lees_edwards_last_applied_force_interpolation(blocks);
+      }
+      // Handle boundaries
+      if (m_has_boundaries) {
+        integrate_boundaries(blocks);
+      }
+      // Update velocities from pdfs
+      integrate_update_velocities_from_pdf(blocks);
+
+      if (has_lees_edwards_bc()) {
+        apply_lees_edwards_vel_interpolation_and_shift(blocks);
+      }
+
     }
   }
 
