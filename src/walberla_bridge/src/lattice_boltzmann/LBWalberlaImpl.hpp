@@ -167,12 +167,13 @@ protected:
   // ---- Member Variables ----
 
   // Physical parameters
-  FloatType m_viscosity; /// kinematic viscosity
+  std::array<FloatType, 2> m_viscosity; /// kinematic viscosity (per component)
   FloatType m_density;
   FloatType m_kT;
   unsigned int m_seed;
   double m_zc_to_md; // zero-centered conversion factor to MD units
   double m_zc_to_lb; // zero-centered conversion factor to LB units
+  bool m_two_components;
 
   // lattice
   std::shared_ptr<LatticeWalberla> m_lattice;
@@ -265,12 +266,16 @@ public:
   }
 
 public:
-  LBWalberlaImpl(std::shared_ptr<LatticeWalberla> lattice, double viscosity,
-                 double density)
-      : m_viscosity(FloatType_c(viscosity)), m_density(FloatType_c(density)),
+  LBWalberlaImpl(std::shared_ptr<LatticeWalberla> lattice,
+                 std::vector<double> viscosity, double density,
+                 bool two_component)
+      : m_viscosity{FloatType_c(viscosity.at(0)),
+                    two_component ? FloatType_c(viscosity.at(1)) : FloatType{0}},
+        m_density(FloatType_c(density)),
         m_kT(FloatType{0}), m_seed(0u), m_zc_to_md(density),
         m_zc_to_lb(1. / density), m_lattice(std::move(lattice)),
-        m_mpi_cart_comm_observer(get_mpi_cart_comm_observer()) {
+        m_mpi_cart_comm_observer(get_mpi_cart_comm_observer()),
+        m_two_components(two_component) {
 
     auto const &blocks = m_lattice->get_blocks();
     auto const n_ghost_layers = m_lattice->get_ghost_layers();
@@ -279,19 +284,27 @@ public:
 
     // Initialize and register fields (must use the "underlying" types)
     m_pdf_field_id[0] = add_to_storage<_PdfField>("pdfs_a");
-    m_pdf_field_id[1] = add_to_storage<_PdfField>("pdfs_b");
     m_pdf_tmp_field_id[0] = add_to_storage<_PdfField>("pdfs_a_tmp");
-    m_pdf_tmp_field_id[1] = add_to_storage<_PdfField>("pdfs_b_tmp");
     m_last_applied_force_field_id = add_to_storage<_VectorField>("force last");
     m_force_to_be_applied_id = add_to_storage<_VectorField>("force next");
     m_velocity_field_id = add_to_storage<_VectorField>("velocity");
     m_vel_tmp_field_id = add_to_storage<_VectorField>("velocity_tmp");
-    m_rho_field_id[0] = add_to_storage<ScalarField>("rho_a");
-    m_rho_field_id[1] = add_to_storage<ScalarField>("rho_b");
-    m_phasefield_id = add_to_storage<ScalarField>("phasefield");
-    m_force_cg_field_id[0] = add_to_storage<_VectorField>("force_a");
-    m_force_cg_field_id[1] = add_to_storage<_VectorField>("force_b");
 
+    if (!has_two_components()){
+
+    }
+
+    if (has_two_components()) {
+      m_pdf_field_id[1] = add_to_storage<_PdfField>("pdfs_b");
+      m_pdf_tmp_field_id[1] = add_to_storage<_PdfField>("pdfs_b_tmp");
+      m_rho_field_id[0] = add_to_storage<ScalarField>("rho_a");
+      m_rho_field_id[1] = add_to_storage<ScalarField>("rho_b");
+      m_phasefield_id = add_to_storage<ScalarField>("phasefield");
+      m_force_cg_field_id[0] = add_to_storage<_VectorField>("force_a");
+      m_force_cg_field_id[1] = add_to_storage<_VectorField>("force_b");
+
+    }
+     
 #if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
     m_host_field_allocator =
         std::make_shared<gpu::HostFieldAllocator<FloatType>>();
@@ -500,14 +513,14 @@ public:
   // ---- Two Component Model ----
 
   auto has_two_components() const {
-    return m_collision_model_two_component != nullptr;
+    return m_two_components;
   }
 
-  void set_collision_model_two_component(std::array<FloatType,2> viscosity) {
+  void set_collision_model_two_component() {
     // Compute relaxation rates from viscosities: omega = 2/(6*nu + 1)
-    auto const omega_a = FloatType{2} / (FloatType{6} * viscosity[0] + FloatType{1});
+    auto const omega_a = FloatType{2} / (FloatType{6} * m_viscosity[0] + FloatType{1});
     auto const omega_odd_a = odd_mode_relaxation_rate(omega_a);
-    auto const omega_b = FloatType{2} / (FloatType{6} * viscosity[1] + FloatType{1});
+    auto const omega_b = FloatType{2} / (FloatType{6} * m_viscosity[1] + FloatType{1});
     auto const omega_odd_b = odd_mode_relaxation_rate(omega_b);
 
     // Instantiate collide kernel
@@ -703,18 +716,32 @@ public:
                     bool consider_ghosts = false) const override;
   bool set_node_velocity(Utils::Vector3i const &node,
                          Utils::Vector3d const &v) override;
+  std::optional<std::array<Utils::Vector3d, 2>>
+  get_node_velocity_component(Utils::Vector3i const &node,
+                              bool consider_ghosts = false) const;
+  bool set_node_velocity_component(Utils::Vector3i const &node,
+                                   std::array<Utils::Vector3d, 2> const &v);
+
   std::vector<double>
   get_slice_velocity(Utils::Vector3i const &lower_corner,
                      Utils::Vector3i const &upper_corner) const override;
   void set_slice_velocity(Utils::Vector3i const &lower_corner,
                           Utils::Vector3i const &upper_corner,
                           std::vector<double> const &velocity) override;
+  std::vector<double>
+  get_slice_velocity_component(Utils::Vector3i const &lower_corner,
+                               Utils::Vector3i const &upper_corner) const;
+  void set_slice_velocity_component(Utils::Vector3i const &lower_corner,
+                                    Utils::Vector3i const &upper_corner,
+                                    std::vector<double> const &velocity);
+  
 
   // Density
-  std::optional<double>
+  std::optional<std::vector<double>>
   get_node_density(Utils::Vector3i const &node,
                    bool consider_ghosts = false) const override;
-  bool set_node_density(Utils::Vector3i const &node, double density) override;
+  bool set_node_density(Utils::Vector3i const &node,
+                        std::vector<double> const &density) override;
   std::vector<double>
   get_slice_density(Utils::Vector3i const &lower_corner,
                     Utils::Vector3i const &upper_corner) const override;
@@ -868,12 +895,19 @@ public:
     return zero_centered_to_md(m_reset_force->get_ext_force());
   }
 
-  void set_viscosity(double viscosity) override {
-    m_viscosity = FloatType_c(viscosity);
+  void set_viscosity(std::vector<double> const &viscosity) override {
+    m_viscosity[0] = FloatType_c(viscosity.at(0));
+    if (has_two_components() && viscosity.size() > 1) {
+      m_viscosity[1] = FloatType_c(viscosity.at(1));
+    }
   }
 
-  [[nodiscard]] double get_viscosity() const noexcept override {
-    return static_cast<double>(m_viscosity);
+  [[nodiscard]] std::vector<double> get_viscosity() const override {
+    if (has_two_components()) {
+      return {static_cast<double>(m_viscosity[0]),
+              static_cast<double>(m_viscosity[1])};
+    }
+    return {static_cast<double>(m_viscosity[0])};
   }
 
   [[nodiscard]] double get_density() const noexcept override {
@@ -940,7 +974,7 @@ public:
    * stress: factor = nu / (nu + 1/6).
    */
   FloatType pressure_tensor_correction_factor() const {
-    return m_viscosity / (m_viscosity + FloatType{1} / FloatType{6});
+    return m_viscosity[0] / (m_viscosity[0] + FloatType{1} / FloatType{6});
   }
 
   void pressure_tensor_correction(Matrix3<FloatType> &tensor) const {
