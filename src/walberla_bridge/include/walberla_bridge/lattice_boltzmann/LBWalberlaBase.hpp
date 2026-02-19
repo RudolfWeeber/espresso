@@ -170,14 +170,14 @@ public:
                                   Utils::Vector3i const &upper_corner,
                                   std::vector<double> const &velocity) = 0;
 
-  /** @brief Get node density. */
-  virtual std::optional<double>
+  /** @brief Get node density (per component). */
+  virtual std::optional<std::vector<double>>
   get_node_density(Utils::Vector3i const &node,
                    bool consider_ghosts = false) const = 0;
 
-  /** @brief Set node density. */
+  /** @brief Set node density (per component). */
   virtual bool set_node_density(Utils::Vector3i const &node,
-                                double density) = 0;
+                                std::vector<double> const &density) = 0;
 
   /** @brief Get slice density. */
   virtual std::vector<double>
@@ -275,11 +275,11 @@ public:
   /** @brief Get the global external force. */
   virtual Utils::Vector3d get_external_force() const noexcept = 0;
 
-  /** @brief Set the fluid viscosity. */
-  virtual void set_viscosity(double viscosity) = 0;
+  /** @brief Set the fluid viscosity (per component). */
+  virtual void set_viscosity(std::vector<double> const &viscosity) = 0;
 
-  /** @brief Get the fluid viscosity. */
-  virtual double get_viscosity() const noexcept = 0;
+  /** @brief Get the fluid viscosity (per component). */
+  [[nodiscard]] virtual std::vector<double> get_viscosity() const = 0;
 
   /** @brief Get the fluid density. */
   virtual double get_density() const noexcept = 0;
