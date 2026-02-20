@@ -79,31 +79,54 @@ bool LBWalberlaImpl<FloatType, Architecture>::set_node_velocity(
 }
 
 template <typename FloatType, lbmpy::Arch Architecture>
-std::optional<double> LBWalberlaImpl<FloatType, Architecture>::get_node_density(
+std::optional<std::vector<double>>
+LBWalberlaImpl<FloatType, Architecture>::get_node_density(
     Utils::Vector3i const &node, bool consider_ghosts) const {
   assert(not(consider_ghosts and m_pending_ghost_comm.test(GhostComm::PDF)));
   auto bc = get_block_and_cell(get_lattice(), node, consider_ghosts);
   if (!bc)
     return std::nullopt;
 
+  if (has_two_components()) {
+    auto const rho_a_field =
+        bc->block->template uncheckedFastGetData<ScalarField>(
+            m_rho_field_id[0]);
+    auto const rho_b_field =
+        bc->block->template uncheckedFastGetData<ScalarField>(
+            m_rho_field_id[1]);
+    return std::vector<double>{
+        double_c(rho_a_field->get(bc->cell)),
+        double_c(rho_b_field->get(bc->cell))};
+  }
+
   auto pdf_field =
-      bc->block->template uncheckedFastGetData<PdfField>(m_pdf_field_id);
+      bc->block->template uncheckedFastGetData<PdfField>(m_pdf_field_id[0]);
   auto const density =
       lbm::accessor::Density::get(pdf_field, m_density, bc->cell);
-  return {double_c(density)};
+  return std::vector<double>{double_c(density)};
 }
 
 template <typename FloatType, lbmpy::Arch Architecture>
 bool LBWalberlaImpl<FloatType, Architecture>::set_node_density(
-    Utils::Vector3i const &node, double density) {
+    Utils::Vector3i const &node, std::vector<double> const &density) {
   m_pending_ghost_comm.set(GhostComm::PDF);
   auto bc = get_block_and_cell(get_lattice(), node, false);
   if (!bc)
     return false;
 
-  auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
-  lbm::accessor::Density::set(pdf_field, FloatType_c(density), m_density,
-                              bc->cell);
+  if (has_two_components()) {
+    auto rho_a_field =
+        bc->block->template getData<ScalarField>(m_rho_field_id[0]);
+    auto rho_b_field =
+        bc->block->template getData<ScalarField>(m_rho_field_id[1]);
+    rho_a_field->get(bc->cell) = FloatType_c(density.at(0));
+    rho_b_field->get(bc->cell) = FloatType_c(density.at(1));
+  } else {
+    auto pdf_field =
+        bc->block->template getData<PdfField>(m_pdf_field_id[0]);
+    lbm::accessor::Density::set(pdf_field, FloatType_c(density.at(0)),
+                                m_density, bc->cell);
+  }
 
   return true;
 }
@@ -117,7 +140,22 @@ LBWalberlaImpl<FloatType, Architecture>::get_node_population(
   if (!bc)
     return std::nullopt;
 
-  auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
+  if (has_two_components()) {
+    auto pdf_field_a =
+        bc->block->template getData<PdfField>(m_pdf_field_id[0]);
+    auto pdf_field_b =
+        bc->block->template getData<PdfField>(m_pdf_field_id[1]);
+    auto const pop_a = lbm::accessor::Population::get(pdf_field_a, bc->cell);
+    auto const pop_b = lbm::accessor::Population::get(pdf_field_b, bc->cell);
+    std::vector<double> population(2u * Stencil::Size);
+    for (uint_t f = 0u; f < Stencil::Size; ++f) {
+      population[f] = double_c(pop_a[f]);
+      population[Stencil::Size + f] = double_c(pop_b[f]);
+    }
+    return {std::move(population)};
+  }
+
+  auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id[0]);
   auto const pop = lbm::accessor::Population::get(pdf_field, bc->cell);
   std::vector<double> population(Stencil::Size);
   for (uint_t f = 0u; f < Stencil::Size; ++f) {
@@ -136,17 +174,39 @@ bool LBWalberlaImpl<FloatType, Architecture>::set_node_population(
   if (!bc)
     return false;
 
-  auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
-  auto force_field =
-      bc->block->template getData<VectorField>(m_last_applied_force_field_id);
-  auto vel_field =
-      bc->block->template getData<VectorField>(m_velocity_field_id);
-  std::array<FloatType, Stencil::Size> pop;
-  for (uint_t f = 0u; f < Stencil::Size; ++f) {
-    pop[f] = FloatType_c(population[f]);
+  if (has_two_components()) {
+    auto pdf_field_a =
+        bc->block->template getData<PdfField>(m_pdf_field_id[0]);
+    auto pdf_field_b =
+        bc->block->template getData<PdfField>(m_pdf_field_id[1]);
+    auto force_field =
+        bc->block->template getData<VectorField>(m_last_applied_force_field_id);
+    auto vel_field =
+        bc->block->template getData<VectorField>(m_velocity_field_id);
+    std::array<FloatType, Stencil::Size> pop_a;
+    std::array<FloatType, Stencil::Size> pop_b;
+    for (uint_t f = 0u; f < Stencil::Size; ++f) {
+      pop_a[f] = FloatType_c(population[f]);
+      pop_b[f] = FloatType_c(population[Stencil::Size + f]);
+    }
+    lbm::accessor::Population::set(pdf_field_a, vel_field, force_field, pop_a,
+                                   bc->cell);
+    lbm::accessor::Population::set(pdf_field_b, vel_field, force_field, pop_b,
+                                   bc->cell);
+  } else {
+    auto pdf_field =
+        bc->block->template getData<PdfField>(m_pdf_field_id[0]);
+    auto force_field =
+        bc->block->template getData<VectorField>(m_last_applied_force_field_id);
+    auto vel_field =
+        bc->block->template getData<VectorField>(m_velocity_field_id);
+    std::array<FloatType, Stencil::Size> pop;
+    for (uint_t f = 0u; f < Stencil::Size; ++f) {
+      pop[f] = FloatType_c(population[f]);
+    }
+    lbm::accessor::Population::set(pdf_field, vel_field, force_field, pop,
+                                   bc->cell);
   }
-  lbm::accessor::Population::set(pdf_field, vel_field, force_field, pop,
-                                 bc->cell);
 
   return true;
 }
