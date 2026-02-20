@@ -239,6 +239,12 @@ public:
   /** @brief Configure the default collision model. */
   virtual void set_collision_model(double kT, unsigned int seed) = 0;
 
+  /** @brief Configure the two-component color gradient collision model. */
+  virtual void set_collision_model_two_component() = 0;
+
+  /** @brief Check if this is a two-component LB instance. */
+  [[nodiscard]] virtual bool has_two_components() const noexcept = 0;
+
   /** @brief Configure a thermalized collision model for Lees-Edwards. */
   virtual void
   set_collision_model(std::unique_ptr<LeesEdwardsPack> &&lees_edwards_pack) = 0;

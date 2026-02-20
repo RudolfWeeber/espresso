@@ -141,12 +141,14 @@ Variant LBFluid::do_call_method(std::string const &name,
 }
 
 void LBFluid::make_instance(VariantMap const &params) {
-  auto const visc = get_value<double>(params, "kinematic_viscosity");
+  auto lb_visc = get_value<std::vector<double>>(params, "kinematic_viscosity");
   auto const dens = get_value<double>(params, "density");
   auto const gpu = get_value_or(params, "gpu", false);
   auto const precision = get_value_or(params, "single_precision", gpu);
   auto const lb_lattice = m_lattice->lattice();
-  auto const lb_visc = m_conv_visc * visc;
+  for (auto &vi : lb_visc) {
+    vi *= m_conv_visc;
+  }
   auto const lb_dens = m_conv_dens * dens;
   auto *make_new_instance = &new_lb_walberla_cpu;
   if (gpu) {
@@ -172,7 +174,7 @@ void LBFluid::do_construct(VariantMap const &params) {
       get_value_or<decltype(m_vtk_writers)>(params, "vtk_writers", {});
   auto const tau = get_value<double>(params, "tau");
   auto const agrid = get_value<double>(m_lattice->get_parameter("agrid"));
-  auto const visc = get_value<double>(params, "kinematic_viscosity");
+  auto const visc = get_value<std::vector<double>>(params, "kinematic_viscosity");
   auto const dens = get_value<double>(params, "density");
   auto const kT = get_value<double>(params, "kT");
   auto const ext_f = get_value<Utils::Vector3d>(params, "ext_force_density");
@@ -191,7 +193,10 @@ void LBFluid::do_construct(VariantMap const &params) {
     m_conv_press = Utils::int_pow<2>(tau) * Utils::int_pow<1>(agrid);
     m_conv_force = Utils::int_pow<2>(tau) / Utils::int_pow<1>(agrid);
     m_conv_force_dens = Utils::int_pow<2>(tau) * Utils::int_pow<2>(agrid);
-    auto const lb_visc = m_conv_visc * visc;
+    auto lb_visc = visc;
+    for (auto &vi : lb_visc) {
+      vi *= m_conv_visc;
+    }
     auto const lb_dens = m_conv_dens * dens;
     auto const lb_kT = m_conv_energy * kT;
     auto const lb_ext_f = m_conv_force_dens * ext_f;
@@ -204,12 +209,18 @@ void LBFluid::do_construct(VariantMap const &params) {
     if (lb_dens <= 0.) {
       throw std::domain_error("Parameter 'density' must be > 0");
     }
-    if (lb_visc < 0.) {
-      throw std::domain_error("Parameter 'kinematic_viscosity' must be >= 0");
+    for (auto const &vi : lb_visc) {
+      if (vi < 0.) {
+        throw std::domain_error("Parameter 'kinematic_viscosity' must be >= 0");
+      }
     }
     make_instance(params);
     m_mpi_cart_comm_observer = ::walberla::get_mpi_cart_comm_observer();
-    m_instance->set_collision_model(lb_kT, seed);
+    if (m_instance->has_two_components()) {
+      m_instance->set_collision_model_two_component();
+    } else {
+      m_instance->set_collision_model(lb_kT, seed);
+    }
     m_instance->set_external_force(lb_ext_f);
     m_instance->ghost_communication();
     for (auto &vtk : m_vtk_writers) {

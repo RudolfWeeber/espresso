@@ -66,8 +66,9 @@ class LBFluid(ScriptInterfaceHelper, espressomd.detail.walberla.LatticeModel):
         LB time step, must be an integer multiple of the MD time step.
     density : :obj:`float`
         Fluid density.
-    kinematic_viscosity : :obj:`float`
-        Fluid kinematic viscosity.
+    kinematic_viscosity : :obj:`float` or (:obj:`float`, :obj:`float`)
+        Fluid kinematic viscosity. A scalar for single-component LB,
+        or a tuple of two values for two-component color gradient LB.
     ext_force_density : (3,) array_like of :obj:`float`, optional
         Force density applied on the fluid.
     kT : :obj:`float`, optional
@@ -193,6 +194,31 @@ class LBFluid(ScriptInterfaceHelper, espressomd.detail.walberla.LatticeModel):
         elif lattice_params:
             any_key = list(lattice_params.keys())[0]
             raise ValueError(f"cannot provide both 'lattice' and '{any_key}'")
+
+        # normalize kinematic_viscosity to a list
+        visc = params.get("kinematic_viscosity")
+        if visc is not None:
+            if isinstance(visc, (int, float)):
+                params["kinematic_viscosity"] = [visc]
+            elif isinstance(visc, (list, tuple, np.ndarray)):
+                params["kinematic_viscosity"] = list(visc)
+                if len(params["kinematic_viscosity"]) not in (1, 2):
+                    raise ValueError(
+                        "Parameter 'kinematic_viscosity' must be a scalar "
+                        "or a list of 1 or 2 values")
+            else:
+                raise TypeError(
+                    "Parameter 'kinematic_viscosity' must be a float "
+                    "or a list of floats")
+
+        # two-component mode validation
+        visc = params.get("kinematic_viscosity")
+        if visc is not None and len(visc) == 2:
+            kT = params.get("kT", 0.)
+            if kT > 0.:
+                raise ValueError(
+                    "Thermalization (kT > 0) is not supported "
+                    "for two-component color gradient LB")
 
         utils.check_required_keys(self.required_keys(), params.keys())
         utils.check_valid_keys(self.valid_keys(), params.keys())

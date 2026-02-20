@@ -48,20 +48,23 @@
 #include <waLBerlaDefinitions.h>
 
 #include <memory>
+#include <vector>
 #include <stdexcept>
 
 std::shared_ptr<LBWalberlaBase>
 new_lb_walberla_gpu(std::shared_ptr<LatticeWalberla> const &lattice,
-                    double viscosity, double density, bool single_precision) {
+                    std::vector<double> viscosity, double density,
+                    bool single_precision) {
 #if not defined(WALBERLA_BUILD_WITH_CUDA)
   throw std::runtime_error("waLBerla was compiled without CUDA support");
 #else
+  auto const two_component = (viscosity.size() == 2);
   if (single_precision) {
     return std::make_shared<walberla::LBWalberlaImpl<float, lbmpy::Arch::GPU>>(
-        lattice, viscosity, density);
+        lattice, viscosity, density, two_component);
   }
   return std::make_shared<walberla::LBWalberlaImpl<double, lbmpy::Arch::GPU>>(
-      lattice, viscosity, density);
+      lattice, viscosity, density, two_component);
 #endif
 }
 

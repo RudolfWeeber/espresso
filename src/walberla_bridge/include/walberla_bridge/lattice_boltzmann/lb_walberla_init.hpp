@@ -23,13 +23,16 @@
 #include <walberla_bridge/lattice_boltzmann/LBWalberlaBase.hpp>
 
 #include <memory>
+#include <vector>
 
 std::shared_ptr<LBWalberlaBase>
 new_lb_walberla_cpu(std::shared_ptr<LatticeWalberla> const &lattice,
-                    double viscosity, double density, bool single_precision);
+                    std::vector<double> viscosity, double density,
+                    bool single_precision);
 
 std::shared_ptr<LBWalberlaBase>
 new_lb_walberla_gpu(std::shared_ptr<LatticeWalberla> const &lattice,
-                    double viscosity, double density, bool single_precision);
+                    std::vector<double> viscosity, double density,
+                    bool single_precision);
 
 void set_device_id_per_rank();

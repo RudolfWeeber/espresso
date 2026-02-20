@@ -512,11 +512,11 @@ public:
 
   // ---- Two Component Model ----
 
-  auto has_two_components() const {
+  [[nodiscard]] bool has_two_components() const noexcept override {
     return m_two_components;
   }
 
-  void set_collision_model_two_component() {
+  void set_collision_model_two_component() override {
     // Compute relaxation rates from viscosities: omega = 2/(6*nu + 1)
     auto const omega_a = FloatType{2} / (FloatType{6} * m_viscosity[0] + FloatType{1});
     auto const omega_odd_a = odd_mode_relaxation_rate(omega_a);
@@ -545,10 +545,10 @@ public:
     );
 
     // Set up CG-specific communicators
-    setup_cg_communicators();
+    setup_communicators_two_component();
   }
 
-  void setup_cg_communicators() {
+  void setup_communicators_two_component() {
     auto const &blocks = m_lattice->get_blocks();
 
     // PDF communicators for both components (D3Q27 for full ghost layer update)
@@ -568,7 +568,7 @@ public:
 
   void init_two_component() {
     auto const &blocks = m_lattice->get_blocks();
-    auto cg_init = typename Kernels::InitialPDFsSetterTwoComponent(
+    auto init_two_component = typename Kernels::InitialPDFsSetterTwoComponent(
         m_force_cg_field_id[0], m_force_cg_field_id[1],
         m_pdf_field_id[0], m_pdf_field_id[1],
         m_phasefield_id,
@@ -576,10 +576,10 @@ public:
         m_velocity_field_id
     );
     for (auto &block : *blocks) {
-        cg_init(&block);
+        init_two_component(&block);
     }
     // Communicate phasefield + PDFs after initialization
-    setup_cg_communicators();  // if not already set up
+    setup_communicators_two_component();  // if not already set up
     m_phasefield_communicator->communicate();
     m_pdf_a_communicator->communicate();
     m_pdf_b_communicator->communicate();

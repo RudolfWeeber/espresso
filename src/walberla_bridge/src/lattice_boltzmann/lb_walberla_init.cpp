@@ -28,11 +28,13 @@
 
 std::shared_ptr<LBWalberlaBase>
 new_lb_walberla_cpu(std::shared_ptr<LatticeWalberla> const &lattice,
-                    double viscosity, double density, bool single_precision) {
+                    std::vector<double> viscosity, double density,
+                    bool single_precision) {
+  auto const two_component = (viscosity.size() == 2);
   if (single_precision) {
     return std::make_shared<walberla::LBWalberlaImpl<float, lbmpy::Arch::CPU>>(
-        lattice, viscosity, density);
+        lattice, viscosity, density, two_component);
   }
   return std::make_shared<walberla::LBWalberlaImpl<double, lbmpy::Arch::CPU>>(
-      lattice, viscosity, density);
+      lattice, viscosity, density, two_component);
 }

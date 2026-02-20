@@ -120,10 +120,19 @@ public:
          [this]() { return m_instance->get_density() / m_conv_dens; }},
         {"kinematic_viscosity",
          [this](Variant const &v) {
-           auto const visc = m_conv_visc * get_value<double>(v);
+           auto visc = get_value<std::vector<double>>(v);
+           for (auto &vi : visc) {
+             vi *= m_conv_visc;
+           }
            m_instance->set_viscosity(visc);
          },
-         [this]() { return m_instance->get_viscosity() / m_conv_visc; }},
+         [this]() {
+           auto visc = m_instance->get_viscosity();
+           for (auto &vi : visc) {
+             vi /= m_conv_visc;
+           }
+           return visc;
+         }},
         {"ext_force_density",
          [this](Variant const &v) {
            auto const ext_f = m_conv_force_dens * get_value<Utils::Vector3d>(v);
