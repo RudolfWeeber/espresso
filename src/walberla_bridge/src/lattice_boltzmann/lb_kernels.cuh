@@ -44,9 +44,7 @@
 namespace walberla {
 namespace detail {
 
-using lbmpy::Arch;
-
-template <> struct KernelTrait<double, Arch::GPU> {
+template <> struct KernelTrait<double, lbmpy::Arch::GPU> {
   using StreamCollisionModelThermalized =
       pystencils::StreamCollideSweepThermalizedDoublePrecisionCUDA;
   using StreamCollisionModelLeesEdwards =
@@ -58,7 +56,7 @@ template <> struct KernelTrait<double, Arch::GPU> {
   using DynamicUBB = lbm::DynamicUBBDoublePrecisionCUDA;
 };
 
-template <> struct KernelTrait<float, Arch::GPU> {
+template <> struct KernelTrait<float, lbmpy::Arch::GPU> {
   using StreamCollisionModelThermalized =
       pystencils::StreamCollideSweepThermalizedSinglePrecisionCUDA;
   using StreamCollisionModelLeesEdwards =

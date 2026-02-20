@@ -51,11 +51,12 @@
 #include "../utils/types_conversion.hpp"
 #include "InterpolateAndShiftAtBoundary.hpp"
 #include "ResetForce.hpp"
+#include "lb_fields.hpp"
 #include "lb_kernels.hpp"
 #if defined(__CUDACC__)
+#include "lb_fields.cuh"
 #include "lb_kernels.cuh"
 #endif
-#include "lb_fields.hpp"
 
 #include <walberla_bridge/Architecture.hpp>
 #include <walberla_bridge/BlockAndCell.hpp>

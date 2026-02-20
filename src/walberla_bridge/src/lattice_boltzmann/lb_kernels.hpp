@@ -49,9 +49,8 @@
 namespace walberla {
 namespace detail {
 
-using lbmpy::Arch;
-
-template <typename FT = double, Arch AT = Arch::CPU> struct KernelTrait {
+template <typename FT = double, lbmpy::Arch AT = lbmpy::Arch::CPU>
+struct KernelTrait {
 #ifdef __AVX2__
   using StreamCollisionModelThermalized =
       pystencils::StreamCollideSweepThermalizedDoublePrecisionAVX;
@@ -70,7 +69,7 @@ template <typename FT = double, Arch AT = Arch::CPU> struct KernelTrait {
   using DynamicUBB = lbm::DynamicUBBDoublePrecision;
 };
 
-template <> struct KernelTrait<float, Arch::CPU> {
+template <> struct KernelTrait<float, lbmpy::Arch::CPU> {
 #ifdef __AVX2__
   using StreamCollisionModelThermalized =
       pystencils::StreamCollideSweepThermalizedSinglePrecisionAVX;
