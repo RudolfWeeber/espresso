@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2024 The ESPResSo project
+ * Copyright (C) 2019-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -28,12 +28,9 @@
 
 #include <blockforest/Initialization.h>
 #include <blockforest/StructuredBlockForest.h>
-#include <blockforest/communication/UniformBufferedScheme.h>
 #include <domain_decomposition/BlockDataID.h>
 #include <domain_decomposition/IBlock.h>
 #include <field/AddToStorage.h>
-#include <field/GhostLayerField.h>
-#include <field/communication/PackInfo.h>
 #include <field/vtk/FlagFieldCellFilter.h>
 #include <field/vtk/VTKWriter.h>
 #include <stencil/D3Q19.h>
@@ -41,8 +38,6 @@
 #if defined(__CUDACC__)
 #include <gpu/AddGPUFieldToStorage.h>
 #include <gpu/HostFieldAllocator.h>
-#include <gpu/communication/MemcpyPackInfo.h>
-#include <gpu/communication/UniformGPUScheme.h>
 #endif
 
 #include "../BoundaryHandling.hpp"
@@ -88,9 +83,6 @@ namespace walberla {
 /** @brief Class that runs and controls the LB on waLBerla. */
 template <typename FloatType, lbmpy::Arch Architecture>
 class LBWalberlaImpl : public LBWalberlaBase {
-
-  // ---- Types & Constants ----
-
 protected:
   using Kernels = detail::KernelTrait<FloatType, Architecture>;
   using BoundaryModel = BoundaryHandling<FloatType, Vector3<FloatType>,
@@ -159,8 +151,6 @@ protected:
   using PackInfo =
       FieldTrait<FloatType, Stencil, Architecture>::template PackInfo<Field>;
 
-  // ---- Member Variables ----
-
   // Physical parameters
   FloatType m_viscosity; /// kinematic viscosity
   FloatType m_density;
@@ -228,7 +218,22 @@ protected:
   std::shared_ptr<gpu::HostFieldAllocator<FloatType>> m_host_field_allocator;
 #endif
 
-  // ---- Constructor & Destructor ----
+public:
+  template <typename T> FloatType FloatType_c(T t) const {
+    return numeric_cast<FloatType>(t);
+  }
+
+  [[nodiscard]] std::size_t stencil_size() const noexcept override {
+    return static_cast<std::size_t>(Stencil::Size);
+  }
+
+  [[nodiscard]] bool is_double_precision() const noexcept override {
+    return std::is_same_v<FloatType, double>;
+  }
+
+  [[nodiscard]] bool is_gpu() const noexcept override {
+    return Architecture == lbmpy::Arch::GPU;
+  }
 
 public:
   LBWalberlaImpl(std::shared_ptr<LatticeWalberla> lattice, double viscosity,
@@ -287,9 +292,6 @@ public:
 
   ~LBWalberlaImpl() override = default;
 
-  // ---- Integration (Core LB Algorithm) ----
-
-public:
   void integrate() override {
     integrate_pull_scheme();
     integrate_vtk_writers();
@@ -370,9 +372,6 @@ private:
       (*m_update_velocities_from_pdf)(&block);
   }
 
-  // ---- Collision Model ----
-  // @see LBCollisionSetup.impl.hpp
-
 private:
   /**
    * @brief Visitor for dispatching stream-collide sweeps.
@@ -430,9 +429,6 @@ public:
   void check_lebc(unsigned int shear_direction,
                   unsigned int shear_plane_normal) const override;
 
-  // ---- Ghost Communication ----
-
-public:
   /**
    * @brief Perform all pending ghost layer updates.
    * Uses a lazy scheme: ghost communications are only executed when
@@ -504,8 +500,6 @@ public:
     m_pending_ghost_comm.reset(GhostComm::LAF);
   }
 
-  // ---- Lees-Edwards Boundary Conditions ----
-
 private:
   auto has_lees_edwards_bc() const {
     return std::holds_alternative<
@@ -538,10 +532,6 @@ public:
     apply_lees_edwards_last_applied_force_interpolation(blocks);
   }
 
-  // ---- Node & Slice Accessors (by quantity) ----
-  // @see LBNodeAccess.impl.hpp, LBSliceAccess.impl.hpp
-
-public:
   // Velocity
   std::optional<Utils::Vector3d>
   get_node_velocity(Utils::Vector3i const &node,
@@ -602,9 +592,6 @@ public:
   get_slice_pressure_tensor(Utils::Vector3i const &lower_corner,
                             Utils::Vector3i const &upper_corner) const override;
 
-  // ---- Interpolation (Position-Based Access) ----
-  // @see LBInterpolation.impl.hpp
-
 private:
   /** @brief Return a B-spline interpolation kernel for force distribution. */
   auto make_force_interpolation_kernel() const;
@@ -630,9 +617,6 @@ public:
                      bool consider_points_in_halo = false) const override;
   std::vector<double>
   get_densities_at_pos(std::vector<Utils::Vector3d> const &pos) override;
-
-  // ---- Boundary Handling ----
-  // @see LBBoundaryAccess.impl.hpp
 
 public:
   void reset_boundary_handling(std::shared_ptr<BlockStorage> const &blocks) {
@@ -676,8 +660,6 @@ private:
   [[nodiscard]] Utils::Vector3i flat_index_to_node(int index) const;
   [[nodiscard]] Utils::Vector3i get_neighbor_node(Utils::Vector3i const &node,
                                                   int dir) const;
-
-  // ---- Global Reductions & Physical Parameters ----
 
 public:
   // Global pressure tensor
@@ -757,25 +739,6 @@ public:
     cm->setTime_step(static_cast<uint32_t>(counter));
   }
 
-  // ---- Utility & Query Methods ----
-
-public:
-  template <typename T> FloatType FloatType_c(T t) const {
-    return numeric_cast<FloatType>(t);
-  }
-
-  [[nodiscard]] std::size_t stencil_size() const noexcept override {
-    return static_cast<std::size_t>(Stencil::Size);
-  }
-
-  [[nodiscard]] bool is_double_precision() const noexcept override {
-    return std::is_same_v<FloatType, double>;
-  }
-
-  [[nodiscard]] bool is_gpu() const noexcept override {
-    return Architecture == lbmpy::Arch::GPU;
-  }
-
   [[nodiscard]] LatticeWalberla const &get_lattice() const noexcept override {
     return *m_lattice;
   }
@@ -851,9 +814,6 @@ protected:
     return transformed_data;
   }
 
-  // ---- VTK Output ----
-  // @see LBWalberlaVTK.impl.hpp
-
 public:
   void register_vtk_field_filters(walberla::vtk::VTKOutput &vtk_obj) override {
     field::FlagFieldCellFilter<FlagField> fluid_filter(m_flag_field_id);
@@ -864,8 +824,6 @@ public:
   void register_vtk_field_writers(walberla::vtk::VTKOutput &vtk_obj,
                                   LatticeModel::units_map const &units,
                                   int flag_observables) override;
-
-  // ---- Private Infrastructure Helpers ----
 
 protected:
   /**
@@ -983,6 +941,8 @@ protected:
   }
 };
 
+} // namespace walberla
+
 // Out-of-class template method definitions
 #include "LBBoundaryAccess.impl.hpp"
 #include "LBCollisionSetup.impl.hpp"
@@ -990,5 +950,3 @@ protected:
 #include "LBNodeAccess.impl.hpp"
 #include "LBSliceAccess.impl.hpp"
 #include "LBWalberlaVTK.impl.hpp"
-
-} // namespace walberla

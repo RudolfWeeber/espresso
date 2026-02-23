@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2024 The ESPResSo project
+ * Copyright (C) 2019-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -25,9 +25,14 @@
  * @ref walberla::LBWalberlaImpl.
  */
 
-// ---- Node access methods (out-of-class definitions) ----
+#include <utils/Vector.hpp>
 
-// Velocity
+#include <array>
+#include <optional>
+#include <utility>
+#include <vector>
+
+namespace walberla {
 
 template <typename FloatType, lbmpy::Arch Architecture>
 std::optional<Utils::Vector3d>
@@ -73,8 +78,6 @@ bool LBWalberlaImpl<FloatType, Architecture>::set_node_velocity(
   return true;
 }
 
-// Density
-
 template <typename FloatType, lbmpy::Arch Architecture>
 std::optional<double> LBWalberlaImpl<FloatType, Architecture>::get_node_density(
     Utils::Vector3i const &node, bool consider_ghosts) const {
@@ -104,8 +107,6 @@ bool LBWalberlaImpl<FloatType, Architecture>::set_node_density(
 
   return true;
 }
-
-// Population
 
 template <typename FloatType, lbmpy::Arch Architecture>
 std::optional<std::vector<double>>
@@ -149,8 +150,6 @@ bool LBWalberlaImpl<FloatType, Architecture>::set_node_population(
 
   return true;
 }
-
-// Force
 
 template <typename FloatType, lbmpy::Arch Architecture>
 std::optional<Utils::Vector3d>
@@ -202,8 +201,6 @@ bool LBWalberlaImpl<FloatType, Architecture>::set_node_last_applied_force(
   return true;
 }
 
-// Pressure tensor
-
 template <typename FloatType, lbmpy::Arch Architecture>
 std::optional<Utils::VectorXd<9>>
 LBWalberlaImpl<FloatType, Architecture>::get_node_pressure_tensor(
@@ -218,3 +215,5 @@ LBWalberlaImpl<FloatType, Architecture>::get_node_pressure_tensor(
   pressure_tensor_correction(tensor);
   return to_vector9d(tensor);
 }
+
+} // namespace walberla

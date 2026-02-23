@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2024 The ESPResSo project
+ * Copyright (C) 2019-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -25,7 +25,12 @@
  * @ref walberla::LBWalberlaImpl.
  */
 
-// ---- Slice access methods (out-of-class definitions) ----
+#include <utils/Vector.hpp>
+
+#include <span>
+#include <vector>
+
+namespace walberla {
 
 template <typename FloatType, lbmpy::Arch Architecture>
 std::vector<double> LBWalberlaImpl<FloatType, Architecture>::get_slice_velocity(
@@ -299,3 +304,5 @@ LBWalberlaImpl<FloatType, Architecture>::get_slice_pressure_tensor(
       });
   return out;
 }
+
+} // namespace walberla

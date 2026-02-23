@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2024 The ESPResSo project
+ * Copyright (C) 2019-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -24,6 +24,12 @@
  * Out-of-class VTK writer registration definition for
  * @ref walberla::LBWalberlaImpl.
  */
+
+#include <memory>
+#include <optional>
+#include <string>
+
+namespace walberla {
 
 /**
  * @brief Base class for LB field VTK writers.
@@ -116,8 +122,6 @@ protected:
   FloatType const m_off_diag_factor;
 };
 
-// ---- VTK registration (out-of-class definition) ----
-
 template <typename FloatType, lbmpy::Arch Architecture>
 void LBWalberlaImpl<FloatType, Architecture>::register_vtk_field_writers(
     walberla::vtk::VTKOutput &vtk_obj, LatticeModel::units_map const &units,
@@ -183,3 +187,5 @@ void LBWalberlaImpl<FloatType, Architecture>::register_vtk_field_writers(
             pressure_tensor_correction_factor()));
   }
 }
+
+} // namespace walberla

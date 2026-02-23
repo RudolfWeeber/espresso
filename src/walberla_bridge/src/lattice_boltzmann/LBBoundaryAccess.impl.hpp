@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2024 The ESPResSo project
+ * Copyright (C) 2019-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -25,7 +25,12 @@
  * @ref walberla::LBWalberlaImpl.
  */
 
-// ---- Boundary access methods (out-of-class definitions) ----
+#include <utils/Vector.hpp>
+
+#include <optional>
+#include <vector>
+
+namespace walberla {
 
 template <typename FloatType, lbmpy::Arch Architecture>
 std::optional<Utils::Vector3d>
@@ -296,3 +301,5 @@ LBWalberlaImpl<FloatType, Architecture>::get_boundary_force() const {
   }
   return zero_centered_to_md(to_vector3d(force));
 }
+
+} // namespace walberla

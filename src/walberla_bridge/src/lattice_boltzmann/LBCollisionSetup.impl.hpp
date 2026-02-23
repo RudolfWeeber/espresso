@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2024 The ESPResSo project
+ * Copyright (C) 2019-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -25,7 +25,11 @@
  * @ref walberla::LBWalberlaImpl.
  */
 
-// ---- Collision model setup (out-of-class definitions) ----
+#include <memory>
+#include <stdexcept>
+#include <utility>
+
+namespace walberla {
 
 template <typename FloatType, lbmpy::Arch Architecture>
 FloatType
@@ -145,3 +149,5 @@ void LBWalberlaImpl<FloatType, Architecture>::check_lebc(
     }
   }
 }
+
+} // namespace walberla

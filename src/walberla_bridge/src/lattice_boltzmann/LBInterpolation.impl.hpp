@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2024 The ESPResSo project
+ * Copyright (C) 2019-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -25,8 +25,28 @@
  * @ref walberla::LBWalberlaImpl.
  */
 
-/** @brief Exception for accessing a lattice node outside the local domain
- *  and ghost layers during B-spline interpolation. */
+#include <utils/Vector.hpp>
+#include <utils/interpolation/bspline_3d.hpp>
+
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <iostream>
+#include <iterator>
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+namespace walberla {
+
+/**
+ * @brief Exception for accessing a lattice node outside the local domain
+ *  and ghost layers during B-spline interpolation.
+ */
 class interpolation_illegal_access : public std::runtime_error {
 public:
   interpolation_illegal_access(std::string const &field,
@@ -38,7 +58,11 @@ public:
   }
 };
 
-// ---- Interpolation methods (out-of-class definitions) ----
+void interpolate_bspline_at_pos(Utils::Vector3d const &pos, auto const &&f) {
+  Utils::Interpolation::bspline_3d<2>(
+      pos, f, Utils::Vector3d::broadcast(1.), // grid spacing
+      Utils::Vector3d::broadcast(.5));        // offset
+}
 
 template <typename FloatType, lbmpy::Arch Architecture>
 std::function<bool(Utils::Vector3d const &)>
@@ -326,3 +350,5 @@ bool LBWalberlaImpl<FloatType, Architecture>::add_force_at_pos(
   kernel(pos, force);
   return true;
 }
+
+} // namespace walberla
