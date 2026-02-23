@@ -84,6 +84,8 @@ namespace walberla {
 template <typename FloatType, lbmpy::Arch Architecture>
 class LBWalberlaImpl : public LBWalberlaBase {
 protected:
+  // ---- Types & Constants ----
+
   using Kernels = detail::KernelTrait<FloatType, Architecture>;
   using BoundaryModel = BoundaryHandling<FloatType, Vector3<FloatType>,
                                          typename Kernels::DynamicUBB>;
@@ -150,6 +152,9 @@ protected:
   template <class Field>
   using PackInfo =
       FieldTrait<FloatType, Stencil, Architecture>::template PackInfo<Field>;
+
+protected:
+  // ---- Member Variables ----
 
   // Physical parameters
   FloatType m_viscosity; /// kinematic viscosity
@@ -292,6 +297,8 @@ public:
 
   ~LBWalberlaImpl() override = default;
 
+  // ---- Integration (Core LB Algorithm) ----
+
   void integrate() override {
     integrate_pull_scheme();
     integrate_vtk_writers();
@@ -373,6 +380,8 @@ private:
   }
 
 private:
+  // ---- Collision Model ----
+
   /**
    * @brief Visitor for dispatching stream-collide sweeps.
    * Handles both thermalized and Lees-Edwards collision models
@@ -428,6 +437,9 @@ public:
       std::unique_ptr<LeesEdwardsPack> &&lees_edwards_pack) override;
   void check_lebc(unsigned int shear_direction,
                   unsigned int shear_plane_normal) const override;
+
+public:
+  // ---- Ghost Communication ----
 
   /**
    * @brief Perform all pending ghost layer updates.
@@ -501,6 +513,8 @@ public:
   }
 
 private:
+  // ---- Lees-Edwards Boundary Conditions ----
+
   auto has_lees_edwards_bc() const {
     return std::holds_alternative<
         typename Kernels::StreamCollisionModelLeesEdwards>(*m_collision_model);
@@ -531,6 +545,9 @@ public:
     apply_lees_edwards_vel_interpolation_and_shift(blocks);
     apply_lees_edwards_last_applied_force_interpolation(blocks);
   }
+
+public:
+  // ---- Node & Slice Accessors (by quantity) ----
 
   // Velocity
   std::optional<Utils::Vector3d>
@@ -593,6 +610,8 @@ public:
                             Utils::Vector3i const &upper_corner) const override;
 
 private:
+  // ---- Interpolation (position-based access) ----
+
   /** @brief Return a B-spline interpolation kernel for force distribution. */
   auto make_force_interpolation_kernel() const;
   /** @brief Return a B-spline interpolation kernel for velocity readout. */
@@ -619,6 +638,8 @@ public:
   get_densities_at_pos(std::vector<Utils::Vector3d> const &pos) override;
 
 public:
+  // ---- Boundary Handling ----
+
   void reset_boundary_handling(std::shared_ptr<BlockStorage> const &blocks) {
     auto const [lc, uc] = m_lattice->get_local_grid_range(true);
     m_boundary =
@@ -662,6 +683,8 @@ private:
                                                   int dir) const;
 
 public:
+  // ---- Global Reductions & Physical Parameters ----
+
   // Global pressure tensor
   [[nodiscard]] Utils::VectorXd<9> get_pressure_tensor() const override {
     Matrix3<FloatType> tensor(FloatType{0});
@@ -815,6 +838,8 @@ protected:
   }
 
 public:
+  // ---- File I/O ----
+
   void register_vtk_field_filters(walberla::vtk::VTKOutput &vtk_obj) override {
     field::FlagFieldCellFilter<FlagField> fluid_filter(m_flag_field_id);
     fluid_filter.addFlag(Boundary_flag);
@@ -826,6 +851,8 @@ public:
                                   int flag_observables) override;
 
 protected:
+  // ---- Private Infrastructure Helpers ----
+
   /**
    * @brief Convenience function to add a field with a custom allocator.
    *
@@ -949,4 +976,4 @@ protected:
 #include "LBInterpolation.impl.hpp"
 #include "LBNodeAccess.impl.hpp"
 #include "LBSliceAccess.impl.hpp"
-#include "LBWalberlaVTK.impl.hpp"
+#include "LBVTK.impl.hpp"
