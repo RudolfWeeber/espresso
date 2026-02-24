@@ -459,6 +459,11 @@ void RegularDecomposition::init_cell_interactions() {
       throw std::runtime_error(
           "The MPI nodegrid must be 1 in the fully connected direction.");
     }
+    if (not m_box.periodic(fc_normal)) {
+      throw std::runtime_error(
+          "The fully connected boundary requires periodicity in the "
+          "boundary normal direction.");
+    }
   }
 
   /* We only consider local cells (e.g. not halo cells), which

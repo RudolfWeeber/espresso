@@ -330,6 +330,29 @@ class RegularDecomposition(ut.TestCase):
                 f"{[0, y_bot, z_hi]} and {[0, y_top, z_lo]} "
                 f"(iteration {i})")
 
+    def test_fully_connected_boundary_periodicity_check(self):
+        """Check that setting up a fully connected boundary raises an error
+        when the boundary normal direction is non-periodic."""
+        system = self.system
+        system.part.clear()
+        old_periodicity = list(system.periodicity)
+        # Ensure node_grid is compatible with fc direction="y"
+        # (y must have 1 rank) so the node_grid check passes first
+        if system.cell_system.node_grid[1] != 1:
+            ng = system.cell_system.node_grid
+            system.cell_system.node_grid = [ng[0], 1, ng[1] * ng[2]]
+        try:
+            system.periodicity = [True, True, False]
+            with self.assertRaisesRegex(
+                    RuntimeError,
+                    "fully connected boundary requires periodicity"):
+                system.cell_system.set_regular_decomposition(
+                    fully_connected_boundary=dict(
+                        direction="y", boundary="z"))
+        finally:
+            system.periodicity = old_periodicity
+            system.cell_system.set_regular_decomposition()
+
 
 if __name__ == "__main__":
     ut.main()
