@@ -485,7 +485,7 @@ void RegularDecomposition::init_cell_interactions() {
           // Fully connected is only needed at the box surface
           if (at_boundary(fc_boundary, {m, n, o})) {
             lower_index[fc_direction] = -1;
-            upper_index[fc_direction] = global_size[fc_boundary];
+            upper_index[fc_direction] = global_size[fc_direction];
           }
         }
 
