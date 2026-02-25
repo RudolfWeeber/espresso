@@ -84,9 +84,12 @@ class LinearShear(ScriptInterfaceHelper):
     Parameters
     ----------
     initial_pos_offset : :obj:`float`
-       Positional offset at the Lees--Edwards boundary at t=0.
+       Positional offset at the Lees--Edwards boundary at ``time=time_0``.
     shear_velocity : :obj:`float`
        Shear velocity (velocity jump) across the Lees--Edwards boundary.
+    time_0 : :obj:`float`
+       Reference time for the linear shear. The positional offset is
+       ``initial_pos_offset + (time - time_0) * shear_velocity``.
 
     """
     _so_name = "LeesEdwards::LinearShear"
