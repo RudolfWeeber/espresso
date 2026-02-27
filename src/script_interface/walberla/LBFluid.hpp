@@ -120,7 +120,14 @@ public:
          [this]() { return m_instance->get_density() / m_conv_dens; }},
         {"kinematic_viscosity",
          [this](Variant const &v) {
-           auto visc = get_value<std::vector<double>>(v);
+           std::vector<double> visc;
+           if (is_type<double>(v)) {
+             visc = {get_value<double>(v)};
+           } else if (is_type<int>(v)) {
+             visc = {static_cast<double>(get_value<int>(v))};
+           } else {
+             visc = get_value<std::vector<double>>(v);
+           }
            for (auto &vi : visc) {
              vi *= m_conv_visc;
            }

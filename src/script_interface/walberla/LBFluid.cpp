@@ -136,6 +136,11 @@ Variant LBFluid::do_call_method(std::string const &name,
   if (name == "get_lattice_speed") {
     return 1. / m_conv_speed;
   }
+  if (name == "init_two_component") {
+    m_instance->init_two_component();
+    m_instance->ghost_communication();
+    return {};
+  }
 
   return Base::do_call_method(name, params);
 }

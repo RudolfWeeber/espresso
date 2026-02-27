@@ -79,7 +79,7 @@ void LBWalberlaImpl<FloatType, Architecture>::set_slice_velocity(
       [&](auto &block, auto const &bci, auto const &ci,
           auto const &block_offset) {
         assert(velocity.size() == 3u * ci.numCells());
-        auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+        auto pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
         auto force_field =
             block.template getData<VectorField>(m_last_applied_force_field_id);
         auto vel_field =
@@ -142,7 +142,7 @@ void LBWalberlaImpl<FloatType, Architecture>::set_slice_last_applied_force(
       [&](auto &block, auto const &bci, auto const &ci,
           auto const &block_offset) {
         assert(force.size() == 3u * ci.numCells());
-        auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+        auto pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
         auto force_field =
             block.template getData<VectorField>(m_last_applied_force_field_id);
         auto vel_field =
@@ -176,7 +176,7 @@ LBWalberlaImpl<FloatType, Architecture>::get_slice_population(
           auto const &block_offset) {
         if (out.empty())
           out.resize(stencil_size() * ci.numCells());
-        auto const pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+        auto const pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
         auto const values = lbm::accessor::Population::get(pdf_field, bci);
 
         auto kernel = [&values, &out, this](unsigned const block_index,
@@ -202,7 +202,7 @@ void LBWalberlaImpl<FloatType, Architecture>::set_slice_population(
       [&](auto &block, auto const &bci, auto const &ci,
           auto const &block_offset) {
         assert(population.size() == stencil_size() * ci.numCells());
-        auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+        auto pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
         auto force_field =
             block.template getData<VectorField>(m_last_applied_force_field_id);
         auto vel_field =
@@ -235,7 +235,7 @@ std::vector<double> LBWalberlaImpl<FloatType, Architecture>::get_slice_density(
           auto const &block_offset) {
         if (out.empty())
           out.resize(ci.numCells());
-        auto const pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+        auto const pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
         auto const values =
             lbm::accessor::Density::get(pdf_field, m_density, bci);
 
@@ -260,7 +260,7 @@ void LBWalberlaImpl<FloatType, Architecture>::set_slice_density(
       [&](auto &block, auto const &bci, auto const &ci,
           auto const &block_offset) {
         assert(density.size() == ci.numCells());
-        auto pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+        auto pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
         std::vector<FloatType> values(bci.numCells());
 
         auto kernel = [&values, &density](unsigned const block_index,
@@ -286,7 +286,7 @@ LBWalberlaImpl<FloatType, Architecture>::get_slice_pressure_tensor(
           auto const &block_offset) {
         if (out.empty())
           out.resize(9u * ci.numCells());
-        auto const pdf_field = block.template getData<PdfField>(m_pdf_field_id);
+        auto const pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
         auto values =
             lbm::accessor::PressureTensor::get(pdf_field, m_density, bci);
 

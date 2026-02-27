@@ -65,8 +65,13 @@ bool LBWalberlaImpl<FloatType, Architecture>::set_node_velocity(
   if (!bc)
     return false;
 
+  if (has_two_components()) {
+    throw std::runtime_error(
+        "set_node_velocity is not supported for two-component LB");
+  }
+
   // We have to set both, the pdf and the stored velocity field
-  auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
+  auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id[0]);
   auto vel_field =
       bc->block->template getData<VectorField>(m_velocity_field_id);
   auto force_field =
@@ -249,7 +254,7 @@ bool LBWalberlaImpl<FloatType, Architecture>::set_node_last_applied_force(
   if (!bc)
     return false;
 
-  auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
+  auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id[0]);
   auto force_field =
       bc->block->template getData<VectorField>(m_last_applied_force_field_id);
   auto vel_field =
@@ -269,7 +274,7 @@ LBWalberlaImpl<FloatType, Architecture>::get_node_pressure_tensor(
   if (!bc)
     return std::nullopt;
 
-  auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id);
+  auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id[0]);
   auto tensor =
       lbm::accessor::PressureTensor::get(pdf_field, m_density, bc->cell);
   pressure_tensor_correction(tensor);

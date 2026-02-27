@@ -73,12 +73,32 @@ Variant LBFluidNode::do_call_method(std::string const &name,
   }
   if (name == "get_density") {
     auto const result = m_lb_fluid->get_node_density(m_index);
-    return Utils::Mpi::reduce_optional(context()->get_comm(), result) /
-           m_conv_dens;
+    auto const vec =
+        Utils::Mpi::reduce_optional(context()->get_comm(), result);
+    if (vec.size() == 1u) {
+      return vec[0] / m_conv_dens;
+    }
+    // Two-component mode: return vector of densities
+    std::vector<double> out(vec.size());
+    for (std::size_t i = 0u; i < vec.size(); ++i) {
+      out[i] = vec[i] / m_conv_dens;
+    }
+    return out;
   }
   if (name == "set_density") {
-    auto const dens = get_value<double>(params, "value");
-    m_lb_fluid->set_node_density(m_index, dens * m_conv_dens);
+    auto const &v = params.at("value");
+    std::vector<double> dens;
+    if (is_type<double>(v)) {
+      dens = {get_value<double>(v) * m_conv_dens};
+    } else if (is_type<int>(v)) {
+      dens = {static_cast<double>(get_value<int>(v)) * m_conv_dens};
+    } else {
+      dens = get_value<std::vector<double>>(v);
+      for (auto &d : dens) {
+        d *= m_conv_dens;
+      }
+    }
+    m_lb_fluid->set_node_density(m_index, dens);
     m_lb_fluid->ghost_communication();
     return {};
   }

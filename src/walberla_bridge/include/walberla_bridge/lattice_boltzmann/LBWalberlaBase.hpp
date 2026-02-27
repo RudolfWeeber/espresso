@@ -242,6 +242,9 @@ public:
   /** @brief Configure the two-component color gradient collision model. */
   virtual void set_collision_model_two_component() = 0;
 
+  /** @brief Initialize PDFs from density and velocity fields (two-component). */
+  virtual void init_two_component() = 0;
+
   /** @brief Check if this is a two-component LB instance. */
   [[nodiscard]] virtual bool has_two_components() const noexcept = 0;
 

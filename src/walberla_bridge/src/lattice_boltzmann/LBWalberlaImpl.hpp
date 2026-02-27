@@ -370,10 +370,7 @@ private:
   void integrate_pull_scheme() {
     assert(m_mpi_cart_comm_observer.is_valid());
     auto const &blocks = get_lattice().get_blocks();
-    // Reset force fields (not used for CG — forces are direct inputs)
-    if (!has_two_components()) {
-      integrate_reset_force(blocks);
-    }
+    
     if (has_two_components()) {
       // CG stream
       integrate_stream_two_component(blocks);
@@ -385,8 +382,9 @@ private:
       // Sync pdfs
       m_pdf_a_communicator->communicate();
       m_pdf_b_communicator->communicate();
-    }
-    else {
+    } else {
+      // Reset force fields (not used for CG — forces are direct inputs)
+      integrate_reset_force(blocks);
       // LB stream collide
       integrate_stream_collide(blocks);
       // Mark pending ghost layer updates
@@ -493,7 +491,7 @@ private:
   StreamCollideSweepVisitor m_run_stream_collide_sweep{};
 
   /** @brief Relaxation rate omega from kinematic viscosity: 2/(6*nu+1). */
-  FloatType shear_mode_relaxation_rate() const;
+  FloatType shear_mode_relaxation_rate(std::size_t component = 0u) const;
   /**
    * @brief Odd-mode relaxation rate for the magic parameter relation.
    * Ensures optimal bounce-back wall location for the two-relaxation-time
@@ -518,9 +516,9 @@ public:
 
   void set_collision_model_two_component() override {
     // Compute relaxation rates from viscosities: omega = 2/(6*nu + 1)
-    auto const omega_a = FloatType{2} / (FloatType{6} * m_viscosity[0] + FloatType{1});
+    auto const omega_a = shear_mode_relaxation_rate(0u);
     auto const omega_odd_a = odd_mode_relaxation_rate(omega_a);
-    auto const omega_b = FloatType{2} / (FloatType{6} * m_viscosity[1] + FloatType{1});
+    auto const omega_b = shear_mode_relaxation_rate(1u);
     auto const omega_odd_b = odd_mode_relaxation_rate(omega_b);
 
     // Instantiate collide kernel
@@ -594,28 +592,63 @@ public:
    * they have been marked as pending by a preceding write operation.
    */
   void ghost_communication() override {
-    if (m_pending_ghost_comm.any()) {
-      assert(m_mpi_cart_comm_observer.is_valid());
+    if (!m_pending_ghost_comm.any())
+      return;
+    assert(m_mpi_cart_comm_observer.is_valid());
+    if (has_two_components()) {
+      ghost_communication_two_component();
+    } else {
       ghost_communication_boundary();
-      ghost_communication_phasefield();
       ghost_communication_pdf();
       ghost_communication_laf();
       ghost_communication_vel();
     }
   }
 
+  /** @brief Ghost communication for two-component color gradient LB. */
+  void ghost_communication_two_component() {
+    ghost_communication_two_component_pdf();
+    ghost_communication_two_component_phasefield();
+    ghost_communication_two_component_vel();
+    ghost_communication_two_component_laf();
+  }
+
+  void ghost_communication_two_component_pdf() {
+    if (m_pending_ghost_comm.test(GhostComm::PDF)) {
+      m_pdf_a_communicator->communicate();
+      m_pdf_b_communicator->communicate();
+      m_pending_ghost_comm.reset(GhostComm::PDF);
+    }
+  }
+
+  void ghost_communication_two_component_phasefield() {
+    if (m_pending_ghost_comm.test(GhostComm::PHI)) {
+      m_phasefield_communicator->communicate();
+      m_pending_ghost_comm.reset(GhostComm::PHI);
+    }
+  }
+
+  void ghost_communication_two_component_vel() {
+    if (m_pending_ghost_comm.test(GhostComm::VEL)) {
+      m_vel_communicator->communicate();
+      m_pending_ghost_comm.reset(GhostComm::VEL);
+    }
+  }
+
+  void ghost_communication_two_component_laf() {
+    if (m_pending_ghost_comm.test(GhostComm::LAF)) {
+      m_laf_communicator->communicate();
+      m_pending_ghost_comm.reset(GhostComm::LAF);
+    }
+  }
+
   void ghost_communication_pdf() override {
     if (m_pending_ghost_comm.test(GhostComm::PDF)) {
       assert(m_mpi_cart_comm_observer.is_valid());
-      if (has_two_components()) {
-        m_pdf_a_communicator->communicate();
-        m_pdf_b_communicator->communicate();
-      } else {
-        m_pdf_communicator->communicate();
-        if (has_lees_edwards_bc()) {
-          auto const &blocks = get_lattice().get_blocks();
-          apply_lees_edwards_pdf_interpolation(blocks);
-        }
+      m_pdf_communicator->communicate();
+      if (has_lees_edwards_bc()) {
+        auto const &blocks = get_lattice().get_blocks();
+        apply_lees_edwards_pdf_interpolation(blocks);
       }
       m_pending_ghost_comm.reset(GhostComm::PDF);
     }
@@ -650,14 +683,6 @@ public:
       assert(m_mpi_cart_comm_observer.is_valid());
       m_boundary_communicator->communicate();
       m_pending_ghost_comm.reset(GhostComm::UBB);
-    }
-  }
-
-  void ghost_communication_phasefield() {
-    if (m_pending_ghost_comm.test(GhostComm::PHI)) {
-      assert(m_mpi_cart_comm_observer.is_valid());
-      m_phasefield_communicator->communicate();
-      m_pending_ghost_comm.reset(GhostComm::PHI);
     }
   }
 

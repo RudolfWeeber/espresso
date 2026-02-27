@@ -146,12 +146,12 @@ void LBWalberlaImpl<FloatType, Architecture>::register_vtk_field_writers(
       allocate_cpu_field_if_empty.template operator()<PdfFieldCpu>(
           blocks, "pdfs_cpu", m_pdf_cpu_field_id);
       vtk_obj.addBeforeFunction(gpu::fieldCpyFunctor<PdfFieldCpu, PdfField>(
-          blocks, *m_pdf_cpu_field_id, m_pdf_field_id));
+          blocks, *m_pdf_cpu_field_id, m_pdf_field_id[0]));
     }
 #endif
     vtk_obj.addCellDataWriter(
         std::make_shared<DensityVTKWriter<FloatType, PdfField, float>>(
-            m_pdf_field_id, "density", unit_conversion));
+            m_pdf_field_id[0], "density", unit_conversion));
   }
   if (flag_observables & static_cast<int>(OutputVTK::velocity_vector)) {
     auto const unit_conversion = FloatType_c(units.at("velocity"));
@@ -178,12 +178,12 @@ void LBWalberlaImpl<FloatType, Architecture>::register_vtk_field_writers(
       allocate_cpu_field_if_empty.template operator()<PdfFieldCpu>(
           blocks, "pdfs_cpu", m_pdf_cpu_field_id);
       vtk_obj.addBeforeFunction(gpu::fieldCpyFunctor<PdfFieldCpu, PdfField>(
-          blocks, *m_pdf_cpu_field_id, m_pdf_field_id));
+          blocks, *m_pdf_cpu_field_id, m_pdf_field_id[0]));
     }
 #endif
     vtk_obj.addCellDataWriter(
         std::make_shared<PressureTensorVTKWriter<FloatType, PdfField, float>>(
-            m_pdf_field_id, "pressure_tensor", unit_conversion,
+            m_pdf_field_id[0], "pressure_tensor", unit_conversion,
             pressure_tensor_correction_factor()));
   }
 }

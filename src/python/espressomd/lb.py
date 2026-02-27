@@ -195,13 +195,13 @@ class LBFluid(ScriptInterfaceHelper, espressomd.detail.walberla.LatticeModel):
             any_key = list(lattice_params.keys())[0]
             raise ValueError(f"cannot provide both 'lattice' and '{any_key}'")
 
-        # normalize kinematic_viscosity to a list
+        # normalize kinematic_viscosity to a list of floats
         visc = params.get("kinematic_viscosity")
         if visc is not None:
             if isinstance(visc, (int, float)):
-                params["kinematic_viscosity"] = [visc]
+                params["kinematic_viscosity"] = [float(visc)]
             elif isinstance(visc, (list, tuple, np.ndarray)):
-                params["kinematic_viscosity"] = list(visc)
+                params["kinematic_viscosity"] = [float(v) for v in visc]
                 if len(params["kinematic_viscosity"]) not in (1, 2):
                     raise ValueError(
                         "Parameter 'kinematic_viscosity' must be a scalar "
@@ -348,6 +348,14 @@ class LBFluid(ScriptInterfaceHelper, espressomd.detail.walberla.LatticeModel):
         return self.call_method(
             "get_boundary_force_from_shape",
             raster=array_variant(mask.flatten()))
+
+    def init_two_component(self):
+        """
+        Initialize PDFs from the density and velocity fields for
+        two-component color gradient LB. Call this after setting the
+        per-node densities.
+        """
+        self.call_method("init_two_component")
 
 
 @script_interface_register

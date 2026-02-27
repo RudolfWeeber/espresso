@@ -33,8 +33,9 @@ namespace walberla {
 
 template <typename FloatType, lbmpy::Arch Architecture>
 FloatType
-LBWalberlaImpl<FloatType, Architecture>::shear_mode_relaxation_rate() const {
-  return FloatType{2} / (FloatType{6} * m_viscosity[0] + FloatType{1});
+LBWalberlaImpl<FloatType, Architecture>::shear_mode_relaxation_rate(
+    std::size_t component) const {
+  return FloatType{2} / (FloatType{6} * m_viscosity[component] + FloatType{1});
 }
 
 template <typename FloatType, lbmpy::Arch Architecture>

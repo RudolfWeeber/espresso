@@ -198,7 +198,7 @@ auto LBWalberlaImpl<FloatType,
   return [&](Utils::Vector3d const &pos) {
     double acc = 0.;
     interpolate_bspline_at_pos(
-        pos, [&, density = m_density, field_id = m_pdf_field_id](
+        pos, [&, density = m_density, field_id = m_pdf_field_id[0]](
                  std::array<int, 3> const node, double weight) {
           // Nodes with zero weight might not be accessible, because they can be
           // outside ghost layers
@@ -299,7 +299,7 @@ LBWalberlaImpl<FloatType, Architecture>::get_densities_at_pos(
       }
     }
     auto const gl = lattice.get_ghost_layers();
-    auto field = block.template uncheckedFastGetData<PdfField>(m_pdf_field_id);
+    auto field = block.template uncheckedFastGetData<PdfField>(m_pdf_field_id[0]);
     auto res =
         lbm::accessor::Interpolation::get_rho(field, host_pos, m_density, gl);
     if constexpr (std::is_same_v<FloatType, double>) {
