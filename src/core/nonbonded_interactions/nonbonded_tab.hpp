@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -18,8 +18,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef CORE_TABULATED_HPP
-#define CORE_TABULATED_HPP
+
+#pragma once
 
 /** \file
  *  Routines to calculate the energy and/or force for particle pairs via
@@ -30,7 +30,7 @@
 
 #include "config/config.hpp"
 
-#ifdef TABULATED
+#ifdef ESPRESSO_TABULATED
 
 #include "TabulatedPotential.hpp"
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
@@ -59,5 +59,4 @@ inline double tabulated_pair_energy(IA_parameters const &ia_params,
   return 0.0;
 }
 
-#endif // TABULATED
-#endif
+#endif // ESPRESSO_TABULATED

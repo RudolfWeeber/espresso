@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -21,17 +21,17 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
 
 #include "actor/traits.hpp"
+
+#include "Particle.hpp"
 
 #include "magnetostatics/actor.hpp"
 #include "magnetostatics/dipolar_direct_sum.hpp"
 #include "magnetostatics/dp3m.hpp"
-
-#include <ParticleRange.hpp>
 
 #include <memory>
 #include <variant>
@@ -77,7 +77,7 @@ struct dlc_data {
  */
 struct DipolarLayerCorrection : public Dipoles::Actor<DipolarLayerCorrection> {
   using BaseSolver = std::variant<
-#ifdef DP3M
+#ifdef ESPRESSO_DP3M
       std::shared_ptr<DipolarP3M>,
 #endif
       std::shared_ptr<DipolarDirectSum>>;
@@ -98,7 +98,7 @@ struct DipolarLayerCorrection : public Dipoles::Actor<DipolarLayerCorrection> {
   void on_activation() {
     visit_base_solver(
         [this](auto &solver) { solver->bind_system(m_system.lock()); });
-    sanity_checks_node_grid();
+    sanity_checks_periodicity();
     /* None of the DLC parameters depend on the DP3M parameters,
      * but the DP3M parameters depend on the DLC parameters during tuning,
      * therefore DLC needs to be tuned before DP3M. */
@@ -113,10 +113,10 @@ struct DipolarLayerCorrection : public Dipoles::Actor<DipolarLayerCorrection> {
     visit_base_solver([](auto &actor) { actor->on_boxl_change(); });
   }
   void on_node_grid_change() const {
-    sanity_checks_node_grid();
     visit_base_solver([](auto &solver) { solver->on_node_grid_change(); });
   }
   void on_periodicity_change() const {
+    sanity_checks_periodicity();
     visit_base_solver([](auto &solver) { solver->on_periodicity_change(); });
   }
   void on_cell_structure_change() const {
@@ -129,7 +129,7 @@ struct DipolarLayerCorrection : public Dipoles::Actor<DipolarLayerCorrection> {
   }
 
   void sanity_checks() const {
-    sanity_checks_node_grid();
+    sanity_checks_periodicity();
     visit_base_solver([](auto &actor) { actor->sanity_checks(); });
   }
 
@@ -140,10 +140,14 @@ struct DipolarLayerCorrection : public Dipoles::Actor<DipolarLayerCorrection> {
     }
   }
 
+  /** @brief Calculate long-range dipolar energy with corrections. */
+  double long_range_energy() const;
+  /** @brief Accumulate long-range dipolar forces with corrections. */
+  void add_long_range_forces() const;
   /** @brief Calculate the dipolar energy correction. */
-  double energy_correction(ParticleRange const &particles) const;
+  double energy_correction() const;
   /** @brief Add the dipolar force and torque corrections. */
-  void add_force_corrections(ParticleRange const &particles) const;
+  void add_force_corrections() const;
 
   void adapt_solver();
 
@@ -158,11 +162,11 @@ private:
   void check_gap(Particle const &p) const;
   double tune_far_cut() const;
 
-  void sanity_checks_node_grid() const;
+  void sanity_checks_periodicity() const;
 
   template <class Visitor> void visit_base_solver(Visitor &&visitor) const {
     std::visit(visitor, base_solver);
   }
 };
 
-#endif // DIPOLES
+#endif // ESPRESSO_DIPOLES

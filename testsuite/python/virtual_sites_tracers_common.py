@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2013-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -48,7 +48,8 @@ class VirtualSitesTracersCommon:
         self.system.lb = None
         self.lbf = self.LBClass(
             kT=0.0, agrid=self.agrid, density=1., kinematic_viscosity=1.8,
-            tau=self.system.time_step, ext_force_density=ext_force_density)
+            tau=self.system.time_step, ext_force_density=ext_force_density,
+            **self.lb_params)
         self.system.lb = self.lbf
         self.system.thermostat.set_lb(LB_fluid=self.lbf, gamma=1.)
 

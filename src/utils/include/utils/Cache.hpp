@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2022 The ESPResSo project
+ * Copyright (C) 2017-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -27,8 +27,7 @@
 
 namespace Utils {
 template <typename Key, typename Value> class Cache {
-  using map_type =
-      std::unordered_map<Key, typename std::add_const<Value>::type>;
+  using map_type = std::unordered_map<Key, typename std::add_const_t<Value>>;
 
 public:
   using key_type = Key;
@@ -95,7 +94,7 @@ public:
   void invalidate() { m_cache.clear(); }
 
   /** @brief Query if k is contained in the cache. */
-  bool has(Key const &k) const { return m_cache.find(k) != m_cache.end(); }
+  bool has(Key const &k) const { return m_cache.contains(k); }
 
   /** @brief Number of elements currently cached. */
   size_type size() const { return m_cache.size(); }

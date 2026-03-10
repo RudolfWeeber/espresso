@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,16 +19,15 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
 
 #include "actor/traits.hpp"
 
 #include "magnetostatics/solver.hpp"
 
 #include "magnetostatics/dipolar_direct_sum.hpp"
-#include "magnetostatics/dipolar_direct_sum_gpu.hpp"
 #include "magnetostatics/dlc.hpp"
 #include "magnetostatics/dp3m.hpp"
 #include "magnetostatics/scafacos.hpp"
@@ -45,13 +44,10 @@ namespace Dipoles {
 
 using MagnetostaticsActor =
     std::variant<std::shared_ptr<DipolarDirectSum>,
-#ifdef DIPOLAR_DIRECT_SUM
-                 std::shared_ptr<DipolarDirectSumGpu>,
-#endif
-#ifdef DP3M
+#ifdef ESPRESSO_DP3M
                  std::shared_ptr<DipolarP3M>,
 #endif
-#ifdef SCAFACOS_DIPOLES
+#ifdef ESPRESSO_SCAFACOS_DIPOLES
                  std::shared_ptr<DipolarScafacos>,
 #endif
                  std::shared_ptr<DipolarLayerCorrection>>;
@@ -62,19 +58,6 @@ struct Solver::Implementation {
   Implementation() : solver{} {}
 };
 
-namespace traits {
-
-/** @brief Whether an actor is a solver. */
-template <typename T>
-using is_solver = std::is_convertible<std::shared_ptr<T>, MagnetostaticsActor>;
-
-/** @brief The dipolar method supports dipole fields calculation. */
-template <class T> struct has_dipole_fields : std::false_type {};
-#ifdef DIPOLE_FIELD_TRACKING
-template <> struct has_dipole_fields<DipolarDirectSum> : std::true_type {};
-#endif // DIPOLE_FIELD_TRACKING
-
-} // namespace traits
 } // namespace Dipoles
 
-#endif // DIPOLES
+#endif // ESPRESSO_DIPOLES

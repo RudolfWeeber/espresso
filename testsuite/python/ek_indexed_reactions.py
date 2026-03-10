@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022-2023 The ESPResSo project
+# Copyright (C) 2022-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -26,8 +26,7 @@ import espressomd.lb
 import espressomd.electrokinetics
 
 
-@utx.skipIfMissingFeatures(["WALBERLA"])
-class EKReaction(ut.TestCase):
+class EKTest:
     AGRID = 1.32
     BOX_L = np.asarray([22., 2., 2.]) * AGRID
     PADDING = 1
@@ -62,15 +61,9 @@ class EKReaction(ut.TestCase):
         values_b = -slopes[1] * x + midvalues[1]
         return values_a, values_b
 
-    def test_reaction_single(self):
-        self.detail_test_reaction(single_precision=True)
+    def test_reaction(self):
 
-    def test_reaction_double(self):
-        self.detail_test_reaction(single_precision=False)
-
-    def detail_test_reaction(self, single_precision: bool):
-
-        lattice = espressomd.electrokinetics.LatticeWalberla(
+        lattice = espressomd.electrokinetics.Lattice(
             n_ghost_layers=1, agrid=self.AGRID)
 
         eksolver = espressomd.electrokinetics.EKNone(lattice=lattice)
@@ -78,18 +71,18 @@ class EKReaction(ut.TestCase):
         self.system.ekcontainer = espressomd.electrokinetics.EKContainer(
             tau=self.TAU, solver=eksolver)
 
-        species_A = espressomd.electrokinetics.EKSpecies(
+        species_A = self.ek_species_class(
             lattice=lattice, density=self.INITIAL_DENSITIES[0],
             diffusion=self.DIFFUSION_COEFFICIENTS[0], valency=0.0,
             advection=False, friction_coupling=False,
-            single_precision=single_precision, tau=self.TAU)
+            tau=self.TAU, **self.ek_params)
         self.system.ekcontainer.add(species_A)
 
-        species_B = espressomd.electrokinetics.EKSpecies(
+        species_B = self.ek_species_class(
             lattice=lattice, density=self.INITIAL_DENSITIES[1],
             diffusion=self.DIFFUSION_COEFFICIENTS[1], valency=0.0,
             advection=False, friction_coupling=False,
-            single_precision=single_precision, tau=self.TAU)
+            tau=self.TAU, **self.ek_params)
         self.system.ekcontainer.add(species_B)
 
         coeffs_left = [-1.0, 1.0]
@@ -164,6 +157,32 @@ class EKReaction(ut.TestCase):
         self.system.ekcontainer.reactions.remove(reaction_right)
         self.system.ekcontainer.reactions.remove(reaction_left)
         self.assertEqual(len(self.system.ekcontainer.reactions), 0)
+
+
+@utx.skipIfMissingFeatures(["WALBERLA"])
+class EKReactionDoublePrecisionCPU(EKTest, ut.TestCase):
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_params = {"single_precision": False, "gpu": False}
+
+
+@utx.skipIfMissingFeatures(["WALBERLA"])
+class EKReactionSinglePrecisionCPU(EKTest, ut.TestCase):
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_params = {"single_precision": True, "gpu": False}
+
+
+@utx.skipIfMissingGPU()
+@utx.skipIfMissingFeatures(["WALBERLA", "CUDA"])
+class EKReactionDoublePrecisionGPU(EKTest, ut.TestCase):
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_params = {"single_precision": False, "gpu": True}
+
+
+@utx.skipIfMissingGPU()
+@utx.skipIfMissingFeatures(["WALBERLA", "CUDA"])
+class EKReactionSinglePrecisionGPU(EKTest, ut.TestCase):
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_params = {"single_precision": True, "gpu": True}
 
 
 if __name__ == "__main__":

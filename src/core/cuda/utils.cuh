@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2022 The ESPResSo project
+ * Copyright (C) 2013-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -20,7 +20,7 @@
 #pragma once
 
 #if !defined(__CUDACC__)
-#error Do not include CUDA headers in normal C++-code!!!
+#error "Do not include CUDA headers in normal C++-code!!!"
 #endif
 
 #include "utils.hpp"

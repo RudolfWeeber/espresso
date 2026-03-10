@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -25,14 +25,14 @@
  * The corresponding header file is @ref p3m_gpu_cuda.cuh.
  */
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_P3M
 
-#define P3M_GPU_FLOAT
-// #define P3M_GPU_REAL_DOUBLE
+#define ESPRESSO_P3M_GPU_FLOAT
+// #define ESPRESSO_P3M_GPU_REAL_DOUBLE
 
-#ifdef P3M_GPU_FLOAT
+#ifdef ESPRESSO_P3M_GPU_FLOAT
 #define REAL_TYPE float
 #define FFT_TYPE_COMPLEX cufftComplex
 #define FFT_FORW_FFT cufftExecR2C
@@ -41,7 +41,7 @@
 #define FFT_PLAN_BACK_FLAG CUFFT_C2R
 #endif
 
-#ifdef P3M_GPU_REAL_DOUBLE
+#ifdef ESPRESSO_P3M_GPU_REAL_DOUBLE
 #define REAL_TYPE double
 #define FFT_TYPE_COMPLEX cufftDoubleComplex
 #define FFT_FORW_FFT cufftExecD2Z
@@ -549,8 +549,7 @@ void assign_forces(P3MGpuData const &params,
 void p3m_gpu_init(std::shared_ptr<P3MGpuParams> &data, int cao,
                   Utils::Vector3i const &mesh, double alpha,
                   Utils::Vector3d const &box_l, std::size_t n_part) {
-  if (mesh == Utils::Vector3i::broadcast(-1))
-    throw std::runtime_error("P3M: invalid mesh size");
+  assert(mesh != Utils::Vector3i::broadcast(-1));
 
   if (not data) {
     data = std::make_shared<P3MGpuParams>();
@@ -574,7 +573,7 @@ void p3m_gpu_init(std::shared_ptr<P3MGpuParams> &data, int cao,
   }
 
   if (not data->is_initialized or mesh != Utils::Vector3i(p3m_gpu_data.mesh)) {
-    std::copy(mesh.begin(), mesh.end(), p3m_gpu_data.mesh);
+    std::ranges::copy(mesh, p3m_gpu_data.mesh);
     mesh_changed = true;
     do_reinit = true;
   }
@@ -583,7 +582,7 @@ void p3m_gpu_init(std::shared_ptr<P3MGpuParams> &data, int cao,
           static_cast<double>(std::numeric_limits<float>::epsilon());
       not data->is_initialized or
       (box_l - Utils::Vector3d(p3m_gpu_data.box)).norm() >= eps) {
-    std::copy(box_l.begin(), box_l.end(), p3m_gpu_data.box);
+    std::ranges::copy(box_l, p3m_gpu_data.box);
     do_reinit = true;
   }
 
@@ -722,4 +721,4 @@ void p3m_gpu_add_farfield_force(P3MGpuParams &data, GpuParticleData &gpu,
                 pref);
 }
 
-#endif // ELECTROSTATICS
+#endif // ESPRESSO_P3M

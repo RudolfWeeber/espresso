@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022 The ESPResSo project
+# Copyright (C) 2022-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -41,6 +41,10 @@ class BreakageSpec(ScriptInterfaceHelper):
 @script_interface_register
 class BreakageSpecs(ScriptObjectMap):
     _so_name = "BondBreakage::BreakageSpecs"
+
+    def execute(self):
+        """Execute the bond breakage on the current state of the system"""
+        self.call_method("execute")
 
     def _get_key(self, key):
         """Convert a bond object to a bond id."""

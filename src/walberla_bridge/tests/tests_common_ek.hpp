@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2023 The ESPResSo project
+ * Copyright (C) 2019-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -18,10 +18,6 @@
  */
 
 #pragma once
-
-#include "config/config.hpp"
-
-#ifdef WALBERLA
 
 #include "tests_common.hpp"
 
@@ -92,5 +88,3 @@ inline EkGeneratorVector all_eks() {
 
 // Disable printing of type which does not support it
 BOOST_TEST_DONT_PRINT_LOG_VALUE(EkGeneratorVector::value_type)
-
-#endif // WALBERLA

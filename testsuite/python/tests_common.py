@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010-2022 The ESPResSo project
+# Copyright (C) 2010-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -318,14 +318,13 @@ def lj_generic_potential(r, epsilon, sigma, cutoff, offset=0., shift=0.,
 
 def lj_generic_force(espressomd, r, epsilon, sigma, cutoff, offset=0., e1=12,
                      e2=6, b1=4., b2=4., delta=0., lam=1., generic=True):
-    f = 1.
-    if r >= offset + cutoff:
-        f = 0.
-    else:
+    f = 0.
+    if r < offset + cutoff:
         h = (r - offset)**2 + delta * (1. - lam) * sigma**2
         f = (r - offset) * epsilon * lam * (
-            b1 * e1 * np.power(sigma / np.sqrt(h), e1) - b2 * e2 * np.power(sigma / np.sqrt(h), e2)) / h
-        if (not espressomd.has_features("LJGEN_SOFTCORE")) and generic:
+            b1 * e1 * np.power(sigma / np.sqrt(h), e1) -
+            b2 * e2 * np.power(sigma / np.sqrt(h), e2)) / h
+        if generic and not espressomd.has_features("LJGEN_SOFTCORE"):
             f *= np.sign(r - offset)
     return f
 
@@ -338,9 +337,9 @@ def lj_potential(r, epsilon, sigma, cutoff, shift, offset=0.):
     return V
 
 
-def lj_force(espressomd, r, epsilon, sigma, cutoff, offset=0.):
+def lj_force(r, epsilon, sigma, cutoff, offset=0.):
     f = lj_generic_force(
-        espressomd, r, epsilon, sigma, cutoff, offset=offset, generic=False)
+        None, r, epsilon, sigma, cutoff, offset=offset, generic=False)
     return f
 
 
@@ -389,14 +388,15 @@ def check_non_bonded_loop_trace(ut_obj, system, cutoff=None):
     cs_pairs = system.cell_system.non_bonded_loop_trace()
     # format [id1, id2, pos1, pos2, vec2, mpi_node]
 
-    distance_vec = system.distance_vec
     if cutoff is None:
         cutoff = system.cell_system.max_cut_nonbonded
 
     # Distance for all pairs of particles obtained by Python
+    pos_folded = {p.id: p.pos_folded for p in system.part.all()}
     py_distances = {}
-    for p1, p2 in system.part.pairs():
-        py_distances[p1.id, p2.id] = np.copy(distance_vec(p1, p2))
+    for pid1, pid2 in itertools.combinations(system.part.all().id, 2):
+        vec = system.distance_vec(pos_folded[pid1], pos_folded[pid2])
+        py_distances[(pid1, pid2)] = np.copy(vec)
 
     # Go through pairs found by the non-bonded loop and check distance
     for p in cs_pairs:

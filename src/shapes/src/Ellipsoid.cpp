@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -25,6 +25,7 @@
 #include <utils/math/sqr.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 namespace Shapes {
 void Ellipsoid::calculate_dist(const Utils::Vector3d &pos, double &dist,
@@ -37,7 +38,7 @@ void Ellipsoid::calculate_dist(const Utils::Vector3d &pos, double &dist,
   double l = 0.;
   int distance_prefactor = -1;
   if (not inside_ellipsoid(ppos_e)) {
-    l = *std::max_element(m_semiaxes.begin(), m_semiaxes.end()) * ppos_e.norm();
+    l = *std::ranges::max_element(m_semiaxes) * ppos_e.norm();
     distance_prefactor = 1;
   }
 

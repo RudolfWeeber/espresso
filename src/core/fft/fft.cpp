@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2024 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -40,11 +40,15 @@
 
 #include <fftw3.h>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
-#include <cstdio>
-#include <cstring>
+#include <limits>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -677,13 +681,19 @@ int fft_data_struct<FloatType>::initialize_fft(
   /* === FFT Routines (Using FFTW / RFFTW package)=== */
   for (int i = 1; i < 4; i++) {
     if (init_tag) {
+#ifdef _OPENMP
+#pragma omp critical(fftw_destroy_plan_forward)
       forw[i].destroy_plan();
+#endif
     }
     forw[i].dir = FFTW_FORWARD;
+#ifdef _OPENMP
+#pragma omp critical(fftw_create_plan_forward)
     forw[i].plan_handle = fftw<FloatType>::plan_many_dft(
         1, &forw[i].new_mesh[2], forw[i].n_ffts, c_data, nullptr, 1,
         forw[i].new_mesh[2], c_data, nullptr, 1, forw[i].new_mesh[2],
         forw[i].dir, FFTW_PATIENT);
+#endif
     assert(forw[i].plan_handle);
   }
 
@@ -691,13 +701,19 @@ int fft_data_struct<FloatType>::initialize_fft(
   /* this is needed because slightly different functions are used */
   for (int i = 1; i < 4; i++) {
     if (init_tag) {
+#ifdef _OPENMP
+#pragma omp critical(fftw_destroy_plan_backward)
       back[i].destroy_plan();
+#endif
     }
     back[i].dir = FFTW_BACKWARD;
+#ifdef _OPENMP
+#pragma omp critical(fftw_create_plan_backward)
     back[i].plan_handle = fftw<FloatType>::plan_many_dft(
         1, &forw[i].new_mesh[2], forw[i].n_ffts, c_data, nullptr, 1,
         forw[i].new_mesh[2], c_data, nullptr, 1, forw[i].new_mesh[2],
         back[i].dir, FFTW_PATIENT);
+#endif
     back[i].pack_function = pack_block_permute1;
     assert(back[i].plan_handle);
   }
@@ -746,7 +762,7 @@ void fft_data_struct<FloatType>::forward_fft(
 
 template <typename FloatType>
 void fft_data_struct<FloatType>::backward_fft(
-    boost::mpi::communicator const &comm, FloatType *data, bool check_complex) {
+    boost::mpi::communicator const &comm, FloatType *data) {
 
   auto *c_data = (typename fftw<FloatType>::complex *)data;
   auto *c_data_buf = (typename fftw<FloatType>::complex *)data_buf.data();
@@ -770,13 +786,6 @@ void fft_data_struct<FloatType>::backward_fft(
   /* throw away the (hopefully) empty complex component (in is data) */
   for (int i = 0; i < forw[1].new_size; i++) {
     data_buf[i] = data[2 * i]; /* real value */
-    // Vincent:
-    if (check_complex and std::abs(data[2 * i + 1]) > 1e-5) {
-      printf("Complex value is not zero (i=%d,data=%g)!!!\n", i,
-             data[2 * i + 1]);
-      if (i > 100)
-        throw std::runtime_error("Complex value is not zero");
-    }
   }
   /* communicate (in is data_buf) */
   back_grid_comm(comm, forw[1], back[1], data_buf.data(), data);

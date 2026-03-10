@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The ESPResSo project
+ * Copyright (C) 2023-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -32,21 +32,25 @@ enum PropagationMode : int {
   TRANS_LB_TRACER = 1 << 6,
   TRANS_BROWNIAN = 1 << 7,
   TRANS_STOKESIAN = 1 << 8,
+  TRANS_VS_CENTER_OF_MASS = 1 << 9,
   ROT_EULER = 1 << 10,
   ROT_LANGEVIN = 1 << 11,
   ROT_VS_RELATIVE = 1 << 12,
   ROT_BROWNIAN = 1 << 13,
   ROT_STOKESIAN = 1 << 14,
+  ROT_VS_INDEPENDENT = 1 << 15,
 };
 } // namespace PropagationMode
 
 /** @brief Integrator identifier. */
 enum IntegratorSwitch : int {
-  INTEG_METHOD_NPT_ISO = 0,
-  INTEG_METHOD_NVT = 1,
-  INTEG_METHOD_STEEPEST_DESCENT = 2,
-  INTEG_METHOD_BD = 3,
-  INTEG_METHOD_SD = 4,
+  INTEG_METHOD_NVT = 0,
+  INTEG_METHOD_NPT_ISO_AND = 1 << 0,
+  INTEG_METHOD_NPT_ISO_MTK = 1 << 1,
+  INTEG_METHOD_STEEPEST_DESCENT = 1 << 2,
+  INTEG_METHOD_BD = 1 << 3,
+  INTEG_METHOD_SD = 1 << 4,
+  INTEG_METHOD_SYMPLECTIC_EULER = 1 << 5,
 };
 
 /** @brief Thermostat flags. */

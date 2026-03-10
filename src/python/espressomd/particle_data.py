@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2013-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -19,14 +19,14 @@
 
 import numpy as np
 import collections
+import itertools
 import functools
 from .interactions import BondedInteraction
 from .utils import nesting_level, array_locked, is_valid_type
 from .utils import check_type_or_throw_except
 from .code_features import assert_features, has_features
-from .script_interface import script_interface_register, ScriptInterfaceHelper
+from .script_interface import script_interface_register, ScriptInterfaceHelper, fast_tiling
 from .propagation import Propagation
-import itertools
 
 
 @script_interface_register
@@ -258,8 +258,6 @@ class ParticleHandle(ScriptInterfaceHelper):
            This needs the feature ``EXTERNAL_FORCES``.
 
     fix: (3,) array_like of :obj:`bool`
-        Fixes the particle motion in the specified cartesian directions.
-
         Fixes the particle in space. It is possible to fix motion in the
         x-, y-, or z-direction independently. For example::
 
@@ -351,7 +349,7 @@ class ParticleHandle(ScriptInterfaceHelper):
         Examples
         --------
         >>> import espressomd
-        >>> # swimming withut hydrodynamics
+        >>> # swimming without hydrodynamics
         >>> system = espressomd.System(box_l=[10, 10, 10])
         >>> partcl = system.part.add(pos=[1, 0, 0], swimming={'f_swim': 0.03})
         >>> # swimming with hydrodynamics
@@ -430,7 +428,7 @@ class ParticleHandle(ScriptInterfaceHelper):
         return pdict
 
     def __str__(self):
-        res = collections.OrderedDict()
+        res = {}
         # Id and pos first, then the rest
         res["id"] = self.id
         res["pos"] = self.pos
@@ -442,8 +440,7 @@ class ParticleHandle(ScriptInterfaceHelper):
             else:
                 res[attr] = tmp
 
-        # Get rid of OrderedDict in output
-        return str(res).replace("OrderedDict(", "ParticleHandle(")
+        return f"{self.__class__.__name__}({res})"
 
     def add_exclusion(self, partner):
         """
@@ -517,6 +514,7 @@ class ParticleHandle(ScriptInterfaceHelper):
         bonds = []
         for bond_id, *partner_ids in self.call_method("get_bonds_view"):
             bond = self.call_method("get_bond_by_id", bond_id=bond_id)
+            bond._bond_id = bond_id
             bonds.append((bond, *partner_ids))
 
         return tuple(bonds)
@@ -604,6 +602,36 @@ class ParticleHandle(ScriptInterfaceHelper):
                 else:
                     self.propagation |= Propagation.ROT_LANGEVIN
 
+    def vs_com_relate_to(self, rel_to):
+        """
+        Setup this particle as virtual site tracking the center of mass of the
+        particles constituting the molecule in argument ``rel_to``.
+
+        .. note::
+           This needs the feature ``VIRTUAL_SITES_CENTER_OF_MASS``
+
+        Parameters
+        -----------
+        rel_to : :obj:`int` or :obj:`ParticleHandle`
+            Molecule to relate to (either molecule id or particle object from that molecule).
+
+        """
+
+        if isinstance(rel_to, ParticleHandle):
+            rel_to = rel_to.mol_id
+        else:
+            check_type_or_throw_except(
+                rel_to, 1, int, "Argument of 'vs_com_relate_to' has to be of type ParticleHandle or int")
+        self.call_method("vs_com_relate_to", molid=rel_to)
+
+    def _bond_sanity_checks(self, bond):
+        if self.id in bond[1:]:
+            raise Exception(
+                f"Bond partners {bond[1:]} include the particle {self.id} itself")
+        if len(set(bond[1:])) is not len(bond[1:]):
+            raise Exception(
+                f"Cannot add duplicate bond partners {bond[1:]} to particle {self.id}")
+
     def add_verified_bond(self, bond):
         """
         Add a bond, the validity of which has already been verified.
@@ -614,12 +642,7 @@ class ParticleHandle(ScriptInterfaceHelper):
         bonds : ``Particle`` property containing a list of all current bonds held by ``Particle``.
 
         """
-        if self.id in bond[1:]:
-            raise Exception(
-                f"Bond partners {bond[1:]} include the particle {self.id} itself")
-        if len(set(bond[1:])) is not len(bond[1:]):
-            raise Exception(
-                f"Cannot add duplicate bond partners {bond[1:]} to particle {self.id}")
+        self._bond_sanity_checks(bond)
         self.call_method("add_bond",
                          bond_id=bond[0]._bond_id,
                          part_id=bond[1:])
@@ -796,7 +819,7 @@ class ParticleHandle(ScriptInterfaceHelper):
         Parameters
         ----------
         new_properties : :obj:`dict`
-            Map particle property names to values. All properties except
+            New particle properties. All properties except
             for the particle id can be changed.
 
         Examples
@@ -812,11 +835,30 @@ class ParticleHandle(ScriptInterfaceHelper):
         [4. 5. 6.] 0.0 False
 
         """
+        overrides = dict()
         if "id" in new_properties:
             raise RuntimeError("Cannot change particle id.")
 
-        for k, v in new_properties.items():
-            setattr(self, k, v)
+        if "propagation" in new_properties.keys():
+            overrides["propagation"] = int(new_properties["propagation"])
+        if "bonds" in new_properties:
+            bonds_ids, bonds_parts = [], []
+            bonds = new_properties["bonds"]
+            nlvl = nesting_level(bonds)
+            if nlvl not in (1, 2):
+                raise ValueError(
+                    "Bonds have to specified as lists of tuples/lists or a single list")
+            if nlvl == 1 and len(bonds) > 0:
+                bonds = [bonds]
+            for bond in bonds:
+                _bond = self.normalize_and_check_bond_or_throw_exception(bond)
+                self._bond_sanity_checks(_bond)
+                bonds_ids.append(_bond[0]._bond_id)
+                bonds_parts.append(_bond[1:])
+            overrides["bonds_ids"] = bonds_ids
+            overrides["bonds_parts"] = bonds_parts
+        return self.call_method(
+            "update_params", **(new_properties | overrides))
 
     def convert_vector_body_to_space(self, vec):
         """
@@ -863,9 +905,15 @@ class ParticleSlice(ScriptInterfaceHelper):
     _so_name = "Particles::ParticleSlice"
     _so_checkpointable = False
     _so_creation_policy = "GLOBAL"
+    _particle_cache_size = 10000  # size of the particle cache for slices
+    _particle_attributes_trivially_serializable = {
+        x for x in particle_attributes if x not in vars(ParticleHandle)}
 
     def __iter__(self):
         return self._id_gen()
+
+    def _get_particle_impl(self, p_id):
+        return self.call_method("get_particle", p_id=p_id)
 
     def _id_gen(self):
         """
@@ -874,7 +922,7 @@ class ParticleSlice(ScriptInterfaceHelper):
         for chunk in self.chunks(self.id_selection, self.chunk_size):
             self.call_method("prefetch_particle_data", chunk=chunk)
             for p_id in chunk:
-                yield self.call_method("get_particle", p_id=p_id)
+                yield self._get_particle(p_id)
 
     def chunks(self, l, n):
         """
@@ -886,36 +934,25 @@ class ParticleSlice(ScriptInterfaceHelper):
     def __len__(self):
         return len(self.id_selection)
 
-    @property
-    def pos_folded(self):
-        """
-        Particle position (folded into central image).
-
-        """
-        pos_array = np.zeros((len(self.id_selection), 3))
-        for i in range(len(self.id_selection)):
-            pos_array[i, :] = self.call_method(
-                "get_particle", p_id=self.id_selection[i]).pos_folded
-        return pos_array
-
-    @pos_folded.setter
-    def pos_folded(self, value):
-        raise RuntimeError("Parameter 'pos_folded' is read-only.")
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._get_particle = functools.lru_cache(
+            maxsize=self._particle_cache_size)(self._get_particle_impl)
 
     def add_exclusion(self, _partner):
         assert_features(["EXCLUSIONS"])
         for p_id in self.id_selection:
-            self.call_method("get_particle", p_id=p_id).add_exclusion(_partner)
+            self._get_particle(p_id).add_exclusion(_partner)
 
     def delete_exclusion(self, _partner):
         assert_features(["EXCLUSIONS"])
         for p_id in self.id_selection:
-            p = self.call_method("get_particle", p_id=p_id)
+            p = self._get_particle(p_id)
             p.delete_exclusion(_partner)
 
     def __str__(self):
         return "ParticleSlice([" + \
-            ", ".join(str(self.call_method("get_particle", p_id=p_id))
+            ", ".join(str(self._get_particle(p_id))
                       for p_id in self.id_selection) + "])"
 
     def update(self, new_properties):
@@ -932,7 +969,7 @@ class ParticleSlice(ScriptInterfaceHelper):
 
         """
         for p_id in self.id_selection:
-            self.call_method("get_particle", p_id=p_id).add_bond(_bond)
+            self._get_particle(p_id).add_bond(_bond)
 
     def delete_bond(self, _bond):
         """
@@ -940,11 +977,11 @@ class ParticleSlice(ScriptInterfaceHelper):
 
         """
         for p_id in self.id_selection:
-            self.call_method("get_particle", p_id=p_id).delete_bond(_bond)
+            self._get_particle(p_id).delete_bond(_bond)
 
     def delete_all_bonds(self):
         for p_id in self.id_selection:
-            self.call_method("get_particle", p_id=p_id).delete_all_bonds()
+            self._get_particle(p_id).delete_all_bonds()
 
     def remove(self):
         """
@@ -956,10 +993,10 @@ class ParticleSlice(ScriptInterfaceHelper):
 
         """
         for p_id in self.id_selection:
-            self.call_method("get_particle", p_id=p_id).remove()
+            self._get_particle(p_id).remove()
 
     def __setattr__(self, name, value):
-        if name != "chunk_size" and name != "id_selection" and name not in particle_attributes:
+        if name != "chunk_size" and name != "id_selection" and name != "_get_particle" and name not in particle_attributes:
             raise AttributeError(
                 f"ParticleHandle does not have the attribute {name}.")
         super().__setattr__(name, value)
@@ -986,7 +1023,7 @@ class ParticleSlice(ScriptInterfaceHelper):
 
         odict = {}
         for p in self:
-            pdict = self.call_method("get_particle", p_id=p.id).to_dict()
+            pdict = self._get_particle(p.id).to_dict()
             for p_key, p_value in pdict.items():
                 if p_key in odict:
                     odict[p_key].append(p_value)
@@ -1128,8 +1165,7 @@ class ParticleList(ScriptInterfaceHelper):
             bonds = p_dict.pop("bonds")
             if nesting_level(bonds) == 1:
                 bonds = [bonds]
-        p_id = self.call_method("add_particle", **p_dict)
-        p = self.by_id(p_id)
+        p = self.call_method("add_particle", **p_dict)
         for bond in bonds:
             if len(bond):
                 bond = p.normalize_and_check_bond_or_throw_exception(bond)
@@ -1302,14 +1338,32 @@ class ParticleList(ScriptInterfaceHelper):
                 "select() takes either selection function as positional argument or a set of keyword arguments.")
 
 
-def set_slice_one_for_all(p_slice, attribute, values):
-    for i in p_slice.id_selection:
-        setattr(p_slice.call_method("get_particle", p_id=i), attribute, values)
+def set_slice_one_for_all(p_slice, attribute, value):
+    set_slice_one_for_each(
+        p_slice, attribute, fast_tiling(value, len(p_slice)))
 
 
 def set_slice_one_for_each(p_slice, attribute, values):
-    for i, v in zip(p_slice.id_selection, values):
-        setattr(p_slice.call_method("get_particle", p_id=i), attribute, v)
+    if attribute == "bonds":
+        all_bonds_ids = []
+        all_bonds_partner_ids = []
+        for i, bonds in enumerate(values):
+            p = p_slice._get_particle(p_slice.id_selection[i])
+            bonds_ids = []
+            bonds_partner_ids = []
+            for bond in bonds:
+                _bond = p.normalize_and_check_bond_or_throw_exception(bond)
+                p._bond_sanity_checks(_bond)
+                bonds_ids.append(_bond[0]._bond_id)
+                bonds_partner_ids.append(_bond[1:])
+            all_bonds_ids.append(bonds_ids)
+            all_bonds_partner_ids.append(bonds_partner_ids)
+        p_slice.call_method("set_param_parallel", name=attribute,
+                            all_bonds_ids=all_bonds_ids,
+                            all_bonds_partner_ids=all_bonds_partner_ids)
+    else:
+        p_slice.call_method("set_param_parallel",
+                            name=attribute, values=values)
 
 
 def _add_particle_slice_properties():
@@ -1337,7 +1391,11 @@ def _add_particle_slice_properties():
         # Special attributes
         if attribute == "bonds":
             nlvl = nesting_level(values)
-            if nlvl == 1 or nlvl == 2:
+            if nlvl == 1:
+                if len(values) > 0:
+                    values = [values]
+                set_slice_one_for_all(particle_slice, attribute, values)
+            elif nlvl == 2:
                 set_slice_one_for_all(particle_slice, attribute, values)
             elif nlvl == 3 and len(values) == N:
                 set_slice_one_for_each(particle_slice, attribute, values)
@@ -1371,7 +1429,7 @@ def _add_particle_slice_properties():
 
         else:
             target = getattr(
-                particle_slice.call_method("get_particle", p_id=particle_slice.id_selection[0]), attribute)
+                particle_slice._get_particle(particle_slice.id_selection[0]), attribute)
             target_shape = np.shape(target)
 
             if not target_shape:  # scalar quantity
@@ -1408,27 +1466,18 @@ def _add_particle_slice_properties():
         if N == 0:
             return np.empty(0, dtype=type(None))
 
-        # get first slice member to determine its type
-        p_id = particle_slice.id_selection[0]
-        target = getattr(
-            particle_slice.call_method("get_particle", p_id=p_id), attribute)
-        if isinstance(target, array_locked):  # vectorial quantity
-            target_type = target.dtype
-        else:  # scalar quantity
-            target_type = type(target)
-
         if attribute in ["exclusions", "bonds", "vs_relative", "swimming"]:
             values = []
             for part in particle_slice._id_gen():
                 values.append(getattr(part, attribute))
-        else:
-            values = np.empty((N,) + np.shape(target), dtype=target_type)
-            i = 0
-            for part in particle_slice._id_gen():
-                values[i] = getattr(part, attribute)
-                i += 1
-
-        return values
+            return values
+        values = particle_slice.call_method(
+            "get_param_parallel", name=attribute)
+        if attribute == "propagation":
+            return np.array([Propagation(v) for v in values], dtype=object)
+        if isinstance(values, np.ndarray):
+            return values
+        return np.stack(values)
 
     for attribute_name in sorted(particle_attributes):
         if attribute_name in dir(ParticleSlice):

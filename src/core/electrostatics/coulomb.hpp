@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,9 +19,9 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
 
 #include "actor/traits.hpp"
 
@@ -35,25 +35,29 @@
 #include "electrostatics/reaction_field.hpp"
 #include "electrostatics/scafacos.hpp"
 
-#include <cstddef>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <type_traits>
 #include <variant>
 
+#ifdef FFTW3_H
+#error "The FFTW3 library shouldn't be visible in this translation unit"
+#endif
+
 namespace Coulomb {
 
 using ElectrostaticsActor =
     std::variant<std::shared_ptr<DebyeHueckel>,
-#ifdef P3M
+#ifdef ESPRESSO_P3M
                  std::shared_ptr<CoulombP3M>,
                  std::shared_ptr<ElectrostaticLayerCorrection>,
-#endif // P3M
+#endif // ESPRESSO_P3M
+#ifdef ESPRESSO_MMM1D
                  std::shared_ptr<CoulombMMM1D>,
-#ifdef SCAFACOS
+#endif // ESPRESSO_MMM1D
+#ifdef ESPRESSO_SCAFACOS
                  std::shared_ptr<CoulombScafacos>,
-#endif // SCAFACOS
+#endif // ESPRESSO_SCAFACOS
                  std::shared_ptr<ReactionField>>;
 
 using ElectrostaticsExtension = std::variant<std::shared_ptr<ICCStar>>;
@@ -68,33 +72,19 @@ struct Solver::Implementation {
 
 namespace traits {
 
-#ifdef P3M
-/** @brief Whether an actor can be adapted by ELC. */
-template <typename T>
-using elc_adaptable =
-    std::is_convertible<std::shared_ptr<T>,
-                        ElectrostaticLayerCorrection::BaseSolver>;
-#endif // P3M
-
-/** @brief Whether an actor is a solver. */
-template <typename T>
-using is_solver = std::is_convertible<std::shared_ptr<T>, ElectrostaticsActor>;
-/** @brief Whether an actor is an extension. */
-template <typename T>
-using is_extension =
-    std::is_convertible<std::shared_ptr<T>, ElectrostaticsExtension>;
-
 /** @brief The electrostatic method supports pressure calculation. */
 template <class T> struct has_pressure : std::true_type {};
-#ifdef P3M
+#ifdef ESPRESSO_P3M
 template <>
 struct has_pressure<ElectrostaticLayerCorrection> : std::false_type {};
-#endif // P3M
-#ifdef SCAFACOS
+#endif // ESPRESSO_P3M
+#ifdef ESPRESSO_SCAFACOS
 template <> struct has_pressure<CoulombScafacos> : std::false_type {};
-#endif // SCAFACOS
+#endif // ESPRESSO_SCAFACOS
+#ifdef ESPRESSO_MMM1D
 template <> struct has_pressure<CoulombMMM1D> : std::false_type {};
+#endif // ESPRESSO_MMM1D
 
 } // namespace traits
 } // namespace Coulomb
-#endif // ELECTROSTATICS
+#endif // ESPRESSO_ELECTROSTATICS

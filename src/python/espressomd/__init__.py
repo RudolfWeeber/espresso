@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2016-2022 The ESPResSo project
+# Copyright (C) 2016-2026 The ESPResSo project
 # Copyright (C) 2014 Olaf Lenz
 #
 # This file is part of ESPResSo.
@@ -25,3 +25,5 @@ from .system import System
 from .code_info import features, all_features
 from .code_features import has_features, assert_features
 from .cuda_init import gpu_available
+
+__version__ = "@PROJECT_VERSION@"

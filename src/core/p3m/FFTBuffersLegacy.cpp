@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2024 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -19,13 +19,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#if defined(P3M) or defined(DP3M)
+#if defined(ESPRESSO_DP3M)
 
 #include "FFTBuffersLegacy.hpp"
 
 #include "communication.hpp"
+#include "p3m/common.hpp"
 
 #include <array>
 #include <span>
@@ -56,22 +57,13 @@ void FFTBuffersLegacy<FloatType>::init_meshes(int ca_mesh_size) {
 
 template <typename FloatType>
 void FFTBuffersLegacy<FloatType>::perform_vector_halo_spread() {
-  std::array<FloatType *, 3u> meshes = {{rs_mesh_fields[0u].data(),
-                                         rs_mesh_fields[1u].data(),
-                                         rs_mesh_fields[2u].data()}};
+  std::array<FloatType *, 3u> meshes = get_vector_mesh();
   mesh_comm.spread_grid(::comm_cart, meshes, local_mesh.dim);
 }
 
 template <typename FloatType>
-void FFTBuffersLegacy<FloatType>::perform_scalar_halo_gather() {
-  mesh_comm.gather_grid(::comm_cart, rs_mesh.data(), local_mesh.dim);
-}
-
-template <typename FloatType>
 void FFTBuffersLegacy<FloatType>::perform_vector_halo_gather() {
-  std::array<FloatType *, 3u> meshes = {{rs_mesh_fields[0u].data(),
-                                         rs_mesh_fields[1u].data(),
-                                         rs_mesh_fields[2u].data()}};
+  std::array<FloatType *, 3u> meshes = get_vector_mesh();
   mesh_comm.gather_grid(::comm_cart, meshes, local_mesh.dim);
 }
 
@@ -87,11 +79,11 @@ FloatType *FFTBuffersLegacy<FloatType>::get_scalar_mesh() {
 
 template <typename FloatType>
 std::array<FloatType *, 3u> FFTBuffersLegacy<FloatType>::get_vector_mesh() {
-  return {rs_mesh_fields[0u].data(), rs_mesh_fields[1u].data(),
-          rs_mesh_fields[2u].data()};
+  return {{rs_mesh_fields[0u].data(), rs_mesh_fields[1u].data(),
+           rs_mesh_fields[2u].data()}};
 }
 
 template class FFTBuffersLegacy<float>;
 template class FFTBuffersLegacy<double>;
 
-#endif // defined(P3M) or defined(DP3M)
+#endif // defined(ESPRESSO_DP3M)

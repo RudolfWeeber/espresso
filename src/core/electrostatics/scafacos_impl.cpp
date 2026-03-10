@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -21,7 +21,7 @@
 
 #include "config/config.hpp"
 
-#ifdef SCAFACOS
+#ifdef ESPRESSO_SCAFACOS
 
 #include "electrostatics/scafacos.hpp"
 #include "electrostatics/scafacos_impl.hpp"
@@ -121,10 +121,9 @@ void CoulombScafacosImpl::tune_r_cut() {
       break;
     }
 
+    r_min += dr;
     if (t_mid > t_min) {
-      r_max = r_min += dr;
-    } else {
-      r_min += dr;
+      r_max = r_min;
     }
   }
   assert(r_opt >= 0.);
@@ -146,4 +145,4 @@ void CoulombScafacosImpl::tune_impl() {
   get_system().on_coulomb_change();
 }
 
-#endif // SCAFACOS
+#endif // ESPRESSO_SCAFACOS

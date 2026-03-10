@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2024 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -21,9 +21,9 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#if defined(P3M) or defined(DP3M)
+#if defined(ESPRESSO_DP3M)
 
 #include "common.hpp"
 #include "data_struct.hpp"
@@ -45,14 +45,13 @@ class FFTBuffersLegacy : public FFTBuffers<FloatType> {
   p3m_send_mesh<FloatType> mesh_comm;
   /** @brief real-space mesh (local) for CA/FFT. */
   fft::vector<FloatType> rs_mesh;
-  /** @brief real-space mesh (local) for the electric or dipolar field. */
+  /** @brief real-space mesh (local) for the electric or magnetic field. */
   std::array<fft::vector<FloatType>, 3u> rs_mesh_fields;
 
 public:
   ~FFTBuffersLegacy() override;
   void init_halo() override;
   void init_meshes(int ca_mesh_size) override;
-  void perform_scalar_halo_gather() override;
   void perform_vector_halo_gather() override;
   void perform_scalar_halo_spread() override;
   void perform_vector_halo_spread() override;
@@ -61,4 +60,4 @@ public:
   std::array<FloatType *, 3u> get_vector_mesh() override;
 };
 
-#endif // defined(P3M) or defined(DP3M)
+#endif // defined(ESPRESSO_DP3M)

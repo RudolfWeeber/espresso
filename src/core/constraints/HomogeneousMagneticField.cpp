@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -16,11 +16,12 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <config/config.hpp>
+
 #include "HomogeneousMagneticField.hpp"
 
 #include "Observable_stat.hpp"
 #include "Particle.hpp"
-#include "config/config.hpp"
 
 #include <utils/Vector.hpp>
 
@@ -28,7 +29,7 @@ namespace Constraints {
 
 ParticleForce HomogeneousMagneticField::force(const Particle &p,
                                               const Utils::Vector3d &, double) {
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
   return {{}, vector_product(p.calc_dip(), m_field)};
 #else
   return {};
@@ -38,7 +39,7 @@ ParticleForce HomogeneousMagneticField::force(const Particle &p,
 void HomogeneousMagneticField::add_energy(const Particle &p,
                                           const Utils::Vector3d &, double,
                                           Observable_stat &obs_energy) const {
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
   obs_energy.dipolar[0] += -1.0 * m_field * p.calc_dip();
 #endif
 }

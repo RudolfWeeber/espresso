@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2022 The ESPResSo project
+ * Copyright (C) 2019-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -21,15 +21,12 @@
 
 #include <boost/test/unit_test.hpp>
 
-/* Helper functions to compute random numbers covariance in a single pass */
-
 #include <utils/Vector.hpp>
 #include <utils/quaternion.hpp>
 
 #include <boost/accumulators/accumulators.hpp>
 #include <boost/accumulators/statistics.hpp>
 #include <boost/accumulators/statistics/variates/covariate.hpp>
-#include <boost/variant.hpp>
 
 #include <algorithm>
 #include <cassert>
@@ -37,53 +34,54 @@
 #include <cstddef>
 #include <cstdlib>
 #include <functional>
+#include <iterator>
 #include <numeric>
 #include <tuple>
+#include <variant>
 #include <vector>
 
 namespace Utils {
 using VariantVectorXd =
-    boost::variant<double, Vector2d, Vector3d, Vector4d, Quaternion<double>>;
+    std::variant<double, Vector2d, Vector3d, Vector4d, Quaternion<double>>;
 } // namespace Utils
 
 using Utils::VariantVectorXd;
 
 namespace {
 
-using Utils::Vector;
-
-class visitor_size : public boost::static_visitor<std::size_t> {
-public:
+struct visitor_get_size {
   template <std::size_t N>
-  std::size_t operator()(Vector<double, N> const &v) const {
+  std::size_t operator()(Utils::Vector<double, N> const &v) const {
     return v.size();
   }
   std::size_t operator()(Utils::Quaternion<double> const &) const { return 4u; }
   std::size_t operator()(double) const { return 1u; }
 };
 
-class visitor_get : public boost::static_visitor<double> {
-public:
+struct visitor_get_at {
+  std::size_t m_i;
+
   template <std::size_t N>
-  double operator()(Vector<double, N> const &v, std::size_t i) const {
-    return v[i];
+  double operator()(Utils::Vector<double, N> const &v) const {
+    assert(m_i < N);
+    return v[m_i];
   }
-  double operator()(Utils::Quaternion<double> const &q, std::size_t i) const {
-    return q[i];
+  double operator()(Utils::Quaternion<double> const &q) const {
+    assert(m_i < 4u);
+    return q[m_i];
   }
-  double operator()(double v, std::size_t i) const {
-    assert(i == 0u);
+  double operator()(double v) const {
+    assert(m_i == 0u);
     return v;
   }
 };
 
 std::size_t get_size(VariantVectorXd const &vec) {
-  return boost::apply_visitor(visitor_size(), vec);
+  return std::visit(visitor_get_size(), vec);
 }
 
 double get_value(VariantVectorXd const &vec, std::size_t i) {
-  return boost::apply_visitor(
-      std::bind(visitor_get(), std::placeholders::_1, i), vec);
+  return std::visit(visitor_get_at{i}, vec);
 }
 
 template <typename T> auto square_matrix(std::size_t N) {
@@ -107,9 +105,8 @@ noise_statistics(NoiseKernel &&noise_function, std::size_t sample_size) {
   // get size of the arrays and size of the triangular correlation matrix
   auto const first_value = noise_function();
   auto const n_vectors = first_value.size();
-  std::vector<std::size_t> dimensions(n_vectors);
-  std::transform(first_value.begin(), first_value.end(), dimensions.begin(),
-                 [](auto const &element) { return get_size(element); });
+  std::vector<std::size_t> dimensions{};
+  std::ranges::transform(first_value, std::back_inserter(dimensions), get_size);
   auto const matrix_dim = std::accumulate(dimensions.begin(), dimensions.end(),
                                           std::size_t{0u}, std::plus<>());
 

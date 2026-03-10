@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The ESPResSo project
+ * Copyright (C) 2022-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -17,8 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ESPRESSO_SRC_SCRIPT_INTERFACE_CODE_INFO_CODE_INFO_HPP
-#define ESPRESSO_SRC_SCRIPT_INTERFACE_CODE_INFO_CODE_INFO_HPP
+#pragma once
 
 #include "script_interface/ScriptInterface.hpp"
 
@@ -38,5 +37,3 @@ void check_features(std::vector<std::string> const &features);
 
 } // namespace CodeInfo
 } // namespace ScriptInterface
-
-#endif

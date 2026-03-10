@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2022 The ESPResSo project
+ * Copyright (C) 2021-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,9 +19,9 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef CUDA
+#ifdef ESPRESSO_CUDA
 
 #include <exception>
 #include <stdexcept>
@@ -80,4 +80,4 @@ void invoke_skip_cuda_exceptions(F &&f, Args &&...args) {
   }
 }
 
-#endif // CUDA
+#endif // ESPRESSO_CUDA

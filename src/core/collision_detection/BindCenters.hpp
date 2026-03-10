@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2024 The ESPResSo project
+ * Copyright (C) 2011-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -21,7 +21,7 @@
 
 #include <config/config.hpp>
 
-#ifdef COLLISION_DETECTION
+#ifdef ESPRESSO_COLLISION_DETECTION
 
 #include "CollisionPair.hpp"
 #include "common.hpp"
@@ -63,4 +63,4 @@ public:
 };
 
 } // namespace CollisionDetection
-#endif // COLLISION_DETECTION
+#endif // ESPRESSO_COLLISION_DETECTION

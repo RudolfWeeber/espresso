@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022-2023 The ESPResSo project
+ * Copyright (C) 2022-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -21,14 +21,17 @@
 
 #include "generated_kernels/ReactionKernelBulk_all.h"
 
+#include <walberla_bridge/Architecture.hpp>
 #include <walberla_bridge/LatticeWalberla.hpp>
 #include <walberla_bridge/electrokinetics/reactions/EKReactant.hpp>
 #include <walberla_bridge/electrokinetics/reactions/EKReactionBase.hpp>
 
 #include <blockforest/StructuredBlockForest.h>
+#include <waLBerlaDefinitions.h>
 
 namespace walberla {
 
+template <lbmpy::Arch Architecture = lbmpy::Arch::CPU>
 class EKReactionImplBulk : public EKReactionBase {
 public:
   ~EKReactionImplBulk() override = default;
@@ -44,8 +47,16 @@ public:
     // synchronization before or not run and do a synchronization afterwards.
     // The better solution is probably the latter one. Not sure why it fails
     // atm.
-    auto kernel = detail::ReactionKernelBulkSelector::get_kernel(
-        get_reactants(), get_coefficient());
+    std::function<void(IBlock *)> kernel;
+    if (!get_reactants()[0]->is_gpu()) {
+      kernel = detail::ReactionKernelBulkSelector::get_kernel(
+          get_reactants(), get_coefficient());
+    } else {
+#if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
+      kernel = detail::ReactionKernelBulkSelector::get_kernel_gpu(
+          get_reactants(), get_coefficient());
+#endif
+    }
     for (auto &block : *get_lattice()->get_blocks()) {
       kernel(&block);
     }

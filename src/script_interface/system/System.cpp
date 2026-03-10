@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2022 The ESPResSo project
+ * Copyright (C) 2013-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,7 +19,7 @@
 
 #include "System.hpp"
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
 #include "core/BoxGeometry.hpp"
 #include "core/Particle.hpp"
@@ -30,6 +30,7 @@
 #include "core/communication.hpp"
 #include "core/exclusions.hpp"
 #include "core/nonbonded_interactions/nonbonded_interaction_data.hpp"
+#include "core/npt.hpp"
 #include "core/object-in-fluid/oif_global_forces.hpp"
 #include "core/particle_node.hpp"
 #include "core/propagation.hpp"
@@ -44,12 +45,14 @@
 #include "script_interface/cell_system/CellSystem.hpp"
 #include "script_interface/collision_detection/CollisionDetection.hpp"
 #include "script_interface/constraints/Constraints.hpp"
+#include "script_interface/ek/Container.hpp"
 #include "script_interface/electrostatics/Container.hpp"
 #include "script_interface/galilei/ComFixed.hpp"
 #include "script_interface/galilei/Galilei.hpp"
 #include "script_interface/integrators/IntegratorHandle.hpp"
 #include "script_interface/interactions/BondedInteractions.hpp"
 #include "script_interface/interactions/NonBondedInteractions.hpp"
+#include "script_interface/lb/Container.hpp"
 #include "script_interface/lees_edwards/LeesEdwards.hpp"
 #include "script_interface/magnetostatics/Container.hpp"
 #include "script_interface/particle_data/ParticleHandle.hpp"
@@ -70,6 +73,7 @@
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -80,12 +84,12 @@ namespace System {
 
 static bool system_created = false;
 
-#ifdef EXCLUSIONS
+#ifdef ESPRESSO_EXCLUSIONS
 static void set_exclusions(Particles::ParticleHandle &p,
                            Variant const &exclusions) {
   p.call_method("set_exclusions", {{"p_ids", exclusions}});
 }
-#endif // EXCLUSIONS
+#endif // ESPRESSO_EXCLUSIONS
 
 static void set_bonds(Particles::ParticleHandle &p, Variant const &bonds) {
   auto const bond_list_flat = get_value<std::vector<std::vector<int>>>(bonds);
@@ -104,7 +108,7 @@ struct System::Leaves {
   std::shared_ptr<CellSystem::CellSystem> cell_system;
   std::shared_ptr<Integrators::IntegratorHandle> integrator;
   std::shared_ptr<Interactions::BondedInteractions> bonded_interactions;
-#ifdef COLLISION_DETECTION
+#ifdef ESPRESSO_COLLISION_DETECTION
   std::shared_ptr<CollisionDetection::CollisionDetection> collision_detection;
 #endif
   std::shared_ptr<Thermostat::Thermostat> thermostat;
@@ -117,18 +121,33 @@ struct System::Leaves {
       auto_update_accumulators;
   std::shared_ptr<Constraints::Constraints> constraints;
   std::shared_ptr<Interactions::NonBondedInteractions> non_bonded_inter;
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
   std::shared_ptr<Coulomb::Container> electrostatics;
 #endif
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
   std::shared_ptr<Dipoles::Container> magnetostatics;
 #endif
+  std::shared_ptr<LB::Container> lb;
+  std::shared_ptr<EK::Container> ek;
   std::shared_ptr<Particles::ParticleList> part;
+
+  ~Leaves() {
+    // Clear containers whose elements call MPI callbacks upon destruction.
+    // The containers lifetime is extended by the global context shared object
+    // registry on the head node, which can cause MPI deadlocks if they still
+    // contain elements.
+    if (bonded_interactions) {
+      bonded_interactions->clear();
+    }
+    if (constraints) {
+      constraints->clear();
+    }
+  }
 };
 
-System::System() : m_instance{}, m_leaves{std::make_shared<Leaves>()} {
+System::System() : m_instance{}, m_leaves{std::make_unique<Leaves>()} {
   auto const add_parameter =
-      [this, ptr = m_leaves.get()](std::string key, auto(Leaves::*member)) {
+      [this, ptr = m_leaves.get()](std::string key, auto Leaves::*member) {
         add_parameters({AutoParameter(
             key.c_str(),
             [this, ptr, member, key](Variant const &val) {
@@ -174,7 +193,7 @@ System::System() : m_instance{}, m_leaves{std::make_shared<Leaves>()} {
        [this](Variant const &v) {
          context()->parallel_try_catch([&]() {
            auto const new_value = get_value<double>(v);
-           if (new_value < 0. and new_value != INACTIVE_CUTOFF) {
+           if (new_value < 0. and new_value != inactive_cutoff) {
              throw std::domain_error("Attribute 'min_global_cut' must be >= 0");
            }
            m_instance->set_min_global_cut(new_value);
@@ -186,6 +205,7 @@ System::System() : m_instance{}, m_leaves{std::make_shared<Leaves>()} {
          m_instance->oif_global->max_oif_objects = get_value<int>(v);
        },
        [this]() { return m_instance->oif_global->max_oif_objects; }},
+
   });
   // note: the order of leaves matters! e.g. bonds depend on thermostats,
   // and thus a thermostat object must be instantiated before the bonds
@@ -196,7 +216,7 @@ System::System() : m_instance{}, m_leaves{std::make_shared<Leaves>()} {
   add_parameter("comfixed", &Leaves::comfixed);
   add_parameter("galilei", &Leaves::galilei);
   add_parameter("bonded_inter", &Leaves::bonded_interactions);
-#ifdef COLLISION_DETECTION
+#ifdef ESPRESSO_COLLISION_DETECTION
   add_parameter("collision_detection", &Leaves::collision_detection);
 #endif
   add_parameter("bond_breakage", &Leaves::bond_breakage);
@@ -204,12 +224,56 @@ System::System() : m_instance{}, m_leaves{std::make_shared<Leaves>()} {
   add_parameter("auto_update_accumulators", &Leaves::auto_update_accumulators);
   add_parameter("constraints", &Leaves::constraints);
   add_parameter("non_bonded_inter", &Leaves::non_bonded_inter);
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
   add_parameter("electrostatics", &Leaves::electrostatics);
 #endif
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
   add_parameter("magnetostatics", &Leaves::magnetostatics);
 #endif
+  add_parameter("lbcontainer", &Leaves::lb);
+  add_parameters({
+      {"ekcontainer",
+       [this](Variant const &v) {
+         if (is_none(v)) {
+           m_leaves->ek->do_call_method("deactivate", {});
+           if (not context()->is_head_node()) {
+             return;
+           }
+           set_parameter("ekcontainer",
+                         context()->make_shared("EK::Container", {}));
+         } else {
+           auto const detach_solver = [this]() {
+             auto &solver = m_leaves->ek;
+             if (solver) {
+               solver->do_call_method("deactivate", {});
+               solver->detach_system();
+             }
+             solver.reset();
+           };
+           auto const bind_solver = [this]() {
+             auto &solver = m_leaves->ek;
+             if (solver) {
+               solver->bind_system(m_instance);
+               solver->do_call_method("activate", {});
+             }
+           };
+           auto &solver = m_leaves->ek;
+           auto new_solver = get_value<std::shared_ptr<EK::Container>>(v);
+           auto old_solver = solver;
+           detach_solver();
+           try {
+             solver = new_solver;
+             context()->parallel_try_catch([&]() { bind_solver(); });
+           } catch (...) {
+             detach_solver();
+             solver = old_solver;
+             bind_solver();
+             throw;
+           }
+         }
+       },
+       [this]() { return m_leaves->ek; }},
+  });
   add_parameter("part", &Leaves::part);
 }
 
@@ -256,11 +320,11 @@ void System::do_construct(VariantMap const &params) {
         "periodicity",     "time",
         "time_step",       "force_cap",
         "max_oif_objects", "_regular_constructor"};
-    for (auto const &kv : params) {
-      if (not setable_properties.contains(kv.first)) {
-        context()->parallel_try_catch([&kv]() {
+    for (auto const &name : std::views::elements<0>(params)) {
+      if (not setable_properties.contains(name)) {
+        context()->parallel_try_catch([&name]() {
           throw std::domain_error(
-              "Property '" + kv.first +
+              "Property '" + name +
               "' cannot be set via argument to System class");
         });
       }
@@ -287,7 +351,7 @@ void System::do_construct(VariantMap const &params) {
     do_set_default_parameter<CellSystem::CellSystem>("cell_system");
     do_set_default_parameter<Thermostat::Thermostat>("thermostat");
     do_set_default_parameter<Interactions::BondedInteractions>("bonded_inter");
-#ifdef COLLISION_DETECTION
+#ifdef ESPRESSO_COLLISION_DETECTION
     do_set_default_parameter<CollisionDetection::CollisionDetection>(
         "collision_detection");
 #endif
@@ -301,12 +365,14 @@ void System::do_construct(VariantMap const &params) {
     do_set_default_parameter<Constraints::Constraints>("constraints");
     do_set_default_parameter<Interactions::NonBondedInteractions>(
         "non_bonded_inter");
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
     do_set_default_parameter<Coulomb::Container>("electrostatics");
 #endif
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
     do_set_default_parameter<Dipoles::Container>("magnetostatics");
 #endif
+    do_set_default_parameter<LB::Container>("lbcontainer");
+    do_set_default_parameter<EK::Container>("ekcontainer");
     do_set_default_parameter<Particles::ParticleList>("part");
   } else {
     for (auto const &key : get_parameter_insertion_order()) {
@@ -351,7 +417,7 @@ static void rotate_system(CellStructure &cell_structure, double phi,
   for (auto &p : particles) {
     // Move the center of mass of the system to the origin
     p.pos() = com + Utils::vec_rotate(axis, alpha, p.pos() - com);
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
     local_rotate_particle(p, axis, alpha);
 #endif
   }
@@ -459,6 +525,7 @@ Variant System::do_call_method(std::string const &name,
         ::System::reset_system();
       }
       assert(m_instance.use_count() == 1l);
+      m_leaves.reset();
       m_instance.reset();
     }
     return {};
@@ -466,7 +533,7 @@ Variant System::do_call_method(std::string const &name,
   if (name == "internal_attach_leaves") {
     m_leaves->part->attach(m_leaves->cell_system,
                            m_leaves->bonded_interactions);
-#ifdef COLLISION_DETECTION
+#ifdef ESPRESSO_COLLISION_DETECTION
     m_leaves->collision_detection->attach(m_leaves->bonded_interactions);
 #endif
     return {};
@@ -495,10 +562,10 @@ std::string System::get_internal_state() const {
     state.name = "Particles::ParticleHandle";
     auto const bonds_view = p_handle.call_method("get_bonds_view", {});
     state.params.emplace_back(std::string{"bonds"}, pack(bonds_view));
-#ifdef EXCLUSIONS
+#ifdef ESPRESSO_EXCLUSIONS
     auto const exclusions = p_handle.call_method("get_exclusions", {});
     state.params.emplace_back(std::string{"exclusions"}, pack(exclusions));
-#endif // EXCLUSIONS
+#endif // ESPRESSO_EXCLUSIONS
     state.params.emplace_back(std::string{"__cpt_sentinel"}, pack(None{}));
     return Utils::pack(state);
   });
@@ -508,22 +575,22 @@ std::string System::get_internal_state() const {
 
 void System::set_internal_state(std::string const &state) {
   auto const object_states = Utils::unpack<std::vector<std::string>>(state);
-#ifdef EXCLUSIONS
+#ifdef ESPRESSO_EXCLUSIONS
   std::unordered_map<int, Variant> exclusions = {};
-#endif // EXCLUSIONS
+#endif // ESPRESSO_EXCLUSIONS
   std::unordered_map<int, Variant> bonds = {};
 
   for (auto const &packed_object : object_states) {
     auto state = Utils::unpack<ObjectState>(packed_object);
     VariantMap params = {};
-    for (auto const &kv : state.params) {
-      params[kv.first] = unpack(kv.second, {});
+    for (auto const &[name, packed_value] : state.params) {
+      params[name] = unpack(packed_value, {});
     }
     auto const p_id = get_value<int>(params.at("id"));
     bonds[p_id] = params.extract("bonds").mapped();
-#ifdef EXCLUSIONS
+#ifdef ESPRESSO_EXCLUSIONS
     exclusions[p_id] = params.extract("exclusions").mapped();
-#endif // EXCLUSIONS
+#endif // ESPRESSO_EXCLUSIONS
     params["__cell_structure"] = get_parameter("cell_system");
     context()->make_shared("Particles::ParticleHandle", params);
   }
@@ -534,9 +601,9 @@ void System::set_internal_state(std::string const &state) {
         {{"id", p_id}, {"__cell_structure", m_leaves->cell_system}});
     auto &p_handle = dynamic_cast<Particles::ParticleHandle &>(*p_obj);
     set_bonds(p_handle, bonds[p_id]);
-#ifdef EXCLUSIONS
+#ifdef ESPRESSO_EXCLUSIONS
     set_exclusions(p_handle, exclusions[p_id]);
-#endif // EXCLUSIONS
+#endif // ESPRESSO_EXCLUSIONS
   }
 }
 

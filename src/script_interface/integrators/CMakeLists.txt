@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022 The ESPResSo project
+# Copyright (C) 2022-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -25,5 +25,6 @@ target_sources(
           ${CMAKE_CURRENT_SOURCE_DIR}/IntegratorHandle.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/SteepestDescent.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/StokesianDynamics.cpp
+          ${CMAKE_CURRENT_SOURCE_DIR}/SymplecticEuler.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/VelocityVerlet.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/VelocityVerletIsoNPT.cpp)

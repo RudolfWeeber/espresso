@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2021-2022 The ESPResSo project
+# Copyright (C) 2021-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -143,8 +143,7 @@ class Test(ut.TestCase):
     def test_exceptions_large_r_cut(self):
         icc, (_, p) = self.setup_icc_particles_and_solver(
             max_iterations=1, convergence=10.)
-        p3m = espressomd.electrostatics.P3M(
-            check_complex_residuals=False, **self.valid_p3m_parameters())
+        p3m = espressomd.electrostatics.P3M(**self.valid_p3m_parameters())
 
         self.system.electrostatics.solver = p3m
         self.system.electrostatics.extension = icc
@@ -167,10 +166,11 @@ class Test(ut.TestCase):
     @utx.skipIfMissingFeatures(["P3M"])
     def test_exceptions_gpu(self):
         icc, _ = self.setup_icc_particles_and_solver()
-        p3m = espressomd.electrostatics.P3MGPU(**self.valid_p3m_parameters())
+        p3m = espressomd.electrostatics.P3M(
+            **self.valid_p3m_parameters(), gpu=True)
 
         self.system.electrostatics.solver = p3m
-        with self.assertRaisesRegex(RuntimeError, "ICC does not work with P3MGPU"):
+        with self.assertRaisesRegex(RuntimeError, "ICC does not work with P3M on GPU"):
             self.system.electrostatics.extension = icc
         self.assertIsNone(self.system.electrostatics.extension)
         self.system.integrator.run(0)
@@ -179,7 +179,7 @@ class Test(ut.TestCase):
         elc = espressomd.electrostatics.ELC(
             actor=p3m, gap_size=5., maxPWerror=1e-3)
         self.system.electrostatics.solver = elc
-        with self.assertRaisesRegex(RuntimeError, "ICC does not work with P3MGPU"):
+        with self.assertRaisesRegex(RuntimeError, "ICC does not work with P3M on GPU"):
             self.system.electrostatics.extension = icc
         self.assertIsNone(self.system.electrostatics.extension)
         self.system.integrator.run(0)
@@ -229,18 +229,26 @@ class Test(ut.TestCase):
         self.assertIsNone(self.system.electrostatics.extension)
         self.system.integrator.run(0)
 
-    @utx.skipIfMissingFeatures(["NPT", "P3M"])
-    def test_exceptions_npt(self):
+    def run_exceptions_npt(self, barostat):
         icc, _ = self.setup_icc_particles_and_solver()
         p3m = espressomd.electrostatics.P3M(**self.valid_p3m_parameters())
 
         self.system.electrostatics.solver = p3m
         self.system.thermostat.set_npt(kT=1., gamma0=2., gammav=0.004, seed=42)
-        self.system.integrator.set_isotropic_npt(ext_pressure=2., piston=0.001)
-        with self.assertRaisesRegex(RuntimeError, "ICC does not work in the NPT ensemble"):
+        self.system.integrator.set_isotropic_npt(
+            ext_pressure=2., piston=0.001, barostat=barostat)
+        with self.assertRaisesRegex(RuntimeError, "ICC does not work in the NpT ensemble"):
             self.system.electrostatics.extension = icc
         self.assertIsNone(self.system.electrostatics.extension)
         self.system.integrator.run(0)
+
+    @utx.skipIfMissingFeatures(["NPT", "P3M"])
+    def test_exceptions_npt_Andersen(self):
+        self.run_exceptions_npt("Andersen")
+
+    @utx.skipIfMissingFeatures(["NPT", "P3M"])
+    def test_exceptions_npt_MTK(self):
+        self.run_exceptions_npt("MTK")
 
 
 if __name__ == "__main__":

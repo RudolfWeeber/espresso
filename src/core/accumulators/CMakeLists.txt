@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2017-2022 The ESPResSo project
+# Copyright (C) 2017-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -22,4 +22,5 @@ target_sources(
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Correlator.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/AutoUpdateAccumulators.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/MeanVarianceCalculator.cpp
+          ${CMAKE_CURRENT_SOURCE_DIR}/ContactTimes.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/TimeSeries.cpp)

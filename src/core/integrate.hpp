@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -27,11 +27,11 @@
  *  Implementation in \ref integrate.cpp.
  */
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
 #include "PropagationMode.hpp"
 
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
 #include <string>
 
 #include <utils/Vector.hpp>
@@ -53,7 +53,7 @@
 #define INTEG_REUSE_FORCES_ALWAYS 1
 /**@}*/
 
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
 void walberla_tau_sanity_checks(std::string method, double tau,
                                 double time_step);
 void walberla_agrid_sanity_checks(std::string method,
@@ -62,4 +62,4 @@ void walberla_agrid_sanity_checks(std::string method,
                                   Utils::Vector3d const &lattice_left,
                                   Utils::Vector3d const &lattice_right,
                                   double agrid);
-#endif // WALBERLA
+#endif // ESPRESSO_WALBERLA

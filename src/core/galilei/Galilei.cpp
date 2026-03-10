@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -36,31 +36,31 @@
 #include <tuple>
 
 void Galilei::kill_particle_motion(System::System &system, bool omega) const {
-#ifndef ROTATION
+#ifndef ESPRESSO_ROTATION
   std::ignore = omega;
 #endif
   for (auto &p : system.cell_structure->local_particles()) {
     p.v() = {};
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
     if (omega) {
       p.omega() = {};
     }
-#endif // ROTATION
+#endif // ESPRESSO_ROTATION
   }
   system.on_particle_change();
 }
 
 void Galilei::kill_particle_forces(System::System &system, bool torque) const {
-#ifndef ROTATION
+#ifndef ESPRESSO_ROTATION
   std::ignore = torque;
 #endif
   for (auto &p : system.cell_structure->local_particles()) {
     p.force() = {};
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
     if (torque) {
       p.torque() = {};
     }
-#endif // ROTATION
+#endif // ESPRESSO_ROTATION
   }
   system.on_particle_change();
 }

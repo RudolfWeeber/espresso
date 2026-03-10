@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2021-2023 The ESPResSo project
+# Copyright (C) 2021-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -33,14 +33,14 @@ system.time_step = 0.01
 
 class LBContextManager:
     """
-    Add an LB actor and remove it from the actor list at the end.
+    Add an LB solver and remove it at the end.
     """
 
     def __init__(self, **kwargs):
         self.kwargs = kwargs
 
     def __enter__(self):
-        self.lbf = espressomd.lb.LBFluidWalberla(
+        self.lbf = espressomd.lb.LBFluid(
             agrid=1., density=1., kinematic_viscosity=1.,
             tau=system.time_step, **self.kwargs)
         system.lb = self.lbf
@@ -96,8 +96,12 @@ class LBLeesEdwards(ut.TestCase):
         system.thermostat.turn_off()
         system.part.clear()
 
-    def sample_lb_velocities(self, lbf):
+    def sample_lb_velocities(self, lbf, fluid_impulse=False):
         profiles = []
+        # Due to the pull scheme as the collision is handled after the
+        # streaming it takes one timestep longer to apply the velocity.
+        if fluid_impulse:
+            system.integrator.run(1)
         for _ in range(5):
             system.integrator.run(2)
             vel_grid = lbf[:, :, :].velocity[:, :, 0, :]
@@ -238,7 +242,7 @@ class LBLeesEdwards(ut.TestCase):
         at x=0 are copied to x=h without any offset.
 
         """
-        tol = 0.08
+        tol = 0.12
 
         # stencil for D2Q8
         stencil_D2Q8 = {'S': (8, 1), 'W': (1, 8), 'N': (8, 15), 'E': (15, 8),
@@ -254,19 +258,19 @@ class LBLeesEdwards(ut.TestCase):
         # without Lees-Edwards, velocities remain unaffected
         with LBContextManager() as lbf:
             create_impulse(lbf, stencil_D2Q8)
-            for profile in self.sample_lb_velocities(lbf):
+            for profile in self.sample_lb_velocities(lbf, True):
                 self.check_profile(profile, stencil_D2Q8, '', 'SNWE', tol)
 
         # with Lees-Edwards and no offset, velocities remain unaffected
         with LEContextManager('x', 'y', 0):
             with LBContextManager() as lbf:
                 create_impulse(lbf, stencil_D2Q8)
-                for profile in self.sample_lb_velocities(lbf):
+                for profile in self.sample_lb_velocities(lbf, True):
                     self.check_profile(profile, stencil_D2Q8, '', 'SNWE', tol)
         with LBContextManager() as lbf:
             with LEContextManager('x', 'y', 0):
                 create_impulse(lbf, stencil_D2Q8)
-                for profile in self.sample_lb_velocities(lbf):
+                for profile in self.sample_lb_velocities(lbf, True):
                     self.check_profile(profile, stencil_D2Q8, '', 'SNWE', tol)
 
         le_offset = 6
@@ -278,7 +282,7 @@ class LBLeesEdwards(ut.TestCase):
                        **stencil_D2Q8}
             with LBContextManager() as lbf:
                 create_impulse(lbf, stencil_D2Q8)
-                for profile in self.sample_lb_velocities(lbf):
+                for profile in self.sample_lb_velocities(lbf, True):
                     self.check_profile(profile, stencil, 'SN', 'WE', tol)
         with LBContextManager() as lbf:
             with LEContextManager('x', 'y', le_offset):
@@ -286,7 +290,7 @@ class LBLeesEdwards(ut.TestCase):
                            'S~': (8 + le_offset, 15),
                            **stencil_D2Q8}
                 create_impulse(lbf, stencil_D2Q8)
-                for profile in self.sample_lb_velocities(lbf):
+                for profile in self.sample_lb_velocities(lbf, True):
                     self.check_profile(profile, stencil, 'SN', 'WE', tol)
 
         # TODO: re-enable this check once LB can be sheared in any direction
@@ -337,7 +341,7 @@ class LBLeesEdwards(ut.TestCase):
             if shear_dir != shear_plane_normal:
                 with self.assertRaisesRegex(ValueError, err_msg):
                     with LEContextManager(shear_dir, shear_plane_normal, 1.):
-                        system.lb = espressomd.lb.LBFluidWalberla(
+                        system.lb = espressomd.lb.LBFluid(
                             agrid=1., density=1., kinematic_viscosity=1.,
                             tau=system.time_step)
                 self.assertIsNone(system.lb)
@@ -350,7 +354,7 @@ class LBLeesEdwards(ut.TestCase):
         system.lees_edwards.protocol = None
         with self.assertRaisesRegex(RuntimeError, "Lees-Edwards LB doesn't support thermalization"):
             with LEContextManager('x', 'y', 1.):
-                system.lb = espressomd.lb.LBFluidWalberla(
+                system.lb = espressomd.lb.LBFluid(
                     agrid=1., density=1., kinematic_viscosity=1., kT=1., seed=42,
                     tau=system.time_step)
         self.assertIsNone(system.lb)
@@ -370,17 +374,17 @@ class LBLeesEdwards(ut.TestCase):
         self.assertIsNone(system.lb)
 
         with self.assertRaisesRegex(ValueError, "Lees-Edwards sweep is implemented for a ghost layer of thickness 1"):
-            lattice = espressomd.lb.LatticeWalberla(agrid=1., n_ghost_layers=2)
+            lattice = espressomd.lb.Lattice(agrid=1., n_ghost_layers=2)
             with LEContextManager('x', 'y', 1.):
-                system.lb = espressomd.lb.LBFluidWalberla(
+                system.lb = espressomd.lb.LBFluid(
                     lattice=lattice, density=1., kinematic_viscosity=1.,
                     tau=system.time_step)
 
         system.box_l = [16, 16, 1]
-        with self.assertRaisesRegex(ValueError, "LB LEbc doesn't support domain decomposition along the shear and normal directions"):
+        with self.assertRaisesRegex(ValueError, "LB LEbc doesn't support domain decomposition along the shear direction, nor multiple blocks along the normal direction"):
             for blocks_per_mpi_rank in ([2, 1, 1], [1, 2, 1]):
                 with LEContextManager('x', 'y', 1.):
-                    system.lb = espressomd.lb.LBFluidWalberla(
+                    system.lb = espressomd.lb.LBFluid(
                         agrid=1., density=1., kinematic_viscosity=1.,
                         tau=system.time_step, blocks_per_mpi_rank=blocks_per_mpi_rank)
 

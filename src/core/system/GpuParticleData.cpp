@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2022 The ESPResSo project
+ * Copyright (C) 2014-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,7 +19,7 @@
 
 #include "config/config.hpp"
 
-#ifdef CUDA
+#ifdef ESPRESSO_CUDA
 
 #include "GpuParticleData.hpp"
 
@@ -88,10 +88,10 @@ static void pack_particles(ParticleRange const &particles,
   std::size_t i = 0u;
   for (auto const &p : particles) {
     buffer[i].p = static_cast<Utils::Vector3f>(box.folded_position(p.pos()));
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
     buffer[i].dip = static_cast<Utils::Vector3f>(p.calc_dip());
 #endif
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
     buffer[i].q = static_cast<float>(p.q());
 #endif
     buffer[i].identity = p.id();
@@ -136,13 +136,25 @@ static void add_forces_and_torques(ParticleRange const &particles,
   for (auto &p : particles) {
     for (std::size_t j = 0ul; j < 3ul; j++) {
       p.force()[j] += static_cast<double>(forces[3ul * i + j]);
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
       p.torque()[j] += static_cast<double>(torques[3ul * i + j]);
 #endif
     }
     i++;
   }
 }
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+static void add_dip_fld(ParticleRange const &particles,
+                        std::span<const float> dip_fld) {
+  std::size_t i = 0ul;
+  for (auto &p : particles) {
+    for (std::size_t j = 0ul; j < 3ul; j++) {
+      p.dip_fld()[j] += static_cast<double>(dip_fld[3ul * i + j]);
+    }
+    i++;
+  }
+}
+#endif
 
 /**
  * @brief Distribute forces to the worker nodes, and add them to the particles.
@@ -168,18 +180,40 @@ void GpuParticleData::particles_scatter_forces(
 
     buffer_forces.resize(size);
     Utils::Mpi::scatter_buffer(buffer_forces.data(), n_elements, ::comm_cart);
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
     buffer_torques.resize(size);
     Utils::Mpi::scatter_buffer(buffer_torques.data(), n_elements, ::comm_cart);
 #endif
     add_forces_and_torques(particles, buffer_forces, buffer_torques);
   } else {
     Utils::Mpi::scatter_buffer(host_forces.data(), n_elements, ::comm_cart);
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
     Utils::Mpi::scatter_buffer(host_torques.data(), n_elements, ::comm_cart);
 #endif
     add_forces_and_torques(particles, host_forces, host_torques);
   }
 }
+
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+void GpuParticleData::particles_scatter_dip_fld(
+    ParticleRange const &particles, std::span<float> host_dip_fld) const {
+
+  auto const size = 3ul * particles.size();
+  auto const n_elements = static_cast<int>(size);
+
+  if (::this_node > 0) {
+    static std::vector<float> buffer_dip_fld;
+
+    buffer_dip_fld.resize(size);
+    Utils::Mpi::scatter_buffer(buffer_dip_fld.data(), n_elements, ::comm_cart);
+    add_dip_fld(particles, buffer_dip_fld);
+
+  } else {
+    Utils::Mpi::scatter_buffer(host_dip_fld.data(), n_elements, ::comm_cart);
+
+    add_dip_fld(particles, host_dip_fld);
+  }
+}
+#endif
 
 #endif

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2024 The ESPResSo project
+ * Copyright (C) 2011-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -21,7 +21,7 @@
 
 #include <config/config.hpp>
 
-#ifdef COLLISION_DETECTION
+#ifdef ESPRESSO_COLLISION_DETECTION
 
 #include "BindAtPointOfCollision.hpp"
 #include "BindCenters.hpp"
@@ -32,9 +32,9 @@
 
 namespace CollisionDetection {
 using ActiveProtocol = std::variant<Off,
-#ifdef VIRTUAL_SITES_RELATIVE
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
                                     BindAtPointOfCollision, GlueToSurface,
-#endif // VIRTUAL_SITES_RELATIVE
+#endif // ESPRESSO_VIRTUAL_SITES_RELATIVE
                                     BindCenters>;
 } // namespace CollisionDetection
-#endif // COLLISION_DETECTION
+#endif // ESPRESSO_COLLISION_DETECTION

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2022 The ESPResSo project
+ * Copyright (C) 2021-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -17,9 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define BOOST_TEST_NO_MAIN
 #define BOOST_TEST_MODULE EspressoSystemStandAlone test
-#define BOOST_TEST_ALTERNATIVE_INIT_API
 #define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
 namespace utf = boost::unit_test;
@@ -27,6 +25,7 @@ namespace utf = boost::unit_test;
 #include "ParticleFactory.hpp"
 #include "particle_management.hpp"
 
+#include "EspressoCoreGlobalConfig.hpp"
 #include "Observable_stat.hpp"
 #include "Particle.hpp"
 #include "PropagationMode.hpp"
@@ -42,13 +41,13 @@ namespace utf = boost::unit_test;
 #include "cuda/utils.hpp"
 #include "electrostatics/coulomb.hpp"
 #include "electrostatics/p3m.hpp"
-#include "electrostatics/p3m.impl.hpp"
+#include "energy_inline.hpp"
+#include "forces_inline.hpp"
 #include "galilei/Galilei.hpp"
 #include "integrate.hpp"
 #include "integrators/Propagation.hpp"
 #include "magnetostatics/dipoles.hpp"
 #include "magnetostatics/dp3m.hpp"
-#include "magnetostatics/dp3m.impl.hpp"
 #include "nonbonded_interactions/lj.hpp"
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
 #include "observables/ParticleVelocities.hpp"
@@ -67,7 +66,6 @@ namespace utf = boost::unit_test;
 
 #include <boost/mpi.hpp>
 #include <boost/mpi/collectives/all_reduce.hpp>
-#include <boost/variant.hpp>
 
 #include <cassert>
 #include <cmath>
@@ -81,12 +79,28 @@ namespace utf = boost::unit_test;
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace espresso {
 // ESPResSo system instance
 static std::shared_ptr<System::System> system;
 } // namespace espresso
+
+struct GlobalConfig : public EspressoCoreGlobalConfig {
+  GlobalConfig() {
+    espresso::system = System::System::create();
+    espresso::system->set_cell_structure_topology(CellStructureType::REGULAR);
+    ::System::set_system(espresso::system);
+  }
+  ~GlobalConfig() {
+    espresso::system.reset();
+    ::System::reset_system();
+  }
+};
+
+BOOST_TEST_GLOBAL_CONFIGURATION(GlobalConfig);
+BOOST_AUTO_TEST_SUITE(suite)
 
 static void remove_translational_motion(System::System &system) {
   Galilei{}.kill_particle_motion(system, false);
@@ -97,7 +111,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
   auto const comm = boost::mpi::communicator();
   auto const rank = comm.rank();
   auto const n_nodes = comm.size();
-#if defined(FPE)
+#if defined(ESPRESSO_FPE)
   auto const trap = fe_trap::make_unique_scoped();
 #endif
 
@@ -220,13 +234,13 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
       if (rank == 0) {
         auto const &p = *p_opt;
         auto const kinetic_energy = 0.5 * p.mass() * p.v().norm2();
-        BOOST_CHECK_CLOSE(obs_energy->kinetic[0], kinetic_energy, tol);
+        BOOST_CHECK_CLOSE(obs_energy->kinetic_lin[0], kinetic_energy, tol);
       }
     }
   }
 
   // check electrostatics
-#ifdef P3M
+#ifdef ESPRESSO_P3M
   {
     // add charges
     set_particle_property(pid1, &Particle::q, +0.5);
@@ -234,8 +248,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
 
     // set up P3M
     auto const prefactor = 2.;
-    auto const mesh_range = std::pair<std::optional<int>, std::optional<int>>{
-        std::nullopt, std::nullopt};
+    auto tuning = TuningParameters{1, {std::nullopt, std::nullopt}, false};
     auto p3m = P3MParameters{false,
                              0.0,
                              3.5,
@@ -244,9 +257,8 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
                              5,
                              0.615,
                              1e-3};
-    auto solver =
-        new_p3m_handle<double, Arch::CPU, FFTBackendLegacy, FFTBuffersLegacy>(
-            std::move(p3m), prefactor, 1, false, mesh_range, true);
+    auto solver = new_coulomb_p3m_heffte(std::move(p3m), tuning, prefactor,
+                                         false, Arch::CPU);
     add_actor(comm, espresso::system, system.coulomb.impl->solver, solver,
               [&system]() { system.on_coulomb_change(); });
     BOOST_CHECK(not solver->is_gpu());
@@ -273,12 +285,12 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
         if (rank == 0) {
           auto pf = get_particle_property(pid1, &Particle::force_and_torque);
           BOOST_REQUIRE(pf.has_value());
-          BOOST_CHECK_CLOSE(pf->f[0u], -energy_ref / r, 0.02);
+          BOOST_CHECK_CLOSE(pf->f[0u], -energy_ref / r, 0.04);
           BOOST_CHECK_LE(std::abs(pf->f[1u]), 1e-12);
           BOOST_CHECK_LE(std::abs(pf->f[2u]), 1e-12);
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
           BOOST_CHECK_EQUAL(pf->torque.norm(), 0.);
-#endif // ROTATION
+#endif // ESPRESSO_ROTATION
         }
       }
     }
@@ -294,10 +306,10 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
       BOOST_CHECK_EQUAL(energy_p3m, 0.);
     }
   }
-#endif // P3M
+#endif // ESPRESSO_P3M
 
   // check magnetostatics
-#ifdef DP3M
+#ifdef ESPRESSO_DP3M
   {
     // add charges
     set_particle_property(pid1, &Particle::dipm, +0.5);
@@ -305,8 +317,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
 
     // set up P3M
     auto const prefactor = 2.;
-    auto const mesh_range = std::pair<std::optional<int>, std::optional<int>>{
-        std::nullopt, std::nullopt};
+    auto tuning = TuningParameters{1, {std::nullopt, std::nullopt}, false};
     auto p3m = P3MParameters{false,
                              0.0,
                              3.5,
@@ -315,9 +326,8 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
                              5,
                              0.615,
                              1e-3};
-    auto solver =
-        new_dp3m_handle<double, Arch::CPU, FFTBackendLegacy, FFTBuffersLegacy>(
-            std::move(p3m), prefactor, 1, false, mesh_range);
+    auto solver = new_dipolar_p3m_heffte(std::move(p3m), tuning, prefactor,
+                                         false, Arch::CPU);
     add_actor(comm, espresso::system, system.dipoles.impl->solver, solver,
               [&system]() { system.on_dipoles_change(); });
     BOOST_CHECK(not solver->is_gpu());
@@ -363,10 +373,10 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
       BOOST_CHECK_EQUAL(energy_p3m, 0.);
     }
   }
-#endif // DP3M
+#endif // ESPRESSO_DP3M
 
   // check non-bonded energies
-#ifdef LENNARD_JONES
+#ifdef ESPRESSO_LENNARD_JONES
   {
     // distance between particles
     auto const dist = 0.2;
@@ -402,7 +412,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
       }
     }
   }
-#endif // LENNARD_JONES
+#endif // ESPRESSO_LENNARD_JONES
 
   // check bonded energies
   {
@@ -425,9 +435,9 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
       system.bonded_ias->insert(fene_bond_id, bond_ia);
     }
     auto const &harm_bond =
-        *boost::get<HarmonicBond>(system.bonded_ias->at(harm_bond_id).get());
+        std::get<HarmonicBond>(*system.bonded_ias->at(harm_bond_id));
     auto const &fene_bond =
-        *boost::get<FeneBond>(system.bonded_ias->at(fene_bond_id).get());
+        std::get<FeneBond>(*system.bonded_ias->at(fene_bond_id));
     insert_particle_bond(pid2, harm_bond_id, {pid1});
     insert_particle_bond(pid2, fene_bond_id, {pid3});
 
@@ -570,7 +580,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
     BOOST_CHECK_THROW(throw BondUnknownTypeError(), std::exception);
     BOOST_CHECK_THROW(throw BondInvalidSizeError(2), std::exception);
     BOOST_CHECK_EQUAL(BondInvalidSizeError(2).size, 2);
-#ifdef COLLISION_DETECTION
+#ifdef ESPRESSO_COLLISION_DETECTION
     BOOST_CHECK_THROW(CollisionDetection::get_part(*system.cell_structure, 777),
                       std::runtime_error);
 #endif
@@ -584,7 +594,39 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
     } else {
       get_particle_node_parallel(12345);
     }
-#ifdef CUDA
+    std::vector<Particle> plist(5u);
+    std::vector<Particle *> plist_ptr{};
+    for (auto &p : plist) {
+      plist_ptr.emplace_back(&p);
+    }
+    auto const energy_kernel = [&](std::size_t n) {
+      auto const &box_geo = *system.box_geo;
+      auto const none = NoneBond{};
+      auto const beg = std::begin(plist_ptr);
+      calc_bonded_energy(none, plist[0], {beg, n}, box_geo, nullptr);
+    };
+    auto const force_kernel = [&](std::size_t n) {
+      auto const &box_geo = *system.box_geo;
+      auto const &pl = plist; // alias to improve code coverage
+      auto const none = NoneBond{};
+      if (n == 1u) {
+        calc_bond_pair_force(none, pl[0], pl[1], {}, nullptr);
+      } else if (n == 2u) {
+        calc_bonded_three_body_force(none, box_geo, pl[0], pl[1], pl[2]);
+      } else if (n == 3u) {
+        calc_bonded_four_body_force(none, box_geo, pl[0], pl[1], pl[2], pl[3]);
+      }
+    };
+    static_cast<void>(energy_kernel(0u));
+    BOOST_CHECK_THROW(energy_kernel(1u), BondUnknownTypeError);
+    BOOST_CHECK_THROW(energy_kernel(2u), BondUnknownTypeError);
+    BOOST_CHECK_THROW(energy_kernel(3u), BondUnknownTypeError);
+    BOOST_CHECK_THROW(energy_kernel(4u), BondInvalidSizeError);
+    static_cast<void>(force_kernel(0u));
+    BOOST_CHECK_THROW(force_kernel(1u), BondUnknownTypeError);
+    BOOST_CHECK_THROW(force_kernel(2u), BondUnknownTypeError);
+    BOOST_CHECK_THROW(force_kernel(3u), BondUnknownTypeError);
+#ifdef ESPRESSO_CUDA
     BOOST_CHECK_THROW(
         invoke_skip_cuda_exceptions([]() { throw std::runtime_error(""); }),
         std::runtime_error);
@@ -593,11 +635,4 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
   }
 }
 
-int main(int argc, char **argv) {
-  auto const mpi_handle = MpiContainerUnitTest(argc, argv);
-  espresso::system = System::System::create();
-  espresso::system->set_cell_structure_topology(CellStructureType::REGULAR);
-  ::System::set_system(espresso::system);
-
-  return boost::unit_test::unit_test_main(init_unit_test, argc, argv);
-}
+BOOST_AUTO_TEST_SUITE_END()

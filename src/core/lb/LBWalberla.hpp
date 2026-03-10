@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The ESPResSo project
+ * Copyright (C) 2023-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,16 +19,20 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
+
+#include "system/Leaf.hpp"
 
 #include <utils/Vector.hpp>
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 class LBWalberlaBase;
 namespace System {
@@ -39,15 +43,15 @@ namespace LB {
 
 struct LBWalberlaParams {
   LBWalberlaParams(double agrid, double tau) : m_agrid(agrid), m_tau(tau) {}
-  double get_agrid() const { return m_agrid; };
-  double get_tau() const { return m_tau; };
+  double get_agrid() const { return m_agrid; }
+  double get_tau() const { return m_tau; }
 
 private:
   double m_agrid;
   double m_tau;
 };
 
-struct LBWalberla {
+struct LBWalberla : public System::Leaf<LBWalberla> {
   std::shared_ptr<LBWalberlaBase> lb_fluid;
   std::shared_ptr<LBWalberlaParams> lb_params;
   LBWalberla(std::shared_ptr<LBWalberlaBase> lb_fluid_,
@@ -65,10 +69,14 @@ struct LBWalberla {
   std::optional<double> get_density_at_pos(Utils::Vector3d const &pos,
                                            bool consider_points_in_halo) const;
   Utils::Vector3d get_momentum() const;
+  std::function<bool(Utils::Vector3d const &)>
+  make_lattice_position_checker(bool consider_points_in_halo) const;
   bool add_force_at_pos(Utils::Vector3d const &pos,
                         Utils::Vector3d const &force);
   void add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
                          std::vector<Utils::Vector3d> const &forces);
+  std::vector<double>
+  get_densities_at_pos(std::vector<Utils::Vector3d> const &pos);
   std::vector<Utils::Vector3d>
   get_velocities_at_pos(std::vector<Utils::Vector3d> const &pos);
   void propagate();
@@ -93,11 +101,11 @@ struct LBWalberla {
   void on_temperature_change() const {}
   void on_lees_edwards_change();
   void update_collision_model();
-  static void update_collision_model(LBWalberlaBase &instance,
-                                     LBWalberlaParams &params, double kT,
-                                     unsigned int seed);
+  void update_collision_model(LBWalberlaBase &instance,
+                              LBWalberlaParams &params, double kT,
+                              unsigned int seed);
 };
 
 } // namespace LB
 
-#endif // WALBERLA
+#endif // ESPRESSO_WALBERLA

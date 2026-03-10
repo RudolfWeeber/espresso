@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022-2023 The ESPResSo project
+ * Copyright (C) 2022-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -30,16 +30,16 @@ template <class EKReaction> class EKReactions {
   using container_type = std::vector<std::shared_ptr<EKReaction>>;
 
 public:
-  using value_type = typename container_type::value_type;
-  using iterator = typename container_type::iterator;
-  using const_iterator = typename container_type::const_iterator;
+  using value_type = container_type::value_type;
+  using iterator = container_type::iterator;
+  using const_iterator = container_type::const_iterator;
 
 private:
   container_type m_ekreactions;
 
 public:
   bool contains(std::shared_ptr<EKReaction> const &ek_reaction) const noexcept {
-    return std::find(begin(), end(), ek_reaction) != end();
+    return std::ranges::find(*this, ek_reaction) != end();
   }
   void add(std::shared_ptr<EKReaction> const &ek_reaction) {
     assert(not contains(ek_reaction));

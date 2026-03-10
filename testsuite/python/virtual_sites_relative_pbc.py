@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023 The ESPResSo project
+# Copyright (C) 2023-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -122,9 +122,9 @@ class Test(ut.TestCase):
             check_dist(real_part1, virt_part1, check_unfolded_dist=False)
             check_dist(real_part2, virt_part2, check_unfolded_dist=False)
             check_pos(real_part1, unit_cell, pos_away[1] + 0 * le_vec)
-            check_pos(virt_part1, image_box, pos_near[1] + 1 * le_vec)
+            check_pos(virt_part1, image_box, pos_near[1] - 1 * le_vec)
             check_pos(real_part2, image_box, pos_near[1] - 1 * le_vec)
-            check_pos(virt_part2, unit_cell, pos_away[1] - 2 * le_vec)
+            check_pos(virt_part2, unit_cell, pos_away[1] + 0 * le_vec)
             system.integrator.run(1)
             check_dist(real_part1, virt_part1)
             check_dist(real_part2, virt_part2)
@@ -181,7 +181,7 @@ class Test(ut.TestCase):
     def test_image_box_update(self):
         system = self.system
         Propagation = espressomd.propagation.Propagation
-        # virtual site image box is overriden by the real particle image box
+        # virtual site image box is overridden by the real particle image box
         real_part = system.part.add(pos=[0., 0., +self.vs_dist / 2.])
         virt_part = system.part.add(
             pos=[0., 0., -self.vs_dist / 2. + 4. * system.box_l[2]],

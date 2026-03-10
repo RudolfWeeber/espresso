@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -47,10 +47,8 @@
 
 #include "config/config.hpp"
 
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
 
-#include "ParticleRange.hpp"
-#include "cell_system/CellStructure.hpp"
 #include "system/Leaf.hpp"
 
 #include <utils/Vector.hpp>
@@ -97,12 +95,11 @@ struct ICCStar : public System::Leaf<ICCStar> {
    * The main iterative scheme, where the surface element charges are calculated
    * self-consistently.
    */
-  void iteration(CellStructure &cell_structure, ParticleRange const &particles,
-                 ParticleRange const &ghost_particles);
+  void iteration();
 
   void on_activation() const;
   void sanity_checks_active_solver() const;
   void sanity_check() const;
 };
 
-#endif // ELECTROSTATICS
+#endif // ESPRESSO_ELECTROSTATICS

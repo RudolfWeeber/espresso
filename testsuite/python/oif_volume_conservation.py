@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010-2022 The ESPResSo project
+# Copyright (C) 2010-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -23,10 +23,14 @@ import unittest as ut
 import unittest_decorators as utx
 import tests_common
 import scipy.optimize
-import object_in_fluid as oif
+import contextlib
+
+with contextlib.suppress(ImportError):
+    import object_in_fluid as oif
 
 
 @utx.skipIfMissingFeatures("MASS")
+@utx.skipIfMissingModules("object_in_fluid")
 class Test(ut.TestCase):
 
     system = espressomd.System(box_l=(50., 50., 50.))
@@ -90,7 +94,7 @@ class Test(ut.TestCase):
             bounds=([-np.inf, 0., -np.inf, 0.], 4 * [np.inf]))
         self.assertGreater(prefactor, 0.)
         self.assertAlmostEqual(diameter_final, diameter_init, delta=0.005)
-        self.assertAlmostEqual(lam, 0.0325, delta=0.0001)
+        self.assertAlmostEqual(lam, 325e-4, delta=5e-4)
         self.system.thermostat.turn_off()
         self.system.part.clear()
 

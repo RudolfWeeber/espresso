@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -21,7 +21,7 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
 #include "bonded_interactions/bonded_interaction_data.hpp"
 #include "magnetostatics/dipoles.hpp"
@@ -37,13 +37,12 @@
 #include <utils/Vector.hpp>
 #include <utils/math/tensor_product.hpp>
 
-#include <boost/variant.hpp>
-
 #include <cstdio>
 #include <optional>
 #include <span>
 #include <string>
 #include <tuple>
+#include <variant>
 
 /** Calculate non-bonded energies between a pair of particles.
  *  @param p1        pointer to particle 1.
@@ -51,6 +50,7 @@
  *  @param d         vector between p1 and p2.
  *  @param dist      distance between p1 and p2.
  *  @param ia_params              non-bonded interaction kernels.
+ *  @param dipoles                Magnetostatics solver.
  *  @param bonded_ias             bonded interaction kernels.
  *  @param kernel_forces          Coulomb force kernel.
  *  @param kernel_pressure        Coulomb pressure kernel.
@@ -60,25 +60,26 @@ inline void add_non_bonded_pair_virials(
     Particle const &p1, Particle const &p2, Utils::Vector3d const &d,
     double dist, IA_parameters const &ia_params,
     [[maybe_unused]] BondedInteractionsMap const &bonded_ias,
+    Dipoles::Solver const &dipoles,
     Coulomb::ShortRangeForceKernel::kernel_type const *kernel_forces,
     Coulomb::ShortRangePressureKernel::kernel_type const *kernel_pressure,
     Observable_stat &obs_pressure) {
-#ifdef EXCLUSIONS
+#ifdef ESPRESSO_EXCLUSIONS
   if (do_nonbonded(p1, p2))
 #endif
   {
-    auto const force = calc_central_radial_force(ia_params, d, dist).f +
-#ifdef THOLE
-                       thole_pair_force(p1, p2, ia_params, d, dist, bonded_ias,
-                                        kernel_forces) +
+    auto f = calc_non_central_force(p1, p2, ia_params, d, dist).f;
+    f += calc_central_radial_force(ia_params, d, dist);
+#ifdef ESPRESSO_THOLE
+    f +=
+        thole_pair_force(p1, p2, ia_params, d, dist, bonded_ias, kernel_forces);
 #endif
-                       calc_non_central_force(p1, p2, ia_params, d, dist).f;
-    auto const stress = Utils::tensor_product(d, force);
+    auto const stress = Utils::tensor_product(d, f);
     obs_pressure.add_non_bonded_contribution(p1.type(), p2.type(), p1.mol_id(),
                                              p2.mol_id(), flatten(stress));
   }
 
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
   if (!obs_pressure.coulomb.empty() and kernel_pressure != nullptr) {
     /* real space Coulomb */
     auto const p_coulomb = (*kernel_pressure)(p1.q() * p2.q(), d, dist);
@@ -89,15 +90,15 @@ inline void add_non_bonded_pair_virials(
       }
     }
   }
-#endif // ELECTROSTATICS
+#endif // ESPRESSO_ELECTROSTATICS
 
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
   /* real space magnetic dipole-dipole */
-  if (Dipoles::get_dipoles().impl->solver) {
+  if (dipoles.impl->solver) {
     fprintf(stderr, "calculating pressure for magnetostatics which doesn't "
                     "have it implemented\n");
   }
-#endif // DIPOLES
+#endif // ESPRESSO_DIPOLES
 }
 
 inline std::optional<Utils::Matrix<double, 3, 3>>
@@ -106,14 +107,12 @@ calc_bonded_virial_pressure_tensor(
     Particle const &p2, BoxGeometry const &box_geo,
     Coulomb::ShortRangeForceKernel::kernel_type const *kernel) {
   auto const dx = box_geo.get_mi_vector(p1.pos(), p2.pos());
-  auto const result = calc_bond_pair_force(p1, p2, iaparams, dx, kernel);
-  if (result) {
-    auto const &force = result.value();
-
-    return Utils::tensor_product(force, dx);
+  auto const pair_force = calc_bond_pair_force(iaparams, p1, p2, dx, kernel);
+  std::optional<Utils::Matrix<double, 3, 3>> pressure{std::nullopt};
+  if (pair_force) {
+    pressure = Utils::tensor_product(*pair_force, dx);
   }
-
-  return {};
+  return pressure;
 }
 
 inline std::optional<Utils::Matrix<double, 3, 3>>
@@ -121,12 +120,12 @@ calc_bonded_three_body_pressure_tensor(Bonded_IA_Parameters const &iaparams,
                                        Particle const &p1, Particle const &p2,
                                        Particle const &p3,
                                        BoxGeometry const &box_geo) {
-  if ((boost::get<AngleHarmonicBond>(&iaparams) != nullptr) ||
-      (boost::get<AngleCosineBond>(&iaparams) != nullptr) ||
-#ifdef TABULATED
-      (boost::get<TabulatedAngleBond>(&iaparams) != nullptr) ||
+  if (std::holds_alternative<AngleHarmonicBond>(iaparams) or
+      std::holds_alternative<AngleCosineBond>(iaparams) or
+#ifdef ESPRESSO_TABULATED
+      std::holds_alternative<TabulatedAngleBond>(iaparams) or
 #endif
-      (boost::get<AngleCossquareBond>(&iaparams) != nullptr)) {
+      std::holds_alternative<AngleCossquareBond>(iaparams)) {
     auto const dx21 = -box_geo.get_mi_vector(p1.pos(), p2.pos());
     auto const dx31 = box_geo.get_mi_vector(p3.pos(), p1.pos());
 
@@ -141,7 +140,7 @@ calc_bonded_three_body_pressure_tensor(Bonded_IA_Parameters const &iaparams,
     }
   } else {
     runtimeWarningMsg() << "Unsupported bond type " +
-                               std::to_string(iaparams.which()) +
+                               std::to_string(iaparams.index()) +
                                " in pressure calculation.";
     return Utils::Matrix<double, 3, 3>{};
   }
@@ -162,7 +161,7 @@ inline std::optional<Utils::Matrix<double, 3, 3>> calc_bonded_pressure_tensor(
                                                   *partners[1], box_geo);
   default:
     runtimeWarningMsg() << "Unsupported bond type " +
-                               std::to_string(iaparams.which()) +
+                               std::to_string(iaparams.index()) +
                                " in pressure calculation.";
     return Utils::Matrix<double, 3, 3>{};
   }
@@ -180,5 +179,5 @@ inline void add_kinetic_virials(Particle const &p1,
   /* kinetic pressure */
   for (std::size_t k = 0u; k < 3u; k++)
     for (std::size_t l = 0u; l < 3u; l++)
-      obs_pressure.kinetic[k * 3u + l] += p1.v()[k] * p1.v()[l] * p1.mass();
+      obs_pressure.kinetic_lin[k * 3u + l] += p1.v()[k] * p1.v()[l] * p1.mass();
 }

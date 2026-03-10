@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022 The ESPResSo project
+# Copyright (C) 2022-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -20,7 +20,7 @@
 """
 Write ESPResSo trajectories in the H5MD format with a Lees-Edwards offset,
 aperiodic boundaries and a fluctuating box size. Read the trajectory and
-reconstruct the unfolded positions. See :ref:`Writing H5MD-files` for details.
+reconstruct the unfolded positions. See :ref:`Writing hdf5 files` for details.
 """
 
 import espressomd

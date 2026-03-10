@@ -320,6 +320,8 @@ The following tutorials are available:
 * :file:`electrokinetics`: Modelling electrokinetics together with hydrodynamic interactions.
 * :file:`constant_pH`: Modelling the titration of a weak acid using the constant pH method
 * :file:`widom_insertion`: Measuring the excess chemical potential of a salt solution using the Widom particle insertion method
+* :file:`mlip`: Atomistic simulations using machine-learned interatomic potentials and the MACE-MP-0 model :cite:`batatia22a,batatia25a`
+* :file:`mlip-water`: Modelling water using the TIP4P model :cite:`abascal05a` and machine-learning interatomic potentials with Apax :cite:`schafer25a`
 
 The executed notebooks with solutions and plots are periodically deployed
 online to the `GitHub Pages <https://espressomd.github.io/tutorials.html>`__.
@@ -576,7 +578,7 @@ planned bugfix release for the version of |es| they're using.
 
 If you're actively developing code for |es|, you might also be interested in
 the summaries of the `ESPResSo meetings
-<https://github.com/espressomd/espresso/wiki/Offline-Espresso-meeting>`_,
+<https://github.com/espressomd/espresso/wiki/ESPResSo-meeting>`_,
 where the core team discusses plans for future releases and feature freezes.
 
 .. _Intended interface compatibility between ESPResSo versions:
@@ -598,25 +600,47 @@ guidelines:
   simulation is terminated. Example: 4.0.2 :math:`\to` 4.1.0.
 
 * ``major``: No guarantees are made for a transition between major versions.
-  Example: 4.1.2 :math:`\to` 5.0.
+  Example: 4.2.2 :math:`\to` 5.0.
 
 * No guarantees are made with regards to the development branch on GitHub.
 
 * No guarantees are made with respect to the C++ bindings in the simulation core.
+
+These guidelines are meant to satisfy Semantic Versioning 2.0.0 [1]_ and :pep:`440`.
+Commits between releases are considered *development* and do not have a meaningful
+version number; even though package repositories outside of the Python ecosystem
+sometimes customize version numbers with extra metadata to label development commits,
+such as in ``1.1.5-dev`` or ``1.1.5.git8b603b12``, |es| doesn't offer a mechanism for it.
+
+No guarantees are made regarding the bitwise reproducibility of simulation trajectories.
+Although thermostats are based on fully deterministic random number generators,
+many parts of the simulation engine leverage dynamic task scheduling and unsorted
+containers to improve performance, making the order of operations non-deterministic.
+This can introduce very small round-off errors in floating-point operations,
+leading eventually to diverging trajectories. This issue isn't specific to |es|
+and can be found in other molecular dynamics engines :cite:`craven25a`.
+In addition, some tuning algorithms propagate the system during the benchmark loops,
+which can cause significant deviations in the trajectories in a couple of time steps.
 
 .. _How to cite ESPResSo:
 
 How to cite |es|
 ^^^^^^^^^^^^^^^^
 
-Please cite :cite:t:`weik19a` (BibTeX key ``weik19a`` in :file:`doc/bibliography.bib`)
+Please cite both :cite:t:`weeber24a` and :cite:t:`weik19a`
+(BibTeX keys ``weeber24a`` and ``weik19a`` in :file:`doc/bibliography.bib`)
 for |es| 4.0 and later, or both :cite:t:`arnold13a` and :cite:t:`limbach06a`
 (BibTeX keys ``arnold13a`` and ``limbach06a`` in :file:`doc/bibliography.bib`)
-for |es| 2.0 to 3.3. To find the version number, use the following command:
+for |es| 2.0 to 3.3.
+Starting with ESPResSo 5.0, please also cite the exact release published on Zenodo.
+
+To find the version number, use the following command:
 
 .. code-block:: bash
 
-    ./pypresso -c "import espressomd.version;print(espressomd.version.friendly())"
+    ./pypresso -c "import espressomd;print(espressomd.__version__)"
+
+See also :mod:`espressomd.version` for access to more fine-grained metadata.
 
 A number of algorithms in |es| are fairly advanced and unique to |es|.
 The authors of these contributions kindly ask you to cite the relevant
@@ -624,11 +648,16 @@ publications, using the BibTeX entries indicated in this user guide.
 
 A complete citation would look like this:
 
-    Simulations were carried out with ESPResSo 4.2[24] using the ICC\*
+    Simulations were carried out with ESPResSo 5.0.0[23,24] using the ICC\*
     algorithm[25].
 
     | ____________
 
+    | [23] R. Weeber, J.-N. Grad, D. Beyer *et al.* ESPResSo, a versatile
+      open-source software package for simulating soft matter systems.
+      In M. Yáñez and R. J. Boyd, eds, *Comprehensive Computational Chemistry*,
+      vol. 3, pages 578--601. Elsevier, Oxford, 1st edition, 2024.
+      doi:\ `10.1016/B978-0-12-821978-2.00103-3 <https://doi.org/10.1016/B978-0-12-821978-2.00103-3>`_.
     | [24] F. Weik, R. Weeber, K. Szuttor *et al.* ESPResSo 4.0 -- an
       extensible software package for simulating soft matter systems.
       *Eur. Phys. J. Spec. Top.* **227**, 1789--1816 (2019).
@@ -638,19 +667,40 @@ A complete citation would look like this:
       dielectric boundaries. *J. Chem. Phys.* **132**, 154112 (2010).
       doi:\ `10.1063/1.3376011 <https://doi.org/10.1063/1.3376011>`_.
 
-You may also provide the patch level, when relevant. If you developed code
-for |es| and made it available in a publicly accessible repository, you
-should consider providing the corresponding URL, for example in a footnote:
+If you developed code for |es| and made it available in a publicly accessible repository,
+consider providing a permanent URL, such as a commit revision or a git tag:
 
-    The method was implemented for ESPResSo 4.2.2[24] and the source code is
+    The method was implemented for ESPResSo 4.2.2[23,24] and its source code is
     available online\ :superscript:`note 1`.
 
     | ____________
 
-    | :superscript:`note 1` https://github.com/username/espresso/tree/implemented-algorithm
+    | :superscript:`note 1` https://github.com/username/espresso/releases/tag/implemented-algorithm
 
-    | [24] F. Weik, R. Weeber, K. Szuttor *et al.* ESPResSo 4.0 -- an
-      extensible software package for simulating soft matter systems.
-      *Eur. Phys. J. Spec. Top.* **227**, 1789--1816 (2019).
-      doi:\ `10.1140/epjst/e2019-800186-9 <https://doi.org/10.1140/epjst/e2019-800186-9>`_.
+The URL of a branch can be ambiguous, since extra commits can be pushed in the future,
+for example to fix a bug, thus creating confusion as to which commit was actually
+used to produce the paper data.
 
+.. _Licensing:
+
+Licensing
+^^^^^^^^^
+
+|es| is free software: you can redistribute it and/or modify it under the terms
+of the GNU General Public License as published by the Free Software Foundation,
+either `version 3 of the License (GNU GPLv3) <https://www.gnu.org/licenses/gpl-3.0.html>`__,
+or (at your option) any later version (:spdx:`GPL-3.0-or-later`).
+
+|es| contains code that is not provided under the GNU GPLv3, but is governed
+by other open source license terms which are compatible with the GNU GPLv3,
+including, but not limited to, Apache License 2.0 (:spdx:`Apache-2.0`),
+Revised BSD License (:spdx:`BSD-3-Clause`),
+and FSF All Permissive License (:spdx:`FSFAP`).
+Such third party codes feature a header containing the license
+(or a link to its full text) and a list of the copyright holders.
+When distributing modified versions of |es|, the terms of these licenses also apply.
+
+____
+
+.. [1]
+   https://semver.org

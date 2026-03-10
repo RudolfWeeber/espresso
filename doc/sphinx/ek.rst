@@ -20,9 +20,9 @@ description of the interface.
 
 .. note::
 
-    Requires external features ``WALBERLA`` and optionally ``WALBERLA_FFT``
+    Requires external features ``WALBERLA`` and optionally ``FFTW``
     (for the FFT-based Poisson solver), enabled with the CMake options
-    ``-D ESPRESSO_BUILD_WITH_WALBERLA=ON -D ESPRESSO_BUILD_WITH_WALBERLA_FFT=ON``.
+    ``-D ESPRESSO_BUILD_WITH_WALBERLA=ON -D ESPRESSO_BUILD_WITH_FFTW=ON``.
 
 .. _Electrokinetic equations:
 
@@ -161,7 +161,7 @@ Here is a minimal working example::
     system.time_step = 0.01
     system.cell_system.skin = 1.0
 
-    lattice = espressomd.electrokinetics.LatticeWalberla(agrid=0.5, n_ghost_layers=1)
+    lattice = espressomd.electrokinetics.Lattice(agrid=0.5, n_ghost_layers=1)
     ek_solver = espressomd.electrokinetics.EKNone(lattice=lattice)
     system.ekcontainer = espressomd.electrokinetics.EKContainer(
         solver=ek_solver, tau=system.time_step)
@@ -311,7 +311,7 @@ is available through :class:`~espressomd.io.vtk.VTKReader`::
     system.cell_system.skin = 0.4
     system.time_step = 0.1
 
-    lattice = espressomd.electrokinetics.LatticeWalberla(agrid=1., n_ghost_layers=1)
+    lattice = espressomd.electrokinetics.Lattice(agrid=1., n_ghost_layers=1)
     ek_solver = espressomd.electrokinetics.EKNone(lattice=lattice)
     ek_species = espressomd.electrokinetics.EKSpecies(
         lattice=lattice, density=1., kT=1., diffusion=0.1, valency=0.,
@@ -345,6 +345,11 @@ is available through :class:`~espressomd.io.vtk.VTKReader`::
         ek_density = np.copy(ek_species[:, :, :].density)
         np.testing.assert_allclose(vtk_density, ek_density, rtol=1e-10, atol=0.)
 
+The Poisson grid can be written to a file in either unstructured (``.vtu``) or
+structured (``.vti``) grid format. The latter doesn't require topology reconstruction.
+Both file formats can be read by :class:`~espressomd.io.vtk.VTKReader`.
+To enforce unstructured grid format, pass parameter ``force_pvtu=True``.
+
 .. _Setting up EK boundary conditions:
 
 Setting up boundary conditions
@@ -367,7 +372,7 @@ One can set (or update) the boundary conditions of individual nodes::
     system = espressomd.System(box_l=[10.0, 10.0, 10.0])
     system.cell_system.skin = 0.1
     system.time_step = 0.01
-    lattice = espressomd.electrokinetics.LatticeWalberla(agrid=0.5, n_ghost_layers=1)
+    lattice = espressomd.electrokinetics.Lattice(agrid=0.5, n_ghost_layers=1)
     ek_solver = espressomd.electrokinetics.EKNone(lattice=lattice)
     ek_species = espressomd.electrokinetics.EKSpecies(
         kT=1.5, lattice=lattice, density=0.85, valency=0., diffusion=0.1,
@@ -395,7 +400,7 @@ Adding a shape-based boundary is straightforward::
     system = espressomd.System(box_l=[10.0, 10.0, 10.0])
     system.cell_system.skin = 0.1
     system.time_step = 0.01
-    lattice = espressomd.electrokinetics.LatticeWalberla(agrid=0.5, n_ghost_layers=1)
+    lattice = espressomd.electrokinetics.Lattice(agrid=0.5, n_ghost_layers=1)
     ek_solver = espressomd.electrokinetics.EKNone(lattice=lattice)
     ek_species = espressomd.electrokinetics.EKSpecies(
         kT=1.5, lattice=lattice, density=0.85, valency=0.0, diffusion=0.1,
@@ -426,7 +431,7 @@ Start by installing the code generator dependencies:
 
 .. code-block:: bash
 
-    python3 -m pip install --user -c requirements.txt numpy sympy lbmpy pystencils islpy
+    python3 -m pip install -c requirements.txt numpy sympy lbmpy pystencils islpy
 
 Next, edit the code generator script to configure new kernels, then execute it:
 

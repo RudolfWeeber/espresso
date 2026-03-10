@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -39,7 +39,7 @@ class Observable : public ObjectHandle {
 public:
   virtual std::shared_ptr<::Observables::Observable> observable() const = 0;
   Variant do_call_method(std::string const &method,
-                         VariantMap const &parameters) override {
+                         VariantMap const &) override {
     if (method == "calculate") {
       std::vector<double> out{};
       context()->parallel_try_catch([this, &out]() {

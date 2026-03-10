@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2016-2022 The ESPResSo project
+# Copyright (C) 2016-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -62,6 +62,7 @@ if(SPHINX_FOUND)
       "${CMAKE_CURRENT_SOURCE_DIR}/io.rst"
       "${CMAKE_CURRENT_SOURCE_DIR}/lb.rst"
       "${CMAKE_CURRENT_SOURCE_DIR}/magnetostatics.rst"
+      "${CMAKE_CURRENT_SOURCE_DIR}/magnetodynamics.rst"
       "${CMAKE_CURRENT_SOURCE_DIR}/particles.rst"
       "${CMAKE_CURRENT_SOURCE_DIR}/reaction_methods.rst"
       "${CMAKE_CURRENT_SOURCE_DIR}/running.rst"
@@ -78,24 +79,22 @@ if(SPHINX_FOUND)
   configure_file("${CMAKE_SOURCE_DIR}/doc/bibliography.bib"
                  "${CMAKE_CURRENT_BINARY_DIR}/bibliography.bib" COPYONLY)
 
-  # Place files to be excluded from SPHINX documentation
-  set(EXCLUDE "${SPHINX_PYTHON_DIR}/gen_code_info.py"
-              "${SPHINX_PYTHON_DIR}/gen_pxiconfig*")
-
   add_custom_target(
     sphinx
     ${Python_EXECUTABLE} "${CMAKE_CURRENT_BINARY_DIR}/samples.py"
     COMMAND ${SPHINX_API_DOC_EXE} -f -o ${CMAKE_CURRENT_BINARY_DIR}
-            ${SPHINX_PYTHON_DIR} ${EXCLUDE}
+            ${SPHINX_PYTHON_DIR}
     COMMAND ${Python_EXECUTABLE}
             "${CMAKE_CURRENT_SOURCE_DIR}/autodoc_overrides.py"
     COMMAND
-      ${SPHINX_EXECUTABLE} -q -W -b html -c "${CMAKE_CURRENT_BINARY_DIR}" -d
-      "${SPHINX_CACHE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}" "${SPHINX_HTML_DIR}"
+      ${CMAKE_BINARY_DIR}/pypresso -m sphinx -q -W -b html -c
+      "${CMAKE_CURRENT_BINARY_DIR}" -d "${SPHINX_CACHE_DIR}"
+      "${CMAKE_CURRENT_BINARY_DIR}" "${SPHINX_HTML_DIR}"
     DEPENDS espressomd pypresso
     COMMENT "Building HTML documentation with Sphinx.")
   add_custom_target(
-    doctest ${SPHINX_EXECUTABLE} -b doctest -d "${SPHINX_CACHE_DIR}"
-            "${CMAKE_CURRENT_BINARY_DIR}" "${SPHINX_HTML_DIR}" DEPENDS sphinx
+    doctest
+    ${CMAKE_BINARY_DIR}/pypresso -m sphinx -b doctest -d "${SPHINX_CACHE_DIR}"
+    "${CMAKE_CURRENT_BINARY_DIR}" "${SPHINX_HTML_DIR}" DEPENDS sphinx
     COMMENT "Performing doctests within the Sphinx documentation.")
 endif(SPHINX_FOUND)

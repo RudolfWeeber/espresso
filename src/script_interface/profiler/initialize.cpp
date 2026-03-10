@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The ESPResSo project
+ * Copyright (C) 2023-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -28,7 +28,7 @@
 namespace ScriptInterface::Profiler {
 
 void initialize(Utils::Factory<ObjectHandle> *om) {
-#ifdef CALIPER
+#ifdef ESPRESSO_CALIPER
   om->register_new<Caliper>("ScriptInterface::Profiler::Caliper");
 #else
   static_cast<void>(om);

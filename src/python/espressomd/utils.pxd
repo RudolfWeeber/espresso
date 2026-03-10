@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2013-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -21,22 +21,27 @@ from libcpp.string cimport string  # import std::string as string
 from libcpp.vector cimport vector  # import std::vector as vector
 from libcpp cimport bool as cbool
 
+cdef extern from "<filesystem>" namespace "std::filesystem" nogil:
+    cdef cppclass path:
+        ctypedef char value_type
+        path() except +
+        path(const string & source) except +
+        path & assign(const string & source) except +
+        string native_string "string"() except +
+        string generic_string() except +
+
 cdef extern from "error_handling/RuntimeError.hpp" namespace "ErrorHandling::RuntimeError":
-    cdef cppclass ErrorLevel:
-        pass
+    cdef enum class ErrorLevel:
+        WARNING
+        ERROR
 
-cdef extern from "error_handling/RuntimeError.hpp" namespace "ErrorHandling::RuntimeError::ErrorLevel":
-    cdef ErrorLevel WARNING
-    cdef ErrorLevel ERROR
-
-cdef extern from "error_handling/RuntimeError.hpp" namespace "ErrorHandling":
-    cdef cppclass RuntimeError:
+cdef extern from "error_handling/RuntimeError.hpp":
+    cdef cppclass CoreRuntimeError "ErrorHandling::RuntimeError":
         string format()
-        void print()
         ErrorLevel level()
 
 cdef extern from "errorhandling.hpp" namespace "ErrorHandling":
-    cdef vector[RuntimeError] mpi_gather_runtime_errors()
+    cdef vector[CoreRuntimeError] mpi_gather_runtime_errors()
 
 cdef extern from "utils/Vector.hpp" namespace "Utils":
     cppclass Vector2d:

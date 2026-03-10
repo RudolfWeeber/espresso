@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2013-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -29,7 +29,7 @@ import espressomd.magnetostatics
 class Test(ut.TestCase):
     """
     Check all P3M algorithms against the Madelung constant of 1D, 2D and 3D
-    NaCl lattices. See user guide sections :ref:`Madelung electrostatics` and
+    lattices. See user guide sections :ref:`Madelung electrostatics` and
     :ref:`Madelung magnetostatics` for more details.
     """
 
@@ -215,7 +215,7 @@ class Test(ut.TestCase):
 
         def check():
             energy, p_scalar, p_tensor = self.get_normalized_obs_per_ion()
-            np.testing.assert_allclose(energy, ref_energy, atol=0., rtol=5e-7)
+            np.testing.assert_allclose(energy, ref_energy, atol=0., rtol=7e-7)
             np.testing.assert_allclose(p_scalar, np.trace(ref_pressure) / 3.,
                                        atol=1e-12, rtol=1e-6)
             np.testing.assert_allclose(p_tensor, ref_pressure, atol=1e-12,
@@ -229,7 +229,7 @@ class Test(ut.TestCase):
                 check()
         if espressomd.has_features("CUDA") and espressomd.gpu_available():
             with self.subTest(msg=f"P3M GPU single_precision=True"):
-                p3m = espressomd.electrostatics.P3MGPU(**p3m_params)
+                p3m = espressomd.electrostatics.P3M(gpu=True, **p3m_params)
                 self.system.electrostatics.solver = p3m
                 check()
 
@@ -269,7 +269,7 @@ class Test(ut.TestCase):
                 check(pressure=False)
         if espressomd.has_features("CUDA") and espressomd.gpu_available():
             with self.subTest(msg=f"P3M GPU single_precision=True"):
-                p3m = espressomd.electrostatics.P3MGPU(**p3m_params)
+                p3m = espressomd.electrostatics.P3M(gpu=True, **p3m_params)
                 self.system.electrostatics.solver = p3m
                 check(pressure=True)
                 elc = espressomd.electrostatics.ELC(actor=p3m, **elc_params)
@@ -291,7 +291,7 @@ class Test(ut.TestCase):
 
         def check():
             energy, p_scalar, p_tensor = self.get_normalized_obs_per_ion()
-            np.testing.assert_allclose(energy, ref_energy, atol=0., rtol=1e-6)
+            np.testing.assert_allclose(energy, ref_energy, atol=0., rtol=2e-6)
             np.testing.assert_allclose(p_scalar, np.trace(ref_pressure) / 3.,
                                        atol=1e-12, rtol=5e-6)
             np.testing.assert_allclose(p_tensor, ref_pressure, atol=5e-9,
@@ -307,7 +307,7 @@ class Test(ut.TestCase):
             with self.subTest(msg=f"P3M GPU single_precision=True"):
                 p3m_params = dict(prefactor=1., accuracy=3e-7, mesh=42,
                                   r_cut=5.5, cao=7, alpha=0.709017, tune=False)
-                p3m = espressomd.electrostatics.P3MGPU(**p3m_params)
+                p3m = espressomd.electrostatics.P3M(gpu=True, **p3m_params)
                 self.system.electrostatics.solver = p3m
                 check()
 

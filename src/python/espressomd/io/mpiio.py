@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010-2022 The ESPResSo project
+# Copyright (C) 2010-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -52,7 +52,7 @@ class Mpiio(ScriptInterfaceHelper):
 
         Parameters
         ----------
-        prefix : :obj:`str`
+        prefix : :obj:`str` or :obj:`pathlib.Path`
             Common prefix for the filenames.
         positions : :obj:`bool`, optional
             Indicates if positions should be dumped.
@@ -82,7 +82,7 @@ class Mpiio(ScriptInterfaceHelper):
              types=False, bonds=False):
         """MPI-IO read.
 
-        This function reads data dumped by :meth`write`. See the :meth`write`
+        This function reads data dumped by :meth:`write`. See the :meth:`write`
         documentation for details.
 
         .. note::

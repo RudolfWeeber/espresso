@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -24,7 +24,7 @@
 
 #include "config/config.hpp"
 
-#if defined(P3M) || defined(DP3M)
+#if defined(ESPRESSO_P3M) || defined(ESPRESSO_DP3M)
 
 #include <utils/Vector.hpp>
 
@@ -67,7 +67,7 @@ public:
   }
 
   void tuning_goals(double accuracy, double prefactor, double box_l,
-                    int n_particles, double sum_prop) const {
+                    std::size_t n_particles, double sum_prop) const {
     if (m_verbose) {
       std::string particle_trait;
       std::string particle_property;
@@ -82,7 +82,7 @@ public:
         break;
       }
       std::printf("%s tune parameters: Accuracy goal = %.5e prefactor = %.5e\n"
-                  "System: box_l = %.5e # %s part = %d %s = %.5e\n",
+                  "System: box_l = %.5e # %s part = %zu %s = %.5e\n",
                   m_name.c_str(), accuracy, prefactor, box_l,
                   particle_trait.c_str(), n_particles,
                   particle_property.c_str(), sum_prop);
@@ -131,6 +131,6 @@ private:
   }
 };
 
-#endif // P3M or DP3M
+#endif // ESPRESSO_P3M or ESPRESSO_DP3M
 
 #endif

@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022-2023 The ESPResSo project
+# Copyright (C) 2022-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -63,7 +63,7 @@ class EKEOF:
 
         density = 0.0006
 
-        lattice = self.ek_lattice_class(n_ghost_layers=1, agrid=self.AGRID)
+        lattice = self.ek_lattice_class(n_ghost_layers=2, agrid=self.AGRID)
 
         ekspecies = self.ek_species_class(
             lattice=lattice, density=density, kT=kT, valency=valency,
@@ -83,9 +83,9 @@ class EKEOF:
         self.system.ekcontainer.add(ekspecies)
         self.system.ekcontainer.add(ekwallcharge)
 
-        lb_fluid = espressomd.lb.LBFluidWalberla(
+        lb_fluid = self.lb_class(
             lattice=lattice, density=1.0, kinematic_viscosity=visc,
-            tau=self.TAU, **self.ek_params)
+            tau=self.TAU, **self.lb_params)
         self.system.lb = lb_fluid
 
         wall_bot = espressomd.shapes.Wall(normal=[1, 0, 0], dist=offset)
@@ -174,25 +174,57 @@ class EKEOF:
 
 
 @utx.skipIfMissingFeatures(["WALBERLA", "WALBERLA_FFT"])
-class EKTestWalberla(EKEOF, ut.TestCase):
+class EKTestWalberlaDoublePrecisionCPU(EKEOF, ut.TestCase):
 
     """Test for the Walberla implementation of the EK in double-precision."""
 
-    ek_lattice_class = espressomd.electrokinetics.LatticeWalberla
+    ek_lattice_class = espressomd.electrokinetics.Lattice
     ek_species_class = espressomd.electrokinetics.EKSpecies
     ek_solver_class = espressomd.electrokinetics.EKFFT
-    ek_params = {"single_precision": False}
+    lb_class = espressomd.lb.LBFluid
+    lb_params = {"single_precision": False, "gpu": False}
+    ek_params = {"single_precision": False, "gpu": False}
 
 
 @utx.skipIfMissingFeatures(["WALBERLA", "WALBERLA_FFT"])
-class EKTestWalberlaSinglePrecision(EKEOF, ut.TestCase):
+class EKTestWalberlaSinglePrecisionCPU(EKEOF, ut.TestCase):
 
     """Test for the Walberla implementation of the EK in single-precision."""
 
-    ek_lattice_class = espressomd.electrokinetics.LatticeWalberla
+    ek_lattice_class = espressomd.electrokinetics.Lattice
     ek_species_class = espressomd.electrokinetics.EKSpecies
     ek_solver_class = espressomd.electrokinetics.EKFFT
-    ek_params = {"single_precision": True}
+    lb_class = espressomd.lb.LBFluid
+    lb_params = {"single_precision": True, "gpu": False}
+    ek_params = {"single_precision": True, "gpu": False}
+
+
+@utx.skipIfMissingGPU()
+@utx.skipIfMissingFeatures(["WALBERLA", "WALBERLA_FFT", "CUDA"])
+class EKTestWalberlaDoublePrecisionGPU(EKEOF, ut.TestCase):
+
+    """Test for the Walberla implementation of the EK in double-precision."""
+
+    ek_lattice_class = espressomd.electrokinetics.Lattice
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_solver_class = espressomd.electrokinetics.EKFFT
+    lb_class = espressomd.lb.LBFluid
+    lb_params = {"single_precision": False, "gpu": True}
+    ek_params = {"single_precision": False, "gpu": True}
+
+
+@utx.skipIfMissingGPU()
+@utx.skipIfMissingFeatures(["WALBERLA", "WALBERLA_FFT", "CUDA"])
+class EKTestWalberlaSinglePrecisionGPU(EKEOF, ut.TestCase):
+
+    """Test for the Walberla implementation of the EK in single-precision."""
+
+    ek_lattice_class = espressomd.electrokinetics.Lattice
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_solver_class = espressomd.electrokinetics.EKFFT
+    lb_class = espressomd.lb.LBFluid
+    lb_params = {"single_precision": True, "gpu": True}
+    ek_params = {"single_precision": True, "gpu": True}
 
 
 if __name__ == "__main__":

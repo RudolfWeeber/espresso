@@ -17,7 +17,7 @@
 //! \\author pystencils
 //======================================================================================================================
 
-// kernel generated with pystencils v1.3.3, lbmpy v1.3.3, lbmpy_walberla/pystencils_walberla from waLBerla commit b0842e1a493ce19ef1bbb8d2cf382fc343970a7f
+// kernel generated with pystencils v1.4+1.ge851f4e, lbmpy v1.4+1.ge9efe34, sympy v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit 007e77e077ad9d22b5eed6f3d3118240993e553c
 
 #include "ReactionKernelIndexed_2_single_precision.h"
 #include "core/DataTypes.h"
@@ -52,11 +52,6 @@ static FUNC_PREFIX void reactionkernelindexed_2_single_precision_boundary_Reacti
     const int32_t x = *((int32_t *)(&_data_indexVector[12 * ctr_0]));
     const int32_t y = *((int32_t *)(&_data_indexVector[12 * ctr_0 + 4]));
     const int32_t z = *((int32_t *)(&_data_indexVector[12 * ctr_0 + 8]));
-
-    const int32_t cx[] = {0};
-    const int32_t cy[] = {0};
-    const int32_t cz[] = {0};
-    const int32_t invdir[] = {0};
 
     const float local_rho_0 = _data_rho_0[_stride_rho_0_0 * x + _stride_rho_0_1 * y + _stride_rho_0_2 * z];
     const float local_rho_1 = _data_rho_1[_stride_rho_1_0 * x + _stride_rho_1_1 * y + _stride_rho_1_2 * z];

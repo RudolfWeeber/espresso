@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,13 +19,12 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
 #include "actor/optional.hpp"
 #include "actor/traits.hpp"
 
 #include "Particle.hpp"
-#include "ParticleRange.hpp"
 
 #include <utils/Vector.hpp>
 
@@ -37,15 +36,14 @@
 namespace Coulomb {
 
 struct Solver {
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
   struct Implementation;
   /// @brief Pointer-to-implementation.
   std::unique_ptr<Implementation> impl;
   /// @brief Whether to reinitialize the solver on observable calculation.
   bool reinit_on_observable_calc;
 
-  Utils::Vector9d
-  calc_pressure_long_range(ParticleRange const &particles) const;
+  Utils::Vector9d calc_pressure_long_range() const;
 
   void sanity_checks() const;
   double cutoff() const;
@@ -58,22 +56,24 @@ struct Solver {
   void on_cell_structure_change();
   void on_particle_change() { reinit_on_observable_calc = true; }
 
-  void calc_long_range_force(ParticleRange const &particles) const;
-  double calc_energy_long_range(ParticleRange const &particles) const;
+  void calc_long_range_force() const;
+  double calc_energy_long_range() const;
   Solver();
-#else  // ELECTROSTATICS
+#else  // ESPRESSO_ELECTROSTATICS
   Solver() = default;
-#endif // ELECTROSTATICS
+  constexpr double cutoff() const { return inactive_cutoff; }
+#endif // ESPRESSO_ELECTROSTATICS
 
   using ShortRangeForceKernel =
       std::function<Utils::Vector3d(double, Utils::Vector3d const &, double)>;
   using ShortRangeForceCorrectionsKernel =
-      std::function<void(Particle &, Particle &, double)>;
+      std::function<void(Utils::Vector3d const &, Utils::Vector3d const &,
+                         Utils::Vector3d &, Utils::Vector3d &, double)>;
   using ShortRangePressureKernel = std::function<Utils::Matrix<double, 3, 3>(
       double, Utils::Vector3d const &, double)>;
   using ShortRangeEnergyKernel =
-      std::function<double(Particle const &, Particle const &, double,
-                           Utils::Vector3d const &, double)>;
+      std::function<double(Utils::Vector3d const &, Utils::Vector3d const &,
+                           double, Utils::Vector3d const &, double)>;
 
   inline std::optional<ShortRangeForceKernel> pair_force_kernel() const;
   inline std::optional<ShortRangePressureKernel> pair_pressure_kernel() const;
@@ -81,9 +81,5 @@ struct Solver {
   inline std::optional<ShortRangeForceCorrectionsKernel>
   pair_force_elc_kernel() const;
 };
-
-#ifdef ELECTROSTATICS
-Solver const &get_coulomb();
-#endif
 
 } // namespace Coulomb

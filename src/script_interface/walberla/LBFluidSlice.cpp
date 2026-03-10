@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2023 The ESPResSo project
+ * Copyright (C) 2021-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -17,17 +17,20 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
 
 #include "LBFluidSlice.hpp"
 
 #include "LatticeSlice.impl.hpp"
 
+#include <walberla_bridge/utils/ResourceManager.hpp>
+
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <variant>
 #include <vector>
 
 namespace ScriptInterface::walberla {
@@ -45,7 +48,7 @@ Variant LBFluidSlice::do_call_method(std::string const &name,
   }
   if (name == "get_value_shape") {
     auto const name = get_value<std::string>(params, "name");
-    if (m_shape_val.count(name) == 0) {
+    if (not m_shape_val.contains(name)) {
       context()->parallel_try_catch([&]() {
         throw std::runtime_error("Unknown fluid property '" + name + "'");
       });
@@ -56,6 +59,11 @@ Variant LBFluidSlice::do_call_method(std::string const &name,
     return 1. / m_conv_velocity;
   }
 
+  if (not name.starts_with("get_")) {
+    context()->parallel_try_catch(
+        [&]() { lb_throw_if_expired(m_mpi_cart_comm_observer); });
+  }
+
   // slice getter/setter callback
   auto const call = [this, &params](auto method_ptr,
                                     std::vector<int> const &data_dims,
@@ -64,9 +72,9 @@ Variant LBFluidSlice::do_call_method(std::string const &name,
     if constexpr (std::is_invocable_v<decltype(method_ptr), LatticeModel *,
                                       Utils::Vector3i const &,
                                       Utils::Vector3i const &>) {
-      return gather_3d(params, data_dims, obj, method_ptr, units);
+      return gather_3d(data_dims, obj, method_ptr, units);
     } else {
-      scatter_3d(params, data_dims, obj, method_ptr, units);
+      scatter_3d(params.at("values"), data_dims, obj, method_ptr, units);
       return {};
     }
   };
@@ -115,8 +123,8 @@ Variant LBFluidSlice::do_call_method(std::string const &name,
       auto const density = m_lb_fluid->get_density();
       auto const diagonal_term = density * c_sound_sq / m_conv_press;
       // modify existing variant in-place
-      auto &vec = *(boost::get<std::vector<double>>(
-          &(boost::get<std::vector<Variant>>(&variant)->at(0))));
+      auto &vec = *(std::get_if<std::vector<double>>(
+          &(std::get_if<std::vector<Variant>>(&variant)->at(0))));
       for (auto it = vec.begin(); it < vec.end(); it += 9) {
         *(it + 0) -= diagonal_term;
         *(it + 4) -= diagonal_term;
@@ -138,4 +146,4 @@ Variant LBFluidSlice::do_call_method(std::string const &name,
 
 } // namespace ScriptInterface::walberla
 
-#endif // WALBERLA
+#endif // ESPRESSO_WALBERLA

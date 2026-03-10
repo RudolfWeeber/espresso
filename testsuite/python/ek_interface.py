@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010-2023 The ESPResSo project
+# Copyright (C) 2010-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -17,7 +17,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import sys
 import numpy as np
 import itertools
 import unittest as ut
@@ -53,7 +52,7 @@ class EKTest:
     def setUp(self):
         self.system.box_l = 3 * [6.0]
         self.lattice = self.ek_lattice_class(
-            n_ghost_layers=1, agrid=self.params["agrid"])
+            n_ghost_layers=2, agrid=self.params["agrid"])
         ek_solver = espressomd.electrokinetics.EKNone(lattice=self.lattice)
         self.system.ekcontainer = espressomd.electrokinetics.EKContainer(
             tau=self.system.time_step, solver=ek_solver)
@@ -67,7 +66,8 @@ class EKTest:
 
     def make_default_ek_species(self, **kwargs):
         return self.ek_species_class(
-            lattice=self.lattice, **self.ek_params, **self.ek_species_params, **kwargs)
+            lattice=self.lattice,
+            **(self.ek_params | self.ek_species_params | kwargs))
 
     def test_ek_species(self):
         # inactive species
@@ -107,7 +107,7 @@ class EKTest:
     def check_ek_species_properties(self, species):
         agrid = self.params["agrid"]
         # check getters
-        self.assertEqual(species.lattice.n_ghost_layers, 1)
+        self.assertEqual(species.lattice.n_ghost_layers, 2)
         self.assertAlmostEqual(species.lattice.agrid, agrid, delta=self.atol)
         self.assertAlmostEqual(species.diffusion, 0.1, delta=self.atol)
         self.assertAlmostEqual(species.valency, 0.0, delta=self.atol)
@@ -175,7 +175,7 @@ class EKTest:
 
     @utx.skipIfMissingFeatures(["WALBERLA_FFT"])
     def test_ek_fft_solver(self):
-        ek_solver = espressomd.electrokinetics.EKFFT(
+        ek_solver = self.ek_solver_class(
             lattice=self.lattice, permittivity=0.01,
             single_precision=self.ek_params["single_precision"])
         self.assertEqual(ek_solver.lattice, self.lattice)
@@ -188,7 +188,26 @@ class EKTest:
 
         self.system.ekcontainer.solver = ek_solver
         self.assertIsInstance(self.system.ekcontainer.solver,
-                              espressomd.electrokinetics.EKFFT)
+                              self.ek_solver_class)
+        self.assertEqual(self.system.ekcontainer.solver, ek_solver)
+
+        ek_node = ek_solver[2, 2, 2]
+        np.testing.assert_array_equal(np.copy(ek_node._index), [2, 2, 2])
+        ek_node.call_method("override_index", index=[0, 1, 2])
+        np.testing.assert_array_equal(np.copy(ek_node._index), [0, 1, 2])
+
+        ek_slice = ek_solver[0:2, -4:-1, 1:2]
+        np.testing.assert_array_equal(
+            np.copy(ek_slice.call_method("get_slice_size")), [2, 3, 1])
+        np.testing.assert_array_equal(
+            np.copy(ek_slice.call_method("get_slice_ranges")),
+            [[0, 8, 1], [2, 11, 2]])
+        np.testing.assert_array_equal(
+            np.copy(ek_slice.call_method("get_value_shape", name="potential")),
+            [1])
+        self.assertEqual(ek_slice.call_method("get_ek_solver_sip"), ek_solver)
+        with self.assertRaisesRegex(ValueError, "Unknown Poisson solver property 'unknown'"):
+            ek_slice.call_method("get_value_shape", name="unknown")
 
     def test_ek_none_solver(self):
         ek_solver = espressomd.electrokinetics.EKNone(
@@ -201,6 +220,7 @@ class EKTest:
         self.system.ekcontainer.solver = ek_solver
         self.assertIsInstance(self.system.ekcontainer.solver,
                               espressomd.electrokinetics.EKNone)
+        self.assertEqual(self.system.ekcontainer.solver, ek_solver)
 
     def test_ek_species_exceptions(self):
         ek_species = self.make_default_ek_species()
@@ -218,30 +238,105 @@ class EKTest:
                 lattice=incompatible_lattice,
                 **self.ek_params,
                 **self.ek_species_params)
+        incompatible_lattice = self.ek_lattice_class(
+            n_ghost_layers=1, agrid=self.params["agrid"],
+            blocks_per_mpi_rank=[1, 1, 1])
+        ek_small_gl_species = self.ek_species_class(
+            lattice=incompatible_lattice,
+            **self.ek_params,
+            **self.ek_species_params)
+        if np.max(self.system.cell_system.node_grid) > 1:
+            with self.assertRaisesRegex(RuntimeError, "The number of ghostlayers should be > 1 when using flux boundaries and MPI"):
+                ek_small_gl_species[0, 0, 0].flux_boundary = espressomd.electrokinetics.FluxBoundary([
+                    1., 2., 3.])
+            with self.assertRaisesRegex(RuntimeError, "The number of ghostlayers should be > 1 when using flux boundaries and MPI"):
+                ek_small_gl_species[:, :, 0].flux_boundary = espressomd.electrokinetics.FluxBoundary([
+                    1., 2., 3.])
+            wall_shape = espressomd.shapes.Wall(normal=[1., 0., 0.], dist=2.5)
+            with self.assertRaisesRegex(RuntimeError, "The number of ghostlayers should be > 1 when using flux boundaries and MPI"):
+                ek_small_gl_species.add_boundary_from_shape(
+                    shape=wall_shape, value=[1., 2., 3.], boundary_type=espressomd.electrokinetics.FluxBoundary)
 
     def test_ek_solver_exceptions(self):
         ek_solver = self.system.ekcontainer.solver
         ek_species = self.make_default_ek_species()
         self.system.ekcontainer.add(ek_species)
         incompatible_lattice = self.ek_lattice_class(
-            n_ghost_layers=2, agrid=self.params["agrid"])
+            n_ghost_layers=3, agrid=self.params["agrid"])
         incompatible_ek_solver = espressomd.electrokinetics.EKNone(
-            lattice=incompatible_lattice)
+            lattice=incompatible_lattice, **self.ek_params)
         incompatible_ek_species = self.ek_species_class(
             lattice=incompatible_lattice, **self.ek_params,
             **self.ek_species_params)
         with self.assertRaisesRegex(RuntimeError, "EKSpecies lattice incompatible with existing Poisson solver lattice"):
             self.system.ekcontainer.add(incompatible_ek_species)
+        self.assertEqual(len(self.system.ekcontainer), 1)
+        self.system.ekcontainer.clear()
         with self.assertRaisesRegex(RuntimeError, "Poisson solver lattice incompatible with existing EKSpecies lattice"):
-            self.system.ekcontainer.clear()
             self.system.ekcontainer.solver = incompatible_ek_solver
             self.system.ekcontainer.add(incompatible_ek_species)
             self.system.ekcontainer.solver = ek_solver
+        self.assertEqual(
+            self.system.ekcontainer.solver, incompatible_ek_solver)
         incompatible_lattice = self.ek_lattice_class(
-            n_ghost_layers=1, agrid=self.params["agrid"],
+            n_ghost_layers=2, agrid=self.params["agrid"],
             blocks_per_mpi_rank=[2, 1, 1])
         with self.assertRaisesRegex(NotImplementedError, "Using more than one block per MPI rank is not supported for EKNone"):
             espressomd.electrokinetics.EKNone(lattice=incompatible_lattice)
+
+        if espressomd.has_features("WALBERLA_FFT"):
+            ek_solver = self.ek_solver_class(
+                lattice=self.lattice, permittivity=0.01, **self.ek_params)
+            with self.assertRaisesRegex(NotImplementedError, "Cannot serialize EK Poisson solver node objects"):
+                ek_solver[0, 0, 0].__reduce__()
+            with self.assertRaisesRegex(NotImplementedError, "Cannot serialize EK Poisson solver slice objects"):
+                ek_solver[0:1, 0:1, 0:1].__reduce__()
+
+            solver_sp = self.ek_solver_class(
+                lattice=self.lattice, permittivity=0.1, single_precision=True)
+            solver_dp = self.ek_solver_class(
+                lattice=self.lattice, permittivity=0.1, single_precision=False)
+            species_sp = self.make_default_ek_species(single_precision=True)
+            species_dp = self.make_default_ek_species(single_precision=False)
+            self.system.ekcontainer.clear()
+            # EKNone has no effect and its floating-point precision is ignored
+            solver_none_sp = espressomd.electrokinetics.EKNone(
+                lattice=self.lattice, single_precision=True)
+            solver_none_dp = espressomd.electrokinetics.EKNone(
+                lattice=self.lattice, single_precision=True)
+            self.system.ekcontainer.solver = solver_none_sp
+            self.system.ekcontainer.add(species_dp)  # mismatch allowed
+            self.system.ekcontainer.clear()
+            self.system.ekcontainer.solver = solver_none_dp
+            self.system.ekcontainer.add(species_sp)  # mismatch allowed
+            self.system.ekcontainer.clear()
+            # FFT solvers check floating-point precision of species
+            self.system.ekcontainer.solver = solver_sp
+            with self.assertRaisesRegex(RuntimeError, "Cannot mix single and double precision kernels"):
+                self.system.ekcontainer.add(species_dp)
+            self.assertEqual(len(self.system.ekcontainer), 0)
+            self.system.ekcontainer.solver = solver_dp
+            with self.assertRaisesRegex(RuntimeError, "Cannot mix single and double precision kernels"):
+                self.system.ekcontainer.add(species_sp)
+            self.assertEqual(len(self.system.ekcontainer), 0)
+            # EKSpecies check floating-point precision of new species/solvers
+            self.system.ekcontainer.solver = solver_none_sp
+            self.system.ekcontainer.add(species_dp)
+            with self.assertRaisesRegex(RuntimeError, "Cannot mix single and double precision kernels"):
+                self.system.ekcontainer.add(species_sp)
+            self.assertEqual(len(self.system.ekcontainer), 1)
+            with self.assertRaisesRegex(RuntimeError, "Cannot mix single and double precision kernels"):
+                self.system.ekcontainer.solver = solver_sp
+            self.assertEqual(self.system.ekcontainer.solver, solver_none_sp)
+            self.system.ekcontainer.clear()
+            self.system.ekcontainer.add(species_sp)
+            with self.assertRaisesRegex(RuntimeError, "Cannot mix single and double precision kernels"):
+                self.system.ekcontainer.add(species_dp)
+            self.assertEqual(len(self.system.ekcontainer), 1)
+            with self.assertRaisesRegex(RuntimeError, "Cannot mix single and double precision kernels"):
+                self.system.ekcontainer.solver = solver_dp
+            self.assertEqual(self.system.ekcontainer.solver, solver_none_sp)
+            self.system.ekcontainer.clear()
 
     def test_parameter_change_exceptions(self):
         ek_solver = self.system.ekcontainer.solver
@@ -260,8 +355,6 @@ class EKTest:
         with self.assertRaisesRegex(RuntimeError, "MD cell geometry change not supported by EK"):
             self.system.box_l = [1., 2., 3.]
         np.testing.assert_allclose(np.copy(self.system.box_l), 6., atol=1e-7)
-        with self.assertRaisesRegex(RuntimeError, "MPI topology change not supported by EK"):
-            self.system.cell_system.node_grid = self.system.cell_system.node_grid
 
     def test_ek_reactants(self):
         ek_species = self.make_default_ek_species()
@@ -292,6 +385,54 @@ class EKTest:
         self.assertFalse(ek_reaction[1, 1, 1])
         ek_reaction.add_node_to_index([1, 1, 1])
         self.assertTrue(ek_reaction[1, 1, 1])
+
+    def test_ek_fluctuations(self):
+        """
+        smoke test, see `ek_fluctuations.py` for a statistical test
+        """
+        lattice = espressomd.electrokinetics.Lattice(
+            n_ghost_layers=1, agrid=1.)
+        ek_solver = espressomd.electrokinetics.EKNone(lattice=lattice)
+        ek_species = self.ek_species_class(
+            lattice=lattice, density=20., valency=0., advection=False,
+            diffusion=0.01, friction_coupling=False, thermalized=True, seed=42,
+            tau=self.params["tau"], **self.ek_params)
+        self.assertTrue(ek_species.thermalized)
+        self.assertEqual(ek_species.seed, 42)
+        self.system.ekcontainer.solver = ek_solver
+        self.system.ekcontainer.add(ek_species)
+        self.system.integrator.run(20)
+
+    @utx.skipIfMissingFeatures(["WALBERLA_FFT"])
+    def test_ek_friction_advection(self):
+        """
+        smoke test, see `ek_eof.py` for a statistical test
+        """
+        lattice = espressomd.electrokinetics.Lattice(
+            n_ghost_layers=1, agrid=1.)
+        lb_fluid = self.lb_fluid_class(
+            lattice=lattice, density=1., kinematic_viscosity=1. / 6.,
+            tau=self.params["tau"], **self.lb_params)
+        ek_species = self.ek_species_class(
+            lattice=lattice, density=1., kT=2., valency=1.1, diffusion=0.25,
+            friction_coupling=True, advection=True, ext_efield=[0., 0.001, 0.],
+            tau=self.params["tau"], **self.ek_params)
+        ek_wallcharge = self.ek_species_class(
+            lattice=lattice, density=0., kT=2., valency=-1.1, diffusion=0.,
+            friction_coupling=False, advection=False, ext_efield=[0., 0., 0.],
+            tau=self.params["tau"], **self.ek_params)
+        ek_solver = self.ek_solver_class(
+            lattice=lattice, permittivity=0.3, **self.ek_params)
+        self.assertTrue(ek_species.friction_coupling)
+        self.assertTrue(ek_species.advection)
+        self.assertFalse(ek_wallcharge.friction_coupling)
+        self.assertFalse(ek_wallcharge.advection)
+        self.assertAlmostEqual(ek_solver.permittivity, 0.3, delta=self.atol)
+        self.system.ekcontainer.solver = ek_solver
+        self.system.ekcontainer.add(ek_species)
+        self.system.ekcontainer.add(ek_wallcharge)
+        self.system.lb = lb_fluid
+        self.system.integrator.run(20)
 
     def test_grid_index(self):
         ek_species = self.make_default_ek_species()
@@ -337,9 +478,6 @@ class EKTest:
         self.system.ekcontainer.add(ek_species)
         self.system.integrator.run(1)
 
-        print("\nTesting EK runtime error messages:", file=sys.stderr)
-        sys.stderr.flush()
-
         # check exceptions without LB force field
         with self.assertRaisesRegex(Exception, "friction coupling enabled but no force field accessible"):
             ek_species.friction_coupling = True
@@ -366,9 +504,6 @@ class EKTest:
             self.system.lb = lb
             self.system.integrator.run(1)
 
-        print("End of EK runtime error messages", file=sys.stderr)
-        sys.stderr.flush()
-
         # reset global variable fluid_step
         self.system.ekcontainer.clear()
         self.system.integrator.run(1)
@@ -385,7 +520,8 @@ class EKTest:
 
     def test_raise_if_read_only(self):
         ek_species = self.make_default_ek_species()
-        for key in {"lattice", "shape", "single_precision", "seed", "thermalized"}:
+        for key in {"lattice", "shape",
+                    "single_precision", "seed", "thermalized"}:
             with self.assertRaisesRegex(RuntimeError, f"(Parameter|Property) '{key}' is read-only"):
                 setattr(ek_species, key, 0)
 
@@ -413,6 +549,70 @@ class EKTest:
         with self.assertRaisesRegex(ValueError, "Parameter 'seed' is required for thermalized EKSpecies"):
             self.ek_species_class(**make_kwargs(thermalized=True))
 
+        # when ekcontainer is None, no solver can be attached
+        self.system.ekcontainer = None
+        self.system.ekcontainer.solver = None
+        with self.assertRaisesRegex(RuntimeError, "Parameter 'solver' is read-only"):
+            self.system.ekcontainer.solver = espressomd.electrokinetics.EKNone(
+                lattice=self.lattice)
+        self.assertIsNone(self.system.ekcontainer.solver)
+
+    def test_rollback(self):
+        """check rollback to a valid state when setter fails"""
+        node_grid = np.copy(self.system.cell_system.node_grid)
+        world_size = np.prod(node_grid)
+        if world_size <= 4:
+            wrong_box_l = [1., 1., 7.] if world_size == 1 else 2. * node_grid
+            lattice1 = espressomd.electrokinetics.Lattice(
+                n_ghost_layers=2, agrid=1., box_l=self.system.box_l)
+            lattice2 = espressomd.electrokinetics.Lattice(
+                n_ghost_layers=2, agrid=1., box_l=wrong_box_l)
+            solver_valid = espressomd.electrokinetics.EKNone(lattice=lattice1)
+            solver_wrong = espressomd.electrokinetics.EKNone(lattice=lattice2)
+            self.system.ekcontainer = espressomd.electrokinetics.EKContainer(
+                tau=self.system.time_step, solver=solver_valid)
+            with self.assertRaisesRegex(RuntimeError, "waLBerla and ESPResSo disagree about domain decomposition"):
+                self.system.ekcontainer = espressomd.electrokinetics.EKContainer(
+                    tau=self.system.time_step, solver=solver_wrong)
+            self.assertEqual(self.system.ekcontainer.solver, solver_valid)
+
+    def test_node_grid_change(self):
+        """check MPI Cartesian communicator invalidation"""
+        node_grid = np.copy(self.system.cell_system.node_grid)
+        # create a species, slice and node for the current MPI topology
+        ek_solver = espressomd.electrokinetics.EKNone(lattice=self.lattice)
+        ek_species = self.make_default_ek_species()
+        ek_node = ek_species[0, 0, 0]
+        ek_slice = ek_species[0:5, 0:5, 0:5]
+        self.system.ekcontainer = espressomd.electrokinetics.EKContainer(
+            tau=self.system.time_step, solver=ek_solver)
+        self.system.ekcontainer.add(ek_species)
+        # veto node grid change
+        with self.assertRaisesRegex(RuntimeError, "MPI topology change not supported by EK"):
+            self.system.cell_system.node_grid = node_grid
+        self.system.ekcontainer = None
+        # invalidate MPI Cartesian communicator
+        self.system.cell_system.node_grid = node_grid
+        # create a new species
+        ek_solver_new = espressomd.electrokinetics.EKNone(lattice=self.lattice)
+        ek_species_new = self.make_default_ek_species()
+        self.system.ekcontainer = espressomd.electrokinetics.EKContainer(
+            tau=self.system.time_step, solver=ek_solver_new)
+        self.system.ekcontainer.add(ek_species_new)
+        # prevent binding of an expired EK object
+        with self.assertRaisesRegex(RuntimeError, "the MPI Cartesian communicator of this EK object has expired"):
+            self.system.ekcontainer.add(ek_species)
+        self.assertEqual(len(self.system.ekcontainer), 1)
+        self.assertEqual(self.system.ekcontainer[0], ek_species_new)
+        # expired MPI communicator doesn't prevent read access to the fields
+        _ = ek_node.density
+        _ = ek_slice.density
+        # expired MPI communicator prevents write access to the fields
+        for handle in [ek_node, ek_slice,
+                       ek_species[0, 0, 0], ek_species[0:5, 0:5, 0:5]]:
+            with self.assertRaisesRegex(RuntimeError, "the MPI Cartesian communicator of this EK object has expired"):
+                handle.density = 1.
+
     def test_bool_operations_on_node(self):
         ekspecies = self.make_default_ek_species()
         # test __eq()__ where a node is equal to itself and not equal to any
@@ -432,29 +632,63 @@ class EKTest:
 
 
 @utx.skipIfMissingFeatures(["WALBERLA"])
-class EKTestWalberla(EKTest, ut.TestCase):
+class EKTestWalberlaDoublePrecisionCPU(EKTest, ut.TestCase):
 
-    """Test for the Walberla implementation of the EK in double-precision."""
+    """Test for the waLBerla implementation of the EK in double-precision."""
 
-    lb_fluid_class = espressomd.lb.LBFluidWalberla
-    ek_lattice_class = espressomd.electrokinetics.LatticeWalberla
+    lb_fluid_class = espressomd.lb.LBFluid
+    ek_lattice_class = espressomd.electrokinetics.Lattice
     ek_species_class = espressomd.electrokinetics.EKSpecies
-    ek_params = {"single_precision": False}
-    lb_params = {"single_precision": False}
+    ek_solver_class = espressomd.electrokinetics.EKFFT
+    ek_params = {"single_precision": False, "gpu": False}
+    lb_params = {"single_precision": False, "gpu": False}
     atol = 1e-10
     rtol = 1e-7
 
 
 @utx.skipIfMissingFeatures(["WALBERLA"])
-class EKTestWalberlaSinglePrecision(EKTest, ut.TestCase):
+class EKTestWalberlaSinglePrecisionCPU(EKTest, ut.TestCase):
 
-    """Test for the Walberla implementation of the EK in single-precision."""
+    """Test for the waLBerla implementation of the EK in single-precision."""
 
-    lb_fluid_class = espressomd.lb.LBFluidWalberla
-    ek_lattice_class = espressomd.electrokinetics.LatticeWalberla
+    lb_fluid_class = espressomd.lb.LBFluid
+    ek_lattice_class = espressomd.electrokinetics.Lattice
     ek_species_class = espressomd.electrokinetics.EKSpecies
-    ek_params = {"single_precision": True}
-    lb_params = {"single_precision": True}
+    ek_solver_class = espressomd.electrokinetics.EKFFT
+    ek_params = {"single_precision": True, "gpu": False}
+    lb_params = {"single_precision": True, "gpu": False}
+    atol = 1e-7
+    rtol = 5e-5
+
+
+@utx.skipIfMissingGPU()
+@utx.skipIfMissingFeatures(["WALBERLA", "CUDA"])
+class EKTestWalberlaDoublePrecisionGPU(EKTest, ut.TestCase):
+
+    """Test for the waLBerla implementation of the EK in double-precision."""
+
+    lb_fluid_class = espressomd.lb.LBFluid
+    ek_lattice_class = espressomd.electrokinetics.Lattice
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_solver_class = espressomd.electrokinetics.EKFFT
+    ek_params = {"single_precision": False, "gpu": True}
+    lb_params = {"single_precision": False, "gpu": True}
+    atol = 1e-10
+    rtol = 1e-7
+
+
+@utx.skipIfMissingGPU()
+@utx.skipIfMissingFeatures(["WALBERLA", "CUDA"])
+class EKTestWalberlaSinglePrecisionGPU(EKTest, ut.TestCase):
+
+    """Test for the waLBerla implementation of the EK in single-precision."""
+
+    lb_fluid_class = espressomd.lb.LBFluid
+    ek_lattice_class = espressomd.electrokinetics.Lattice
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_solver_class = espressomd.electrokinetics.EKFFT
+    ek_params = {"single_precision": True, "gpu": True}
+    lb_params = {"single_precision": True, "gpu": True}
     atol = 1e-7
     rtol = 5e-5
 

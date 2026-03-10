@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2013-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -52,7 +52,7 @@ class MagnetostaticInteraction(ScriptInterfaceHelper):
             self.validate_params(params)
             super().__init__(**params)
             for key in params:
-                if key not in self._valid_parameters():
+                if not self._has_parameter(key):
                     raise RuntimeError(
                         f"Parameter '{key}' is not a valid parameter")
         else:
@@ -164,7 +164,7 @@ class DipolarP3M(MagnetostaticInteraction):
 
 
 @script_interface_register
-class DipolarDirectSumCpu(MagnetostaticInteraction):
+class DipolarDirectSum(MagnetostaticInteraction):
     """
     Calculate magnetostatic interactions by direct summation over all pairs.
     See :ref:`Dipolar direct sum` for more details.
@@ -174,15 +174,19 @@ class DipolarDirectSumCpu(MagnetostaticInteraction):
     replicas are used, ``n_replicas`` copies of the system are taken into
     account in the respective directions, and a spherical cutoff is applied.
 
+    The GPU implementation uses single-precision floating-point operations.
+
     Parameters
     ----------
     prefactor : :obj:`float`
         Magnetostatics prefactor (:math:`\\mu_0/(4\\pi)`)
     n_replicas : :obj:`int`, optional
         Number of replicas to be taken into account at periodic boundaries.
+    gpu : :obj:`bool`, optional
+        Use GPU implementation.
 
     """
-    _so_name = "Dipoles::DipolarDirectSumCpu"
+    _so_name = "Dipoles::DipolarDirectSum"
 
     def default_params(self):
         return {"n_replicas": 0}
@@ -227,38 +231,6 @@ class Scafacos(MagnetostaticInteraction):
 
     def required_keys(self):
         return {"method_name", "method_params", "prefactor"}
-
-
-@script_interface_register
-class DipolarDirectSumGpu(MagnetostaticInteraction):
-    """
-    Calculate magnetostatic interactions by direct summation over all
-    pairs. See :ref:`Dipolar direct sum` for more details.
-
-    If the system has periodic boundaries, the minimum image convention
-    is applied in the respective directions.
-
-    This is the GPU version of :class:`espressomd.magnetostatics.DipolarDirectSumCpu`
-    but uses floating point precision.
-
-    Requires feature ``DIPOLAR_DIRECT_SUM``, which depends on
-    ``DIPOLES`` and ``CUDA``.
-
-    Parameters
-    ----------
-    prefactor : :obj:`float`
-        Magnetostatics prefactor (:math:`\\mu_0/(4\\pi)`)
-
-    """
-    _so_name = "Dipoles::DipolarDirectSumGpu"
-    _so_creation_policy = "GLOBAL"
-    _so_features = ("DIPOLAR_DIRECT_SUM", "CUDA")
-
-    def default_params(self):
-        return {}
-
-    def required_keys(self):
-        return {"prefactor"}
 
 
 @script_interface_register

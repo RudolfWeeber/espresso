@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The ESPResSo project
+ * Copyright (C) 2022-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -21,7 +21,7 @@
 
 #include "config/config.hpp"
 
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
 
 #include "script_interface/Context.hpp"
 #include "script_interface/Variant.hpp"
@@ -77,4 +77,4 @@ public:
 } // namespace Dipoles
 } // namespace ScriptInterface
 
-#endif // DIPOLES
+#endif // ESPRESSO_DIPOLES

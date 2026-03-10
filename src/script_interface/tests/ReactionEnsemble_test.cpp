@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2022 The ESPResSo project
+ * Copyright (C) 2021-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -17,9 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define BOOST_TEST_NO_MAIN
 #define BOOST_TEST_MODULE ReactionEnsemble test
-#define BOOST_TEST_ALTERNATIVE_INIT_API
 #define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
 
@@ -33,8 +31,8 @@
 
 #include "core/Particle.hpp"
 #include "core/cell_system/CellStructureType.hpp"
-#include "core/communication.hpp"
 #include "core/particle_node.hpp"
+#include "core/unit_tests/EspressoCoreGlobalConfig.hpp"
 #include "core/unit_tests/ParticleFactory.hpp"
 
 #include <boost/mpi.hpp>
@@ -67,11 +65,26 @@ public:
     auto const factorial_expr =
         ::ReactionMethods::calculate_factorial_expression(reaction,
                                                           old_particle_numbers);
-    return std::pow(RE()->get_volume(), reaction.nu_bar) * reaction.gamma *
-           factorial_expr * std::exp(-E_pot_diff / RE()->kT);
+    return reaction.nu_bar * std::log(RE()->get_volume()) +
+           std::log(reaction.gamma) + factorial_expr - E_pot_diff / RE()->kT;
   }
 };
 } // namespace ScriptInterface::Testing
+
+struct GlobalConfig : public EspressoCoreGlobalConfig {
+  GlobalConfig() {
+    espresso::system = System::System::create();
+    espresso::system->set_cell_structure_topology(CellStructureType::REGULAR);
+    ::System::set_system(espresso::system);
+  }
+  ~GlobalConfig() {
+    espresso::system.reset();
+    ::System::reset_system();
+  }
+};
+
+BOOST_TEST_GLOBAL_CONFIGURATION(GlobalConfig);
+BOOST_AUTO_TEST_SUITE(suite)
 
 // Check the Monte Carlo algorithm where moves depend on the system
 // configuration and energy.
@@ -95,7 +108,7 @@ BOOST_FIXTURE_TEST_CASE(ReactionEnsemble_test, ParticleFactory) {
     params["kT"] = kT;
     params["exclusion_range"] = exclusion_range;
     params["exclusion_radius_per_type"] = make_unordered_map_of_variants(radii);
-    auto &&sp = ctx->make_shared_local("Testing::ReactionEnsemble", params);
+    auto &&sp = ctx->make_shared("Testing::ReactionEnsemble", params);
     return std::dynamic_pointer_cast<Testing::ReactionEnsemble>(sp);
   };
   auto const make_reaction =
@@ -114,7 +127,7 @@ BOOST_FIXTURE_TEST_CASE(ReactionEnsemble_test, ParticleFactory) {
         params["product_types"] = make_vector_of_variants(product_types);
         params["product_coefficients"] =
             make_vector_of_variants(product_coefficients);
-        auto &&si_obj = ctx->make_shared_local("SingleReaction", params);
+        auto &&si_obj = ctx->make_shared("SingleReaction", params);
         return std::dynamic_pointer_cast<
             ScriptInterface::ReactionMethods::SingleReaction>(si_obj);
       };
@@ -143,9 +156,9 @@ BOOST_FIXTURE_TEST_CASE(ReactionEnsemble_test, ParticleFactory) {
           auto const f_expr =
               calculate_factorial_expression(reaction, p_numbers);
           // acceptance = V^{nu_bar} * gamma * f_expr * exp(- E / T)
-          auto const acceptance_ref = std::pow(r_algo.volume, reaction.nu_bar) *
-                                      reaction.gamma * f_expr *
-                                      std::exp(-energy / r_algo.kT);
+          auto const acceptance_ref =
+              reaction.nu_bar * std::log(r_algo.volume) +
+              std::log(reaction.gamma) + f_expr + -energy / r_algo.kT;
           auto const acceptance = r_algo_si->calculate_acceptance_probability(
               reaction, energy, p_numbers);
           BOOST_CHECK_CLOSE(acceptance, acceptance_ref, 5 * tol);
@@ -220,7 +233,7 @@ BOOST_FIXTURE_TEST_CASE(ReactionEnsemble_test, ParticleFactory) {
       auto const bf = r_algo_si->calculate_acceptance_probability(
           reaction, energy_move, {{type_D, 1}, {type_E, 0}});
 
-      auto const energy_end = r_algo.make_reaction_mc_move_attempt(
+      auto const energy_end = r_algo.make_reaction_mc_move_attempt_logarithmic(
           reaction_id, bf, 0., energy_move);
       BOOST_CHECK_CLOSE(energy_end, energy_ref, tol);
 
@@ -249,7 +262,8 @@ BOOST_FIXTURE_TEST_CASE(ReactionEnsemble_test, ParticleFactory) {
 
       // force move to be rejected
       auto const energy_reject =
-          r_algo.make_reaction_mc_move_attempt(reaction_id, 0., 0.2, 0.1);
+          r_algo.make_reaction_mc_move_attempt_logarithmic(
+              reaction_id, -std::numeric_limits<double>::max(), 0.2, 0.1);
       BOOST_CHECK_CLOSE(energy_reject, 0.2, tol);
 
       // the reaction was updated
@@ -262,10 +276,4 @@ BOOST_FIXTURE_TEST_CASE(ReactionEnsemble_test, ParticleFactory) {
   }
 }
 
-int main(int argc, char **argv) {
-  auto const mpi_handle = MpiContainerUnitTest(argc, argv);
-  espresso::system = System::System::create();
-  espresso::system->set_cell_structure_topology(CellStructureType::REGULAR);
-  ::System::set_system(espresso::system);
-  return boost::unit_test::unit_test_main(init_unit_test, argc, argv);
-}
+BOOST_AUTO_TEST_SUITE_END()

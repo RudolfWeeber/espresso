@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2022 The ESPResSo project
+ * Copyright (C) 2021-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -35,7 +35,8 @@ protected:
 public:
   UpdateOffset(BoxGeometry const &box) : m_le{box.lees_edwards_bc()} {}
 
-  void operator()(Particle &p, double pos_prefactor = 1.0) const {
+  void operator()(Particle &,
+                  [[maybe_unused]] double pos_prefactor = 1.0) const {
     // Disabled as long as we do not use a two step LE update
   }
 };

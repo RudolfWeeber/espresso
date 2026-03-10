@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -27,6 +27,7 @@
 #include "script_interface/get_value.hpp"
 
 #include <memory>
+#include <ranges>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -34,7 +35,16 @@
 
 namespace ScriptInterface {
 /**
- * @brief Owning map of ObjectHandles
+ * @brief Owning map of object handles.
+ *
+ * Mapped elements are cleared from the core during destruction.
+ * Due to how dynamic dispatch works, derived types must mark
+ * @ref erase_in_core as @c final` and call @ref do_destruct in
+ * their virtual destructor. This is to ensure that pure virtual
+ * functions called by @ref clear cannot be executed in a type
+ * derived from the type currently being destructed, since derived
+ * types no longer exist at this point of the destruction sequence.
+ *
  * @tparam ManagedType Type of the managed objects, needs to be
  *         derived from @ref ObjectHandle
  */
@@ -44,15 +54,25 @@ class ObjectMap : public ObjectContainer<ObjectMap, ManagedType, BaseType> {
 public:
   using Base = ObjectContainer<ObjectMap, ManagedType, BaseType>;
   using Base::add_parameters;
+  using key_type = KeyType;
+  using mapped_type = std::shared_ptr<ManagedType>;
+  using container_type = std::unordered_map<key_type, mapped_type>;
 
 private:
-  std::unordered_map<KeyType, std::shared_ptr<ManagedType>> m_elements;
+  container_type m_elements;
+  bool dtor_sequence_initiated = false;
 
-  virtual KeyType
-  insert_in_core(std::shared_ptr<ManagedType> const &obj_ptr) = 0;
-  virtual void insert_in_core(KeyType const &key,
-                              std::shared_ptr<ManagedType> const &obj_ptr) = 0;
-  virtual void erase_in_core(KeyType const &key) = 0;
+  virtual key_type insert_in_core(mapped_type const &obj_ptr) = 0;
+  virtual void insert_in_core(key_type const &key,
+                              mapped_type const &obj_ptr) = 0;
+  virtual void erase_in_core(key_type const &key) = 0;
+
+protected:
+  void do_destruct() {
+    assert(not dtor_sequence_initiated);
+    clear();
+    dtor_sequence_initiated = true;
+  }
 
 public:
   ObjectMap() {
@@ -62,6 +82,9 @@ public:
     });
   }
 
+  ~ObjectMap() override { assert(dtor_sequence_initiated); }
+
+  // prevent inheritance of the default implementation
   void do_construct(VariantMap const &params) override = 0;
 
   /**
@@ -70,7 +93,7 @@ public:
    * @param key Identifier of the element to add.
    * @param element The element to add.
    */
-  void insert(KeyType const &key, std::shared_ptr<ManagedType> const &element) {
+  void insert(key_type const &key, mapped_type const &element) {
     insert_in_core(key, element);
     m_elements[key] = element;
   }
@@ -81,7 +104,7 @@ public:
    *
    * @param element The element to add.
    */
-  KeyType insert(std::shared_ptr<ManagedType> const &element) {
+  key_type insert(mapped_type const &element) {
     auto const key = insert_in_core(element);
     m_elements[key] = element;
     return key;
@@ -92,7 +115,7 @@ public:
    *
    * @param key Identifier of the element to remove.
    */
-  void erase(KeyType const &key) {
+  void erase(key_type const &key) {
     erase_in_core(key);
     m_elements.erase(key);
   }
@@ -106,8 +129,8 @@ public:
    * @brief Clear the map.
    */
   void clear() {
-    for (auto const &kv : m_elements) {
-      erase_in_core(kv.first);
+    for (auto const &key : std::views::elements<0>(m_elements)) {
+      erase_in_core(key);
     }
 
     m_elements.clear();
@@ -118,10 +141,9 @@ protected:
                          VariantMap const &parameters) override {
 
     if (method == "insert") {
-      auto obj_ptr =
-          get_value<std::shared_ptr<ManagedType>>(parameters.at("object"));
+      auto obj_ptr = get_value<mapped_type>(parameters.at("object"));
 
-      if (parameters.count("key")) {
+      if (parameters.contains("key")) {
         auto const key = get_key(parameters.at("key"));
         insert(key, obj_ptr);
         return none;
@@ -145,11 +167,8 @@ protected:
     }
 
     if (method == "keys") {
-      std::vector<Variant> res;
-      for (auto const &kv : m_elements) {
-        res.push_back(kv.first);
-      }
-      return res;
+      auto const view = std::views::elements<0>(m_elements);
+      return std::vector<KeyType>{view.begin(), view.end()};
     }
 
     if (method == "clear") {
@@ -166,7 +185,8 @@ protected:
     }
 
     if (method == "contains") {
-      return m_elements.find(get_key(parameters.at("key"))) != m_elements.end();
+      auto const key = get_key(parameters.at("key"));
+      return m_elements.contains(key);
     }
 
     return Base::do_call_method(method, parameters);
@@ -179,13 +199,13 @@ protected:
     }
   }
 
-  KeyType get_key(Variant const &key) const {
+  key_type get_key(Variant const &key) const {
     try {
-      return get_value<KeyType>(key);
+      return get_value<key_type>(key);
     } catch (...) {
       using namespace detail::demangle;
       auto const actual = simplify_symbol_variant(key);
-      auto const target = simplify_symbol(static_cast<KeyType *>(nullptr));
+      auto const target = simplify_symbol(static_cast<key_type *>(nullptr));
       if (Base::context()->is_head_node()) {
         throw std::invalid_argument("Key has to be of type '" + target +
                                     "', got type '" + actual + "'");

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The ESPResSo project
+ * Copyright (C) 2023-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -50,25 +50,29 @@ bool is_valid_propagation_combination(int propagation) {
     return force_code_coverage(true);
   case TRANS_LANGEVIN:
     return force_code_coverage(true);
-#ifdef NPT
+#ifdef ESPRESSO_NPT
   case TRANS_LANGEVIN_NPT:
     return force_code_coverage(true);
 #endif
-#ifdef ROTATION
+#ifdef ESPRESSO_VIRTUAL_SITES_CENTER_OF_MASS
+  case TRANS_VS_CENTER_OF_MASS:
+    return force_code_coverage(true);
+#endif
+#ifdef ESPRESSO_ROTATION
   case ROT_EULER:
     return force_code_coverage(true);
   case ROT_BROWNIAN:
     return force_code_coverage(true);
   case ROT_LANGEVIN:
     return force_code_coverage(true);
-#endif // ROTATION
+#endif // ESPRESSO_ROTATION
   case TRANS_LB_MOMENTUM_EXCHANGE:
     return force_code_coverage(true);
-#ifdef VIRTUAL_SITES_INERTIALESS_TRACERS
+#ifdef ESPRESSO_VIRTUAL_SITES_INERTIALESS_TRACERS
   case TRANS_LB_TRACER:
     return force_code_coverage(true);
 #endif
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
   // same mode for translation and rotation
   case TRANS_NEWTON | ROT_EULER:
     return force_code_coverage(true);
@@ -76,7 +80,7 @@ bool is_valid_propagation_combination(int propagation) {
     return force_code_coverage(true);
   case TRANS_BROWNIAN | ROT_BROWNIAN:
     return force_code_coverage(true);
-#ifdef STOKESIAN_DYNAMICS
+#ifdef ESPRESSO_STOKESIAN_DYNAMICS
   case TRANS_STOKESIAN | ROT_STOKESIAN:
     return force_code_coverage(true);
 #endif
@@ -85,8 +89,10 @@ bool is_valid_propagation_combination(int propagation) {
     return force_code_coverage(true);
   case TRANS_LB_MOMENTUM_EXCHANGE | ROT_LANGEVIN:
     return force_code_coverage(true);
-#ifdef VIRTUAL_SITES_RELATIVE
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
   case TRANS_VS_RELATIVE | ROT_VS_RELATIVE:
+    return force_code_coverage(true);
+  case TRANS_VS_RELATIVE | ROT_VS_INDEPENDENT:
     return force_code_coverage(true);
   case TRANS_VS_RELATIVE | ROT_VS_RELATIVE | TRANS_LB_MOMENTUM_EXCHANGE:
     return force_code_coverage(true);
@@ -95,8 +101,8 @@ bool is_valid_propagation_combination(int propagation) {
   case TRANS_VS_RELATIVE | ROT_VS_RELATIVE | TRANS_LB_MOMENTUM_EXCHANGE |
       ROT_LANGEVIN:
     return force_code_coverage(true);
-#endif // VIRTUAL_SITES_RELATIVE
-#endif // ROTATION
+#endif // ESPRESSO_VIRTUAL_SITES_RELATIVE
+#endif // ESPRESSO_ROTATION
   }
   return force_code_coverage(false);
 }
@@ -114,9 +120,11 @@ std::unordered_map<std::string, int> propagation_flags_map() {
   enum_values["TRANS_LB_TRACER"] = TRANS_LB_TRACER;
   enum_values["TRANS_BROWNIAN"] = TRANS_BROWNIAN;
   enum_values["TRANS_STOKESIAN"] = TRANS_STOKESIAN;
+  enum_values["TRANS_VS_CENTER_OF_MASS"] = TRANS_VS_CENTER_OF_MASS;
   enum_values["ROT_EULER"] = ROT_EULER;
   enum_values["ROT_LANGEVIN"] = ROT_LANGEVIN;
   enum_values["ROT_VS_RELATIVE"] = ROT_VS_RELATIVE;
+  enum_values["ROT_VS_INDEPENDENT"] = ROT_VS_INDEPENDENT;
   enum_values["ROT_BROWNIAN"] = ROT_BROWNIAN;
   enum_values["ROT_STOKESIAN"] = ROT_STOKESIAN;
   return enum_values;

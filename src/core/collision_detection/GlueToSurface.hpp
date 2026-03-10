@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2024 The ESPResSo project
+ * Copyright (C) 2011-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -21,8 +21,8 @@
 
 #include <config/config.hpp>
 
-#ifdef COLLISION_DETECTION
-#ifdef VIRTUAL_SITES_RELATIVE
+#ifdef ESPRESSO_COLLISION_DETECTION
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
 
 #include "CollisionPair.hpp"
 #include "common.hpp"
@@ -50,7 +50,7 @@ public:
   double dist_glued_part_to_vs;
   /// The particle type being glued (the small particle)
   int part_type_to_be_glued;
-  /// The particle type to which virtuals site are attached (the large particle)
+  /// The particle type to which virtual sites are attached (the large particle)
   int part_type_to_attach_vs_to;
   /// Particle type to which the newly glued particle is converted
   int part_type_after_glueing;
@@ -95,5 +95,5 @@ public:
 };
 
 } // namespace CollisionDetection
-#endif // VIRTUAL_SITES_RELATIVE
-#endif // COLLISION_DETECTION
+#endif // ESPRESSO_VIRTUAL_SITES_RELATIVE
+#endif // ESPRESSO_COLLISION_DETECTION

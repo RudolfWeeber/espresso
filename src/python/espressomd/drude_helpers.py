@@ -1,4 +1,4 @@
-# Copyright (C) 2010-2022 The ESPResSo project
+# Copyright (C) 2010-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -41,7 +41,7 @@ class DrudeHelpers:
                                    thole_damping=2.6, verbose=False):
         """
         Adds a Drude particle with specified type and mass to the system and
-        returns its `espressomd.particle_data.ParticleHandle`.
+        returns its :class:`~espressomd.particle_data.ParticleHandle`.
         Checks if different Drude particles have different types.
         Collects types/charges/polarizations/Thole factors for intramolecular
         core-Drude short-range exclusion and Thole interaction.

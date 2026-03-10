@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -19,9 +19,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
 
 #include "magnetostatics/dipolar_direct_sum.hpp"
 
@@ -31,8 +31,8 @@
 #include "errorhandling.hpp"
 #include "system/System.hpp"
 
+#include <utils/Vector.hpp>
 #include <utils/cartesian_product.hpp>
-#include <utils/math/sqr.hpp>
 #include <utils/mpi/iall_gatherv.hpp>
 
 #include <boost/mpi/collectives.hpp>
@@ -103,6 +103,7 @@ static auto pair_potential(Utils::Vector3d const &d, Utils::Vector3d const &m1,
   return pe1 / r3 - 3.0 * pe2 * pe3 / r5;
 }
 
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
 /**
  * @brief Dipole field contribution from a particle with dipole moment @c m1
  * at a distance @c d.
@@ -121,6 +122,7 @@ static auto dipole_field(Utils::Vector3d const &d, Utils::Vector3d const &m1) {
 
   return 3.0 * pe2 * d / r5 - m1 / r3;
 }
+#endif
 
 /**
  * @brief Call kernel for every 3d index in a sphere around the origin.
@@ -269,7 +271,7 @@ static auto get_n_cut(BoxGeometry const &box_geo, int n_replicas) {
  *
  * This employs a parallel N-square loop over all particle pairs.
  * The computation the partitioned into several steps so that the
- * communication latency can be hidden behinder some local computation:
+ * communication latency can be hidden behind some local computation:
  *
  * 1. The local particle positions and momenta are packed into
  *    one array.
@@ -286,10 +288,12 @@ static auto get_n_cut(BoxGeometry const &box_geo, int n_replicas) {
  * in @ref DipolarDirectSum::long_range_energy, which calculates
  * a naive N-square sum, but has better performance and scaling.
  */
-void DipolarDirectSum::add_long_range_forces(
-    ParticleRange const &particles) const {
-  auto const &box_geo = *get_system().box_geo;
+void DipolarDirectSum::add_long_range_forces_cpu() const {
+  assert(not m_is_gpu);
+  auto const &system = get_system();
+  auto const &box_geo = *system.box_geo;
   auto const &box_l = box_geo.length();
+  auto const particles = system.cell_structure->local_particles();
   auto [local_particles, all_posmom, reqs, offset] =
       gather_particle_data(box_geo, particles);
 
@@ -368,6 +372,11 @@ void DipolarDirectSum::add_long_range_forces(
     (*p)->force() += prefactor * fi.f;
     (*p)->torque() += prefactor * fi.torque;
   }
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  if (not m_is_gpu) {
+    dipole_field_at_part_cpu();
+  }
+#endif
 }
 
 /**
@@ -375,9 +384,11 @@ void DipolarDirectSum::add_long_range_forces(
  *
  * This employs a parallel N-square loop over all particle pairs.
  */
-double
-DipolarDirectSum::long_range_energy(ParticleRange const &particles) const {
-  auto const &box_geo = *get_system().box_geo;
+double DipolarDirectSum::long_range_energy_cpu() const {
+  assert(not m_is_gpu);
+  auto const &system = get_system();
+  auto const &box_geo = *system.box_geo;
+  auto const particles = system.cell_structure->local_particles();
   auto [local_particles, all_posmom, reqs, offset] =
       gather_particle_data(box_geo, particles);
 
@@ -413,10 +424,12 @@ DipolarDirectSum::long_range_energy(ParticleRange const &particles) const {
  * a naive N-square sum. The difference is summation range,
  * and the kernel calculates the dipole field rather than the energy.
  */
-#ifdef DIPOLE_FIELD_TRACKING
-void DipolarDirectSum::dipole_field_at_part(
-    ParticleRange const &particles) const {
-  auto const &box_geo = *get_system().box_geo;
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+void DipolarDirectSum::dipole_field_at_part_cpu() const {
+  assert(not m_is_gpu);
+  auto const &system = get_system();
+  auto const &box_geo = *system.box_geo;
+  auto const particles = system.cell_structure->local_particles();
   /* collect particle data */
   auto [local_particles, all_posmom, reqs, offset] =
       gather_particle_data(box_geo, particles);
@@ -443,12 +456,13 @@ void DipolarDirectSum::dipole_field_at_part(
 }
 #endif
 
-DipolarDirectSum::DipolarDirectSum(double prefactor, int n_replicas) {
+DipolarDirectSum::DipolarDirectSum(double prefactor, int n_replicas, bool gpu) {
   set_prefactor(prefactor);
+  m_is_gpu = gpu;
   this->n_replicas = n_replicas;
   if (n_replicas < 0) {
     throw std::domain_error("Parameter 'n_replicas' must be >= 0");
   }
 }
 
-#endif // DIPOLES
+#endif // ESPRESSO_DIPOLES

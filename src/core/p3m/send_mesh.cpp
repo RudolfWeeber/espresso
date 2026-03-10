@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2024 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -19,9 +19,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#if defined(P3M) or defined(DP3M)
+#if defined(ESPRESSO_P3M) or defined(ESPRESSO_DP3M)
 
 #include "fft/fft.hpp"
 #include "p3m/common.hpp"
@@ -37,6 +37,7 @@
 #include <mpi.h>
 
 #include <algorithm>
+#include <complex>
 #include <cstddef>
 #include <span>
 #include <utility>
@@ -242,4 +243,4 @@ void p3m_send_mesh<FloatType>::spread_grid(boost::mpi::communicator const &comm,
 template class p3m_send_mesh<float>;
 template class p3m_send_mesh<double>;
 
-#endif // defined(P3M) or defined(DP3M)
+#endif // defined(ESPRESSO_P3M) or defined(ESPRESSO_DP3M)

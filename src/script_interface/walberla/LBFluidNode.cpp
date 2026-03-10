@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2023 The ESPResSo project
+ * Copyright (C) 2021-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -17,11 +17,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
 
 #include "LBFluidNode.hpp"
+
+#include <walberla_bridge/utils/ResourceManager.hpp>
 
 #include <utils/Vector.hpp>
 #include <utils/matrix.hpp>
@@ -44,6 +46,10 @@ static bool is_boundary_all_reduce(boost::mpi::communicator const &comm,
 
 Variant LBFluidNode::do_call_method(std::string const &name,
                                     VariantMap const &params) {
+  if (not name.starts_with("get_")) {
+    context()->parallel_try_catch(
+        [&]() { lb_throw_if_expired(m_mpi_cart_comm_observer); });
+  }
   if (name == "set_velocity_at_boundary") {
     if (is_none(params.at("value"))) {
       m_lb_fluid->remove_node_from_boundary(m_index);
@@ -128,7 +134,7 @@ Variant LBFluidNode::do_call_method(std::string const &name,
         vec[8] -= diagonal_term;
       }
       auto tensor = Utils::Matrix<double, 3, 3>{};
-      std::copy(vec.begin(), vec.end(), tensor.m_data.begin());
+      std::ranges::copy(vec, tensor.m_data.begin());
       return std::vector<Variant>{tensor.row<0>().as_vector(),
                                   tensor.row<1>().as_vector(),
                                   tensor.row<2>().as_vector()};
@@ -155,4 +161,4 @@ Variant LBFluidNode::do_call_method(std::string const &name,
 
 } // namespace ScriptInterface::walberla
 
-#endif // WALBERLA
+#endif // ESPRESSO_WALBERLA

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2022 The ESPResSo project
+ * Copyright (C) 2013-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -28,12 +28,13 @@
 #include "core/communication.hpp"
 #include "core/dpd.hpp"
 #include "core/nonbonded_interactions/nonbonded_interaction_data.hpp"
+#include "core/npt.hpp"
 
 #include "script_interface/communication.hpp"
 
 #include <utils/Vector.hpp>
-#include <utils/contains.hpp>
 #include <utils/mpi/gather_buffer.hpp>
+#include <utils/mpi/reduce_optional.hpp>
 
 #include <boost/mpi/collectives/all_reduce.hpp>
 
@@ -44,6 +45,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace ScriptInterface {
@@ -125,12 +127,14 @@ Variant Analysis::do_call_method(std::string const &name,
     auto const local = system.particle_short_range_energy_contribution(pid);
     return mpi_reduce_sum(context()->get_comm(), local);
   }
-#ifdef DIPOLE_FIELD_TRACKING
-  if (name == "calc_long_range_fields") {
-    get_system().calculate_long_range_fields();
-    return {};
+  if (name == "particle_bond_energy") {
+    auto &system = get_system();
+    auto const pid = get_value<int>(parameters, "pid");
+    auto const bond_id = get_value<int>(parameters, "bond_id");
+    auto const partners = get_value<std::vector<int>>(parameters, "partners");
+    auto const local = system.particle_bond_energy(pid, bond_id, partners);
+    return Utils::Mpi::reduce_optional(context()->get_comm(), local);
   }
-#endif
   if (name == "particle_neighbor_pids") {
     auto &system = get_system();
     system.on_observable_calc();
@@ -138,19 +142,18 @@ Variant Analysis::do_call_method(std::string const &name,
     context()->parallel_try_catch([&]() {
       auto neighbor_pids = get_neighbor_pids(system);
       Utils::Mpi::gather_buffer(neighbor_pids, context()->get_comm());
-      std::for_each(neighbor_pids.begin(), neighbor_pids.end(),
-                    [&dict](NeighborPIDs const &neighbor_pid) {
-                      dict[neighbor_pid.pid] = neighbor_pid.neighbor_pids;
-                    });
+      std::ranges::for_each(neighbor_pids, [&dict](auto const &nbhood) {
+        dict[nbhood.pid] = nbhood.neighbor_pids;
+      });
     });
     return make_unordered_map_of_variants(dict);
   }
-#ifdef DPD
+#ifdef ESPRESSO_DPD
   if (name == "dpd_stress") {
-    auto const result = dpd_stress(context()->get_comm());
+    auto const result = dpd_stress(get_system(), context()->get_comm());
     return result.as_vector();
   }
-#endif // DPD
+#endif // ESPRESSO_DPD
   if (name == "min_dist") {
     auto const p_types1 = get_value<std::vector<int>>(parameters, "p_types1");
     auto const p_types2 = get_value<std::vector<int>>(parameters, "p_types2");
@@ -287,6 +290,14 @@ Variant Analysis::do_call_method(std::string const &name,
   if (name == "calculate_pressure_tensor") {
     return m_obs_stat->do_call_method("calculate_pressure_tensor", {});
   }
+#ifdef ESPRESSO_NPT
+  if (name == "get_instantaneous_pressure") {
+    return get_system().npt_inst_pressure->p_inst[0];
+  }
+  if (name == "get_instantaneous_pressure_virial") {
+    return get_system().npt_inst_pressure->p_inst[1];
+  }
+#endif // ESPRESSO_NPT
   return {};
 }
 

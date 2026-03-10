@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2016-2022 The ESPResSo project
+# Copyright (C) 2016-2026 The ESPResSo project
 # Copyright (C) 2014 Olaf Lenz
 #
 # This file is part of ESPResSo.
@@ -18,9 +18,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-from . import code_info
-from . import utils
-
 
 class FeaturesError(Exception):
 
@@ -33,6 +30,8 @@ def has_features(*args):
     Check whether a list of features is a subset of the compiled-in features.
     """
 
+    from . import code_info
+    from . import utils
     lvl = utils.nesting_level(args)
     assert lvl in [1, 2], "has_features() takes strings as argument"
     if lvl == 2:
@@ -53,6 +52,8 @@ def missing_features(*args):
     Return a list of the missing features in the arguments.
     """
 
+    from . import code_info
+    from . import utils
     lvl = utils.nesting_level(args)
     assert lvl in [1, 2], "missing_features() takes strings as argument"
     if lvl == 2:

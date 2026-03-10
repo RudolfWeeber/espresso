@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -25,7 +25,7 @@
 
 #include "soft_sphere.hpp"
 
-#ifdef SOFT_SPHERE
+#ifdef ESPRESSO_SOFT_SPHERE
 #include "nonbonded_interaction_data.hpp"
 
 #include <stdexcept>
@@ -44,4 +44,4 @@ SoftSphere_Parameters::SoftSphere_Parameters(double a, double n, double cutoff,
   }
 }
 
-#endif // SOFT_SPHERE
+#endif // ESPRESSO_SOFT_SPHERE

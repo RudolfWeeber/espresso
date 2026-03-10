@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The ESPResSo project
+ * Copyright (C) 2022-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -39,7 +39,6 @@
 #include <utils/mpi/gather_buffer.hpp>
 
 #include <boost/mpi/collectives/gather.hpp>
-#include <boost/variant.hpp>
 
 #include <algorithm>
 #include <cassert>
@@ -51,6 +50,7 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 static int coord(std::string const &s) {
@@ -88,6 +88,10 @@ CellSystem::CellSystem() {
            auto const error_msg = std::string("Parameter 'node_grid'");
            auto const old_node_grid = ::communicator.node_grid;
            auto const new_node_grid = get_value<Utils::Vector3i>(v);
+           if (::communicator.locked_for_checkpointing) {
+             assert(new_node_grid == old_node_grid);
+             return;
+           }
            auto const n_nodes_old = Utils::product(old_node_grid);
            auto const n_nodes_new = Utils::product(new_node_grid);
            if (n_nodes_new != n_nodes_old) {
@@ -205,7 +209,7 @@ Variant CellSystem::do_call_method(std::string const &name,
       system.on_observable_calc();
       std::vector<std::pair<int, int>> pair_list;
       auto const distance = get_value<double>(params, "distance");
-      if (boost::get<std::string>(&params.at("types")) != nullptr) {
+      if (std::get_if<std::string>(&params.at("types"))) {
         auto const key = get_value<std::string>(params, "types");
         if (key != "all") {
           throw std::invalid_argument("Unknown argument types='" + key + "'");
@@ -216,11 +220,10 @@ Variant CellSystem::do_call_method(std::string const &name,
         pair_list = get_pairs_of_types(system, distance, types);
       }
       Utils::Mpi::gather_buffer(pair_list, context()->get_comm());
-      std::transform(pair_list.begin(), pair_list.end(),
-                     std::back_inserter(out),
-                     [](std::pair<int, int> const &pair) {
-                       return std::vector<int>{pair.first, pair.second};
-                     });
+      std::ranges::transform(pair_list, std::back_inserter(out),
+                             [](auto const &pair) {
+                               return std::vector<int>{pair.first, pair.second};
+                             });
     });
     return out;
   }
@@ -255,12 +258,11 @@ Variant CellSystem::do_call_method(std::string const &name,
     auto pair_list =
         non_bonded_loop_trace(system, context()->get_comm().rank());
     Utils::Mpi::gather_buffer(pair_list, context()->get_comm());
-    std::transform(pair_list.begin(), pair_list.end(), std::back_inserter(out),
-                   [](PairInfo const &pair) {
-                     return std::vector<Variant>{pair.id1,   pair.id2,
-                                                 pair.pos1,  pair.pos2,
-                                                 pair.vec21, pair.node};
-                   });
+    std::ranges::transform(
+        pair_list, std::back_inserter(out), [](auto const &pair) {
+          return std::vector<Variant>{pair.id1,  pair.id2,   pair.pos1,
+                                      pair.pos2, pair.vec21, pair.node};
+        });
     return out;
   }
   if (name == "tune_skin") {
@@ -306,8 +308,8 @@ void CellSystem::initialize(CellStructureType const &cs_type,
       auto const variant =
           get_value<VariantMap>(params, "fully_connected_boundary");
       context()->parallel_try_catch([&fcb_pair, &variant]() {
-        fcb_pair = {{coord(boost::get<std::string>(variant.at("boundary"))),
-                     coord(boost::get<std::string>(variant.at("direction")))}};
+        fcb_pair = {{coord(std::get<std::string>(variant.at("boundary"))),
+                     coord(std::get<std::string>(variant.at("direction")))}};
       });
     }
     context()->parallel_try_catch([this, &fcb_pair]() {
@@ -325,6 +327,24 @@ void CellSystem::configure(Particles::ParticleHandle &particle) {
 
 void CellSystem::configure(Particles::ParticleSlice &slice) {
   slice.attach(m_system);
+}
+
+void CheckpointerContext::do_construct(VariantMap const &params) {
+  m_node_grid = get_value_or(params, "node_grid", ::communicator.node_grid);
+}
+
+Variant CheckpointerContext::do_call_method(std::string const &name,
+                                            VariantMap const &params) {
+  if (name == "get_node_grid") {
+    return ::communicator.node_grid;
+  }
+  if (name == "acquire_lock") {
+    ::communicator.set_node_grid(m_node_grid);
+    ::communicator.locked_for_checkpointing = true;
+  } else if (name == "release_lock") {
+    ::communicator.locked_for_checkpointing = false;
+  }
+  return {};
 }
 
 } // namespace CellSystem

@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2020-2022 The ESPResSo project
+# Copyright (C) 2020-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -21,6 +21,7 @@ import espressomd.interactions
 import espressomd.lees_edwards
 import espressomd.shapes
 import espressomd.propagation
+import os
 import numpy as np
 import unittest as ut
 import unittest_decorators as utx
@@ -33,6 +34,7 @@ class Test(ut.TestCase):
     msg = r'while calling method integrate\(\): ERROR: '
 
     def setUp(self):
+        self.system.box_l = [1., 1., 1.]
         self.system.part.add(pos=(0, 0, 0))
         self.system.integrator.set_vv()
         self.system.periodicity = 3 * [True]
@@ -44,6 +46,7 @@ class Test(ut.TestCase):
         self.system.lees_edwards.protocol = None
 
     def test_00_common_interface(self):
+        Propagation = espressomd.propagation.Propagation
         self.system.integrator.set_vv()
         with self.assertRaisesRegex(ValueError, 'time_step must be > 0.'):
             self.system.time_step = -2.
@@ -71,12 +74,25 @@ class Test(ut.TestCase):
                 self.system.analysis.energy()
             wca.set_params(epsilon=0., sigma=0.)
         if espressomd.has_features(["ROTATION"]):
+            p = self.system.part.by_id(0)
             with self.assertRaisesRegex(Exception, "Rotating particles must have a rotation propagation mode enabled"):
-                Propagation = espressomd.propagation.Propagation
-                p = self.system.part.by_id(0)
                 p.propagation = Propagation.TRANS_LANGEVIN
                 p.rotation = [False, False, True]
                 self.system.integrator.run(0, recalc_forces=True)
+            p.propagation = Propagation.SYSTEM_DEFAULT
+        if espressomd.has_features(["THERMAL_STONER_WOHLFARTH"]):
+            p0 = self.system.part.by_id(0)
+            p1 = self.system.part.add(pos=p0.pos)
+            p1.vs_auto_relate_to(p0)
+            p1.propagation = Propagation.TRANS_VS_RELATIVE | Propagation.ROT_VS_INDEPENDENT
+            magnetodynamics = p1.magnetodynamics
+            with self.assertRaisesRegex(Exception, "The thermal Stoner-Wohlfarth model requires the Langevin thermostat"):
+                magnetodynamics["is_enabled"] = True
+                p1.magnetodynamics = magnetodynamics
+                self.system.integrator.run(0, recalc_forces=True)
+            magnetodynamics["is_enabled"] = False
+            p1.magnetodynamics = magnetodynamics
+            self.system.integrator.run(0, recalc_forces=True)
 
     def test_01_statefulness(self):
         # setting a thermostat with invalid values should be a no-op
@@ -157,6 +173,9 @@ class Test(ut.TestCase):
     @utx.skipIfMissingFeatures("NPT")
     def test_npt_integrator(self):
         self.system.cell_system.skin = 0.4
+        with self.assertRaisesRegex(Exception, "Parameter 'barostat' must be 'Andersen' or 'MTK'."):
+            self.system.integrator.set_isotropic_npt(
+                ext_pressure=1.0, piston=1.0, barostat='XXX')
         self.system.thermostat.set_brownian(kT=1.0, gamma=1.0, seed=42)
         self.system.integrator.set_isotropic_npt(ext_pressure=1.0, piston=1.0)
         with self.assertRaisesRegex(Exception, self.msg + 'The NpT integrator requires the NpT thermostat'):
@@ -175,6 +194,52 @@ class Test(ut.TestCase):
             self.system.integrator.run(0)
         self.system.lees_edwards.protocol = None
         self.system.integrator.run(0)
+
+    @ut.skipIf(espressomd.code_info._CodeInfo().call_method("has_fast_math"),
+               "cannot run with fast-math optimizations")
+    @ut.skipIf(os.environ.get("UBSAN_OPTIONS"),
+               "cannot run with UBSAN instrumentation")
+    @ut.skipIf(espressomd.has_features("FPE"),
+               "cannot run with FPE instrumentation")
+    @utx.skipIfMissingFeatures(["NPT", "WCA"])
+    def test_npt_integrator_negative_volume(self):
+        """Test for NpT with bad parameters."""
+
+        import tests_common
+        data = np.genfromtxt(tests_common.data_path("npt_lj_system.data"))
+        ref_box_l = np.max(data[:, 0:3])
+
+        system = self.system
+        system.part.clear()
+        system.cell_system.skin = 0.
+
+        for barostat in ["Andersen", "MTK"]:
+            system.box_l = 3 * [ref_box_l]
+            system.time_step = 0.01
+            if barostat == "Andersen":
+                piston = 1e-4
+            else:
+                piston = 4.0
+            direction = [True] * 3
+            ext_pressure = 100.0  # Too large external pressure
+            system.part.add(pos=data[:, 0:3], v=data[:, 3:6])
+            system.integrator.set_vv()
+            system.thermostat.set_npt(kT=1.0, gamma0=0.1, gammav=1e-3, seed=42)
+            system.integrator.set_isotropic_npt(ext_pressure=ext_pressure,
+                                                piston=piston,
+                                                direction=direction,
+                                                barostat=barostat)
+
+            if barostat == "Andersen":
+                with self.assertRaisesRegex(Exception, "the volume to become negative"):
+                    system.integrator.run(10)
+                system.part.clear()
+            if barostat == "MTK":
+                # Volume cannot be negative with NPT based on MTK equation
+                self.assertGreater(float(np.prod(system.box_l)), 0.)
+
+        system.part.clear()
+        system.box_l = [1., 1., 1.]
 
     @utx.skipIfMissingFeatures("STOKESIAN_DYNAMICS")
     def test_stokesian_integrator(self):

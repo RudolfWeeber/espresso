@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -24,7 +24,7 @@
  */
 #include "ljcos2.hpp"
 
-#ifdef LJCOS2
+#ifdef ESPRESSO_LJCOS2
 #include "nonbonded_interaction_data.hpp"
 
 #include <cmath>
@@ -48,4 +48,4 @@ LJcos2_Parameters::LJcos2_Parameters(double epsilon, double sigma,
   }
 }
 
-#endif /* ifdef LJCOS2 */
+#endif /* ifdef ESPRESSO_LJCOS2 */

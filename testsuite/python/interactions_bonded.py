@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2013-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -256,10 +256,58 @@ class InteractionsBondedTest(ut.TestCase):
             p2.pos = p1.pos + self.axis * cutoff * 1.01
             with self.assertRaisesRegex(Exception, r"while calling method integrate\(\)"):
                 self.system.integrator.run(recalc_forces=True, steps=0)
+            with self.assertRaisesRegex(Exception, r"while calling method calculate_energy\(\)"):
+                self.system.analysis.energy()["total"]
         if test_same_pos_exception:
             p2.pos = p1.pos
             with self.assertRaises(Exception):
                 self.system.integrator.run(recalc_forces=True, steps=0)
+
+    def test_fene_bond_breakage(self):
+        system = self.system
+        system.part.clear()
+        p1 = system.part.add(pos=system.box_l / 2. + [0., 0., -2.], id=1)
+        p2 = system.part.add(pos=system.box_l / 2. + [0., 0., -1.], id=2)
+        p3 = system.part.add(pos=system.box_l / 2. + [0., 0., +1.], id=3)
+        p4 = system.part.add(pos=system.box_l / 2. + [0., 0., +2.], id=4)
+
+        # Allow bond length in the interval (1.5, 2.5)
+        epsilon = 1e-6
+        fene = espressomd.interactions.FeneBond(
+            k=1., d_r_max=0.5 - epsilon, r_0=2.)
+        system.bonded_inter.add(fene)
+
+        # Expect no bond breakage
+        p2.bonds = (fene, p3)  # dist 2.0
+        system.integrator.run(0, recalc_forces=True)
+        p2.delete_all_bonds()
+
+        # Expect bond breakage
+        error_msg = "ERROR: bond broken between particles {}, {}"
+
+        with self.subTest(msg="FENE bond breaks on elongation"):
+            p1.bonds = (fene, p4)  # dist 4.0
+            with self.assertRaisesRegex(Exception, error_msg.format(1, 4)):
+                system.integrator.run(0, recalc_forces=True)
+            p1.delete_all_bonds()
+
+            p2.bonds = (fene, p4)  # dist 3.0
+            with self.assertRaisesRegex(Exception, error_msg.format(2, 4)):
+                system.integrator.run(0, recalc_forces=True)
+            p2.delete_all_bonds()
+
+        with self.subTest(msg="FENE bond breaks on compression"):
+            p1.bonds = (fene, p2)  # dist 1.0
+            # Expect bond breakage
+            with self.assertRaisesRegex(Exception, error_msg.format(1, 2)):
+                system.integrator.run(0, recalc_forces=True)
+            p1.delete_all_bonds()
+
+            p3.bonds = (fene, p4)  # dist 1.0
+            # Expect bond breakage
+            with self.assertRaisesRegex(Exception, error_msg.format(3, 4)):
+                system.integrator.run(0, recalc_forces=True)
+            p3.delete_all_bonds()
 
 
 if __name__ == '__main__':

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -21,7 +21,7 @@
 
 #include "rattle.hpp"
 
-#ifdef BOND_CONSTRAINT
+#ifdef ESPRESSO_BOND_CONSTRAINT
 
 #include "BoxGeometry.hpp"
 #include "Particle.hpp"
@@ -38,6 +38,17 @@
 #include <cmath>
 #include <functional>
 #include <span>
+#include <variant>
+
+/** Maximal number of iterations before the RATTLE algorithm bails out. */
+static constexpr auto shake_max_iterations = 1000;
+
+static void check_convergence(int cnt, char const *const name) {
+  static constexpr char const *const msg = " failed to converge after ";
+  if (cnt >= shake_max_iterations) {
+    runtimeErrorMsg() << name << msg << cnt << " iterations";
+  }
+}
 
 /**
  * @brief copy current position
@@ -118,7 +129,7 @@ static bool compute_correction_vector(CellStructure &cs,
                    Particle &p1, int bond_id, std::span<Particle *> partners) {
     auto const &iaparams = *bonded_ias.at(bond_id);
 
-    if (auto const *bond = boost::get<RigidBond>(&iaparams)) {
+    if (auto const *bond = std::get_if<RigidBond>(&iaparams)) {
       auto const corrected = kernel(*bond, box_geo, p1, *partners[0]);
       if (corrected)
         correction = true;
@@ -152,7 +163,7 @@ void correct_position_shake(CellStructure &cs, BoxGeometry const &box_geo,
   auto ghost_particles = cs.ghost_particles();
 
   int cnt;
-  for (cnt = 0; cnt < SHAKE_MAX_ITERATIONS; ++cnt) {
+  for (cnt = 0; cnt < shake_max_iterations; ++cnt) {
     init_correction_vector(particles, ghost_particles);
     bool const repeat_ = compute_correction_vector(
         cs, box_geo, bonded_ias, calculate_positional_correction);
@@ -168,10 +179,7 @@ void correct_position_shake(CellStructure &cs, BoxGeometry const &box_geo,
     apply_positional_correction(particles);
     cs.ghosts_update(Cells::DATA_PART_POSITION | Cells::DATA_PART_MOMENTUM);
   }
-  if (cnt >= SHAKE_MAX_ITERATIONS) {
-    runtimeErrorMsg() << "RATTLE failed to converge after " << cnt
-                      << " iterations";
-  }
+  check_convergence(cnt, "RATTLE");
 
   auto const resort_level =
       cs.check_resort_required() ? Cells::RESORT_LOCAL : Cells::RESORT_NONE;
@@ -180,9 +188,6 @@ void correct_position_shake(CellStructure &cs, BoxGeometry const &box_geo,
 
 /**
  * @brief Calculate the velocity correction for the particles.
- *
- * The position correction is accumulated in the forces
- * of the particles so that it can be reduced over the ghosts.
  *
  * @param ia_params Parameters
  * @param box_geo Box geometry.
@@ -229,7 +234,7 @@ void correct_velocity_shake(CellStructure &cs, BoxGeometry const &box_geo,
   auto ghost_particles = cs.ghost_particles();
 
   int cnt;
-  for (cnt = 0; cnt < SHAKE_MAX_ITERATIONS; ++cnt) {
+  for (cnt = 0; cnt < shake_max_iterations; ++cnt) {
     init_correction_vector(particles, ghost_particles);
     bool const repeat_ = compute_correction_vector(
         cs, box_geo, bonded_ias, calculate_velocity_correction);
@@ -245,11 +250,7 @@ void correct_velocity_shake(CellStructure &cs, BoxGeometry const &box_geo,
     apply_velocity_correction(particles);
     cs.ghosts_update(Cells::DATA_PART_MOMENTUM);
   }
-
-  if (cnt >= SHAKE_MAX_ITERATIONS) {
-    runtimeErrorMsg() << "VEL RATTLE failed to converge after " << cnt
-                      << " iterations";
-  }
+  check_convergence(cnt, "VEL RATTLE");
 }
 
 #endif

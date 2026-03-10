@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -92,7 +92,7 @@ void ReactionAlgorithm::restore_old_system_state() {
       on_particle_type_change(p_id, type_tracking::any_type, p_type);
       if (auto p = get_local_particle(p_id)) {
         p->type() = p_type;
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
         p->q() = charges_of_types.at(p_type);
 #endif
       }
@@ -165,7 +165,7 @@ void ReactionAlgorithm::make_reaction_attempt(SingleReaction const &reaction,
     // particles of reactant_types(i) to product_types(i)
     auto const old_type = reaction.reactant_types[i];
     auto const new_type = reaction.product_types[i];
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
     if (charges_of_types.at(new_type) != charges_of_types.at(old_type)) {
       only_local_changes = false;
     }
@@ -175,7 +175,7 @@ void ReactionAlgorithm::make_reaction_attempt(SingleReaction const &reaction,
       on_particle_type_change(p_id, old_type, new_type);
       if (auto p = get_local_particle(p_id)) {
         p->type() = new_type;
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
         p->q() = charges_of_types.at(new_type);
 #endif
       }
@@ -270,17 +270,17 @@ ReactionAlgorithm::create_new_trial_state(int reaction_id) {
   return {E_pot_new};
 }
 
-double ReactionAlgorithm::make_reaction_mc_move_attempt(int reaction_id,
-                                                        double bf,
-                                                        double E_pot_old,
-                                                        double E_pot_new) {
+double ReactionAlgorithm::make_reaction_mc_move_attempt_logarithmic(
+    int reaction_id, double ln_bf, double E_pot_old, double E_pot_new) {
   auto constexpr exp_min = -708.4; // for IEEE-compatible double
   auto const exponent = -(E_pot_new - E_pot_old) / kT;
   auto const exponential = (exponent < exp_min) ? 0. : std::exp(exponent);
   auto &reaction = *reactions[reaction_id];
   reaction.accumulator_potential_energy_difference_exponential(
       std::vector<double>{exponential});
-  if (get_random_uniform_number() >= bf) {
+  // probability space transformation: the uniform range [0, 1] from U(0, 1)
+  // is equivalent to the exponential range (-inf, 0] from -Exp(1) in log space
+  if (-get_random_logarithmic_number() >= ln_bf) {
     // reject trial move: restore previous state, energy is unchanged
     restore_old_system_state();
     return E_pot_old;
@@ -314,7 +314,7 @@ void ReactionAlgorithm::hide_particle(int p_id, int p_type) const {
   on_particle_type_change(p_id, p_type, non_interacting_type);
   if (auto p = get_local_particle(p_id)) {
     p->type() = non_interacting_type;
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
     p->q() = 0.;
 #endif
   }
@@ -326,7 +326,7 @@ void ReactionAlgorithm::hide_particle(int p_id, int p_type) const {
 void ReactionAlgorithm::check_exclusion_range(int p_id, int p_type) {
 
   /* Check the exclusion radius of the inserted particle */
-  if (exclusion_radius_per_type.count(p_type) != 0) {
+  if (exclusion_radius_per_type.contains(p_type)) {
     if (exclusion_radius_per_type[p_type] == 0.) {
       return;
     }
@@ -363,8 +363,8 @@ void ReactionAlgorithm::check_exclusion_range(int p_id, int p_type) {
       if (auto const p2_ptr = cell_structure.get_local_particle(p2_id)) {
         auto const &p2 = *p2_ptr;
         double excluded_distance;
-        if (exclusion_radius_per_type.count(p_type) == 0 ||
-            exclusion_radius_per_type.count(p2.type()) == 0) {
+        if (not exclusion_radius_per_type.contains(p_type) or
+            not exclusion_radius_per_type.contains(p2.type())) {
           excluded_distance = exclusion_range;
         } else if (exclusion_radius_per_type[p2.type()] == 0.) {
           continue;
@@ -490,9 +490,8 @@ Utils::Vector3d ReactionAlgorithm::get_random_position_in_box() {
 int ReactionAlgorithm::create_particle(int p_type) {
   int p_id;
   if (!m_empty_p_ids_smaller_than_max_seen_particle.empty()) {
-    auto p_id_iter = std::min_element(
-        std::begin(m_empty_p_ids_smaller_than_max_seen_particle),
-        std::end(m_empty_p_ids_smaller_than_max_seen_particle));
+    auto p_id_iter =
+        std::ranges::min_element(m_empty_p_ids_smaller_than_max_seen_particle);
     p_id = *p_id_iter;
     m_empty_p_ids_smaller_than_max_seen_particle.erase(p_id_iter);
   } else {
@@ -507,7 +506,7 @@ int ReactionAlgorithm::create_particle(int p_type) {
   if (auto p = get_local_particle(p_id)) {
     p->v() = std::sqrt(kT / p->mass()) * vel;
     p->type() = p_type;
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
     p->q() = charges_of_types.at(p_type);
 #endif
   }
@@ -618,7 +617,7 @@ void ReactionAlgorithm::setup_bookkeeping_of_empty_pids() {
   m_empty_p_ids_smaller_than_max_seen_particle.clear();
 
   auto particle_ids = get_particle_ids_parallel();
-  std::sort(particle_ids.begin(), particle_ids.end());
+  std::ranges::sort(particle_ids);
   auto pid1 = -1;
   for (auto pid2 : particle_ids) {
     for (int pid = pid1 + 1; pid < pid2; ++pid) {
@@ -631,7 +630,8 @@ void ReactionAlgorithm::setup_bookkeeping_of_empty_pids() {
 double ReactionAlgorithm::calculate_potential_energy() const {
   auto &system = System::get_system();
   auto const obs = system.calculate_energy();
-  auto pot = obs->accumulate(-obs->kinetic[0]);
+  auto const kinetic_energy = obs->kinetic_lin[0] + obs->kinetic_rot[0];
+  auto pot = obs->accumulate(-kinetic_energy);
   boost::mpi::broadcast(m_comm, pot, 0);
   return pot;
 }

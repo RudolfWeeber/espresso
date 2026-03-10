@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2022 The ESPResSo project
+ * Copyright (C) 2015-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -23,6 +23,7 @@
 #include "IntegratorHandle.hpp"
 #include "SteepestDescent.hpp"
 #include "StokesianDynamics.hpp"
+#include "SymplecticEuler.hpp"
 #include "VelocityVerlet.hpp"
 #include "VelocityVerletIsoNPT.hpp"
 #include "config/config.hpp"
@@ -34,13 +35,14 @@ void initialize(Utils::Factory<ObjectHandle> *om) {
   om->register_new<IntegratorHandle>("Integrators::IntegratorHandle");
   om->register_new<BrownianDynamics>("Integrators::BrownianDynamics");
   om->register_new<SteepestDescent>("Integrators::SteepestDescent");
-#ifdef STOKESIAN_DYNAMICS
+#ifdef ESPRESSO_STOKESIAN_DYNAMICS
   om->register_new<StokesianDynamics>("Integrators::StokesianDynamics");
-#endif // STOKESIAN_DYNAMICS
+#endif // ESPRESSO_STOKESIAN_DYNAMICS
+  om->register_new<SymplecticEuler>("Integrators::SymplecticEuler");
   om->register_new<VelocityVerlet>("Integrators::VelocityVerlet");
-#ifdef NPT
+#ifdef ESPRESSO_NPT
   om->register_new<VelocityVerletIsoNPT>("Integrators::VelocityVerletIsoNPT");
-#endif // NPT
+#endif // ESPRESSO_NPT
 }
 
 } // namespace Integrators

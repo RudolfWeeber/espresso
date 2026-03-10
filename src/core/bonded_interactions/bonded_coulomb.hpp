@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -55,7 +55,7 @@ struct BondedCoulomb {
  */
 inline std::optional<Utils::Vector3d>
 BondedCoulomb::force(double const q1q2, Utils::Vector3d const &dx) const {
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
   auto const dist2 = dx.norm2();
   auto const dist3 = dist2 * std::sqrt(dist2);
   auto const fac = prefactor * q1q2 / dist3;
@@ -71,7 +71,7 @@ BondedCoulomb::force(double const q1q2, Utils::Vector3d const &dx) const {
  */
 inline std::optional<double>
 BondedCoulomb::energy(double const q1q2, Utils::Vector3d const &dx) const {
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
   auto const dist = dx.norm();
   return prefactor * q1q2 / dist;
 #else

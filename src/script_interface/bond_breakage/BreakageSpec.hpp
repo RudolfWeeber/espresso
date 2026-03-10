@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The ESPResSo project
+ * Copyright (C) 2022-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -24,6 +24,7 @@
 #include "script_interface/ScriptInterface.hpp"
 
 #include <memory>
+#include <variant>
 
 namespace ScriptInterface {
 namespace BondBreakage {
@@ -37,7 +38,7 @@ public:
         {"action_type",
          [this](const Variant &v) {
            m_breakage_spec->action_type = ::BondBreakage::ActionType{
-               m_breakage_str_to_enum.at(boost::get<std::string>(v))};
+               m_breakage_str_to_enum.at(std::get<std::string>(v))};
          },
          [this]() {
            return Variant(

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2023 The ESPResSo project
+ * Copyright (C) 2021-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,27 +19,34 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
 
 #include "LatticeModel.hpp"
 #include "LatticeWalberla.hpp"
 #include "VTKHandle.hpp"
 
 #include "core/lb/LBWalberla.hpp"
+#include "core/lb/Solver.hpp"
+#include "core/system/System.hpp"
 
 #include <script_interface/ScriptInterface.hpp>
 
 #include <walberla_bridge/LatticeModel.hpp>
 #include <walberla_bridge/lattice_boltzmann/LBWalberlaBase.hpp>
+#include <walberla_bridge/utils/ResourceManager.hpp>
 
 #include <utils/Vector.hpp>
 #include <utils/math/int_pow.hpp>
 
+#include <cstddef>
+#include <filesystem>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace ScriptInterface::walberla {
@@ -52,10 +59,19 @@ class LBVTKHandle : public VTKHandleBase<::LBWalberlaBase> {
   }
 };
 
+inline void
+lb_throw_if_expired(std::optional<ResourceObserver> const &mpi_obs) {
+  if (not(mpi_obs and mpi_obs->is_valid())) {
+    throw std::runtime_error(
+        "the MPI Cartesian communicator of this LB object has expired");
+  }
+}
+
 class LBFluid : public LatticeModel<::LBWalberlaBase, LBVTKHandle> {
 protected:
   using Base = LatticeModel<::LBWalberlaBase, LBVTKHandle>;
   std::shared_ptr<::LB::LBWalberlaParams> m_lb_params;
+  std::optional<ResourceObserver> m_mpi_cart_comm_observer;
   bool m_is_active;
   double m_conv_dist;
   double m_conv_visc;
@@ -72,6 +88,8 @@ public:
         {"lattice", AutoParameter::read_only, [this]() { return m_lattice; }},
         {"single_precision", AutoParameter::read_only,
          [this]() { return not m_instance->is_double_precision(); }},
+        {"gpu", AutoParameter::read_only,
+         [this]() { return m_instance->is_gpu(); }},
         {"is_active", AutoParameter::read_only,
          [this]() { return m_is_active; }},
         {"agrid", AutoParameter::read_only,
@@ -126,8 +144,12 @@ public:
 
   [[nodiscard]] auto get_lb_fluid() const { return m_instance; }
   [[nodiscard]] auto get_lb_params() const { return m_lb_params; }
+  [[nodiscard]] auto get_mpi_cart_comm_observer() const {
+    return m_mpi_cart_comm_observer;
+  }
 
-  ::LatticeModel::units_map get_latice_to_md_units_conversion() const override {
+  ::LatticeModel::units_map
+  get_lattice_to_md_units_conversion() const override {
     return {
         {"density", 1. / m_conv_dens},
         {"velocity", 1. / m_conv_speed},
@@ -135,25 +157,18 @@ public:
     };
   }
 
+protected:
+  void make_instance(VariantMap const &params) override;
+
 private:
-  void load_checkpoint(std::string const &filename, int mode);
-  void save_checkpoint(std::string const &filename, int mode);
+  void load_checkpoint(std::filesystem::path const &path, int mode);
+  void save_checkpoint(std::filesystem::path const &path, int mode);
   std::vector<Variant> get_average_pressure_tensor() const;
+  Variant get_boundary_force_from_shape(std::vector<int> const &raster) const;
+  Variant get_boundary_force() const;
   Variant get_interpolated_velocity(Utils::Vector3d const &pos) const;
 };
 
-class LBFluidCPU : public LBFluid {
-protected:
-  void make_instance(VariantMap const &params) override;
-};
-
-#ifdef CUDA
-class LBFluidGPU : public LBFluid {
-protected:
-  void make_instance(VariantMap const &params) override;
-};
-#endif // CUDA
-
 } // namespace ScriptInterface::walberla
 
-#endif // WALBERLA
+#endif // ESPRESSO_WALBERLA

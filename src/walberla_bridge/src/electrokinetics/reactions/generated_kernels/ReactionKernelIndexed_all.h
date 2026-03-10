@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022-2023 The ESPResSo project
+ * Copyright (C) 2022-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -17,11 +17,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// kernel generated with pystencils v1.3.7, lbmpy v1.3.7, sympy v1.12.1,
-// lbmpy_walberla/pystencils_walberla from waLBerla commit
-// f36fa0a68bae59f0b516f6587ea8fa7c24a41141
+// kernel generated with pystencils v1.4+1.ge851f4e, lbmpy v1.4+1.ge9efe34,
+// sympy v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit
+// 007e77e077ad9d22b5eed6f3d3118240993e553c
 
 #pragma once
+
+#include <waLBerlaDefinitions.h>
 
 #include "ReactionKernelIndexed_1_double_precision.h"
 #include "ReactionKernelIndexed_1_single_precision.h"
@@ -37,6 +39,25 @@
 
 #include "ReactionKernelIndexed_5_double_precision.h"
 #include "ReactionKernelIndexed_5_single_precision.h"
+
+#if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
+
+#include "ReactionKernelIndexed_1_double_precision_CUDA.h"
+#include "ReactionKernelIndexed_1_single_precision_CUDA.h"
+
+#include "ReactionKernelIndexed_2_double_precision_CUDA.h"
+#include "ReactionKernelIndexed_2_single_precision_CUDA.h"
+
+#include "ReactionKernelIndexed_3_double_precision_CUDA.h"
+#include "ReactionKernelIndexed_3_single_precision_CUDA.h"
+
+#include "ReactionKernelIndexed_4_double_precision_CUDA.h"
+#include "ReactionKernelIndexed_4_single_precision_CUDA.h"
+
+#include "ReactionKernelIndexed_5_double_precision_CUDA.h"
+#include "ReactionKernelIndexed_5_single_precision_CUDA.h"
+
+#endif
 
 #include <domain_decomposition/BlockDataID.h>
 
@@ -160,6 +181,123 @@ auto get_kernel(const std::vector<std::shared_ptr<Reactant>> &reactants,
 
   return get_kernel_impl<float>(reactants, args...);
 }
+
+#if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
+
+template <typename FloatType = double, std::size_t N = 1>
+struct KernelTraitGPU {
+  using ReactionKernelIndexedGPU =
+      pystencils::ReactionKernelIndexed_1_double_precision_CUDA;
+};
+
+template <> struct KernelTraitGPU<double, 2> {
+  using ReactionKernelIndexedGPU =
+      pystencils::ReactionKernelIndexed_2_double_precision_CUDA;
+};
+
+template <> struct KernelTraitGPU<double, 3> {
+  using ReactionKernelIndexedGPU =
+      pystencils::ReactionKernelIndexed_3_double_precision_CUDA;
+};
+
+template <> struct KernelTraitGPU<double, 4> {
+  using ReactionKernelIndexedGPU =
+      pystencils::ReactionKernelIndexed_4_double_precision_CUDA;
+};
+
+template <> struct KernelTraitGPU<double, 5> {
+  using ReactionKernelIndexedGPU =
+      pystencils::ReactionKernelIndexed_5_double_precision_CUDA;
+};
+
+template <> struct KernelTraitGPU<float, 1> {
+  using ReactionKernelIndexedGPU =
+      pystencils::ReactionKernelIndexed_1_single_precision_CUDA;
+};
+
+template <> struct KernelTraitGPU<float, 2> {
+  using ReactionKernelIndexedGPU =
+      pystencils::ReactionKernelIndexed_2_single_precision_CUDA;
+};
+
+template <> struct KernelTraitGPU<float, 3> {
+  using ReactionKernelIndexedGPU =
+      pystencils::ReactionKernelIndexed_3_single_precision_CUDA;
+};
+
+template <> struct KernelTraitGPU<float, 4> {
+  using ReactionKernelIndexedGPU =
+      pystencils::ReactionKernelIndexed_4_single_precision_CUDA;
+};
+
+template <> struct KernelTraitGPU<float, 5> {
+  using ReactionKernelIndexedGPU =
+      pystencils::ReactionKernelIndexed_5_single_precision_CUDA;
+};
+
+template <typename FloatType, class Reactant, std::size_t... ints>
+auto get_kernel_impl_gpu(
+    const std::vector<std::shared_ptr<Reactant>> &reactants,
+    const double coefficient, const BlockDataID &indexFieldID,
+    std::index_sequence<ints...> int_seq) {
+  auto kernel = std::make_shared<typename KernelTraitGPU<
+      FloatType, int_seq.size()>::ReactionKernelIndexedGPU>(
+      indexFieldID,
+      walberla::BlockDataID(
+          reactants[ints]->get_species()->get_density_id())...,
+      numeric_cast<FloatType>(reactants[ints]->get_order())...,
+      numeric_cast<FloatType>(coefficient),
+      numeric_cast<FloatType>(reactants[ints]->get_stoech_coeff())...);
+
+  std::function<void(IBlock *)> sweep = [kernel](IBlock *b) { kernel->run(b); };
+  return sweep;
+}
+
+template <typename FloatType, class Reactant, class... Args>
+auto get_kernel_impl_gpu(
+    const std::vector<std::shared_ptr<Reactant>> &reactants, Args... args) {
+  switch (reactants.size()) {
+
+  case 1:
+    return get_kernel_impl_gpu<FloatType>(reactants, args...,
+                                          std::make_index_sequence<1>{});
+
+  case 2:
+    return get_kernel_impl_gpu<FloatType>(reactants, args...,
+                                          std::make_index_sequence<2>{});
+
+  case 3:
+    return get_kernel_impl_gpu<FloatType>(reactants, args...,
+                                          std::make_index_sequence<3>{});
+
+  case 4:
+    return get_kernel_impl_gpu<FloatType>(reactants, args...,
+                                          std::make_index_sequence<4>{});
+
+  case 5:
+    return get_kernel_impl_gpu<FloatType>(reactants, args...,
+                                          std::make_index_sequence<5>{});
+
+  default:
+    throw std::runtime_error("reactions of this size are not implemented!");
+  }
+}
+
+template <class Reactant, class... Args>
+auto get_kernel_gpu(const std::vector<std::shared_ptr<Reactant>> &reactants,
+                    Args... args) {
+
+  const auto is_double_precision =
+      reactants[0]->get_species()->is_double_precision();
+
+  if (is_double_precision) {
+    return get_kernel_impl_gpu<double>(reactants, args...);
+  }
+
+  return get_kernel_impl_gpu<float>(reactants, args...);
+}
+
+#endif
 
 } // namespace ReactionKernelIndexedSelector
 } // namespace detail

@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2013-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -17,6 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 import unittest as ut
+import unittest_decorators as utx
 import espressomd
 import numpy as np
 import tests_common
@@ -92,6 +93,20 @@ class CellSystem(ut.TestCase):
         self.system.cell_system.set_hybrid_decomposition(
             n_square_types={1}, cutoff_regular=0)
         self.check_node_grid()
+
+    @utx.skipIfMissingFeatures(["WCA", "SHARED_MEMORY_PARALLELISM"])
+    def test_verlet_list_overflow(self):
+        system = self.system
+        system.part.clear()
+        # place all particles on top of each other
+        system.part.add(pos=[[0, 0, 0]] * 1000)
+        system.non_bonded_inter[0, 0].wca.set_params(epsilon=1., sigma=0.01)
+        system.integrator.set_vv()
+
+        system.cell_system.use_verlet_lists = True
+        system.time_step = 0.01
+        self.system.integrator.run(0)
+        self.assertFalse(system.cell_system.use_verlet_lists)
 
 
 if __name__ == "__main__":

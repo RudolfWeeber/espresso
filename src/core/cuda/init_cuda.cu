@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -24,18 +24,19 @@
 #include <cuda_runtime.h>
 
 #include <cstring>
+#include <memory>
 #include <string>
 
 #if defined(OMPI_MPI_H) || defined(_MPI_H)
 #error CU-file includes mpi.h! This should not happen!
 #endif
 
-#ifdef CUDA
+#ifdef ESPRESSO_CUDA
 
 /** \name minimally required compute capability. */
 /**@{*/
-static const int computeCapabilityMinMajor = 3;
-static const int computeCapabilityMinMinor = 0;
+static int constexpr computeCapabilityMinMajor = 3;
+static int constexpr computeCapabilityMinMinor = 0;
 /**@}*/
 
 void cuda_init() { CUDA_CHECK(cudaStreamCreate(&stream[0])) }
@@ -54,35 +55,24 @@ bool cuda_check_gpu_compute_capability(int dev) {
            deviceProp.minor < computeCapabilityMinMinor));
 }
 
-/**
- * @brief Safely copy the device name and pad the string with null characters.
- */
-static void cuda_copy_gpu_name(char *const name, cudaDeviceProp const &prop) {
-  char buffer[256] = {'\0'};
-  std::strncpy(buffer, prop.name, 256);
-  name[255] = '\0';
-  std::strncpy(name, buffer, 256);
-}
-
-void cuda_get_gpu_name(int dev, char *const name) {
+std::string cuda_get_gpu_name(int dev) {
   cudaDeviceProp deviceProp;
   CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, dev))
-  cuda_copy_gpu_name(name, deviceProp);
+  return {deviceProp.name};
 }
 
 EspressoGpuDevice cuda_get_device_props(const int dev) {
   cudaDeviceProp deviceProp;
   CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, dev))
-  EspressoGpuDevice device{dev,
-                           "",
-                           "",
-                           -1,
-                           deviceProp.major,
-                           deviceProp.minor,
-                           deviceProp.totalGlobalMem,
-                           deviceProp.multiProcessorCount};
-  cuda_copy_gpu_name(device.name, deviceProp);
-  return device;
+  auto const [node, hostname] = detail::get_node_info();
+  return {dev,
+          deviceProp.name,
+          hostname,
+          node,
+          deviceProp.major,
+          deviceProp.minor,
+          deviceProp.totalGlobalMem,
+          deviceProp.multiProcessorCount};
 }
 
 void cuda_set_device(int dev) {
@@ -98,25 +88,14 @@ int cuda_get_device() {
 }
 
 bool cuda_test_device_access() {
-  int *d = nullptr;
+  auto const deleter = [](int *p) { cudaFree(reinterpret_cast<void *>(p)); };
+  int *ptr = nullptr;
   int h = 42;
-  cudaError_t err;
-
-  err = cudaMalloc((void **)&d, sizeof(int));
-  if (err != cudaSuccess) {
-    throw cuda_runtime_error_cuda(err);
-  }
-  err = cudaMemcpy(d, &h, sizeof(int), cudaMemcpyHostToDevice);
-  if (err != cudaSuccess) {
-    cudaFree(d);
-    throw cuda_runtime_error_cuda(err);
-  }
+  CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&ptr), sizeof(int)));
+  std::unique_ptr<int, decltype(deleter)> d(ptr, deleter);
+  CUDA_CHECK(cudaMemcpy(d.get(), &h, sizeof(int), cudaMemcpyHostToDevice));
   h = 0;
-  err = cudaMemcpy(&h, d, sizeof(int), cudaMemcpyDeviceToHost);
-  cudaFree(d);
-  if (err != cudaSuccess) {
-    throw cuda_runtime_error_cuda(err);
-  }
+  CUDA_CHECK(cudaMemcpy(&h, d.get(), sizeof(int), cudaMemcpyDeviceToHost));
   return h != 42;
 }
 
@@ -133,4 +112,4 @@ void cuda_check_device() {
   }
 }
 
-#endif /* defined(CUDA) */
+#endif /* defined(ESPRESSO_CUDA) */

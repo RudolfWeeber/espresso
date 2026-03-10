@@ -1,4 +1,4 @@
-# Copyright (C) 2010-2022 The ESPResSo project
+# Copyright (C) 2010-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -14,16 +14,20 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+from libcpp cimport bool as cbool
+from libcpp.unordered_map cimport unordered_map
+from libcpp.utility cimport pair
+from libcpp.vector cimport vector
+from libcpp.memory cimport shared_ptr, make_shared
 import numpy as np
+cimport numpy as cnp
+import pathlib
 from . import utils
 from .utils cimport Vector3b, Vector3i, Vector2d, Vector3d, Vector4d
+from .utils cimport path
 cimport cpython.object
+cnp.import_array()
 
-from libcpp.memory cimport shared_ptr, make_shared
-from libcpp.vector cimport vector
-from libcpp.utility cimport pair
-from libcpp.unordered_map cimport unordered_map
-from libcpp cimport bool as cbool
 
 cdef shared_ptr[ContextManager] _om
 
@@ -93,14 +97,14 @@ cdef class PScriptInterface:
         else:
             global _om
             for pname in kwargs:
-                out_params[utils.to_char_pointer(pname)] = python_object_to_variant(
+                out_params[utils.to_bytes(pname)] = python_object_to_variant(
                     kwargs[pname])
             self.set_sip(
                 _om.get().make_shared(
                     policy_,
-                    utils.to_char_pointer(name),
+                    utils.to_bytes(name),
                     out_params))
-            utils.handle_errors(f"Exception during instantiation of '{name}'")
+            utils.handle_errors(f"Raised during instantiation of '{name}'")
 
     def __richcmp__(a, b, op):
         cls = PScriptInterface
@@ -117,7 +121,11 @@ cdef class PScriptInterface:
         return self.sip.use_count()
 
     def _valid_parameters(self):
-        return [utils.to_str(p) for p in self.sip.get().get_valid_parameters()]
+        cdef ObjectHandle * handle = self.sip.get()
+        return [utils.to_str(p.data()) for p in handle.valid_parameters()]
+
+    def _has_parameter(self, name):
+        return self.sip.get().has_parameter(utils.to_bytes(name))
 
     def get_sip(self):
         """
@@ -154,27 +162,26 @@ cdef class PScriptInterface:
         """
         cdef ObjectHandle * handle = self.sip.get()
         cdef VariantMap parameters
-        cdef Variant value
+        cdef Variant result
 
-        for name in kwargs:
-            parameters[utils.to_char_pointer(name)] = python_object_to_variant(
-                kwargs[name])
+        for name, value in kwargs.items():
+            parameters[utils.to_bytes(name)] = python_object_to_variant(value)
 
         # the internal buffer of a cython bytestring object can be accessed as
         # a raw char pointer, but then the bytestring object must be kept alive
-        method_name_bytes_counted_reference = utils.to_char_pointer(method)
+        method_name_bytes_counted_reference = utils.to_bytes(method)
         cdef char * method_name_char = method_name_bytes_counted_reference
 
         if with_nogil:
             with nogil:
-                value = handle.call_method_nogil(method_name_char, parameters)
+                result = handle.call_method_nogil(method_name_char, parameters)
         else:
-            value = handle.call_method(method_name_char, parameters)
-        res = variant_to_python_object(value)
+            result = handle.call_method(method_name_char, parameters)
+        result_py = variant_to_python_object(result)
         if handle_errors_message is None:
-            handle_errors_message = f"while calling method {method}()"
+            handle_errors_message = f"Raised while calling method {method}()"
         utils.handle_errors(handle_errors_message)
-        return res
+        return result_py
 
     def name(self):
         """Return name of the core class."""
@@ -191,12 +198,12 @@ cdef class PScriptInterface:
 
     def set_params(self, **kwargs):
         for name, value in kwargs.items():
-            self.sip.get().set_parameter(utils.to_char_pointer(name),
+            self.sip.get().set_parameter(utils.to_bytes(name),
                                          python_object_to_variant(value))
             utils.handle_errors(f"while setting parameter '{name}'")
 
     def get_parameter(self, name):
-        cdef Variant value = self.sip.get().get_parameter(utils.to_char_pointer(name))
+        cdef Variant value = self.sip.get().get_parameter(utils.to_bytes(name))
         return variant_to_python_object(value)
 
     def get_params(self):
@@ -221,6 +228,25 @@ class array_variant(np.ndarray):
         return obj
 
 
+def fast_tiling(value, n):
+    """
+    Repeat a value (scalar or vector) multiple times.
+    Based on the value type, either a NumPy n-dimensional array is returned,
+    or a list of references to the original object (if mutable),
+    or a list of copies of the original object (if immutable).
+    """
+    if isinstance(value, np.ndarray) and value.ndim == 1 and len(value) != 0 and \
+            any(np.issubdtype(value.dtype, x) for x in (np.floating, np.signedinteger)) or \
+            isinstance(value, (list, tuple)) and len(value) != 0 and \
+            all(map(lambda x: isinstance(x, (int, np.signedinteger, float, np.floating))
+                    and not isinstance(x, type(True)), value)):
+        return np.tile(value, (n, 1))
+    if isinstance(value, (int, np.signedinteger, float, np.floating)) and \
+            not isinstance(value, type(True)):
+        return array_variant(np.repeat(value, n))
+    return n * [value]
+
+
 cdef Variant python_object_to_variant(value) except *:
     """Convert Python objects to C++ Variant objects."""
 
@@ -231,9 +257,17 @@ cdef Variant python_object_to_variant(value) except *:
     cdef unordered_map[string, Variant] map_str2var
     cdef PObjectRef oref
     cdef int[::1] view_int
+    cdef int[:, ::1] view_int_2d
     cdef int * data_int
     cdef double[::1] view_double
+    cdef double[:, ::1] view_double_2d
     cdef double * data_double
+    cdef path fs_path
+    cdef size_t index
+    cdef size_t nrows
+    cdef size_t bufsize
+    cdef Vector3d vector3d
+    cdef Vector3i vector3i
 
     if value is None:
         return Variant()
@@ -247,68 +281,113 @@ cdef Variant python_object_to_variant(value) except *:
     if isinstance(value, PScriptInterface):
         oref = value.get_sip()
         return make_variant(oref.sip)
-    elif isinstance(value, dict):
+    if isinstance(value, dict):
         if all(map(lambda x: isinstance(x, (int, np.integer)), value.keys())):
             for key, value in value.items():
                 map_int2var[int(key)] = python_object_to_variant(value)
             return make_variant[unordered_map[int, Variant]](map_int2var)
-        elif all(map(lambda x: isinstance(x, (str, np.str_)), value.keys())):
+        if all(map(lambda x: isinstance(x, (str, bytes)), value.keys())):
             for key, value in value.items():
-                map_str2var[utils.to_char_pointer(
-                    str(key))] = python_object_to_variant(value)
+                key_bytes = utils.to_bytes(key)
+                map_str2var[key_bytes] = python_object_to_variant(value)
             return make_variant[unordered_map[string, Variant]](map_str2var)
         for k, v in value.items():
-            if not isinstance(k, (str, int, np.integer, np.str_)):
+            if not isinstance(k, (str, bytes, int, np.integer)):
                 raise TypeError(
                     f"No conversion from type "
                     f"'dict_item([({type(k).__name__}, {type(v).__name__})])'"
                     f" to 'Variant[std::unordered_map<int, Variant>]' or"
                     f" to 'Variant[std::unordered_map<std::string, Variant>]'")
-    elif type(value) in (str, np.str_):
-        return make_variant[string](utils.to_char_pointer(str(value)))
-    elif isinstance(value, array_variant) and np.issubdtype(value.dtype, np.signedinteger):
-        view_int = np.ascontiguousarray(value, dtype=np.int32)
-        data_int = &view_int[0]
-        vec_int.assign(data_int, data_int + len(view_int))
-        return make_variant[vector[int]](vec_int)
-    elif isinstance(value, array_variant) and np.issubdtype(value.dtype, np.floating):
-        view_double = np.ascontiguousarray(value, dtype=np.float64)
-        data_double = &view_double[0]
-        vec_double.assign(data_double, data_double + len(view_double))
-        return make_variant[vector[double]](vec_double)
-    elif hasattr(value, '__iter__'):
-        if len(value) == 0:
-            return make_variant[vector[Variant]](vec_variant)
-        if isinstance(value, np.ndarray) and value.ndim == 1:
+        assert False, "dev note: a type is missing in the for loop above"
+    if isinstance(value, (str, bytes)):
+        return make_variant[string](utils.to_bytes(value))
+    if isinstance(value, pathlib.Path):
+        fs_path.assign(utils.to_bytes(str(value)))
+        return make_variant[path](fs_path)
+    if isinstance(value, np.ndarray):
+        if isinstance(value, array_variant):
+            if np.issubdtype(value.dtype, np.signedinteger):
+                view_int = np.ascontiguousarray(value, dtype=np.int32)
+                data_int = &view_int[0]
+                vec_int.assign(data_int, data_int + len(view_int))
+                return make_variant[vector[int]](vec_int)
             if np.issubdtype(value.dtype, np.floating):
+                view_double = np.ascontiguousarray(value, dtype=np.float64)
+                data_double = &view_double[0]
+                vec_double.assign(data_double, data_double + len(view_double))
+                return make_variant[vector[double]](vec_double)
+        if value.ndim == 1:
+            if np.issubdtype(value.dtype, np.floating):
+                vec_double.reserve(len(value))
                 for e in value:
                     vec_double.push_back(e)
                 return make_variant[vector[double]](vec_double)
-            elif np.issubdtype(value.dtype, np.signedinteger):
+            if np.issubdtype(value.dtype, np.signedinteger):
+                vec_int.reserve(len(value))
                 for e in value:
                     vec_int.push_back(e)
                 return make_variant[vector[int]](vec_int)
+        if value.ndim == 2:
+            if np.issubdtype(value.dtype, np.signedinteger):
+                nrows = value.shape[0]
+                bufsize = value.shape[1]
+                vec_variant.reserve(nrows)
+                vec_int.reserve(bufsize)
+                view_int_2d = np.ascontiguousarray(value, dtype=np.int32)
+                for index in range(nrows):
+                    data_int = &view_int_2d[index, 0]
+                    vec_int.assign(data_int, data_int + bufsize)
+                    vec_variant.emplace_back(
+                        make_variant[vector[int]](vec_int))
+                return make_variant[vector[Variant]](vec_variant)
+            if np.issubdtype(value.dtype, np.floating):
+                nrows = value.shape[0]
+                bufsize = value.shape[1]
+                vec_variant.reserve(nrows)
+                vec_double.reserve(bufsize)
+                view_double_2d = np.ascontiguousarray(value, dtype=np.float64)
+                for index in range(nrows):
+                    data_double = &view_double_2d[index, 0]
+                    vec_double.assign(data_double, data_double + bufsize)
+                    vec_variant.emplace_back(
+                        make_variant[vector[double]](vec_double))
+                return make_variant[vector[Variant]](vec_variant)
+    if hasattr(value, "__iter__"):
+        bufsize = len(value)
+        if bufsize == 0:
+            return make_variant[vector[Variant]](vec_variant)
         if all(map(lambda x: isinstance(x, (float, np.floating)), value)):
+            if bufsize == 3:
+                for index in range(bufsize):
+                    vector3d[index] = value[index]
+                return make_variant[Vector3d](vector3d)
+            vec_double.reserve(bufsize)
             for e in value:
                 vec_double.push_back(e)
             return make_variant[vector[double]](vec_double)
         if all(map(lambda x: isinstance(x, (int, np.integer))
                    and not isinstance(x, type(True)), value)):
+            if bufsize == 3:
+                for index in range(bufsize):
+                    vector3i[index] = value[index]
+                return make_variant[Vector3i](vector3i)
+            vec_int.reserve(bufsize)
             for e in value:
                 vec_int.push_back(e)
             return make_variant[vector[int]](vec_int)
+        vec_variant.reserve(bufsize)
         for e in value:
-            vec_variant.push_back(python_object_to_variant(e))
+            vec_variant.emplace_back(python_object_to_variant(e))
         return make_variant[vector[Variant]](vec_variant)
-    elif isinstance(value, (type(True), np.bool_)):
+    if isinstance(value, (type(True), np.bool_)):
         return make_variant[cbool](value)
-    elif np.issubdtype(np.dtype(type(value)), np.signedinteger):
+    if np.issubdtype(np.dtype(type(value)), np.signedinteger):
         return make_variant[int](value)
-    elif np.issubdtype(np.dtype(type(value)), np.floating):
+    if np.issubdtype(np.dtype(type(value)), np.floating):
         return make_variant[double](value)
-    else:
-        raise TypeError(
-            f"No conversion from type '{type(value).__name__}' to 'Variant'")
+    raise TypeError(
+        f"No conversion from type '{type(value).__name__}' to 'Variant'")
+
 
 cdef variant_to_python_object(const Variant & value):
     """Convert C++ Variant objects to Python objects."""
@@ -324,6 +403,9 @@ cdef variant_to_python_object(const Variant & value):
     cdef Vector2d vec2d
     cdef Vector3d vec3d
     cdef Vector4d vec4d
+    cdef cnp.ndarray[cnp.float64_t, ndim = 2] arrayNvec3d
+    cdef size_t index
+    cdef size_t nrows
     if is_none(value):
         return None
     if is_type[cbool](value):
@@ -334,6 +416,9 @@ cdef variant_to_python_object(const Variant & value):
         return get_value[double](value)
     if is_type[string](value):
         return utils.to_str(get_value[string](value))
+    if is_type[path](value):
+        filepath = utils.to_str(get_value[path](value).generic_string())
+        return pathlib.Path(filepath)
     if is_type[vector[int]](value):
         return get_value[vector[int]](value)
     if is_type[vector[double]](value):
@@ -379,11 +464,25 @@ cdef variant_to_python_object(const Variant & value):
             return None
     if is_type[vector[Variant]](value):
         vec = get_value[vector[Variant]](value)
+        nrows = vec.size()
+
+        if (nrows > 0) and is_type[Vector3d](vec[0]):
+            arrayNvec3d = np.empty((nrows, 3), dtype=np.float64)
+            mixed_types = False
+            for index in range(nrows):
+                if not is_type[Vector3d](vec[index]):
+                    mixed_types = True
+                    break
+                vec3d = get_value[Vector3d](vec[index])
+                arrayNvec3d[index, 0] = vec3d[0]
+                arrayNvec3d[index, 1] = vec3d[1]
+                arrayNvec3d[index, 2] = vec3d[2]
+            if not mixed_types:
+                return arrayNvec3d
+
         res = []
-
-        for i in vec:
-            res.append(variant_to_python_object(i))
-
+        for index in range(nrows):
+            res.append(variant_to_python_object(vec[index]))
         return res
 
     if is_type[unordered_map[int, Variant]](value):
@@ -438,21 +537,21 @@ class ScriptInterfaceHelper(PScriptInterface):
         cdef vector[string] features_vec
         if self._so_features:
             for feature in self._so_features:
-                features_vec.push_back(utils.to_char_pointer(feature))
+                features_vec.push_back(utils.to_bytes(feature))
             check_features(features_vec)
         super().__init__(self._so_name, policy=self._so_creation_policy,
                          **kwargs)
         self.define_bound_methods()
 
     def __reduce__(self):
-        assert self._so_checkpointable
+        assert self._so_checkpointable, f"Class '{self.__class__.__name__}' doesn't support checkpointing"  # nopep8
         return (_unpickle_so_class, (self._so_name, self._serialize()))
 
     def __dir__(self):
         return list(self.__dict__.keys()) + self._valid_parameters()
 
     def __getattr__(self, attr):
-        if attr in self._valid_parameters():
+        if self._has_parameter(attr):
             return self.get_parameter(attr)
 
         if attr in self.__dict__:
@@ -462,13 +561,13 @@ class ScriptInterfaceHelper(PScriptInterface):
             f"Object '{self.__class__.__name__}' has no attribute '{attr}'")
 
     def __setattr__(self, attr, value):
-        if attr in self._valid_parameters():
+        if self._has_parameter(attr):
             self.set_params(**{attr: value})
         else:
             super().__setattr__(attr, value)
 
     def __delattr__(self, attr):
-        if attr in self._valid_parameters():
+        if self._has_parameter(attr):
             raise RuntimeError(f"Parameter '{attr}' is read-only")
         else:
             super().__delattr__(attr)
@@ -549,10 +648,12 @@ class ScriptObjectMap(ScriptInterfaceHelper):
         return self.call_method("keys")
 
     def __iter__(self):
-        for k in self.keys(): yield k
+        for k in self.keys():
+            yield k
 
     def items(self):
-        for k in self.keys(): yield k, self[k]
+        for k in self.keys():
+            yield k, self[k]
 
 
 # Map from script object names to their corresponding python classes

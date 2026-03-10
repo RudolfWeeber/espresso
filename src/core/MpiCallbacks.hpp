@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -19,8 +19,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef COMMUNICATION_MPI_CALLBACKS
-#define COMMUNICATION_MPI_CALLBACKS
+#pragma once
 
 /**
  * @file
@@ -36,8 +35,6 @@
  */
 
 #include <utils/NumeratedContainer.hpp>
-#include <utils/tuple.hpp>
-#include <utils/type_traits.hpp>
 
 #include <boost/mpi/collectives/broadcast.hpp>
 #include <boost/mpi/communicator.hpp>
@@ -52,8 +49,6 @@
 #include <vector>
 
 namespace Communication {
-
-class MpiCallbacks;
 
 namespace detail {
 /**
@@ -70,10 +65,6 @@ using is_allowed_argument =
                                (!std::is_const_v<std::remove_reference_t<T>> &&
                                 std::is_lvalue_reference_v<T>))>;
 
-template <class... Args>
-using are_allowed_arguments =
-    typename Utils::conjunction<is_allowed_argument<Args>...>::type;
-
 /**
  * @brief Invoke a callable with arguments from an mpi buffer.
  *
@@ -87,14 +78,14 @@ using are_allowed_arguments =
  */
 template <class F, class... Args>
 auto invoke(F f, boost::mpi::packed_iarchive &ia) {
-  static_assert(are_allowed_arguments<Args...>::value,
+  static_assert(std::conjunction_v<is_allowed_argument<Args>...>,
                 "Pointers and non-const references are not allowed as "
                 "arguments for callbacks.");
 
   /* This is the local receive buffer for the parameters. We have to strip
      away const so we can actually deserialize into it. */
   std::tuple<std::remove_const_t<std::remove_reference_t<Args>>...> params;
-  Utils::for_each([&ia](auto &e) { ia >> e; }, params);
+  std::apply([&ia](auto &&...e) { ((ia >> e), ...); }, params);
 
   /* We add const here, so that parameters can only be by value
      or const reference. Output parameters on callbacks are not
@@ -198,9 +189,9 @@ public:
    */
   template <class... Args> class CallbackHandle {
   public:
-    template <typename F, class = std::enable_if_t<std::is_same_v<
-                              typename detail::functor_types<F>::argument_types,
-                              std::tuple<Args...>>>>
+    template <typename F>
+      requires(std::is_same_v<typename detail::functor_types<F>::argument_types,
+                              std::tuple<Args...>>)
     CallbackHandle(std::shared_ptr<MpiCallbacks> cb, F &&f)
         : m_id(cb->add(std::forward<F>(f))), m_cb(std::move(cb)) {}
 
@@ -225,9 +216,9 @@ public:
     auto operator()(ArgRef &&...args) const
         /* Enable if a hypothetical function with signature void(Args..)
          * could be called with the provided arguments. */
-        -> std::enable_if_t<
-            std::is_void_v<decltype(std::declval<void (*)(Args...)>()(
-                std::forward<ArgRef>(args)...))>> {
+      requires(std::is_void_v<decltype(std::declval<void (*)(Args...)>()(
+                   std::forward<ArgRef>(args)...))>)
+    {
       if (m_cb)
         m_cb->call(m_id, std::forward<ArgRef>(args)...);
     }
@@ -260,8 +251,8 @@ public:
     /* Add a dummy at id 0 for loop abort. */
     m_callback_map.add(nullptr);
 
-    for (auto &kv : static_callbacks()) {
-      m_func_ptr_to_id[kv.first] = m_callback_map.add(kv.second.get());
+    for (auto &[fp, handle] : static_callbacks()) {
+      m_func_ptr_to_id[fp] = m_callback_map.add(handle.get());
     }
   }
 
@@ -273,6 +264,9 @@ public:
       } catch (...) { // NOLINT(bugprone-empty-catch)
       }
     }
+    /* MPI_Finalize is unsafe if there are pending non-blocking operations */
+    m_comm.barrier();
+    m_mpi_env.reset();
   }
 
 private:
@@ -361,8 +355,8 @@ private:
     oa << id;
 
     /* Pack the arguments into a packed mpi buffer. */
-    Utils::for_each([&oa](auto &&e) { oa << e; },
-                    std::forward_as_tuple(std::forward<Args>(args)...));
+    std::apply([&oa](auto &&...e) { ((oa << e), ...); },
+               std::forward_as_tuple(std::forward<Args>(args)...));
 
     boost::mpi::broadcast(m_comm, oa, 0);
   }
@@ -379,9 +373,10 @@ public:
    * @param args Arguments for the callback.
    */
   template <class... Args, class... ArgRef>
-  auto call(void (*fp)(Args...), ArgRef &&...args) const ->
+  auto call(void (*fp)(Args...), ArgRef &&...args) const
       /* enable only if fp can be called with the provided arguments */
-      std::enable_if_t<std::is_void_v<decltype(fp(args...))>> {
+    requires(std::is_void_v<decltype(fp(args...))>)
+  {
     const int id = m_func_ptr_to_id.at(reinterpret_cast<void (*)()>(fp));
 
     call(id, std::forward<ArgRef>(args)...);
@@ -398,9 +393,10 @@ public:
    * @param args Arguments for the callback.
    */
   template <class... Args, class... ArgRef>
-  auto call_all(void (*fp)(Args...), ArgRef &&...args) const ->
+  auto call_all(void (*fp)(Args...), ArgRef &&...args) const
       /* enable only if fp can be called with the provided arguments */
-      std::enable_if_t<std::is_void_v<decltype(fp(args...))>> {
+    requires(std::is_void_v<decltype(fp(args...))>)
+  {
     call(fp, args...);
     fp(args...);
   }
@@ -442,10 +438,6 @@ public:
    * @brief The boost mpi communicator used by this instance
    */
   boost::mpi::communicator const &comm() const { return m_comm; }
-
-  std::shared_ptr<boost::mpi::environment> share_mpi_env() const {
-    return m_mpi_env;
-  }
 
 private:
   /**
@@ -511,5 +503,3 @@ public:
   namespace Communication {                                                    \
   static ::Communication::RegisterCallback register_##cb(&(cb));               \
   }
-
-#endif

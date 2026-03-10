@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2023 The ESPResSo project
+ * Copyright (C) 2019-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -18,10 +18,6 @@
  */
 
 #pragma once
-
-#include "config/config.hpp"
-
-#ifdef WALBERLA
 
 #include <walberla_bridge/LatticeWalberla.hpp>
 #include <walberla_bridge/walberla_init.hpp>
@@ -81,5 +77,3 @@ inline auto corner_nodes(Utils::Vector3i const &n) {
   }
   return res;
 }
-
-#endif // WALBERLA

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -24,7 +24,7 @@
  */
 #include "buckingham.hpp"
 
-#ifdef BUCKINGHAM
+#ifdef ESPRESSO_BUCKINGHAM
 #include "nonbonded_interaction_data.hpp"
 
 #include <stdexcept>
@@ -56,4 +56,4 @@ Buckingham_Parameters::Buckingham_Parameters(double a, double b, double c,
   F2 = -F;
 }
 
-#endif // BUCKINGHAM
+#endif // ESPRESSO_BUCKINGHAM

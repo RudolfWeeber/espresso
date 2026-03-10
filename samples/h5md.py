@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010-2022 The ESPResSo project
+# Copyright (C) 2010-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -18,7 +18,7 @@
 #
 
 """
-Write ESPResSo trajectories in the H5MD format. See :ref:`Writing H5MD-files`.
+Write ESPResSo trajectories in the H5MD format. See :ref:`Writing hdf5 files`.
 """
 
 import espressomd

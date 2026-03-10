@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The ESPResSo project
+ * Copyright (C) 2022-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -31,7 +31,7 @@
 
 namespace BondBreakage {
 
-/** Stores one or two bond parnters for pair/angle bonds */
+/** Stores one or two bond partners for pair/angle bonds */
 using BondPartners = std::array<std::optional<int>, 2>;
 
 enum class ActionType {
@@ -79,7 +79,7 @@ public:
   bool check_and_handle_breakage(int particle_id,
                                  BondPartners const &bond_partners,
                                  int bond_type, double distance) {
-    if (breakage_specs.count(bond_type) == 0) {
+    if (not breakage_specs.contains(bond_type)) {
       return false; // No breakage rule for this bond type
     }
 
@@ -95,6 +95,8 @@ public:
   }
 
   void clear_queue() { m_queue.clear(); }
+
+  void execute_bond_breakage(System::System &system);
 
   void process_queue(System::System &system) {
     if (not breakage_specs.empty()) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -41,7 +41,7 @@ inline auto fetch_particles(std::vector<int> const &ids) {
   Observables::ParticleReferenceRange local_particle_refs;
   std::copy_if(local_particles.begin(), local_particles.end(),
                std::back_inserter(local_particle_refs),
-               [&ids_set](Particle &p) { return ids_set.count(p.id()) != 0; });
+               [&ids_set](auto const &p) { return ids_set.contains(p.id()); });
   return local_particle_refs;
 }
 #endif

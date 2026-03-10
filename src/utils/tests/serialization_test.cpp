@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2022 The ESPResSo project
+ * Copyright (C) 2021-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -28,6 +28,7 @@
 #include <utils/quaternion.hpp>
 #include <utils/serialization/optional.hpp>
 #include <utils/serialization/unordered_map.hpp>
+#include <utils/serialization/variant.hpp>
 
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
@@ -38,9 +39,11 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cassert>
 #include <cstddef>
 #include <functional>
+#include <span>
 #include <sstream>
 #include <vector>
 
@@ -74,55 +77,45 @@ template <template <typename> class Container> auto make_container() {
   return Container<Testing::T>{};
 }
 
-/** Initialize an array with reference values. */
-template <template <typename, std::size_t...> class A, typename T,
-          std::size_t... N>
-void constexpr init_container(A<T, N...> &array) {
-  for (std::size_t i = 0; i < Testing::N; ++i) {
-    array[i] = Testing::values[i];
+/** Initialize an array with reference data. */
+template <template <class, std::size_t...> class A, class T, std::size_t... N>
+void init_container(A<T, N...> &container) {
+  std::span<T> array;
+  if constexpr (std::is_same_v<A<T, N...>,
+                               Utils::detail::Storage<T, Testing::N>>) {
+    array = {&container.m_data[0], Testing::N};
+  } else {
+    if constexpr (std::is_same_v<A<T, N...>, Utils::compact_vector<T>>) {
+      container.resize(Testing::N);
+    }
+    array = {&container[0], Testing::N};
   }
-}
-
-template <typename T, std::size_t N>
-void constexpr init_container(Utils::detail::Storage<T, N> &array) {
-  for (std::size_t i = 0; i < Testing::N; ++i) {
-    array.m_data[i] = Testing::values[i];
-  }
-}
-
-template <typename T>
-void constexpr init_container(Utils::compact_vector<T> &array) {
-  array.resize(Testing::N);
   for (std::size_t i = 0; i < Testing::N; ++i) {
     array[i] = Testing::values[i];
   }
 }
 
 /** Convert an array to a container type that provides method @c operator[] */
-template <template <typename, std::size_t...> class A, typename T,
-          std::size_t... N>
-auto constexpr testable_container(A<T, N...> const &array) {
-  return array;
-}
-
-template <typename T, std::size_t N>
-auto constexpr testable_container(Utils::detail::Storage<T, N> const &s) {
-  return Utils::Array<T, N>{s};
-}
-
-template <typename T>
-auto constexpr testable_container(Utils::Quaternion<T> const &s) {
-  return s.m_data;
-}
-
-template <typename T>
-auto constexpr testable_container(Utils::compact_vector<T> const &s) {
-  assert(s.size() == Testing::N);
-  Utils::Array<T, Testing::N> out{};
-  for (std::size_t i = 0; i < Testing::N; ++i) {
-    out[i] = s[i];
+template <template <class, std::size_t...> class A, class T, std::size_t... N>
+auto testable_container(A<T, N...> const &array) {
+  if constexpr (sizeof...(N) == 0ul) {
+    if constexpr (std::is_same_v<A<T>, Utils::Quaternion<T>>) {
+      return array.m_data;
+    } else if constexpr (std::is_same_v<A<T>, Utils::compact_vector<T>>) {
+      assert(array.size() == Testing::N);
+      Utils::Array<T, Testing::N> out{};
+      for (std::size_t i = 0; i < Testing::N; ++i) {
+        out[i] = array[i];
+      }
+      return out;
+    }
+  } else {
+    if constexpr (std::is_same_v<A<T, N...>, Utils::detail::Storage<T, N...>>) {
+      return Utils::Array<T, N...>{array};
+    } else {
+      return array;
+    }
   }
-  return out;
 }
 
 /** Convert a string buffer to a string vector. */
@@ -197,20 +190,8 @@ template <std::size_t Length, class InputIt>
 auto sorted_view(InputIt const &buffer_it) {
   std::array<Testing::Serial_T, Length> subset;
   std::copy_n(buffer_it, Length, subset.begin());
-  std::sort(subset.begin(), subset.end(), std::greater<>());
+  std::ranges::sort(subset, std::greater<>());
   return subset;
-}
-
-/**
- * @brief Simplistic test for endianness.
- * Replace with @c std::endian once ESPResSo becomes a C++20 project.
- */
-bool is_big_endian() {
-#ifdef __BYTE_ORDER__
-  return __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__;
-#else
-  return false;
-#endif
 }
 
 BOOST_AUTO_TEST_CASE(serialization_level_test) {
@@ -272,8 +253,8 @@ BOOST_AUTO_TEST_CASE(mpi_archive_test) {
   BOOST_TEST(buffer_vector == buffer_ref, boost::test_tools::per_element());
   BOOST_TEST(buffer_storage == buffer_ref, boost::test_tools::per_element());
   BOOST_TEST(buffer_quat == buffer_ref, boost::test_tools::per_element());
-  auto const index_lsb = (is_big_endian()) ? 1u : 0u;
-  auto const index_hsb = (is_big_endian()) ? 0u : 1u;
+  auto const index_lsb = (std::endian::native == std::endian::big) ? 1u : 0u;
+  auto const index_hsb = (std::endian::native == std::endian::big) ? 0u : 1u;
   BOOST_TEST(buffer_cv[index_lsb] == Testing::N);
   BOOST_TEST(buffer_cv[index_hsb] == 0);
   buffer_cv.erase(buffer_cv.begin());
@@ -365,6 +346,32 @@ BOOST_AUTO_TEST_CASE(std_optional_test) {
     boost::mpi::packed_iarchive ia{comm, buffer};
     ia >> value_recv;
     BOOST_REQUIRE(not value_recv.has_value());
+  }
+}
+
+BOOST_AUTO_TEST_CASE(std_variant_test) {
+  boost::mpi::communicator comm;
+  {
+    boost::mpi::packed_archive buffer;
+    std::variant<int, double> const value_send{-10};
+    std::variant<int, double> value_recv{1.};
+    boost::mpi::packed_oarchive oa{comm, buffer};
+    oa << value_send;
+    boost::mpi::packed_iarchive ia{comm, buffer};
+    ia >> value_recv;
+    BOOST_REQUIRE(std::holds_alternative<int>(value_recv));
+    BOOST_CHECK_EQUAL(std::get<int>(value_recv), std::get<int>(value_send));
+  }
+  {
+    boost::mpi::packed_archive buffer;
+    std::variant<int, double> const value_send{-2.};
+    std::variant<int> value_recv{1};
+    boost::mpi::packed_oarchive oa{comm, buffer};
+    oa << value_send;
+    boost::mpi::packed_iarchive ia{comm, buffer};
+    BOOST_CHECK_THROW((ia >> value_recv), std::domain_error);
+    BOOST_REQUIRE(std::holds_alternative<int>(value_recv));
+    BOOST_CHECK_EQUAL(std::get<int>(value_recv), 1);
   }
 }
 

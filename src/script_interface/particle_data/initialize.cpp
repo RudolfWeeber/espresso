@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The ESPResSo project
+ * Copyright (C) 2022-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -31,6 +31,7 @@ void initialize(Utils::Factory<ObjectHandle> *om) {
   om->register_new<ParticleHandle>("Particles::ParticleHandle");
   om->register_new<ParticleList>("Particles::ParticleList");
   om->register_new<ParticleSlice>("Particles::ParticleSlice");
+  om->register_new<ParticleModifier>("Particles::ParticleModifier");
   om->register_new<Polymer>("Particles::Polymer");
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -21,7 +21,7 @@
 
 #include "config/config.hpp"
 
-#ifdef VIRTUAL_SITES_RELATIVE
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
 
 #include "virtual_sites.hpp"
 
@@ -37,6 +37,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <source_location>
 #include <tuple>
 
 std::tuple<Utils::Quaternion<double>, double>
@@ -102,14 +103,17 @@ calculate_vs_relate_to_params(Particle const &p_vs, Particle const &p_relate_to,
   quat /= relate_to_quat.norm2();
 
   // Verify result
+  constexpr auto const location = std::source_location::current();
+  constexpr auto const *function_name = location.function_name();
+  constexpr auto *error_msg = "%s: component %u: %f instead of %f\n";
   Utils::Quaternion<double> qtemp = relate_to_quat * quat;
+  constexpr auto epsilon = 1e-10;
   for (unsigned int i = 0; i < 4; i++) {
-    if (fabs(qtemp[i] - quat_director[i]) > 1E-9) {
-      fprintf(stderr, "vs_relate_to: component %u: %f instead of %f\n", i,
-              qtemp[i], quat_director[i]);
+    if (fabs(qtemp[i] - quat_director[i]) >= epsilon) {
+      fprintf(stderr, error_msg, function_name, i, qtemp[i], quat_director[i]);
     }
   }
   return std::make_tuple(quat, dist);
 }
 
-#endif // VIRTUAL_SITES_RELATIVE
+#endif // ESPRESSO_VIRTUAL_SITES_RELATIVE

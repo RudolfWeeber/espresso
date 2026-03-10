@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -30,7 +30,7 @@
 #include "Particle.hpp"
 #include "cell_system/CellStructure.hpp"
 #include "communication.hpp"
-#include "errorhandling.hpp"
+#include "particle_reduction.hpp"
 #include "system/System.hpp"
 
 #include <utils/Vector.hpp>
@@ -47,7 +47,6 @@
 #include <functional>
 #include <limits>
 #include <numbers>
-#include <stdexcept>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -145,12 +144,12 @@ Utils::Vector3d calc_linear_momentum(System::System const &system,
                                      bool include_lbfluid) {
   Utils::Vector3d momentum{};
   if (include_particles) {
-    auto const particles = system.cell_structure->local_particles();
-    momentum =
-        std::accumulate(particles.begin(), particles.end(), Utils::Vector3d{},
-                        [](Utils::Vector3d const &m, Particle const &p) {
-                          return m + p.mass() * p.v();
-                        });
+    momentum = reduce_over_local_particles<Utils::Vector3d>(
+        *(system.cell_structure),
+        [](Utils::Vector3d &acc, Particle const &p) {
+          acc += p.mass() * p.v();
+        },
+        [](Utils::Vector3d &acc, Utils::Vector3d const &v) { acc = acc + v; });
   }
   if (include_lbfluid and system.lb.is_solver_set()) {
     momentum += system.lb.get_momentum() * system.lb.get_lattice_speed();

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -19,9 +19,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* Unit tests for the Utils::Vector class. */
-
-#define BOOST_TEST_MODULE Vector test
+#define BOOST_TEST_MODULE "Vector test"
 #define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
 
@@ -36,6 +34,7 @@
 #include <iterator>
 #include <limits>
 #include <numeric>
+#include <ranges>
 #include <span>
 #include <stdexcept>
 #include <type_traits>
@@ -44,8 +43,7 @@
 using Utils::Vector;
 
 /* Number of nontrivial Baxter permutations of length 2n-1. (A001185) */
-#define TEST_NUMBERS                                                           \
-  { 0, 1, 1, 7, 21, 112, 456, 2603, 13203 }
+#define TEST_NUMBERS {0, 1, 1, 7, 21, 112, 456, 2603, 13203}
 
 constexpr int test_numbers[] = TEST_NUMBERS;
 constexpr std::size_t n_test_numbers = sizeof(test_numbers) / sizeof(int);
@@ -116,6 +114,12 @@ BOOST_AUTO_TEST_CASE(test_norm2) {
   BOOST_CHECK(norm2<2>());
   BOOST_CHECK(norm2<3>());
   BOOST_CHECK(norm2<4>());
+  // constexpr context
+  {
+    constexpr Vector<int, n_test_numbers> v(TEST_NUMBERS);
+    constexpr auto result = v.norm2();
+    BOOST_CHECK(result == std::inner_product(v.begin(), v.end(), v.begin(), 0));
+  }
 }
 
 BOOST_AUTO_TEST_CASE(normalize) {
@@ -221,6 +225,14 @@ BOOST_AUTO_TEST_CASE(broadcast) {
   }
 }
 
+BOOST_AUTO_TEST_CASE(broadcast_constexpr) {
+  constexpr auto a = Vector<int, 3>::broadcast(5);
+  static_assert(a[0] == 5);
+  static_assert(a[1] == 5);
+  static_assert(a[2] == 5);
+  BOOST_TEST_PASSPOINT();
+}
+
 BOOST_AUTO_TEST_CASE(swap) {
   const auto cv1 = Utils::Vector3i{1, 2, 3};
   const auto cv2 = Utils::Vector3i{4, 5, 6};
@@ -294,7 +306,21 @@ BOOST_AUTO_TEST_CASE(conversion) {
       Vector3f{static_cast<float>(orig[0]), static_cast<float>(orig[1]),
                static_cast<float>(orig[2])};
 
-  // check range-based conversion
+#if __cpp_lib_containers_ranges
+  // check range-based ctor with STL container
+  {
+    auto const result = Vector3f(std::from_range, expected.as_vector());
+    BOOST_TEST(result == expected);
+  }
+
+  // check range-based ctor with vector container
+  {
+    auto const result = Vector3f(std::from_range, expected);
+    BOOST_TEST(result == expected);
+  }
+#endif
+
+  // check cast operator
   {
     auto const result = static_cast<Vector3f>(orig);
     BOOST_TEST(result == expected);
@@ -338,6 +364,16 @@ BOOST_AUTO_TEST_CASE(conversion) {
     BOOST_TEST(view.data() == orig.data());
     BOOST_TEST(view.size() == orig.size());
   }
+}
+
+BOOST_AUTO_TEST_CASE(tuple_protocol) {
+  using A = Utils::Vector<int, 4>;
+
+  static_assert(std::is_same_v<std::tuple_element_t<0, A>, int>);
+  static_assert(std::is_same_v<std::tuple_element_t<1, A>, int>);
+  static_assert(A{}.size() == std::tuple_size<A>::value);
+
+  BOOST_CHECK_EQUAL(get<1>(A{{1, 2, 3, 4}}), 2);
 }
 
 BOOST_AUTO_TEST_CASE(vector_product_test) {

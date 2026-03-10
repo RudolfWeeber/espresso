@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2018-2022 The ESPResSo project
+# Copyright (C) 2018-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -16,6 +16,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
+
+import os
 import sys
 import time
 import pathlib
@@ -50,7 +52,8 @@ def minimize(system, energy_target):
         exit(1)
 
 
-def get_timings(system, n_steps, n_iterations, verbose=True):
+def get_timings(system, n_steps, n_iterations, verbose=True,
+                retune_skin_after_steps=None):
     '''
     Time the integration loop and write the state of the system to stdout.
 
@@ -64,6 +67,9 @@ def get_timings(system, n_steps, n_iterations, verbose=True):
         Number of timings.
     verbose: :obj:`bool`
         Whether to print the state of the system during timing.
+    retune_skin_after_steps: :obj:`int`, optional
+        If provided, retune the skin every this many iterations to within 10%
+        of the current skin value.
 
     Returns
     -------
@@ -75,6 +81,21 @@ def get_timings(system, n_steps, n_iterations, verbose=True):
         print(f"Timing every {n_steps} steps")
     timings = []
     for i in range(n_iterations):
+        # Retune skin if requested
+        if retune_skin_after_steps is not None and i % retune_skin_after_steps == 0:
+            current_skin = system.cell_system.skin
+            min_skin_retune = current_skin / 1.1
+            max_skin_retune = current_skin * 1.1
+            if verbose:
+                print(f"Retuning skin at iteration {i} "
+                      f"(current: {current_skin:.3f}, "
+                      f"range: [{min_skin_retune:.3f}, "
+                      f"{max_skin_retune:.3f}])")
+            new_skin = system.cell_system.tune_skin(
+                min_skin=min_skin_retune, max_skin=max_skin_retune, tol=current_skin * 0.0125, int_steps=n_steps // 4)
+            if verbose:
+                print(f"New skin: {new_skin:.3f}")
+
         tick = time.time()
         system.integrator.run(n_steps)
         tock = time.time()
@@ -84,7 +105,7 @@ def get_timings(system, n_steps, n_iterations, verbose=True):
             energy = system.analysis.energy()["total"]
             verlet = system.cell_system.get_state()["verlet_reuse"]
             print(
-                f"step {i}, time: {1000 * t:.2f} ms, verlet: {verlet:.2f}, energy: {energy:.2e}")
+                f"step {i}, time: {1000 * t:.4f} ms, verlet: {verlet:.2f}, energy: {energy:.2e}")
     return np.array(timings)
 
 
@@ -108,7 +129,7 @@ def get_average_time(timings):
     return (avg, ci)
 
 
-def write_report(filepath, n_proc, timings, n_steps, label=''):
+def write_report(filepath, n_ranks, timings, n_steps, label=''):
     '''
     Append timing data to a CSV file. If it doesn't exist, it is created
     with a header.
@@ -117,7 +138,7 @@ def write_report(filepath, n_proc, timings, n_steps, label=''):
     ----------
     filepath: :obj:`str`
         Path to the CSV file.
-    n_proc: :obj:`int`
+    n_ranks: :obj:`int`
         Number of MPI ranks.
     timings: :obj:`ndarray` of :obj:`float`
         Timings.
@@ -127,11 +148,12 @@ def write_report(filepath, n_proc, timings, n_steps, label=''):
         Label to distinguish e.g. MD from MC or LB steps.
 
     '''
+    n_threads = int(os.environ.get("OMP_NUM_THREADS", 1))
     script = pathlib.Path(sys.argv[0]).name
     cmd = " ".join(x for x in sys.argv[1:] if not x.startswith("--output"))
     avg, ci = get_average_time(timings)
-    header = '"script","arguments","cores","mean","ci","nsteps","duration","label"\n'
-    report = f'"{script}","{cmd}",{n_proc},{avg:.3e},{ci:.3e},{n_steps},{np.sum(timings):.1f},"{label}"\n'  # nopep8
+    header = '"script","arguments","ranks","threads","mean","ci","nsteps","duration","label"\n'
+    report = f'"{script}","{cmd}",{n_ranks},{n_threads},{avg:.3e},{ci:.3e},{n_steps},{np.sum(timings):.1f},"{label}"\n'  # nopep8
     if pathlib.Path(filepath).is_file():
         header = ''
     with open(filepath, "a") as f:

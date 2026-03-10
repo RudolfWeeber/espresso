@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The ESPResSo project
+ * Copyright (C) 2023-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -28,16 +28,16 @@ void initialize(Utils::Factory<ObjectHandle> *om) {
   om->register_new<Thermostat>("Thermostat::Thermostat");
   om->register_new<Langevin>("Thermostat::Langevin");
   om->register_new<Brownian>("Thermostat::Brownian");
-#ifdef NPT
+#ifdef ESPRESSO_NPT
   om->register_new<IsotropicNpt>("Thermostat::IsotropicNpt");
 #endif
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
   om->register_new<LBThermostat>("Thermostat::LB");
 #endif
-#ifdef DPD
+#ifdef ESPRESSO_DPD
   om->register_new<DPDThermostat>("Thermostat::DPD");
 #endif
-#ifdef STOKESIAN_DYNAMICS
+#ifdef ESPRESSO_STOKESIAN_DYNAMICS
   om->register_new<Stokesian>("Thermostat::Stokesian");
 #endif
   om->register_new<ThermalizedBond>("Thermostat::ThermalizedBond");

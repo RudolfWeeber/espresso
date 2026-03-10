@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2022 The ESPResSo project
+ * Copyright (C) 2019-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -100,12 +100,14 @@ private:
 
 public:
   template <typename T>
-  auto operator>>(T &value) -> std::enable_if_t<use_memcpy<T>::value> {
+    requires use_memcpy<T>::value
+  void operator>>(T &value) {
     read(&value, sizeof(T));
   }
 
   template <typename T>
-  auto operator<<(T const &value) -> std::enable_if_t<use_memcpy<T>::value> {
+    requires use_memcpy<T>::value
+  void operator<<(T const &value) {
     write(&value, sizeof(T));
   }
 
@@ -123,14 +125,14 @@ private:
 
 public:
   template <class T>
-  auto
-  operator>>(T &value) -> std::enable_if_t<detail::use_serialize<T>::value> {
+    requires detail::use_serialize<T>::value
+  void operator>>(T &value) {
     process(value);
   }
 
   template <class T>
-  auto
-  operator<<(T &value) -> std::enable_if_t<detail::use_serialize<T>::value> {
+    requires detail::use_serialize<T>::value
+  void operator<<(T &value) {
     process(value);
   }
 

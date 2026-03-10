@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The ESPResSo project
+ * Copyright (C) 2023-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,9 +19,11 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
+
+#include "system/Leaf.hpp"
 
 #include <utils/Vector.hpp>
 
@@ -42,7 +44,7 @@ class System;
 
 namespace EK {
 
-struct EKWalberla {
+struct EKWalberla : public System::Leaf<EKWalberla> {
   using ek_container_type = EKContainer<EKinWalberlaBase>;
   using ek_reactions_type = EKReactions<walberla::EKReactionBase>;
   std::shared_ptr<ek_container_type> ek_container;
@@ -71,8 +73,9 @@ struct EKWalberla {
   }
   void on_timestep_change() const {}
   void on_temperature_change() const {}
+  bool is_gpu() const;
 };
 
 } // namespace EK
 
-#endif // WALBERLA
+#endif // ESPRESSO_WALBERLA

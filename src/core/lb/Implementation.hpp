@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The ESPResSo project
+ * Copyright (C) 2023-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -33,7 +33,7 @@
 namespace LB {
 
 using HydrodynamicsActor = std::variant<
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
     std::shared_ptr<LBWalberla>,
 #endif
     std::shared_ptr<LBNone>>;

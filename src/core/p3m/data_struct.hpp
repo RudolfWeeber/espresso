@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2024 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -21,9 +21,9 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#if defined(P3M) or defined(DP3M)
+#if defined(ESPRESSO_P3M) or defined(ESPRESSO_DP3M)
 
 #include "common.hpp"
 
@@ -34,30 +34,26 @@
 #include <utility>
 #include <vector>
 
-template <typename FloatType> class FFTBackend;
-template <typename FloatType> class FFTBuffers;
+/** @brief State of the p3m methods, the part which applies to  both,
+  electrostatic and dipolar p3m */
 
-/**
- * @brief Base class for the electrostatics and magnetostatics P3M algorithms.
- * Contains a handle to the FFT backend, information about the local mesh,
- * the differential operator, and various buffers.
- */
-template <typename FloatType> struct p3m_data_struct {
+template <typename FloatType> struct P3MStateCommon {
   using value_type = FloatType;
 
-  explicit p3m_data_struct(P3MParameters &&parameters)
+  explicit P3MStateCommon(P3MParameters &&parameters)
       : params{std::move(parameters)} {}
 
   /** @brief P3M base parameters. */
   P3MParameters params;
-  /** @brief Local mesh properties. */
+  /** @brief Local mesh geometry information for this MPI rank */
   P3MLocalMesh local_mesh;
-  /** @brief Local mesh FFT buffers. */
-  P3MFFTMesh<FloatType> mesh;
 
   /**
    * @brief Spatial differential operator in k-space.
    * We use an i*k differentiation.
+   * TODO: RW: I think this is not the differential operator but the mapping
+   * between index in the GLOBAL mesh and the corresponding
+   * k-vector with a few pre-factors missing.
    */
   std::array<std::vector<int>, 3> d_op;
 
@@ -73,44 +69,18 @@ template <typename FloatType> struct p3m_data_struct {
   std::vector<FloatType> g_force;
   /** @brief Energy optimised influence function (k-space) */
   std::vector<FloatType> g_energy;
-  /** @brief FFT algorithm. */
-  std::unique_ptr<FFTBackend<FloatType>> fft;
-  /** @brief FFT buffers. */
-  std::unique_ptr<FFTBuffers<FloatType>> fft_buffers;
-
-  void init();
-
-  void update_mesh_views() {
-    auto const mesh_size_ptr = fft->get_mesh_size();
-    auto const mesh_start_ptr = fft->get_mesh_start();
-    for (auto i = 0u; i < 3u; ++i) {
-      mesh.size[i] = mesh_size_ptr[i];
-      mesh.start[i] = mesh_start_ptr[i];
-    }
-    mesh.stop = mesh.start + mesh.size;
-    fft_buffers->update_mesh_views(mesh);
-  }
-
-  template <typename T, class... Args> void make_fft_instance(Args... args) {
-    assert(fft == nullptr);
-    fft = std::make_unique<T>(std::as_const(local_mesh), args...);
-  }
-
-  template <typename T, class... Args> void make_mesh_instance(Args... args) {
-    assert(fft_buffers == nullptr);
-    fft_buffers = std::make_unique<T>(std::as_const(local_mesh), args...);
-  }
 };
 
+#if defined(ESPRESSO_DP3M)
+
 /**
- * @brief API for the FFT backend of the P3M algorithm.
+ * @brief API for the legacy FFT backend of the P3M algorithm.
  */
 template <typename FloatType> class FFTBackend {
 protected:
   P3MLocalMesh const &local_mesh;
 
 public:
-  bool check_complex_residuals = false;
   explicit FFTBackend(P3MLocalMesh const &local_mesh)
       : local_mesh{local_mesh} {}
   virtual ~FFTBackend() = default;
@@ -121,21 +91,18 @@ public:
   virtual void forward_fft(FloatType *rs_mesh) = 0;
   /** @brief Carry out the backward FFT of the scalar mesh. */
   virtual void backward_fft(FloatType *rs_mesh) = 0;
-  /** @brief Get indices of the k-space data layout. */
-  virtual std::tuple<int, int, int> get_permutations() const = 0;
   virtual std::array<int, 3u> const &get_mesh_size() const = 0;
   virtual std::array<int, 3u> const &get_mesh_start() const = 0;
 };
 
 /**
- * @brief API for the FFT mesh buffers.
+ * @brief API for the legacy FFT mesh buffers.
  */
 template <typename FloatType> class FFTBuffers {
 protected:
   P3MLocalMesh const &local_mesh;
 
 public:
-  bool check_complex_residuals = false;
   explicit FFTBuffers(P3MLocalMesh const &local_mesh)
       : local_mesh{local_mesh} {}
   virtual ~FFTBuffers() = default;
@@ -143,8 +110,6 @@ public:
   virtual void init_meshes(int ca_mesh_size) = 0;
   /** @brief Initialize the halo buffers. */
   virtual void init_halo() = 0;
-  /** @brief Update scalar mesh halo with data from neighbors (accumulation). */
-  virtual void perform_scalar_halo_gather() = 0;
   /** @brief Update vector mesh halo with data from neighbors (accumulation). */
   virtual void perform_vector_halo_gather() = 0;
   /** @brief Update scalar mesh halo of all neighbors. */
@@ -168,4 +133,6 @@ public:
   virtual void update_mesh_views(P3MFFTMesh<FloatType> &out) = 0;
 };
 
-#endif // defined(P3M) or defined(DP3M)
+#endif // defined(ESPRESSO_DP3M)
+
+#endif // defined(ESPRESSO_P3M) or defined(ESPRESSO_DP3M)

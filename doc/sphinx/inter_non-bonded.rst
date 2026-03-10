@@ -78,8 +78,12 @@ The interface for tabulated interactions are implemented in the
 :class:`~espressomd.interactions.TabulatedNonBonded` class. They can be configured
 via the following syntax::
 
-  system.non_bonded_inter[type1, type2].tabulated.set_params(
-      min='min', max='max', energy='energy', force='force')
+    import numpy as np
+    r = np.linspace(0., 8., 100)
+    energy = 4 * eps * ((sig / r)**12 - (sig / r)**6)
+    force = -4 * eps * (-12 / r * (sig / r)**12 + 6 / r * (sig / r)**6)
+    system.non_bonded_inter[type1, type2].tabulated.set_params(
+        min=0., max=8., energy=energy, force=force)
 
 This defines an interaction between particles of the types ``type1`` and
 ``type2`` according to an arbitrary tabulated pair potential by linear interpolation.
@@ -93,6 +97,22 @@ value for the potential.
 The values of :math:`r` are assumed to be equally distributed between
 :math:`r_\mathrm{min}` and :math:`r_\mathrm{max}` with a fixed distance
 of :math:`(r_\mathrm{max}-r_\mathrm{min})/(N_\mathrm{points}-1)`.
+
+Alternatively, one can generate the tabulated interaction from an analytical
+expression of the potential. The expression of the force is automatically
+determined through symbolic differentiation, via method
+:meth:`~espressomd.interactions.TabulatedNonBonded.set_analytical()`::
+
+    system.non_bonded_inter[type1, type2].tabulated.set_analytical(
+        min=0., max=8., steps=100, sigma=1., epsilon=4.,
+        energy_expr="4*epsilon*((sigma/r)**12-(sigma/r)**6)")
+
+    # optional: plot tabulated values
+    import matplotlib.pyplot as plt
+    plt.plot(system.non_bonded_inter[type1, type2].tabulated.force, label="force")
+    plt.plot(system.non_bonded_inter[type1, type2].tabulated.energy, label="energy")
+    plt.legend()
+    plt.show()
 
 .. _Lennard-Jones interaction:
 
@@ -192,7 +212,7 @@ the normal LJ potential is recovered for :math:`b_1=b_2=4`,
 The optional ``LJGEN_SOFTCORE`` feature activates a softcore version of
 the potential, where the following transformations apply:
 :math:`\epsilon \rightarrow \lambda \epsilon` and
-:math:`r-r_\mathrm{off} \rightarrow \sqrt{(r-r_\mathrm{off})^2 +
+:math:`(r-r_\mathrm{off}) \rightarrow \sqrt{(r-r_\mathrm{off})^2 +
 (1-\lambda) \delta \sigma^2}`. :math:`\lambda` allows to tune the strength of the
 interaction, while :math:`\delta` varies how smoothly the potential goes to zero as
 :math:`\lambda\rightarrow 0`. Such a feature allows one to perform
@@ -621,25 +641,22 @@ Thole correction
 
     Requires features ``THOLE`` and ``ELECTROSTATICS``.
 
-.. note::
-
-    ``THOLE`` is only implemented for the P3M electrostatics solver.
-
 The Thole correction is closely related to simulations involving
 :ref:`Particle polarizability with thermalized cold Drude oscillators`.
 In this context, it is used to correct for overestimation of
 induced dipoles at short distances. Ultimately, it alters the short-range
-electrostatics of P3M to result in a damped Coulomb interaction potential
-:math:`V(r) = \frac{q_1 q_2}{r} \cdot (1- e^{-s r} (1 + \frac{s r}{2}) )`.  The
-Thole scaling coefficient :math:`s` is related to the polarizabilities
+electrostatics to result in a damped Coulomb interaction potential
+:math:`V(r) = C\frac{q_1 q_2}{r} \cdot (1- e^{-s r} (1 + \frac{s r}{2}) )`
+derived from the charge density :math:`\varphi^\prime_1` in :cite:`thole81a`.
+The Thole scaling coefficient :math:`s` is related to the polarizabilities
 :math:`\alpha` and Thole damping parameters :math:`a` of the interacting
 species via :math:`s = \frac{ (a_i + a_j) / 2 }{ (\alpha_i \alpha_j)^{1/6} }`.
 Note that for the Drude oscillators, the Thole correction should be applied
 only for the dipole part :math:`\pm q_d` added by the Drude charge and not on
 the total core charge, which can be different for polarizable ions. Also note
 that the Thole correction acts between all dipoles, intra- and intermolecular.
-Again, the accuracy is related to the P3M accuracy and the split between
-short-range and long-range electrostatics interaction. It is configured by::
+The accuracy is related to the split between short-range and long-range
+electrostatics interaction. It is configured by::
 
     system = espressomd.System(box_l=[1, 1, 1])
     system.non_bonded_inter[type_1,type_2].thole.set_params(scaling_coeff=<float>, q1q2=<float>)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -97,8 +97,8 @@ public:
 
   void do_construct(VariantMap const &params) override {
     m_params = std::make_unique<VariantMap>(params);
-    for (auto const &kv : *m_params) {
-      do_set_parameter(kv.first, kv.second);
+    for (auto const &[name, value] : *m_params) {
+      do_set_parameter(name, value);
     }
   }
 
@@ -108,8 +108,8 @@ public:
     assert(system);
     m_system = system;
     shape_based_constraint()->bind_system(system);
-    for (auto const &kv : *m_params) {
-      do_set_parameter(kv.first, kv.second);
+    for (auto const &[name, value] : *m_params) {
+      do_set_parameter(name, value);
     }
     m_params.reset();
   }

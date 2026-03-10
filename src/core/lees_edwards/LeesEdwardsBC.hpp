@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2022 The ESPResSo project
+ * Copyright (C) 2021-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -44,9 +44,9 @@ struct LeesEdwardsBC {
     auto const n_le_crossings =
         std::round(res[le_plane_normal] * l_inv[le_plane_normal]);
     if (n_le_crossings >= 1.)
-      res[le_direction] += pos_offset;
-    if (n_le_crossings <= -1.)
       res[le_direction] -= pos_offset;
+    if (n_le_crossings <= -1.)
+      res[le_direction] += pos_offset;
 
     for (auto const i : {0u, 1u, 2u}) {
       if (periodic[i]) {

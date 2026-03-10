@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2024 The ESPResSo project
+ * Copyright (C) 2011-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,8 +19,8 @@
 
 #include <config/config.hpp>
 
-#ifdef COLLISION_DETECTION
-#ifdef VIRTUAL_SITES_RELATIVE
+#ifdef ESPRESSO_COLLISION_DETECTION
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
 
 #include "BindAtPointOfCollision.hpp"
 #include "CollisionPair.hpp"
@@ -86,7 +86,7 @@ void BindAtPointOfCollision::handle_collisions(
   auto const min_global_cut = system.get_min_global_cut();
   auto const &box_geo = *system.box_geo;
 
-  add_bind_centers(local_collision_queue, cell_structure, bond_centers);
+  add_bind_centers(local_collision_queue, system, bond_centers);
 
   // Gather the global collision queue, because only one node has a collision
   // across node boundaries in its queue.
@@ -94,7 +94,7 @@ void BindAtPointOfCollision::handle_collisions(
   // non-ghost particle
   auto global_collision_queue = gather_collision_queue(local_collision_queue);
 
-  // Synchornize max_seen_part
+  // Synchronize max_seen_part
   auto const global_max_seen_particle = boost::mpi::all_reduce(
       ::comm_cart, cell_structure.get_max_local_particle_id(),
       boost::mpi::maximum<int>());
@@ -102,11 +102,11 @@ void BindAtPointOfCollision::handle_collisions(
   int current_vs_pid = global_max_seen_particle + 1;
 
   // Iterate over global collision queue
-  for (auto &c : global_collision_queue) {
+  for (auto const &[pid1, pid2] : global_collision_queue) {
 
     // Get particle pointers
-    Particle *p1 = cell_structure.get_local_particle(c.first);
-    Particle *p2 = cell_structure.get_local_particle(c.second);
+    Particle *p1 = cell_structure.get_local_particle(pid1);
+    Particle *p2 = cell_structure.get_local_particle(pid2);
 
     // Only nodes take part in particle creation and binding
     // that see both particles
@@ -132,15 +132,20 @@ void BindAtPointOfCollision::handle_collisions(
     auto const pos1 = p1->pos() - vec21 * vs_placement;
     auto const pos2 = p1->pos() - vec21 * (1. - vs_placement);
 
-    auto handle_particle = [&](Particle *p, Utils::Vector3d const &pos) {
+    auto handle_particle = [&
+#if defined(__clang__) and defined(__cray__) or defined(__INTEL_LLVM_COMPILER)
+                            ,
+                            pid1 = pid1, pid2 = pid2
+#endif
+    ](Particle *p, Utils::Vector3d const &pos) {
       if (not p->is_ghost()) {
         place_vs_and_relate_to_particle(cell_structure, box_geo, part_type_vs,
                                         min_global_cut, current_vs_pid, pos,
                                         p->id());
         // Particle storage locations may have changed due to
         // added particle
-        p1 = cell_structure.get_local_particle(c.first);
-        p2 = cell_structure.get_local_particle(c.second);
+        p1 = cell_structure.get_local_particle(pid1);
+        p2 = cell_structure.get_local_particle(pid2);
       }
     };
 
@@ -164,7 +169,7 @@ void BindAtPointOfCollision::handle_collisions(
     }
     if (n_partners == 2) {
       // Create 1st bond between the virtual particles
-      const int bondG[] = {c.first, c.second};
+      const int bondG[] = {pid1, pid2};
       // Only add bond if vs was created on this node
       if (auto p = cell_structure.get_local_particle(current_vs_pid - 1))
         p->bonds().insert({bond_vs, bondG});
@@ -173,7 +178,7 @@ void BindAtPointOfCollision::handle_collisions(
     }
   } // Loop over all collisions in the queue
 
-#ifdef ADDITIONAL_CHECKS
+#ifdef ESPRESSO_ADDITIONAL_CHECKS
   assert(Utils::Mpi::all_compare(::comm_cart, current_vs_pid) &&
          "Nodes disagree about current_vs_pid");
 #endif
@@ -189,5 +194,5 @@ void BindAtPointOfCollision::handle_collisions(
 
 } // namespace CollisionDetection
 
-#endif // VIRTUAL_SITES_RELATIVE
-#endif // COLLISION_DETECTION
+#endif // ESPRESSO_VIRTUAL_SITES_RELATIVE
+#endif // ESPRESSO_COLLISION_DETECTION

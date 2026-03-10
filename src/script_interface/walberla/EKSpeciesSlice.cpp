@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2023 The ESPResSo project
+ * Copyright (C) 2021-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -17,13 +17,16 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
 
 #include "EKSpeciesSlice.hpp"
+#include "errorhandling.hpp"
 
 #include "LatticeSlice.impl.hpp"
+
+#include <walberla_bridge/utils/ResourceManager.hpp>
 
 #include <stdexcept>
 #include <string>
@@ -45,12 +48,17 @@ Variant EKSpeciesSlice::do_call_method(std::string const &name,
   }
   if (name == "get_value_shape") {
     auto const name = get_value<std::string>(params, "name");
-    if (m_shape_val.count(name) == 0) {
+    if (not m_shape_val.contains(name)) {
       context()->parallel_try_catch([&]() {
         throw std::runtime_error("Unknown EK property '" + name + "'");
       });
     }
     return m_shape_val.at(name);
+  }
+
+  if (not name.starts_with("get_")) {
+    context()->parallel_try_catch(
+        [&]() { ek_throw_if_expired(m_mpi_cart_comm_observer); });
   }
 
   // slice getter/setter callback
@@ -61,9 +69,9 @@ Variant EKSpeciesSlice::do_call_method(std::string const &name,
     if constexpr (std::is_invocable_v<decltype(method_ptr), LatticeModel *,
                                       Utils::Vector3i const &,
                                       Utils::Vector3i const &>) {
-      return gather_3d(params, data_dims, obj, method_ptr, units);
+      return gather_3d(data_dims, obj, method_ptr, units);
     } else {
-      scatter_3d(params, data_dims, obj, method_ptr, units);
+      scatter_3d(params.at("values"), data_dims, obj, method_ptr, units);
       return {};
     }
   };
@@ -74,6 +82,9 @@ Variant EKSpeciesSlice::do_call_method(std::string const &name,
   if (name == "set_density") {
     return call(&LatticeModel::set_slice_density, {1}, m_conv_dens);
   }
+  if (name == "get_flux") {
+    return call(&LatticeModel::get_slice_flux_vector, {3}, 1. / m_conv_flux);
+  }
   if (name == "get_is_boundary") {
     return call(&LatticeModel::get_slice_is_boundary, {1});
   }
@@ -82,6 +93,7 @@ Variant EKSpeciesSlice::do_call_method(std::string const &name,
                 1. / m_conv_flux);
   }
   if (name == "set_flux_at_boundary") {
+    m_ek_sip->flux_boundary_ghost_layer_size_sanity_check();
     return call(&LatticeModel::set_slice_flux_boundary, {1}, m_conv_flux);
   }
   if (name == "get_density_at_boundary") {
@@ -97,4 +109,4 @@ Variant EKSpeciesSlice::do_call_method(std::string const &name,
 
 } // namespace ScriptInterface::walberla
 
-#endif // WALBERLA
+#endif // ESPRESSO_WALBERLA

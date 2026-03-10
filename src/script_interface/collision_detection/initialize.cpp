@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2024 The ESPResSo project
+ * Copyright (C) 2015-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -28,16 +28,16 @@
 
 namespace ScriptInterface::CollisionDetection {
 void initialize(Utils::Factory<ObjectHandle> *om) {
-#ifdef COLLISION_DETECTION
+#ifdef ESPRESSO_COLLISION_DETECTION
   om->register_new<CollisionDetection>(
       "CollisionDetection::CollisionDetection");
   om->register_new<Off>("CollisionDetection::Off");
   om->register_new<BindCenters>("CollisionDetection::BindCenters");
-#ifdef VIRTUAL_SITES_RELATIVE
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
   om->register_new<BindAtPointOfCollision>(
       "CollisionDetection::BindAtPointOfCollision");
   om->register_new<GlueToSurface>("CollisionDetection::GlueToSurface");
-#endif // VIRTUAL_SITES_RELATIVE
-#endif // COLLISION_DETECTION
+#endif // ESPRESSO_VIRTUAL_SITES_RELATIVE
+#endif // ESPRESSO_COLLISION_DETECTION
 }
 } // namespace ScriptInterface::CollisionDetection

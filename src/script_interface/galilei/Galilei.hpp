@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The ESPResSo project
+ * Copyright (C) 2022-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -33,7 +33,7 @@ namespace Galilei {
 class Galilei : public AutoParameters<Galilei, System::Leaf> {
   std::shared_ptr<::Galilei> m_galilei;
 
-  void do_construct(VariantMap const &params) override {
+  void do_construct(VariantMap const &) override {
     m_galilei = std::make_shared<::Galilei>();
   }
 

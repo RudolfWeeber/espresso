@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2023 The ESPResSo project
+ * Copyright (C) 2020-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -63,6 +63,12 @@ enum class OutputVTK : int {
 /** @brief EK statistics to write to VTK files */
 enum class EKOutputVTK : int {
   density = 1 << 0,
+  flux = 1 << 1,
+};
+
+/** @brief EK Poisson solver statistics to write to VTK files */
+enum class EKPoissonOutputVTK : int {
+  potential = 1 << 0,
 };
 
 class vtk_runtime_error : public std::runtime_error {

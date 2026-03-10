@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2016-2022 The ESPResSo project
+# Copyright (C) 2016-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -22,8 +22,7 @@ add_library(
   initialize.cpp ObjectHandle.cpp GlobalContext.cpp ContextManager.cpp
   ParallelExceptionHandler.cpp)
 add_library(espresso::script_interface ALIAS espresso_script_interface)
-set_target_properties(espresso_script_interface
-                      PROPERTIES CXX_CLANG_TIDY "${ESPRESSO_CXX_CLANG_TIDY}")
+espresso_set_common_target_properties(espresso_script_interface)
 
 add_subdirectory(accumulators)
 add_subdirectory(analysis)
@@ -33,11 +32,13 @@ add_subdirectory(cluster_analysis)
 add_subdirectory(code_info)
 add_subdirectory(collision_detection)
 add_subdirectory(constraints)
+add_subdirectory(ek)
 add_subdirectory(electrostatics)
 add_subdirectory(galilei)
 add_subdirectory(h5md)
 add_subdirectory(integrators)
 add_subdirectory(interactions)
+add_subdirectory(lb)
 add_subdirectory(lees_edwards)
 add_subdirectory(magnetostatics)
 add_subdirectory(math)
@@ -60,7 +61,7 @@ target_link_libraries(
   espresso_script_interface PRIVATE espresso::config espresso::core
                                     espresso::instrumentation
   PUBLIC espresso::utils MPI::MPI_CXX Boost::mpi espresso::shapes
-  PRIVATE espresso::cpp_flags)
+  PRIVATE espresso::compiler_flags)
 
 set_source_files_properties(
   ${CMAKE_CURRENT_SOURCE_DIR}/particle_data/ParticleHandle.cpp

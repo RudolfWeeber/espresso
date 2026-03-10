@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,11 +19,9 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
 #include "Particle.hpp"
-#include "ParticleRange.hpp"
-#include "cell_system/CellStructure.hpp"
 #include "rotation.hpp"
 
 /** Propagate the velocities and positions. Integration steps before force
@@ -56,7 +54,7 @@ inline void velocity_verlet_propagator_2(Particle &p, double time_step) {
   }
 }
 
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
 inline void velocity_verlet_rotator_1(Particle &p, double time_step) {
   if (p.can_rotate())
     propagate_omega_quat_particle(p, time_step);
@@ -66,4 +64,4 @@ inline void velocity_verlet_rotator_2(Particle &p, double time_step) {
   if (p.can_rotate())
     convert_torque_propagate_omega(p, time_step);
 }
-#endif // ROTATION
+#endif // ESPRESSO_ROTATION

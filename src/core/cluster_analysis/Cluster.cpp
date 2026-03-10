@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,7 +19,7 @@
 
 #include "config/config.hpp"
 
-#ifdef GSL
+#ifdef ESPRESSO_GSL
 #include "gsl/gsl_fit.h"
 #endif
 
@@ -127,16 +127,17 @@ std::vector<std::size_t> sort_indices(const std::vector<T> &v) {
 
   // Unsorted for unsorted vector (0..n-1)
   std::vector<std::size_t> idx(v.size());
-  std::iota(idx.begin(), idx.end(), 0);
+  std::iota(idx.begin(), idx.end(), std::size_t{0u});
 
   // sort indices based on comparing values in v
-  std::sort(idx.begin(), idx.end(),
-            [&v](std::size_t i1, std::size_t i2) { return v[i1] < v[i2]; });
+  std::ranges::sort(
+      idx, [&v](std::size_t i1, std::size_t i2) { return v[i1] < v[i2]; });
   return idx;
 }
 
-std::pair<double, double> Cluster::fractal_dimension(double dr) {
-#ifdef GSL
+std::pair<double, double>
+Cluster::fractal_dimension([[maybe_unused]] double dr) {
+#ifdef ESPRESSO_GSL
   sanity_checks();
   auto const box_geo_handle = get_box_geo();
   auto const &box_geo = *box_geo_handle;

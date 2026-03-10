@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2024 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -34,21 +34,21 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef P3M
+#ifdef ESPRESSO_P3M
 
 #include "electrostatics/actor.hpp"
 
 #include "p3m/common.hpp"
 #include "p3m/data_struct.hpp"
-
-#include "ParticleRange.hpp"
+#include "p3m/math.hpp"
 
 #include <utils/Vector.hpp>
 #include <utils/math/AS_erfc_part.hpp>
 
 #include <cmath>
+#include <cstddef>
 #include <numbers>
 
 /** @brief P3M solver. */
@@ -70,7 +70,7 @@ public:
 
   /** @brief Recalculate all box-length-dependent parameters. */
   void on_boxl_change() { scaleby_box_l(); }
-  void on_node_grid_change() const { sanity_checks_node_grid(); }
+  void on_node_grid_change() const {}
   void on_periodicity_change() const { sanity_checks_periodicity(); }
   void on_cell_structure_change() {
     sanity_checks_cell_structure();
@@ -78,7 +78,6 @@ public:
   }
   void sanity_checks() const {
     sanity_checks_boxl();
-    sanity_checks_node_grid();
     sanity_checks_periodicity();
     sanity_checks_cell_structure();
     sanity_checks_charge_neutrality();
@@ -89,7 +88,7 @@ public:
    * the sum of the squared charges.
    */
   virtual void count_charged_particles() = 0;
-  virtual void count_charged_particles_elc(int, double, double) = 0;
+  virtual void count_charged_particles_elc(std::size_t, double, double) = 0;
   virtual void adapt_epsilon_elc() = 0;
 
   /**
@@ -128,7 +127,7 @@ public:
   /** Assign the physical charges using the tabulated charge assignment
    * function.
    */
-  virtual void charge_assign(ParticleRange const &particles) = 0;
+  virtual void charge_assign() = 0;
 
   /**
    * @brief Assign a single charge into the current charge grid.
@@ -145,7 +144,7 @@ public:
   /** Calculate real-space contribution of p3m Coulomb pair forces. */
   Utils::Vector3d pair_force(double q1q2, Utils::Vector3d const &d,
                              double dist) const {
-    if ((q1q2 == 0.) || dist >= p3m_params.r_cut || dist <= 0.) {
+    if (q1q2 == 0. or dist >= p3m_params.r_cut or dist <= 0.) {
       return {};
     }
     auto const alpha = p3m_params.alpha;
@@ -166,7 +165,7 @@ public:
   /** Calculate real-space contribution of Coulomb pair energy. */
   // Eq. (3.6) @cite deserno00b
   double pair_energy(double q1q2, double dist) const {
-    if ((q1q2 == 0.) || dist >= p3m_params.r_cut || dist <= 0.) {
+    if (q1q2 == 0. or dist >= p3m_params.r_cut or dist <= 0.) {
       return {};
     }
     auto const adist = p3m_params.alpha * dist;
@@ -180,13 +179,13 @@ public:
   }
 
   /** Compute the k-space part of the pressure tensor */
-  virtual Utils::Vector9d long_range_pressure(ParticleRange const &) = 0;
+  virtual Utils::Vector9d long_range_pressure() = 0;
 
   /** Compute the k-space part of energies. */
-  virtual double long_range_energy(ParticleRange const &) = 0;
+  virtual double long_range_energy() = 0;
 
   /** Compute the k-space part of forces. */
-  virtual void add_long_range_forces(ParticleRange const &) = 0;
+  virtual void add_long_range_forces() = 0;
 
 protected:
   virtual void calc_influence_function_force() = 0;
@@ -194,11 +193,15 @@ protected:
 
   /** Checks for correctness of the k-space cutoff. */
   void sanity_checks_boxl() const;
-  void sanity_checks_node_grid() const;
   void sanity_checks_periodicity() const;
   void sanity_checks_cell_structure() const;
 
   virtual void scaleby_box_l() = 0;
 };
 
-#endif // P3M
+std::shared_ptr<CoulombP3M>
+new_coulomb_p3m_heffte(P3MParameters &&p3m_params,
+                       TuningParameters const &tuning_params, double prefactor,
+                       bool single_precision, Arch arch);
+
+#endif // ESPRESSO_P3M

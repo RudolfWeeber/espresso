@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2023 The ESPResSo project
+ * Copyright (C) 2021-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -17,9 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define BOOST_TEST_NO_MAIN
 #define BOOST_TEST_MODULE ConstantpHEnsemble test
-#define BOOST_TEST_ALTERNATIVE_INIT_API
 #define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
 
@@ -32,8 +30,8 @@
 
 #include "core/Particle.hpp"
 #include "core/cell_system/CellStructureType.hpp"
-#include "core/communication.hpp"
 #include "core/particle_node.hpp"
+#include "core/unit_tests/EspressoCoreGlobalConfig.hpp"
 #include "core/unit_tests/ParticleFactory.hpp"
 
 #include <boost/mpi.hpp>
@@ -66,10 +64,25 @@ public:
     auto const ln_bf =
         E_pot_diff - reaction.nu_bar * RE()->kT * std::log(10.) *
                          (pH + reaction.nu_bar * std::log10(reaction.gamma));
-    return factorial_expr * std::exp(-ln_bf / RE()->kT);
+    return factorial_expr - ln_bf / RE()->kT;
   }
 };
 } // namespace ScriptInterface::Testing
+
+struct GlobalConfig : public EspressoCoreGlobalConfig {
+  GlobalConfig() {
+    espresso::system = System::System::create();
+    espresso::system->set_cell_structure_topology(CellStructureType::REGULAR);
+    ::System::set_system(espresso::system);
+  }
+  ~GlobalConfig() {
+    espresso::system.reset();
+    ::System::reset_system();
+  }
+};
+
+BOOST_TEST_GLOBAL_CONFIGURATION(GlobalConfig);
+BOOST_AUTO_TEST_SUITE(suite)
 
 // Check the Monte Carlo algorithm where moves depend on the system
 // configuration, energy and pH.
@@ -93,7 +106,7 @@ BOOST_FIXTURE_TEST_CASE(ConstantpHEnsemble_test, ParticleFactory) {
     params["constant_pH"] = pH;
     params["exclusion_range"] = exclusion_range;
     params["exclusion_radius_per_type"] = make_unordered_map_of_variants(radii);
-    auto &&sp = ctx->make_shared_local("Testing::ConstantpHEnsemble", params);
+    auto &&sp = ctx->make_shared("Testing::ConstantpHEnsemble", params);
     return std::dynamic_pointer_cast<Testing::ConstantpHEnsemble>(sp);
   };
 
@@ -120,9 +133,8 @@ BOOST_FIXTURE_TEST_CASE(ConstantpHEnsemble_test, ParticleFactory) {
             calculate_factorial_expression_cpH(reaction, p_numbers);
         // bf = f_expr * exp(- E / kT + nu_bar * log(10) * (pH - nu_bar * pKa))
         auto const acceptance_ref =
-            f_expr * std::exp(-energy / r_algo.kT +
-                              std::log(10.) *
-                                  (constant_pH + std::log10(reaction.gamma)));
+            f_expr - energy / r_algo.kT +
+            std::log(10.) * (constant_pH + std::log10(reaction.gamma));
         auto const acceptance = r_algo_si->calculate_acceptance_probability(
             reaction, energy, p_numbers);
         BOOST_CHECK_CLOSE(acceptance, acceptance_ref, 5. * tol);
@@ -131,10 +143,4 @@ BOOST_FIXTURE_TEST_CASE(ConstantpHEnsemble_test, ParticleFactory) {
   }
 }
 
-int main(int argc, char **argv) {
-  auto const mpi_handle = MpiContainerUnitTest(argc, argv);
-  espresso::system = System::System::create();
-  espresso::system->set_cell_structure_topology(CellStructureType::REGULAR);
-  ::System::set_system(espresso::system);
-  return boost::unit_test::unit_test_main(init_unit_test, argc, argv);
-}
+BOOST_AUTO_TEST_SUITE_END()

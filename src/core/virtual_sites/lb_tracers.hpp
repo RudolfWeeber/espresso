@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,9 +19,9 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef VIRTUAL_SITES_INERTIALESS_TRACERS
+#ifdef ESPRESSO_VIRTUAL_SITES_INERTIALESS_TRACERS
 
 #include "BoxGeometry.hpp"
 #include "LocalBox.hpp"
@@ -35,4 +35,4 @@ void lb_tracers_add_particle_force_to_fluid(CellStructure &cell_structure,
 void lb_tracers_propagate(CellStructure &cell_structure, LB::Solver const &lb,
                           double time_step);
 
-#endif // VIRTUAL_SITES_INERTIALESS_TRACERS
+#endif // ESPRESSO_VIRTUAL_SITES_INERTIALESS_TRACERS

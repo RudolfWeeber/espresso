@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The ESPResSo project
+ * Copyright (C) 2023-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -63,6 +63,8 @@ protected:
   }
 
 public:
+  ~Leaf() override = default;
+
   void bind_system(std::shared_ptr<::System::System> const &system) {
     assert(m_system.expired() or m_system.lock() == system);
     m_system = system;

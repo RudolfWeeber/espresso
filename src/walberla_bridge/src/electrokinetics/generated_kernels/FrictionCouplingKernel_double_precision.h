@@ -17,9 +17,9 @@
 //! \\author pystencils
 //======================================================================================================================
 
-// kernel generated with pystencils v1.3.7, lbmpy v1.3.7, sympy v1.12.1,
-// lbmpy_walberla/pystencils_walberla from waLBerla commit
-// f36fa0a68bae59f0b516f6587ea8fa7c24a41141
+// kernel generated with pystencils v1.4+1.ge851f4e, lbmpy v1.4+1.ge9efe34,
+// sympy v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit
+// 007e77e077ad9d22b5eed6f3d3118240993e553c
 
 #pragma once
 #include "core/DataTypes.h"
@@ -36,8 +36,6 @@
 
 #ifdef __GNUC__
 #define RESTRICT __restrict__
-#elif _MSC_VER
-#define RESTRICT __restrict
 #else
 #define RESTRICT
 #endif
@@ -55,8 +53,8 @@ namespace pystencils {
 class FrictionCouplingKernel_double_precision {
 public:
   FrictionCouplingKernel_double_precision(BlockDataID fID_, BlockDataID jID_,
-                                          double D, double kT)
-      : fID(fID_), jID(jID_), D_(D), kT_(kT) {}
+                                          double D, double kT, double rho_lb)
+      : fID(fID_), jID(jID_), D_(D), kT_(kT), rho_lb_(rho_lb) {}
 
   void run(IBlock *block);
 
@@ -98,14 +96,17 @@ public:
 
   inline double getD() const { return D_; }
   inline double getKt() const { return kT_; }
+  inline double getRho_lb() const { return rho_lb_; }
   inline void setD(const double value) { D_ = value; }
   inline void setKt(const double value) { kT_ = value; }
+  inline void setRho_lb(const double value) { rho_lb_ = value; }
 
 private:
   BlockDataID fID;
   BlockDataID jID;
   double D_;
   double kT_;
+  double rho_lb_;
 };
 
 } // namespace pystencils

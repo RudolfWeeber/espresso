@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -18,8 +18,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef CORE_NB_IA_LJCOS_HPP
-#define CORE_NB_IA_LJCOS_HPP
+
+#pragma once
+
 /** \file
  *  Routines to calculate the Lennard-Jones+cosine potential between
  *  particle pairs.
@@ -29,7 +30,7 @@
 
 #include "config/config.hpp"
 
-#ifdef LJCOS
+#ifdef ESPRESSO_LJCOS
 
 #include "nonbonded_interaction_data.hpp"
 
@@ -77,5 +78,4 @@ inline double ljcos_pair_energy(IA_parameters const &ia_params, double dist) {
   return 0.0;
 }
 
-#endif // LJCOS
-#endif
+#endif // ESPRESSO_LJCOS

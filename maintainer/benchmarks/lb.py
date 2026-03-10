@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2013-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -50,6 +50,9 @@ parser.add_argument("--multi-gpu", action=argparse.BooleanOptionalAction,
 parser.add_argument("--output", metavar="FILEPATH", action="store",
                     type=str, required=False, default="benchmarks.csv",
                     help="Output file (default: benchmarks.csv)")
+parser.add_argument("--node_grid", action="store", nargs=3,
+                    type=int, default=None, required=False,
+                    help="MPI topology")
 parser.add_argument("--blocks_per_mpi_rank", action="store", nargs=3,
                     type=int, default=[1, 1, 1], required=False,
                     help="blocks per mpi rank")
@@ -95,16 +98,20 @@ if n_part == 0:
     lb_grid = box_l
     measurement_steps = 80
 else:
+    mpi_factor = min(2., float(np.amax(system.cell_system.node_grid)))
     # volume of N spheres with radius r: N * (4/3*pi*r^3)
     box_l = (n_part * 4. / 3. * np.pi * (lj_sig / 2.)**3
              / args.volume_fraction)**(1. / 3.)
     lb_grid = (n_part * args.lb_sites_per_particle)**(1. / 3.)
-    lb_grid = int(2. * round(lb_grid / 2.))
+    lb_grid = int(mpi_factor * np.ceil(lb_grid / mpi_factor))
     agrid = box_l / lb_grid
     measurement_steps = max(50, int(120**3 / lb_grid**3))
     measurement_steps = 40
     lb_grid = 3 * [lb_grid]
     box_l = 3 * [box_l]
+
+if args.node_grid is not None:
+    system.cell_system.node_grid = args.node_grid
 
 if args.weak_scaling:
     box_l *= system.cell_system.node_grid
@@ -147,14 +154,14 @@ if n_part:
 
 # LB fluid setup
 #############################################################
-lb_class = espressomd.lb.LBFluidWalberla
-if args.gpu or args.multi_gpu:
-    lb_class = espressomd.lb.LBFluidWalberlaGPU
+lb_class = espressomd.lb.LBFluid
 if args.multi_gpu:
     system.cuda_init_handle.call_method("set_device_id_per_rank")
-lbf = lb_class(agrid=agrid, tau=system.time_step, kinematic_viscosity=1.,
-               density=1., single_precision=args.single_precision,
-               blocks_per_mpi_rank=args.blocks_per_mpi_rank)
+lbf = espressomd.lb.LBFluid(agrid=agrid, tau=system.time_step,
+                            kinematic_viscosity=1., density=1.,
+                            single_precision=args.single_precision,
+                            gpu=args.gpu or args.multi_gpu,
+                            blocks_per_mpi_rank=args.blocks_per_mpi_rank)
 system.lb = lbf
 if n_part:
     system.thermostat.set_lb(LB_fluid=lbf, gamma=1., seed=42)

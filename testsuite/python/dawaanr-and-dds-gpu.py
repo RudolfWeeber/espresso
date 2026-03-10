@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010-2024 The ESPResSo project
+# Copyright (C) 2010-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -27,7 +27,7 @@ import espressomd.magnetostatics
 
 
 @utx.skipIfMissingGPU()
-@utx.skipIfMissingFeatures(["DIPOLAR_DIRECT_SUM", "LENNARD_JONES"])
+@utx.skipIfMissingFeatures(["CUDA", "DIPOLES", "LENNARD_JONES"])
 class DDSGPUTest(ut.TestCase):
     system = espressomd.System(box_l=[1.0, 1.0, 1.0])
     np.random.seed(seed=42)
@@ -57,12 +57,12 @@ class DDSGPUTest(ut.TestCase):
             system.non_bonded_inter[0, 0].lennard_jones.deactivate()
             system.thermostat.turn_off()
             system.galilei.kill_particle_motion(rotation=True)
+            particles_params = {"pos": system.part.all().pos,
+                                "dip": system.part.all().dip}
+            system.part.clear()
 
-            # gamma should be zero in order to avoid the noise term in force
-            # and torque
-            system.thermostat.set_langevin(kT=1.297, gamma=0.0)
-
-            dds_cpu = espressomd.magnetostatics.DipolarDirectSumCpu(
+            system.part.add(**particles_params)
+            dds_cpu = espressomd.magnetostatics.DipolarDirectSum(
                 prefactor=pf_dds_cpu)
             system.magnetostatics.solver = dds_cpu
             system.integrator.run(steps=0, recalc_forces=True)
@@ -71,12 +71,18 @@ class DDSGPUTest(ut.TestCase):
             dawaanr_t = np.copy(system.part.all().torque_lab)
             dawaanr_e = system.analysis.energy()["total"]
 
+            # check solver can handle a system without particles
+            system.part.clear()
+            system.integrator.run(0, recalc_forces=True)
+            self.assertEqual(system.analysis.energy()["dipolar"], 0.)
+
             del dds_cpu
             system.magnetostatics.clear()
 
+            system.part.add(**particles_params)
             system.integrator.run(steps=0, recalc_forces=True)
-            dds_gpu = espressomd.magnetostatics.DipolarDirectSumGpu(
-                prefactor=pf_dds_gpu)
+            dds_gpu = espressomd.magnetostatics.DipolarDirectSum(
+                prefactor=pf_dds_gpu, gpu=True)
             system.magnetostatics.solver = dds_gpu
             system.integrator.run(steps=0, recalc_forces=True)
 
@@ -97,9 +103,13 @@ class DDSGPUTest(ut.TestCase):
             system.cell_system.node_grid = system.cell_system.node_grid
             system.integrator.run(steps=0, recalc_forces=True)
 
+            # check solver can handle a system without particles
+            system.part.clear()
+            system.integrator.run(0, recalc_forces=True)
+            self.assertEqual(system.analysis.energy()["dipolar"], 0.)
+
             del dds_gpu
             system.magnetostatics.clear()
-            system.part.clear()
 
 
 if __name__ == '__main__':

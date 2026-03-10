@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2023 The ESPResSo project
+ * Copyright (C) 2019-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -18,10 +18,6 @@
  */
 #define BOOST_TEST_MODULE Walberla point force test
 #define BOOST_TEST_DYN_LINK
-#include "config/config.hpp"
-
-#ifdef WALBERLA
-
 #define BOOST_TEST_NO_MAIN
 
 #include <boost/test/data/monomorphic.hpp>
@@ -174,7 +170,3 @@ int main(int argc, char **argv) {
   MPI_Finalize();
   return res;
 }
-
-#else // WALBERLA
-int main(int argc, char **argv) {}
-#endif

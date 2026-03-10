@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2022 The ESPResSo project
+ * Copyright (C) 2015-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -18,7 +18,7 @@
  */
 
 #include "config/config.hpp"
-#ifdef H5MD
+#ifdef ESPRESSO_H5MD
 #include "h5md.hpp"
 #include "initialize.hpp"
 

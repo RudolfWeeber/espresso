@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2018-2022 The ESPResSo project
+# Copyright (C) 2018-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -35,10 +35,10 @@ set(ESPRESSO_PYTHON_DIR ${CMAKE_INSTALL_PREFIX}/${Python_STDARCH})
 
 cmake_test(FILE test_install.sh DEPENDENCIES BashUnitTests.sh)
 
-add_custom_target(setup_install COMMAND make install
+add_custom_target(setup_install COMMAND ${CMAKE_COMMAND} --install .
                   WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_custom_target(
-  check_cmake_install
+  check_cmake_install JOB_POOL console
   COMMAND ${CMAKE_CTEST_COMMAND} --timeout ${ESPRESSO_TEST_TIMEOUT} -C serial
           --output-on-failure)
 add_dependencies(check_cmake_install setup_install)

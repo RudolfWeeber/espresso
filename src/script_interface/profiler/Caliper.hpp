@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2023 The ESPResSo project
+ * Copyright (C) 2019-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -21,7 +21,7 @@
 
 #include "config/config.hpp"
 
-#ifdef CALIPER
+#ifdef ESPRESSO_CALIPER
 
 #include "script_interface/ScriptInterface.hpp"
 
@@ -51,4 +51,4 @@ public:
 
 } // namespace ScriptInterface::Profiler
 
-#endif // CALIPER
+#endif // ESPRESSO_CALIPER

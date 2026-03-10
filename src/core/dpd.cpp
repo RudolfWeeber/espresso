@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -21,31 +21,28 @@
 /** \file
  *  Implementation of dpd.hpp.
  */
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef DPD
+#ifdef ESPRESSO_DPD
 
 #include "dpd.hpp"
 
 #include "BoxGeometry.hpp"
 #include "cell_system/CellStructure.hpp"
-#include "cells.hpp"
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
 #include "random.hpp"
 #include "system/System.hpp"
 #include "thermostat.hpp"
 
 #include <utils/Vector.hpp>
-#include <utils/math/sqr.hpp>
 #include <utils/math/tensor_product.hpp>
 #include <utils/matrix.hpp>
 
 #include <boost/mpi/collectives/reduce.hpp>
 
-#include <algorithm>
 #include <cmath>
-#include <cstdint>
 #include <functional>
+#include <type_traits>
 
 /** Return a random uniform 3D vector with the Philox thermostat.
  *  Random numbers depend on
@@ -54,18 +51,18 @@
  *  3. Two particle IDs (order-independent, decorrelates particles, gets rid of
  *     seed-per-node)
  */
-Utils::Vector3d dpd_noise(DPDThermostat const &dpd, int pid1, int pid2) {
-  return Random::noise_uniform<RNGSalt::SALT_DPD>(
-      dpd.rng_counter(), dpd.rng_seed(), (pid1 < pid2) ? pid2 : pid1,
-      (pid1 < pid2) ? pid1 : pid2);
+static Utils::Vector3d dpd_noise(DPDThermostat const &dpd, int pid1, int pid2) {
+  auto const pref = (pid1 < pid2) ? 1.0 : -1.0;
+  return pref * Random::noise_uniform<RNGSalt::SALT_DPD>(
+                    dpd.rng_counter(), dpd.rng_seed(),
+                    (pid1 < pid2) ? pid2 : pid1, (pid1 < pid2) ? pid1 : pid2);
 }
 
-void dpd_init(double kT, double time_step) {
-  auto &nonbonded_ias = *System::get_system().nonbonded_ias;
-  auto const max_type = nonbonded_ias.get_max_seen_particle_type();
+void InteractionsNonBonded::dpd_init(double kT, double time_step) {
+  auto const max_type = get_max_seen_particle_type();
   for (int type_a = 0; type_a <= max_type; type_a++) {
     for (int type_b = type_a; type_b <= max_type; type_b++) {
-      auto &ia_params = nonbonded_ias.get_ia_param(type_a, type_b);
+      auto &ia_params = get_ia_param(type_a, type_b);
 
       ia_params.dpd.radial.pref =
           sqrt(24.0 * kT * ia_params.dpd.radial.gamma / time_step);
@@ -75,42 +72,23 @@ void dpd_init(double kT, double time_step) {
   }
 }
 
-static double weight(int type, double r_cut, double k, double r) {
-  if (type == 0) {
-    return 1.;
-  }
-  return 1. - pow((r / r_cut), k);
-}
-
-Utils::Vector3d dpd_pair_force(DPDParameters const &params,
-                               Utils::Vector3d const &v, double dist,
-                               Utils::Vector3d const &noise) {
-  if (dist < params.cutoff) {
-    auto const omega = weight(params.wf, params.cutoff, params.k, dist);
-    auto const omega2 = Utils::sqr(omega);
-
-    auto const f_d = params.gamma * omega2 * v;
-    auto const f_r = params.pref * omega * noise;
-
-    return f_r - f_d;
-  }
-
-  return {};
-}
-
 Utils::Vector3d
-dpd_pair_force(Particle const &p1, Particle const &p2, DPDThermostat const &dpd,
-               BoxGeometry const &box_geo, IA_parameters const &ia_params,
-               Utils::Vector3d const &d, double dist, double dist2) {
+dpd_pair_force(Utils::Vector3d const &p1_position,
+               Utils::Vector3d const &p1_velocity, int const &p1_id,
+               Utils::Vector3d const &p2_position,
+               Utils::Vector3d const &p2_velocity, int const &p2_id,
+               DPDThermostat const &dpd, BoxGeometry const &box_geo,
+               IA_parameters const &ia_params, Utils::Vector3d const &d,
+               double dist, double dist2) {
   if (ia_params.dpd.radial.cutoff <= 0.0 && ia_params.dpd.trans.cutoff <= 0.0) {
     return {};
   }
 
-  auto const v21 =
-      box_geo.velocity_difference(p1.pos(), p2.pos(), p1.v(), p2.v());
+  auto const v21 = box_geo.velocity_difference(p1_position, p2_position,
+                                               p1_velocity, p2_velocity);
   auto const noise_vec =
       (ia_params.dpd.radial.pref > 0.0 || ia_params.dpd.trans.pref > 0.0)
-          ? dpd_noise(dpd, p1.id(), p2.id())
+          ? dpd_noise(dpd, p1_id, p2_id)
           : Utils::Vector3d{};
 
   auto const f_r = dpd_pair_force(ia_params.dpd.radial, v21, dist, noise_vec);
@@ -124,8 +102,7 @@ dpd_pair_force(Particle const &p1, Particle const &p2, DPDThermostat const &dpd,
   return force;
 }
 
-static auto dpd_viscous_stress_local() {
-  auto &system = System::get_system();
+static auto dpd_viscous_stress_local(System::System &system) {
   auto const &box_geo = *system.box_geo;
   auto const &nonbonded_ias = *system.nonbonded_ias;
   auto &cell_structure = *system.cell_structure;
@@ -156,6 +133,11 @@ static auto dpd_viscous_stress_local() {
   return stress;
 }
 
+Utils::Vector9d dpd_pressure_local(System::System &system) {
+  auto const local_stress = dpd_viscous_stress_local(system);
+  return -Utils::flatten(local_stress);
+}
+
 /**
  * @brief Viscous stress tensor of the DPD interaction.
  *
@@ -171,14 +153,14 @@ static auto dpd_viscous_stress_local() {
  *
  * @return Stress tensor contribution.
  */
-Utils::Vector9d dpd_stress(boost::mpi::communicator const &comm) {
-  auto const &box_geo = *System::get_system().box_geo;
-  auto const local_stress = dpd_viscous_stress_local();
-  std::remove_const_t<decltype(local_stress)> global_stress;
+Utils::Vector9d dpd_stress(System::System &system,
+                           boost::mpi::communicator const &comm) {
+  auto const local_stress = dpd_viscous_stress_local(system);
+  std::remove_const_t<decltype(local_stress)> global_stress{};
 
   boost::mpi::reduce(comm, local_stress, global_stress, std::plus<>(), 0);
 
-  return Utils::flatten(global_stress) / box_geo.volume();
+  return Utils::flatten(global_stress) / system.box_geo->volume();
 }
 
-#endif // DPD
+#endif // ESPRESSO_DPD

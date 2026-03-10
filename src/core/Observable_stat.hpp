@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -70,8 +70,10 @@ public:
                            std::bind_front(std::multiplies{}, 1. / volume));
   }
 
-  /** Contribution from linear and angular kinetic energy (accumulated). */
-  std::span<double> kinetic;
+  /** Contribution from linear kinetic energy. */
+  std::span<double> kinetic_lin;
+  /** Contribution from angular kinetic energy. */
+  std::span<double> kinetic_rot;
   /** Contribution(s) from bonded interactions. */
   std::span<double> bonded;
   /** Contribution(s) from Coulomb interactions. */
@@ -80,6 +82,8 @@ public:
   std::span<double> dipolar;
   /** Contribution from virtual sites (accumulated). */
   std::span<double> virtual_sites;
+  /** Contribution from DPD. */
+  std::span<double> dpd;
   /** Contribution from external fields (accumulated). */
   std::span<double> external_fields;
   /** Contribution(s) from non-bonded intramolecular interactions. */

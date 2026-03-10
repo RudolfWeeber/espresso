@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2024 The ESPResSo project
+# Copyright (C) 2024-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -25,8 +25,7 @@ import numpy as np
 import math
 
 
-@utx.skipIfMissingFeatures(["WALBERLA"])
-class EKFluctuations(ut.TestCase):
+class EKTest:
     BOX_L = 8
     TAU = 0.1
     DENSITY = 27.0
@@ -37,27 +36,21 @@ class EKFluctuations(ut.TestCase):
     system.time_step = TAU
     system.cell_system.skin = 0.4
 
-    def tearDown(self) -> None:
+    def tearDown(self):
         self.system.ekcontainer.clear()
 
-    def test_diffusion_single(self):
-        self.detail_test_fluctuation(single_precision=True)
+    def test_fluctuation(self):
+        decimal_precision = 2 if self.ek_params["single_precision"] else 10
 
-    def test_diffusion_double(self):
-        self.detail_test_fluctuation(single_precision=False)
-
-    def detail_test_fluctuation(self, single_precision: bool):
-        decimal_precision: int = 2 if single_precision else 10
-
-        lattice = espressomd.electrokinetics.LatticeWalberla(
+        lattice = espressomd.electrokinetics.Lattice(
             n_ghost_layers=1, agrid=self.AGRID)
 
         target_density = self.DENSITY * self.system.volume()
 
-        species = espressomd.electrokinetics.EKSpecies(
+        species = self.ek_species_class(
             lattice=lattice, density=self.DENSITY, valency=0.0, advection=False,
             diffusion=self.DIFFUSION_COEFFICIENT, friction_coupling=False,
-            single_precision=single_precision, tau=self.TAU, thermalized=True, seed=42)
+            tau=self.TAU, thermalized=True, seed=42, **self.ek_params)
 
         eksolver = espressomd.electrokinetics.EKNone(lattice=lattice)
 
@@ -100,6 +93,32 @@ class EKFluctuations(ut.TestCase):
         self.assertLess(max_diff, 5.0e-03,
                         f"Density distribution accuracy not achieved, allowed "
                         f"deviation: 5.0e-03, measured: {max_diff}")
+
+
+@utx.skipIfMissingFeatures(["WALBERLA"])
+class EKFluctuationsDoublePrecisionCPU(EKTest, ut.TestCase):
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_params = {"single_precision": False, "gpu": False}
+
+
+@utx.skipIfMissingFeatures(["WALBERLA"])
+class EKFluctuationsSinglePrecisionCPU(EKTest, ut.TestCase):
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_params = {"single_precision": True, "gpu": False}
+
+
+@utx.skipIfMissingGPU()
+@utx.skipIfMissingFeatures(["WALBERLA", "CUDA"])
+class EKFluctuationsDoublePrecisionGPU(EKTest, ut.TestCase):
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_params = {"single_precision": False, "gpu": True}
+
+
+@utx.skipIfMissingGPU()
+@utx.skipIfMissingFeatures(["WALBERLA", "CUDA"])
+class EKFluctuationsSinglePrecisionGPU(EKTest, ut.TestCase):
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_params = {"single_precision": True, "gpu": True}
 
 
 if __name__ == "__main__":

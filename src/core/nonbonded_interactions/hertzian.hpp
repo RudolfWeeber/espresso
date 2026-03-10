@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -18,8 +18,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef HERTZIAN_H
-#define HERTZIAN_H
+
+#pragma once
 
 /** \file
  *  Routines to calculate the Hertzian potential between particle pairs.
@@ -33,7 +33,7 @@
 
 #include <cmath>
 
-#ifdef HERTZIAN
+#ifdef ESPRESSO_HERTZIAN
 
 /** Calculate Hertzian force factor */
 inline double hertzian_pair_force_factor(IA_parameters const &ia_params,
@@ -55,5 +55,4 @@ inline double hertzian_pair_energy(IA_parameters const &ia_params,
   return 0.0;
 }
 
-#endif /* ifdef HERTZIAN */
-#endif
+#endif // ESPRESSO_HERTZIAN

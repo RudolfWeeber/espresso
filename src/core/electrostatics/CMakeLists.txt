@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2018-2022 The ESPResSo project
+# Copyright (C) 2018-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -23,6 +23,11 @@ target_sources(
           ${CMAKE_CURRENT_SOURCE_DIR}/icc.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/mmm1d.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/mmm-modpsi.cpp
-          ${CMAKE_CURRENT_SOURCE_DIR}/p3m.cpp
-          ${CMAKE_CURRENT_SOURCE_DIR}/scafacos_impl.cpp
-          ${CMAKE_CURRENT_SOURCE_DIR}/specfunc.cpp)
+          ${CMAKE_CURRENT_SOURCE_DIR}/scafacos_impl.cpp)
+
+if(ESPRESSO_BUILD_WITH_FFTW)
+  target_sources(espresso_p3m PRIVATE p3m_heffte.cpp)
+  set_source_files_properties(
+    p3m.cpp TARGET_DIRECTORY espresso_p3m
+    PROPERTIES INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/src/core)
+endif()

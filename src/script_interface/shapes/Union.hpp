@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -36,16 +36,21 @@ namespace Shapes {
 
 class Union : public ObjectList<Shape, Shape> {
 public:
+  using Base = ObjectList<Shape, Shape>;
+  using value_type = typename Base::value_type;
+
   Union() : m_core_shape(std::make_shared<::Shapes::Union>()) {}
 
+  ~Union() override { do_destruct(); }
+
 private:
-  bool has_in_core(const std::shared_ptr<Shape> &obj_ptr) const override {
+  bool has_in_core(value_type const &obj_ptr) const override {
     return m_core_shape->contains(obj_ptr->shape());
   }
-  void add_in_core(const std::shared_ptr<Shape> &obj_ptr) override {
+  void add_in_core(value_type const &obj_ptr) override {
     m_core_shape->add(obj_ptr->shape());
   }
-  void remove_in_core(const std::shared_ptr<Shape> &obj_ptr) override {
+  void remove_in_core(value_type const &obj_ptr) final {
     m_core_shape->remove(obj_ptr->shape());
   }
 

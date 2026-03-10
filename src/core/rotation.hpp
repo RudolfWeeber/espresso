@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -18,15 +18,16 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef ROTATION_H
-#define ROTATION_H
+
+#pragma once
+
 /** \file
  *  This file contains all subroutines required to process rotational motion.
  */
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
 
 #include "Particle.hpp"
 #include "ParticleRange.hpp"
@@ -101,7 +102,7 @@ auto convert_body_to_space(const Particle &p, const Utils::Matrix<T, 3, 3> &A) {
   return convert_body_to_space(p.quat(), A);
 }
 
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
 
 /** convert a dipole moment to quaternions and dipolar strength  */
 inline std::pair<Utils::Quaternion<double>, double>
@@ -145,5 +146,4 @@ inline void convert_torque_to_body_frame_apply_fix(Particle &p) {
   p.torque() = mask(p.rotation(), torque);
 }
 
-#endif // ROTATION
-#endif
+#endif // ESPRESSO_ROTATION

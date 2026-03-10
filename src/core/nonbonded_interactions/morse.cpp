@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -24,7 +24,7 @@
  */
 #include "morse.hpp"
 
-#ifdef MORSE
+#ifdef ESPRESSO_MORSE
 #include "nonbonded_interaction_data.hpp"
 
 #include <cmath>
@@ -44,4 +44,4 @@ Morse_Parameters::Morse_Parameters(double eps, double alpha, double rmin,
   rest = eps * (add1 - add2);
 }
 
-#endif // MORSE
+#endif // ESPRESSO_MORSE

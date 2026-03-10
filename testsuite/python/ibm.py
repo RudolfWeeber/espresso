@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2013-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -258,7 +258,8 @@ class IBM(ut.TestCase):
         system.bonded_inter.add(tribend_original)
         system.bonded_inter.add(tribend_unpickled)
         tribend_skip_init = pickle.loads(pickle.dumps(tribend_original))
-        for tribend in [tribend_original, tribend_unpickled, tribend_skip_init]:
+        for tribend in [tribend_original,
+                        tribend_unpickled, tribend_skip_init]:
             self.assertTrue(tribend.is_initialized)
             self.assertAlmostEqual(tribend.theta0, theta0, delta=1e-6)
             self.assertEqual(tribend.ind1, p1.id)

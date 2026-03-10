@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010-2022 The ESPResSo project
+# Copyright (C) 2010-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -202,29 +202,17 @@ class LBThermostatCommon(thermostats_common.ThermostatsCommon):
             self.partcl_gamma,
             rtol=0.05)
 
-    @utx.skipIfMissingFeatures(["PARTICLE_ANISOTROPY",
-                               "THERMOSTAT_PER_PARTICLE"])
-    def test_exceptions(self):
-        with self.assertRaisesRegex(RuntimeError, r"set_lb\(\) got an unexpected keyword argument 'act_on_virtual'"):
-            self.system.thermostat.set_lb(
-                LB_fluid=self.lbf, act_on_virtual=False)
-        with self.assertRaisesRegex(RuntimeError, "Parameter 'gamma' is missing"):
-            self.system.thermostat.set_lb(LB_fluid=self.lbf)
-        self.system.part.add(pos=[0., 0., 0.], gamma=[1., 2., 3.], id=2)
-        with self.assertRaisesRegex(Exception, r"ERROR: anisotropic particle \(id 2\) coupled to LB"):
-            self.system.integrator.run(1)
-
 
 @utx.skipIfMissingFeatures(["WALBERLA"])
 class LBThermostatWalberlaDoublePrecisionCPU(LBThermostatCommon, ut.TestCase):
-    lb_class = espressomd.lb.LBFluidWalberla
-    lb_params = {"single_precision": False}
+    lb_class = espressomd.lb.LBFluid
+    lb_params = {"single_precision": False, "gpu": False}
 
 
 @utx.skipIfMissingFeatures(["WALBERLA"])
 class LBThermostatWalberlaSinglePrecisionCPU(LBThermostatCommon, ut.TestCase):
-    lb_class = espressomd.lb.LBFluidWalberla
-    lb_params = {"single_precision": True}
+    lb_class = espressomd.lb.LBFluid
+    lb_params = {"single_precision": True, "gpu": False}
 
 
 @utx.skipIfMissingGPU()
@@ -232,8 +220,8 @@ class LBThermostatWalberlaSinglePrecisionCPU(LBThermostatCommon, ut.TestCase):
            "only runs for 1 MPI rank")
 @utx.skipIfMissingFeatures(["WALBERLA", "CUDA"])
 class LBThermostatWalberlaDoublePrecisionGPU(LBThermostatCommon, ut.TestCase):
-    lb_class = espressomd.lb.LBFluidWalberlaGPU
-    lb_params = {"single_precision": False}
+    lb_class = espressomd.lb.LBFluid
+    lb_params = {"single_precision": False, "gpu": True}
 
 
 @utx.skipIfMissingGPU()
@@ -241,15 +229,16 @@ class LBThermostatWalberlaDoublePrecisionGPU(LBThermostatCommon, ut.TestCase):
            "only runs for 1 MPI rank")
 @utx.skipIfMissingFeatures(["WALBERLA", "CUDA"])
 class LBThermostatWalberlaSinglePrecisionGPU(LBThermostatCommon, ut.TestCase):
-    lb_class = espressomd.lb.LBFluidWalberlaGPU
-    lb_params = {"single_precision": True}
+    lb_class = espressomd.lb.LBFluid
+    lb_params = {"single_precision": True, "gpu": True}
 
 
 @utx.skipIfMissingFeatures(["WALBERLA"])
 class LBThermostatWalberlaDoublePrecisionBlocksCPU(
         LBThermostatCommon, ut.TestCase):
-    lb_class = espressomd.lb.LBFluidWalberla
-    lb_params = {"single_precision": False, "blocks_per_mpi_rank": [2, 2, 2]}
+    lb_class = espressomd.lb.LBFluid
+    lb_params = {"single_precision": False, "gpu": False,
+                 "blocks_per_mpi_rank": [2, 2, 2]}
 
 
 if __name__ == '__main__':

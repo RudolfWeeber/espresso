@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Copyright (C) 2010-2024 The ESPResSo project
+# Copyright (C) 2010-2026 The ESPResSo project
 #
 # Copying and distribution of this file, with or without modification,
 # are permitted in any medium without royalty provided the copyright
@@ -13,6 +13,12 @@ else
   PYTHONPATH="@ESPRESSO_PYTHON_DIR@"
 fi
 export PYTHONPATH
+if test -z "$OMP_PROC_BIND"; then
+  export OMP_PROC_BIND=false
+fi
+if test -z "$OMP_NUM_THREADS"; then
+  export OMP_NUM_THREADS=1
+fi
 
 espresso_parse_cmake_boolean_value() {
   local varname="${2}"
@@ -93,7 +99,7 @@ case "$1" in
         ;;
     --coverage)
         shift
-        exec @Python_EXECUTABLE@ -m coverage run --source=@CMAKE_BINARY_DIR@/testsuite/ --rcfile="@PROJECT_SOURCE_DIR@/.coveragerc" "$@"
+        exec "@Python_EXECUTABLE@" -m coverage run --source="@CMAKE_BINARY_DIR@/testsuite/" --rcfile="@PROJECT_SOURCE_DIR@/.coveragerc" "$@"
         ;;
     --valgrind)
         shift
@@ -102,10 +108,6 @@ case "$1" in
     --cuda-gdb)
         shift
         exec cuda-gdb --args "@ESPRESSO_PYTHON_FRONTEND@" "$@"
-        ;;
-    --cuda-memcheck)
-        shift
-        exec cuda-memcheck "@ESPRESSO_PYTHON_FRONTEND@" "$@"
         ;;
     --cuda-sanitizer)
         shift
@@ -135,11 +137,6 @@ case "$1" in
         options="${1#*=}"
         shift
         exec cuda-gdb ${options} --args "@ESPRESSO_PYTHON_FRONTEND@" "$@"
-        ;;
-    --cuda-memcheck=*)
-        options="${1#*=}"
-        shift
-        exec cuda-memcheck ${options} "@ESPRESSO_PYTHON_FRONTEND@" "$@"
         ;;
     --cuda-sanitizer=*)
         options="${1#*=}"

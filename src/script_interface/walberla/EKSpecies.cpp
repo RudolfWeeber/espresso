@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2023 The ESPResSo project
+ * Copyright (C) 2021-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -16,15 +16,20 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
 
 #include "EKSpecies.hpp"
 #include "EKWalberlaNodeState.hpp"
 #include "WalberlaCheckpoint.hpp"
+#include "errorhandling.hpp"
+
+#include <script_interface/code_info/CodeInfo.hpp>
 
 #include <walberla_bridge/electrokinetics/ek_walberla_init.hpp>
+#include <walberla_bridge/utils/ResourceManager.hpp>
+#include <walberla_bridge/walberla_init.hpp>
 
 #include <boost/mpi.hpp>
 #include <boost/mpi/collectives/all_reduce.hpp>
@@ -32,6 +37,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -44,14 +50,15 @@ namespace ScriptInterface::walberla {
 
 std::unordered_map<std::string, int> const EKVTKHandle::obs_map = {
     {"density", static_cast<int>(EKOutputVTK::density)},
+    {"flux", static_cast<int>(EKOutputVTK::flux)},
 };
 
 Variant EKSpecies::do_call_method(std::string const &method,
                                   VariantMap const &parameters) {
   if (method == "update_flux_boundary_from_shape") {
+    flux_boundary_ghost_layer_size_sanity_check();
     auto values = get_value<std::vector<double>>(parameters, "values");
-    std::transform(values.begin(), values.end(), values.begin(),
-                   [this](double v) { return v * m_conv_flux; });
+    std::ranges::for_each(values, [this](double &v) { v *= m_conv_flux; });
 
     m_instance->update_flux_boundary_from_shape(
         get_value<std::vector<int>>(parameters, "raster"), values);
@@ -59,8 +66,7 @@ Variant EKSpecies::do_call_method(std::string const &method,
   }
   if (method == "update_density_boundary_from_shape") {
     auto values = get_value<std::vector<double>>(parameters, "values");
-    std::transform(values.begin(), values.end(), values.begin(),
-                   [this](double v) { return v * m_conv_density; });
+    std::ranges::for_each(values, [this](double &v) { v *= m_conv_density; });
     m_instance->update_density_boundary_from_shape(
         get_value<std::vector<int>>(parameters, "raster"), values);
     return {};
@@ -74,13 +80,13 @@ Variant EKSpecies::do_call_method(std::string const &method,
     return {};
   }
   if (method == "save_checkpoint") {
-    auto const path = get_value<std::string>(parameters, "path");
+    auto const path = get_value<std::filesystem::path>(parameters, "path");
     auto const mode = get_value<int>(parameters, "mode");
     save_checkpoint(path, mode);
     return {};
   }
   if (method == "load_checkpoint") {
-    auto const path = get_value<std::string>(parameters, "path");
+    auto const path = get_value<std::filesystem::path>(parameters, "path");
     auto const mode = get_value<int>(parameters, "mode");
     load_checkpoint(path, mode);
     return {};
@@ -93,16 +99,26 @@ void EKSpecies::make_instance(VariantMap const &params) {
   auto const ext_efield = get_value<Utils::Vector3d>(params, "ext_efield");
   auto const density = get_value<double>(params, "density");
   auto const kT = get_value<double>(params, "kT");
+  auto const gpu = get_value_or(params, "gpu", false);
   auto const ek_diffusion = diffusion * m_conv_diffusion;
   auto const ek_ext_efield = ext_efield * m_conv_ext_efield;
   auto const ek_density = density * m_conv_density;
   auto const ek_kT = kT * m_conv_energy;
-  m_instance = ::walberla::new_ek_walberla(
+  auto *make_new_instance = &::walberla::new_ek_walberla_cpu;
+  if (gpu) {
+    std::vector<std::string> required_features;
+    required_features.emplace_back("CUDA");
+    CodeInfo::check_features(required_features);
+#ifdef ESPRESSO_CUDA
+    make_new_instance = &::walberla::new_ek_walberla_gpu;
+#endif
+  }
+  m_instance = make_new_instance(
       m_lattice->lattice(), ek_diffusion, ek_kT,
       get_value<double>(params, "valency"), ek_ext_efield, ek_density,
       get_value<bool>(params, "advection"),
       get_value<bool>(params, "friction_coupling"),
-      get_value<bool>(params, "single_precision"),
+      get_value_or<bool>(params, "single_precision", gpu),
       get_value_or<bool>(params, "thermalized", false),
       static_cast<uint>(get_value_or<int>(params, "seed", 0)));
   m_instance->ghost_communication();
@@ -142,13 +158,14 @@ void EKSpecies::do_construct(VariantMap const &params) {
     m_conv_flux = tau * Utils::int_pow<2>(agrid);
     m_density = density * m_conv_density;
     make_instance(params);
+    m_mpi_cart_comm_observer = ::walberla::get_mpi_cart_comm_observer();
     for (auto &vtk : m_vtk_writers) {
-      vtk->attach_to_lattice(m_instance, get_latice_to_md_units_conversion());
+      vtk->attach_to_lattice(m_instance, get_lattice_to_md_units_conversion());
     }
   });
 }
 
-void EKSpecies::load_checkpoint(std::string const &filename, int mode) {
+void EKSpecies::load_checkpoint(std::filesystem::path const &path, int mode) {
   auto &ek_obj = *m_instance;
 
   auto const read_metadata = [&ek_obj](CheckpointFile &cpfile) {
@@ -196,11 +213,11 @@ void EKSpecies::load_checkpoint(std::string const &filename, int mode) {
 
   auto const on_success = [&ek_obj]() { ek_obj.ghost_communication(); };
 
-  load_checkpoint_common(*context(), "EK", filename, mode, read_metadata,
-                         read_data, on_success);
+  load_checkpoint_common(*context(), "EK", path, mode, read_metadata, read_data,
+                         on_success);
 }
 
-void EKSpecies::save_checkpoint(std::string const &filename, int mode) {
+void EKSpecies::save_checkpoint(std::filesystem::path const &path, int mode) {
   auto &ek_obj = *m_instance;
 
   auto const write_metadata = [&ek_obj,
@@ -300,10 +317,10 @@ void EKSpecies::save_checkpoint(std::string const &filename, int mode) {
     }
   };
 
-  save_checkpoint_common(*context(), "EK", filename, mode, write_metadata,
+  save_checkpoint_common(*context(), "EK", path, mode, write_metadata,
                          write_data, on_failure);
 }
 
 } // namespace ScriptInterface::walberla
 
-#endif // WALBERLA
+#endif // ESPRESSO_WALBERLA

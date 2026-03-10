@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The ESPResSo project
+ * Copyright (C) 2022-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,9 +19,9 @@
 
 #include "initialize.hpp"
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
 
 #include "Actor.impl.hpp"
 
@@ -38,7 +38,7 @@
 
 #include "script_interface/auto_parameters/AutoParameter.hpp"
 
-#endif // ELECTROSTATICS
+#endif // ESPRESSO_ELECTROSTATICS
 
 #include <utils/Factory.hpp>
 
@@ -46,24 +46,23 @@ namespace ScriptInterface {
 namespace Coulomb {
 
 void initialize(Utils::Factory<ObjectHandle> *om) {
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
   om->register_new<DebyeHueckel>("Coulomb::DebyeHueckel");
-#ifdef P3M
-  om->register_new<CoulombP3M<Arch::CPU>>("Coulomb::CoulombP3M");
-#ifdef CUDA
-  om->register_new<CoulombP3M<Arch::GPU>>("Coulomb::CoulombP3MGPU");
-#endif
+#ifdef ESPRESSO_P3M
+  om->register_new<CoulombP3M>("Coulomb::CoulombP3M");
   om->register_new<ElectrostaticLayerCorrection>(
       "Coulomb::ElectrostaticLayerCorrection");
-#endif // P3M
+#endif // ESPRESSO_P3M
   om->register_new<ICCStar>("Coulomb::ICCStar");
+#ifdef ESPRESSO_MMM1D
   om->register_new<CoulombMMM1D>("Coulomb::CoulombMMM1D");
-#ifdef SCAFACOS
+#endif
+#ifdef ESPRESSO_SCAFACOS
   om->register_new<CoulombScafacos>("Coulomb::CoulombScafacos");
 #endif
   om->register_new<ReactionField>("Coulomb::ReactionField");
   om->register_new<Container>("Coulomb::Container");
-#endif // ELECTROSTATICS
+#endif // ESPRESSO_ELECTROSTATICS
 }
 
 } // namespace Coulomb

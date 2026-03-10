@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -25,22 +25,26 @@
  *  Implementation in \ref thermostat.cpp.
  */
 
+#include <config/config.hpp>
+
 #include "Particle.hpp"
 #include "PropagationMode.hpp"
 #include "rotation.hpp"
 #include "system/Leaf.hpp"
 
-#include "config/config.hpp"
-
 #include <utils/Counter.hpp>
 #include <utils/Vector.hpp>
+#include <utils/matrix.hpp>
 
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <memory>
+#include <unordered_map>
+#include <vector>
 
 namespace Thermostat {
-#ifdef PARTICLE_ANISOTROPY
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
 using GammaType = Utils::Vector3d;
 #else
 using GammaType = double;
@@ -50,7 +54,7 @@ using GammaType = double;
  * Sentinel value for the Langevin/Brownian parameters,
  * indicating that they have not been set yet.
  */
-#ifdef PARTICLE_ANISOTROPY
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
 constexpr GammaType gamma_sentinel{{-1.0, -1.0, -1.0}};
 #else
 constexpr GammaType gamma_sentinel{-1.0};
@@ -58,22 +62,22 @@ constexpr GammaType gamma_sentinel{-1.0};
 /**
  * @brief Value for a null friction coefficient.
  */
-#ifdef PARTICLE_ANISOTROPY
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
 constexpr GammaType gamma_null{{0.0, 0.0, 0.0}};
 #else
 constexpr GammaType gamma_null{0.0};
 #endif
 
-#ifdef THERMOSTAT_PER_PARTICLE
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
 inline auto const &handle_particle_gamma(GammaType const &particle_gamma,
                                          GammaType const &default_gamma) {
   return particle_gamma >= gamma_null ? particle_gamma : default_gamma;
 }
 #endif
 
-inline auto handle_particle_anisotropy(Particle const &p,
+inline auto handle_particle_anisotropy([[maybe_unused]] Particle const &p,
                                        GammaType const &gamma_body) {
-#ifdef PARTICLE_ANISOTROPY
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
   auto const aniso_flag =
       (gamma_body[0] != gamma_body[1]) || (gamma_body[1] != gamma_body[2]);
   const Utils::Matrix<double, 3, 3> gamma_matrix =
@@ -142,9 +146,9 @@ public:
   void recalc_prefactors(double kT, double time_step) {
     pref_friction = -gamma;
     pref_noise = sigma(kT, time_step, gamma);
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
     pref_noise_rotation = sigma(kT, time_step, gamma_rotation);
-#endif // ROTATION
+#endif // ESPRESSO_ROTATION
   }
   /** Calculate the noise prefactor.
    *  Evaluates the quantity @f$ \sqrt{2 k_B T \gamma / dt} / \sigma_\eta @f$
@@ -160,10 +164,10 @@ public:
   /**@{*/
   /** Translational friction coefficient @f$ \gamma_{\text{trans}} @f$. */
   GammaType gamma = Thermostat::gamma_sentinel;
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
   /** Rotational friction coefficient @f$ \gamma_{\text{rot}} @f$. */
   GammaType gamma_rotation = Thermostat::gamma_sentinel;
-#endif // ROTATION
+#endif // ESPRESSO_ROTATION
   /**@}*/
   /** @name Prefactors */
   /**@{*/
@@ -175,12 +179,12 @@ public:
    *  Stores @f$ \sqrt{2 k_B T \gamma_{\text{trans}} / dt} / \sigma_\eta @f$.
    */
   GammaType pref_noise = Thermostat::gamma_sentinel;
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
   /** Prefactor for the angular velocity noise.
    *  Stores @f$ \sqrt{2 k_B T \gamma_{\text{rot}} / dt} / \sigma_\eta @f$.
    */
   GammaType pref_noise_rotation = Thermostat::gamma_sentinel;
-#endif // ROTATION
+#endif // ESPRESSO_ROTATION
   /**@}*/
 };
 
@@ -206,18 +210,18 @@ public:
      *  Brownian Dynamics functions. Its square root is the standard deviation.
      */
     sigma_pos = sigma(kT, gamma);
-#ifdef ROTATION
-    /** Note: the BD thermostat assigns the brownian viscous parameters as well.
+#ifdef ESPRESSO_ROTATION
+    /** Note: the BD thermostat assigns the Brownian viscous parameters as well.
      *  They correspond to the friction tensor Z from the eq. (14.31) of
      *  @cite schlick10a.
      */
     sigma_vel_rotation = sigma(kT);
     sigma_pos_rotation = sigma(kT, gamma_rotation);
-#endif // ROTATION
+#endif // ESPRESSO_ROTATION
   }
   /** Calculate the noise prefactor.
    *  Evaluates the quantity @f$ \sqrt{2 k_B T / \gamma} / \sigma_\eta @f$
-   *  with @f$ \sigma_\eta @f$ the standard deviation of the random gaussian
+   *  with @f$ \sigma_\eta @f$ the standard deviation of the random Gaussian
    *  process @f$ \eta(t) @f$.
    */
   static GammaType sigma(double kT, GammaType const &gamma) {
@@ -226,7 +230,7 @@ public:
   }
   /** Calculate the noise prefactor.
    *  Evaluates the quantity @f$ \sqrt{k_B T} / \sigma_\eta @f$
-   *  with @f$ \sigma_\eta @f$ the standard deviation of the random gaussian
+   *  with @f$ \sigma_\eta @f$ the standard deviation of the random Gaussian
    *  process @f$ \eta(t) @f$.
    */
   static double sigma(double kT) {
@@ -248,28 +252,28 @@ public:
    *  the translational diffusion coefficient.
    */
   GammaType sigma_pos = Thermostat::gamma_sentinel;
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
   /** Rotational noise standard deviation.
    *  Stores @f$ \sqrt{2D_{\text{rot}}} @f$ with
    *  @f$ D_{\text{rot}} = k_B T/\gamma_{\text{rot}} @f$
    *  the rotational diffusion coefficient.
    */
   GammaType sigma_pos_rotation = Thermostat::gamma_sentinel;
-#endif // ROTATION
+#endif // ESPRESSO_ROTATION
   /** Translational velocity noise standard deviation.
    *  Stores @f$ \sqrt{k_B T} @f$.
    */
   double sigma_vel = 0.;
-#ifdef ROTATION
+#ifdef ESPRESSO_ROTATION
   /** Angular velocity noise standard deviation.
    *  Stores @f$ \sqrt{k_B T} @f$.
    */
   double sigma_vel_rotation = 0.;
-#endif // ROTATION
+#endif // ESPRESSO_ROTATION
   /**@}*/
 };
 
-#ifdef NPT
+#ifdef ESPRESSO_NPT
 /** Thermostat for isotropic NPT dynamics. */
 struct IsotropicNptThermostat : public BaseThermostat {
 private:
@@ -279,13 +283,18 @@ public:
   /** Recalculate prefactors.
    *  Needs to be called every time the parameters are changed.
    */
-  void recalc_prefactors(double kT, double piston, double time_step) {
+  void recalc_prefactors(double kT, double piston,
+                         std::vector<double> const &mass_list,
+                         double time_step) {
     assert(piston > 0.0);
-    auto const half_time_step = time_step / 2.0;
-    pref_rescale_0 = -gamma0 * half_time_step;
-    pref_noise_0 = sigma(kT, gamma0, time_step);
-    pref_rescale_V = -gammav * half_time_step / piston;
-    pref_noise_V = sigma(kT, gammav, time_step);
+
+    for (const auto &mass : mass_list) {
+      pref_rescale_0[mass] = std::exp(-gamma0 * time_step / mass);
+      pref_noise_0[mass] =
+          sigma_OU(kT, gamma0 / mass, time_step) / std::sqrt(mass);
+    }
+    pref_rescale_V = std::exp(-gammav * time_step / piston);
+    pref_noise_V = sigma_OU(kT, gammav / piston, time_step) * std::sqrt(piston);
   }
   /** Calculate the noise prefactor.
    *  Evaluates the quantity @f$ \sqrt{2 k_B T \gamma dt / 2} / \sigma_\eta @f$
@@ -298,6 +307,13 @@ public:
     constexpr auto const temp_coeff = 12.0;
     return sqrt(temp_coeff * kT * gamma * time_step);
   }
+  /** Calculate the noise prefactor for the exact solution
+   *  of Orstein-Uhlenbeck equation.
+   *  Evaluates the quantity @f$ \sqrt{k_B T (1 - \exp(-2 \gamma dt)} @f$
+   */
+  static double sigma_OU(double kT, double gamma, double time_step) {
+    return std::sqrt(kT * (1.0 - std::exp(-2. * gamma * time_step)));
+  }
   /** @name Parameters */
   /**@{*/
   /** Friction coefficient of the particles @f$ \gamma^0 @f$ */
@@ -307,20 +323,23 @@ public:
   /**@}*/
   /** @name Prefactors */
   /**@{*/
-  /** Particle velocity rescaling at half the time step.
-   *  Stores @f$ \gamma^{0}\cdot\frac{dt}{2} @f$.
+  /** Particle velocity rescaling at the time step for
+   *  Orstein-Uhlenbeck equation.
+   *  Stores @f$ \exp(-\frac{\gamma^{0}}{m} \cdot dt) @f$.
    */
-  double pref_rescale_0 = 0.;
-  /** Particle velocity rescaling noise standard deviation.
-   *  Stores @f$ \sqrt{k_B T \gamma^{0} dt} / \sigma_\eta @f$.
+  std::unordered_map<double, double> pref_rescale_0;
+  /** Particle velocity rescaling noise standard deviation for
+   *  Orstein-Uhlenbeck equation.
+   *  Stores @f$ \sqrt{k_B T ( 1 - \exp( -2 \frac{\gamma^{0}}{m} dt}) @f$
    */
-  double pref_noise_0 = 0.;
+  std::unordered_map<double, double> pref_noise_0;
   /** Volume rescaling at half the time step.
-   *  Stores @f$ \frac{\gamma^{V}}{Q}\cdot\frac{dt}{2} @f$.
+   *  Stores @f$ \exp(-\frac{\gamma^{V}}{W} \cdot dt) @f$.
    */
   double pref_rescale_V = 0.;
-  /** Volume rescaling noise standard deviation.
-   *  Stores @f$ \sqrt{k_B T \gamma^{V} dt} / \sigma_\eta @f$.
+  /** Volume rescaling noise standard deviation for
+   *  Orstein-Uhlenbeck equation
+   *  Stores @f$ \sqrt{k_B T ( 1 - \exp( -2 \frac{\gamma^{0}}{W} dt}) @f$
    */
   double pref_noise_V = 0.;
   /**@}*/
@@ -345,15 +364,15 @@ struct ThermalizedBondThermostat : public BaseThermostat {
   void recalc_prefactors(double time_step, BondedInteractionsMap &bonded_ias);
 };
 
-#ifdef DPD
+#ifdef ESPRESSO_DPD
 /** Thermostat for dissipative particle dynamics. */
 struct DPDThermostat : public BaseThermostat {};
 #endif
 
-#ifdef STOKESIAN_DYNAMICS
+#ifdef ESPRESSO_STOKESIAN_DYNAMICS
 /** Thermostat for Stokesian dynamics. */
 struct StokesianThermostat : public BaseThermostat {
-  StokesianThermostat() { rng_initialize(0); }
+  StokesianThermostat() { rng_initialize(uint32_t{0u}); }
 };
 #endif
 
@@ -366,14 +385,14 @@ public:
   int thermo_switch = THERMO_OFF;
   std::shared_ptr<LangevinThermostat> langevin;
   std::shared_ptr<BrownianThermostat> brownian;
-#ifdef NPT
+#ifdef ESPRESSO_NPT
   std::shared_ptr<IsotropicNptThermostat> npt_iso;
 #endif
   std::shared_ptr<LBThermostat> lb;
-#ifdef DPD
+#ifdef ESPRESSO_DPD
   std::shared_ptr<DPDThermostat> dpd;
 #endif
-#ifdef STOKESIAN_DYNAMICS
+#ifdef ESPRESSO_STOKESIAN_DYNAMICS
   std::shared_ptr<StokesianThermostat> stokesian;
 #endif
   std::shared_ptr<ThermalizedBondThermostat> thermalized_bond;

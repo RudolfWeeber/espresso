@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -38,8 +38,8 @@ class ComFixed : public AutoParameters<ComFixed, System::Leaf> {
 
   void do_construct(VariantMap const &params) override {
     m_comfixed = std::make_shared<::ComFixed>();
-    for (auto const &p : params) {
-      do_set_parameter(p.first, p.second);
+    for (auto const &[key, value] : params) {
+      do_set_parameter(key, value);
     }
   }
 

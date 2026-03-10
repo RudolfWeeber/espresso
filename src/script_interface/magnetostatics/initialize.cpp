@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The ESPResSo project
+ * Copyright (C) 2022-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,15 +19,14 @@
 
 #include "initialize.hpp"
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
 
 #include "Actor.impl.hpp"
 
 #include "Container.hpp"
 #include "DipolarDirectSum.hpp"
-#include "DipolarDirectSumGpu.hpp"
 #include "DipolarLayerCorrection.hpp"
 #include "DipolarP3M.hpp"
 #include "DipolarScafacos.hpp"
@@ -36,7 +35,7 @@
 
 #include "script_interface/auto_parameters/AutoParameter.hpp"
 
-#endif // DIPOLES
+#endif // ESPRESSO_DIPOLES
 
 #include <utils/Factory.hpp>
 
@@ -44,20 +43,17 @@ namespace ScriptInterface {
 namespace Dipoles {
 
 void initialize(Utils::Factory<ObjectHandle> *om) {
-#ifdef DIPOLES
-  om->register_new<DipolarDirectSum>("Dipoles::DipolarDirectSumCpu");
-#ifdef DIPOLAR_DIRECT_SUM
-  om->register_new<DipolarDirectSumGpu>("Dipoles::DipolarDirectSumGpu");
-#endif
-#ifdef DP3M
+#ifdef ESPRESSO_DIPOLES
+  om->register_new<DipolarDirectSum>("Dipoles::DipolarDirectSum");
+#ifdef ESPRESSO_DP3M
   om->register_new<DipolarP3M<Arch::CPU>>("Dipoles::DipolarP3M");
 #endif
-#ifdef SCAFACOS_DIPOLES
+#ifdef ESPRESSO_SCAFACOS_DIPOLES
   om->register_new<DipolarScafacos>("Dipoles::DipolarScafacos");
 #endif
   om->register_new<DipolarLayerCorrection>("Dipoles::DipolarLayerCorrection");
   om->register_new<Container>("Dipoles::Container");
-#endif // DIPOLES
+#endif // ESPRESSO_DIPOLES
 }
 
 } // namespace Dipoles

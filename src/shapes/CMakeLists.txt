@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2016-2022 The ESPResSo project
+# Copyright (C) 2016-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -23,11 +23,10 @@ add_library(
   src/Rhomboid.cpp src/Shape.cpp src/SimplePore.cpp src/Slitpore.cpp
   src/Sphere.cpp src/SpheroCylinder.cpp src/Torus.cpp src/Wall.cpp)
 add_library(espresso::shapes ALIAS espresso_shapes)
-set_target_properties(espresso_shapes PROPERTIES CXX_CLANG_TIDY
-                                                 "${ESPRESSO_CXX_CLANG_TIDY}")
+espresso_set_common_target_properties(espresso_shapes)
 
 target_link_libraries(espresso_shapes PUBLIC espresso::utils
-                      PRIVATE Boost::boost espresso::cpp_flags)
+                      PRIVATE Boost::boost espresso::compiler_flags)
 target_include_directories(
   espresso_shapes PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                          $<INSTALL_INTERFACE:include>)

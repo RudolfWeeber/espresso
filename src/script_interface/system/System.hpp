@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2022 The ESPResSo project
+ * Copyright (C) 2013-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -38,10 +38,11 @@ namespace System {
 class System : public AutoParameters<System> {
   struct Leaves;
   std::shared_ptr<::System::System> m_instance;
-  std::shared_ptr<Leaves> m_leaves;
+  std::unique_ptr<Leaves> m_leaves;
 
 public:
   System();
+  ~System() override = default;
 
   void do_construct(VariantMap const &params) override;
   Variant do_call_method(std::string const &name,

@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010-2022 The ESPResSo project
+# Copyright (C) 2010-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -185,23 +185,23 @@ class LBShearCommon:
 
 
 @utx.skipIfMissingFeatures(["WALBERLA"])
-class LBShearWalberla(LBShearCommon, ut.TestCase):
+class LBShearWalberlaDoublePrecisionCPU(LBShearCommon, ut.TestCase):
 
     """Test for the Walberla implementation of the LB in double-precision."""
 
-    lb_class = espressomd.lb.LBFluidWalberla
-    lb_params = {"single_precision": False}
+    lb_class = espressomd.lb.LBFluid
+    lb_params = {"single_precision": False, "gpu": False}
     atol = 5e-5
     rtol = 5e-4
 
 
 @utx.skipIfMissingFeatures(["WALBERLA"])
-class LBShearWalberlaSinglePrecision(LBShearCommon, ut.TestCase):
+class LBShearWalberlaSinglePrecisionCPU(LBShearCommon, ut.TestCase):
 
     """Test for the Walberla implementation of the LB in single-precision."""
 
-    lb_class = espressomd.lb.LBFluidWalberla
-    lb_params = {"single_precision": True}
+    lb_class = espressomd.lb.LBFluid
+    lb_params = {"single_precision": True, "gpu": False}
     atol = 5e-5
     rtol = 5e-3
 
@@ -211,11 +211,29 @@ class LBShearWalberlaBlocks(LBShearCommon, ut.TestCase):
 
     """Test for the Walberla implementation of the LB in double-precision."""
 
-    lb_class = espressomd.lb.LBFluidWalberla
-    lb_params = {"single_precision": False,
+    lb_class = espressomd.lb.LBFluid
+    lb_params = {"single_precision": False, "gpu": False,
                  "blocks_per_mpi_rank": [2, 2, 2]}
     atol = 5e-5
     rtol = 5e-4
+
+
+@utx.skipIfMissingGPU()
+@utx.skipIfMissingFeatures(["WALBERLA", "CUDA"])
+class LBShearWalberlaDoublePrecisionGPU(LBShearCommon, ut.TestCase):
+    lb_class = espressomd.lb.LBFluid
+    lb_params = {"single_precision": False, "gpu": True}
+    atol = 5e-5
+    rtol = 5e-4
+
+
+@utx.skipIfMissingGPU()
+@utx.skipIfMissingFeatures(["WALBERLA", "CUDA"])
+class LBShearWalberlaSinglePrecisionGPU(LBShearCommon, ut.TestCase):
+    lb_class = espressomd.lb.LBFluid
+    lb_params = {"single_precision": True, "gpu": True}
+    atol = 5e-5
+    rtol = 5e-3
 
 
 if __name__ == '__main__':

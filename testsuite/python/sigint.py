@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2019-2022 The ESPResSo project
+# Copyright (C) 2019-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -25,10 +25,9 @@ import pathlib
 import os
 
 
-EXPECTED_TRACEBACK_ENDING = """ in handle_sigint
-    signal.raise_signal(signal.Signals.SIGINT)
-KeyboardInterrupt
-"""
+EXPECTED_TRACEBACK_ENDING = r""" in handle_sigint
+    signal\.raise_signal\(signal\.Signals\.SIGINT\)(?:\n +~+\^+)?
+KeyboardInterrupt\s*$"""
 
 
 class SigintTest(ut.TestCase):
@@ -51,16 +50,18 @@ class SigintTest(ut.TestCase):
             self.assertEqual(traceback, "")
         elif sig == signal.Signals.SIGINT:
             self.assertIn(" self.integrator.run(", traceback)
-            self.assertTrue(traceback.endswith(EXPECTED_TRACEBACK_ENDING),
-                            msg=f"Traceback failed string match:\n{traceback}")
+            with self.assertRaisesRegex(KeyboardInterrupt, EXPECTED_TRACEBACK_ENDING):
+                raise KeyboardInterrupt(traceback)
 
     def test_signal_handling(self):
         signals = [signal.Signals.SIGINT, signal.Signals.SIGTERM]
         processes = []
+        env = os.environ.copy()
+        env["OMP_NUM_THREADS"] = env.get("OMP_NUM_THREADS", "1")
         # open asynchronous processes with non-blocking read access on stderr
         for _ in range(len(signals)):
             process = subprocess.Popen([sys.executable, self.script],
-                                       stderr=subprocess.PIPE)
+                                       stderr=subprocess.PIPE, env=env)
             os.set_blocking(process.stderr.fileno(), False)
             processes.append(process)
 

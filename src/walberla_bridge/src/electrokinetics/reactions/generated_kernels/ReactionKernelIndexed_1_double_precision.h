@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2022-2023 The ESPResSo project
- * Copyright (C) 2020-2023 The waLBerla project
+ * Copyright (C) 2022-2026 The ESPResSo project
+ * Copyright (C) 2020-2025 The waLBerla project
  *
  * This file is part of ESPResSo.
  *
@@ -18,14 +18,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// kernel generated with pystencils v1.3.7, lbmpy v1.3.7, sympy v1.12.1,
-// lbmpy_walberla/pystencils_walberla from waLBerla commit
-// f36fa0a68bae59f0b516f6587ea8fa7c24a41141
+// kernel generated with pystencils v1.4+1.ge851f4e, lbmpy v1.4+1.ge9efe34,
+// sympy v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit
+// 007e77e077ad9d22b5eed6f3d3118240993e553c
 
 /*
  * Boundary class.
  * Adapted from the waLBerla source file
- * https://i10git.cs.fau.de/walberla/walberla/-/blob/fb076cd18daa6e2f24448349d1fffb974c845269/python/pystencils_walberla/templates/Boundary.tmpl.h
+ * https://i10git.cs.fau.de/walberla/walberla/-/blob/3e54d4f2336e47168ad87e3caaf7b3b082d86ca7/python/pystencils_walberla/templates/Boundary.tmpl.h
  */
 
 #pragma once
@@ -39,6 +39,7 @@
 #include <field/FlagField.h>
 #include <field/GhostLayerField.h>
 
+#include <array>
 #include <cassert>
 #include <functional>
 #include <memory>
@@ -60,7 +61,10 @@
 #define RESTRICT __restrict
 #else
 #define RESTRICT
+#endif
 
+#ifdef WALBERLA_BUILD_WITH_HALF_PRECISION_SUPPORT
+using walberla::half;
 #endif
 
 namespace walberla {
@@ -89,8 +93,11 @@ public:
       return other.cpuVectors_ == cpuVectors_;
     }
 
-    CpuIndexVector &indexVector(Type t) { return cpuVectors_[t]; }
-    IndexInfo *pointerCpu(Type t) { return cpuVectors_[t].data(); }
+    auto &indexVector(Type t) { return cpuVectors_[t]; }
+    auto const &indexVector(Type t) const { return cpuVectors_[t]; }
+    IndexInfo *pointerCpu(Type t) {
+      return cpuVectors_[t].empty() ? nullptr : cpuVectors_[t].data();
+    }
 
     void syncGPU() {}
 
@@ -109,14 +116,14 @@ public:
     };
     indexVectorID = blocks->addStructuredBlockData<IndexVectors>(
         createIdxVector, "IndexField_ReactionKernelIndexed_1_double_precision");
-  };
+  }
 
   ReactionKernelIndexed_1_double_precision(BlockDataID indexVectorID_,
                                            BlockDataID rho_0ID_, double order_0,
                                            double rate_coefficient,
                                            double stoech_0)
       : indexVectorID(indexVectorID_), rho_0ID(rho_0ID_), order_0_(order_0),
-        rate_coefficient_(rate_coefficient), stoech_0_(stoech_0){};
+        rate_coefficient_(rate_coefficient), stoech_0_(stoech_0) {}
 
   void run(IBlock *block);
 
@@ -125,6 +132,13 @@ public:
   void inner(IBlock *block);
 
   void outer(IBlock *block);
+
+  Vector3<double> getForce(IBlock * /*block*/) {
+
+    WALBERLA_ABORT(
+        "Boundary condition was not generated including force calculation.")
+    return Vector3<double>(double_c(0.0));
+  }
 
   std::function<void(IBlock *)> getSweep() {
     return [this](IBlock *b) { this->run(b); };
@@ -142,8 +156,8 @@ public:
   void fillFromFlagField(const std::shared_ptr<StructuredBlockForest> &blocks,
                          ConstBlockDataID flagFieldID, FlagUID boundaryFlagUID,
                          FlagUID domainFlagUID) {
-    for (auto blockIt = blocks->begin(); blockIt != blocks->end(); ++blockIt)
-      fillFromFlagField<FlagField_T>(&*blockIt, flagFieldID, boundaryFlagUID,
+    for (auto &block : *blocks)
+      fillFromFlagField<FlagField_T>(&block, flagFieldID, boundaryFlagUID,
                                      domainFlagUID);
   }
 
@@ -157,8 +171,9 @@ public:
 
     auto *flagField = block->getData<FlagField_T>(flagFieldID);
 
-    assert(flagField->flagExists(boundaryFlagUID) and
-           flagField->flagExists(domainFlagUID));
+    if (!(flagField->flagExists(boundaryFlagUID) and
+          flagField->flagExists(domainFlagUID)))
+      return;
 
     auto boundaryFlag = flagField->getFlag(boundaryFlagUID);
     auto domainFlag = flagField->getFlag(domainFlagUID);
@@ -183,11 +198,11 @@ public:
 
         auto element = IndexInfo(it.x(), it.y(), it.z(), 0);
 
-        indexVectorAll.push_back(element);
+        indexVectorAll.emplace_back(element);
         if (inner.contains(it.x(), it.y(), it.z()))
-          indexVectorInner.push_back(element);
+          indexVectorInner.emplace_back(element);
         else
-          indexVectorOuter.push_back(element);
+          indexVectorOuter.emplace_back(element);
       }
     }
 
@@ -205,6 +220,12 @@ public:
   double rate_coefficient_;
   double stoech_0_;
 };
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__) or defined(__GNUG__)
+#pragma GCC diagnostic pop
+#endif
 
 } // namespace pystencils
 } // namespace walberla

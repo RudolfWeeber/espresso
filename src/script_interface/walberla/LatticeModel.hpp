@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022-2023 The ESPResSo project
+ * Copyright (C) 2022-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -25,6 +25,7 @@
 
 #include <script_interface/ScriptInterface.hpp>
 #include <script_interface/auto_parameters/AutoParameters.hpp>
+#include <script_interface/system/Leaf.hpp>
 
 #include <algorithm>
 #include <memory>
@@ -35,18 +36,23 @@
 namespace ScriptInterface::walberla {
 
 template <class Method, class VTKHandle>
-class LatticeModel : public AutoParameters<LatticeModel<Method, VTKHandle>> {
+class LatticeModel
+    : public AutoParameters<LatticeModel<Method, VTKHandle>, System::Leaf> {
 protected:
   std::shared_ptr<LatticeWalberla> m_lattice;
   std::shared_ptr<Method> m_instance;
   std::vector<std::shared_ptr<VTKHandle>> m_vtk_writers;
 
   virtual ::LatticeModel::units_map
-  get_latice_to_md_units_conversion() const = 0;
+  get_lattice_to_md_units_conversion() const = 0;
   virtual void make_instance(VariantMap const &params) = 0;
 
   auto find_vtk(std::shared_ptr<VTKHandle> const &vtk) const {
     return std::ranges::find(m_vtk_writers, vtk);
+  }
+
+  auto has_vtk(std::shared_ptr<VTKHandle> const &vtk) const {
+    return find_vtk(vtk) != m_vtk_writers.end();
   }
 
   auto serialize_vtk_writers() const {
@@ -58,28 +64,29 @@ public:
                          VariantMap const &params) override {
     if (method_name == "add_vtk_writer") {
       auto vtk = get_value<std::shared_ptr<VTKHandle>>(params, "vtk");
-      auto const needle = find_vtk(vtk);
+      auto const contained = has_vtk(vtk);
       ObjectHandle::context()->parallel_try_catch([&]() {
-        if (needle != m_vtk_writers.end()) {
+        if (contained) {
           throw std::runtime_error(
               "VTK object is already attached to this lattice");
         }
-        vtk->attach_to_lattice(m_instance, get_latice_to_md_units_conversion());
+        vtk->attach_to_lattice(m_instance,
+                               get_lattice_to_md_units_conversion());
         m_vtk_writers.emplace_back(vtk);
       });
       return {};
     }
     if (method_name == "remove_vtk_writer") {
       auto const vtk = get_value<std::shared_ptr<VTKHandle>>(params, "vtk");
-      auto const needle = find_vtk(vtk);
+      auto const contained = has_vtk(vtk);
       ObjectHandle::context()->parallel_try_catch([&]() {
-        if (needle == m_vtk_writers.end()) {
+        if (not contained) {
           throw std::runtime_error(
               "VTK object is not attached to this lattice");
         }
         vtk->detach_from_lattice();
       });
-      m_vtk_writers.erase(needle);
+      m_vtk_writers.erase(find_vtk(vtk));
       return {};
     }
     if (method_name == "clear_vtk_writers") {

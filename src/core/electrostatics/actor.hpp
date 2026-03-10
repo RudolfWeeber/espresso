@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022-2023 The ESPResSo project
+ * Copyright (C) 2022-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -21,7 +21,7 @@
 
 #include "config/config.hpp"
 
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
 
 #include "system/Leaf.hpp"
 
@@ -67,4 +67,4 @@ public:
 
 } // namespace Coulomb
 
-#endif // ELECTROSTATICS
+#endif // ESPRESSO_ELECTROSTATICS

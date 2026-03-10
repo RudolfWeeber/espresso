@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2022 The ESPResSo project
+ * Copyright (C) 2021-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -17,12 +17,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define BOOST_TEST_MODULE Particle serialization test
+#define BOOST_TEST_MODULE "Particle serialization test"
 #define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
 
+#include <config/config.hpp>
+
 #include "Particle.hpp"
-#include "config/config.hpp"
 
 #include <utils/demangle.hpp>
 #include <utils/serialization/memcpy_archive.hpp>
@@ -70,11 +71,12 @@ auto hasnt_serialize_method = boost::hana::is_valid(
 /**
  * Does the type contain a <tt>serialize(Archive &, long int)</tt> method.
  */
-template <class T, typename Enable = void>
+template <class T>
 struct has_serialize_method : std::integral_constant<bool, false> {};
 
 template <class T>
-struct has_serialize_method<T, typename std::enable_if_t<std::is_class_v<T>>>
+  requires(std::is_class_v<T>)
+struct has_serialize_method<T>
     : std::integral_constant<
           bool, !static_cast<bool>(detail::hasnt_serialize_method(
                     detail::DetectMember<T, detail::SerializableClass>{}))> {};
@@ -225,7 +227,7 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(
   {
     typename Checker::buffer_type buffer_ref = {
         "BondList",
-#ifdef EXCLUSIONS
+#ifdef ESPRESSO_EXCLUSIONS
         "Utils::compact_vector<int>",
 #endif
     };
@@ -233,11 +235,10 @@ BOOST_AUTO_TEST_CASE_TEMPLATE(
     Checker oa{buffer};
     Particle p;
     oa | p;
-    std::transform(buffer.begin(), buffer.end(), buffer.begin(),
-                   [](std::string const &symbol) {
-                     return std::regex_replace(symbol, std::regex("std::__1::"),
-                                               "std::");
-                   });
+    std::ranges::transform(
+        buffer, buffer.begin(), [](std::string const &symbol) {
+          return std::regex_replace(symbol, std::regex("std::__1::"), "std::");
+        });
     BOOST_TEST(buffer == buffer_ref, boost::test_tools::per_element());
   }
 }

@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2020-2023 The ESPResSo project
+# Copyright (C) 2020-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -17,7 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import os
+import pathlib
 import itertools
 import numpy as np
 
@@ -26,7 +26,7 @@ from espressomd.script_interface import ScriptInterfaceHelper, script_interface_
 
 
 @script_interface_register
-class LatticeWalberla(ScriptInterfaceHelper):
+class Lattice(ScriptInterfaceHelper):
     """
     Interface to a waLBerla lattice.
 
@@ -34,15 +34,18 @@ class LatticeWalberla(ScriptInterfaceHelper):
     ----------
     agrid : :obj:`float`
         Lattice constant. The box size in every direction must be an integer
-        multiple of ``agrid``. Cannot be provided together with ``lattice``.
+        multiple of ``agrid``.
     n_ghost_layers : :obj:`int`, optional
         Lattice ghost layer thickness in units of ``agrid``.
+    box_l : (3,) array_like of :obj:`float`, optional
+        Domain size. If omitted, the currently active ESPResSo system's
+        :attr:`~espressomd.system.System.box_l` will be used.
     blocks_per_mpi_rank : (3,) array_like of :obj:`int`, optional
         Distribute more than one block to each MPI rank.
         Meant to improve cache locality. Experimental.
 
     """
-    _so_name = "walberla::LatticeWalberla"
+    _so_name = "walberla::Lattice"
     _so_creation_policy = "GLOBAL"
     _so_features = ("WALBERLA",)
 
@@ -91,9 +94,10 @@ class LatticeWalberla(ScriptInterfaceHelper):
 class LatticeModel:
 
     def save_checkpoint(self, path, binary):
-        tmp_path = path + ".__tmp__"
+        path = pathlib.Path(path)
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
         self.call_method("save_checkpoint", path=tmp_path, mode=int(binary))
-        os.rename(tmp_path, path)
+        tmp_path.rename(path)
 
     def load_checkpoint(self, path, binary):
         return self.call_method("load_checkpoint", path=path, mode=int(binary))

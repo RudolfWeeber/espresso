@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2013-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -70,7 +70,7 @@ def get_random_mock_particles():
             p1 = randint_different_from(0, npart, i)
             p2 = randint_different_from(0, npart, i)
 
-            # Don't add the same bond twice and don't use the same particle twice
+            # avoid adding the same bond twice or using the same particle twice
             if p1 != p2 and (btype, p1, p2) not in p.bonds:
                 p.bonds.append((btype, p1, p2))
         parts.append(p)

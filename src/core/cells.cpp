@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -44,7 +44,6 @@
 #include <boost/serialization/set.hpp>
 
 #include <algorithm>
-#include <functional>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -67,17 +66,17 @@ static auto get_pairs_filtered(System::System const &system,
   auto const pair_kernel = [cutoff2, &filter, &ret](Particle const &p1,
                                                     Particle const &p2,
                                                     Distance const &d) {
-    if (d.dist2 < cutoff2 and filter(p1) and filter(p2))
-      ret.emplace_back(p1.id(), p2.id());
+    if (d.dist2 < cutoff2 and filter(p1) and filter(p2)) {
+      auto pid1 = p1.id();
+      auto pid2 = p2.id();
+      if (pid1 > pid2) {
+        std::swap(pid1, pid2);
+      }
+      ret.emplace_back(pid1, pid2);
+    }
   };
 
   system.cell_structure->non_bonded_loop(pair_kernel);
-
-  /* Sort pairs */
-  for (auto &pair : ret) {
-    if (pair.first > pair.second)
-      std::swap(pair.first, pair.second);
-  }
 
   return ret;
 }
@@ -168,9 +167,8 @@ get_pairs_of_types(System::System const &system, double const distance,
                    std::vector<int> const &types) {
   detail::search_neighbors_sanity_checks(system, distance);
   return get_pairs_filtered(system, distance, [types](Particle const &p) {
-    return std::any_of(types.begin(), types.end(),
-                       // NOLINTNEXTLINE(bugprone-exception-escape)
-                       [p](int const type) { return p.type() == type; });
+    return std::ranges::any_of(
+        types, [target = p.type()](int const type) { return type == target; });
   });
 }
 

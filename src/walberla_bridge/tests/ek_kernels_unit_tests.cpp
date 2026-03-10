@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The ESPResSo project
+ * Copyright (C) 2023-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -18,10 +18,6 @@
  */
 #define BOOST_TEST_MODULE waLBerla EK kernels
 #define BOOST_TEST_DYN_LINK
-
-#include "config/config.hpp"
-
-#ifdef WALBERLA
 
 #include <boost/test/unit_test.hpp>
 
@@ -163,5 +159,3 @@ BOOST_AUTO_TEST_CASE(dirichlet_flux) {
   BOOST_TEST((vec1_f != vec2_f));
   BOOST_TEST((vec1_d != vec2_d));
 }
-
-#endif

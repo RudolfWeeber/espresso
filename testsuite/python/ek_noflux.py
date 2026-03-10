@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022-2023 The ESPResSo project
+# Copyright (C) 2022-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -26,9 +26,8 @@ import espressomd.shapes
 import espressomd.electrokinetics
 
 
-@utx.skipIfMissingFeatures(["WALBERLA"])
-class EKNoFlux(ut.TestCase):
-    BOX_L = 15.
+class EKTest:
+    BOX_L = 16.
     AGRID = 1.0
     DENSITY = 1
     DIFFUSION_COEFFICIENT = 0.1
@@ -42,26 +41,20 @@ class EKNoFlux(ut.TestCase):
     def tearDown(self):
         self.system.ekcontainer = None
 
-    def test_noflux_single(self):
-        self.detail_test_noflux(single_precision=True)
-
-    def test_noflux_double(self):
-        self.detail_test_noflux(single_precision=False)
-
-    def detail_test_noflux(self, single_precision: bool):
+    def test_noflux(self):
         """
         Testing the EK noflux boundaries to not leak density outside of a sphere.
         """
 
-        decimal_precision: int = 7 if single_precision else 10
+        decimal_precision = 7 if self.ek_params["single_precision"] else 10
 
-        lattice = espressomd.electrokinetics.LatticeWalberla(
-            n_ghost_layers=1, agrid=self.AGRID)
+        lattice = espressomd.electrokinetics.Lattice(
+            n_ghost_layers=2, agrid=self.AGRID)
 
-        ekspecies = espressomd.electrokinetics.EKSpecies(
+        ekspecies = self.ek_species_class(
             lattice=lattice, density=0.0, diffusion=self.DIFFUSION_COEFFICIENT,
             valency=0.0, advection=False, friction_coupling=False,
-            single_precision=single_precision, tau=1.0)
+            tau=1.0, **self.ek_params)
 
         eksolver = espressomd.electrokinetics.EKNone(lattice=lattice)
 
@@ -100,6 +93,32 @@ class EKNoFlux(ut.TestCase):
             np.sum(domain_density), self.DENSITY, decimal_precision)
         np.testing.assert_array_less(
             0., domain_density, "EK density array contains negative densities!")
+
+
+@utx.skipIfMissingFeatures(["WALBERLA"])
+class EKNoFluxDoublePrecisionCPU(EKTest, ut.TestCase):
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_params = {"single_precision": False, "gpu": False}
+
+
+@utx.skipIfMissingFeatures(["WALBERLA"])
+class EKNoFluxSinglePrecisionCPU(EKTest, ut.TestCase):
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_params = {"single_precision": True, "gpu": False}
+
+
+@utx.skipIfMissingGPU()
+@utx.skipIfMissingFeatures(["WALBERLA", "CUDA"])
+class EKNoFluxDoublePrecisionGPU(EKTest, ut.TestCase):
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_params = {"single_precision": False, "gpu": True}
+
+
+@utx.skipIfMissingGPU()
+@utx.skipIfMissingFeatures(["WALBERLA", "CUDA"])
+class EKNoFluxSinglePrecisionGPU(EKTest, ut.TestCase):
+    ek_species_class = espressomd.electrokinetics.EKSpecies
+    ek_params = {"single_precision": True, "gpu": True}
 
 
 if __name__ == "__main__":

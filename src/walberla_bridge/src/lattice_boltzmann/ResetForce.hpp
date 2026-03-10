@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2023 The ESPResSo project
+ * Copyright (C) 2020-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -40,7 +40,7 @@ namespace walberla {
  *  and resets @c force_to_be_applied to the global external force.
  */
 template <typename PdfField, typename ForceField> class ResetForce {
-  using FloatType = typename PdfField::value_type;
+  using FloatType = PdfField::value_type;
 
 public:
   ResetForce(BlockDataID const &last_applied_force_field_id,

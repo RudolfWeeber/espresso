@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2025 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -23,7 +23,7 @@
 
 #include "config/config.hpp"
 
-#ifdef H5MD
+#ifdef ESPRESSO_H5MD
 
 #include "script_interface/ScriptInterface.hpp"
 #include "script_interface/auto_parameters/AutoParameters.hpp"
@@ -61,4 +61,4 @@ private:
 } // namespace Writer
 } // namespace ScriptInterface
 
-#endif // H5MD
+#endif // ESPRESSO_H5MD

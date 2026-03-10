@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2013-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -31,12 +31,12 @@ class CudaInitHandle(ScriptInterfaceHelper):
     Methods
     -------
     list_devices()
-        List devices.
+        List devices on the head node.
 
         Returns
         -------
         :obj:`dict` :
-            Available CUDA devices sorted by device id.
+            Available CUDA devices sorted by device id on the head node.
 
     """
     _so_name = "System::CudaInitHandle"

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2022 The ESPResSo project
+ * Copyright (C) 2014-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,9 +19,8 @@
 
 #pragma once
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#include "GpuParticleData.hpp"
 #include "ResourceCleanup.hpp"
 
 #include "electrostatics/solver.hpp"
@@ -35,10 +34,12 @@
 #include <utils/Vector.hpp>
 
 #include <memory>
+#include <optional>
+#include <vector>
 
 class BoxGeometry;
 class LocalBox;
-struct CellStructure;
+class CellStructure;
 class Propagation;
 class InteractionsNonBonded;
 class BondedInteractionsMap;
@@ -65,6 +66,13 @@ class AutoUpdateAccumulators;
 namespace Constraints {
 class Constraints;
 }
+struct SteepestDescent;
+struct StokesianDynamics;
+struct NptIsoParameters;
+struct InstantaneousPressure;
+#ifdef ESPRESSO_CUDA
+class GpuParticleData;
+#endif
 
 namespace System {
 
@@ -84,8 +92,8 @@ public:
 
   static std::shared_ptr<System> create();
 
-#ifdef CUDA
-  GpuParticleData gpu;
+#ifdef ESPRESSO_CUDA
+  std::shared_ptr<GpuParticleData> gpu;
 #endif
   ResourceCleanup cleanup_queue;
 
@@ -129,6 +137,9 @@ public:
 
   /** @brief Rebuild cell lists. Use e.g. after a skin change. */
   void rebuild_cell_structure();
+#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
+  void rebuild_aosoa();
+#endif
 
   /** @brief Calculate the maximal cutoff of all interactions. */
   double maximal_cutoff() const;
@@ -149,12 +160,32 @@ public:
   /** @brief Calculate the pressure from a virial expansion. */
   std::shared_ptr<Observable_stat> calculate_pressure();
 
+#ifdef ESPRESSO_NPT
+  /** @brief get the instantaneous pressure with (q(t+dt), p(t+dt/2))*/
+  double get_instantaneous_pressure();
+
+  /** @brief get the instantaneous virial pressure with q(t+dt)*/
+  double get_instantaneous_pressure_virial();
+
+  /** @brief Synchronize NpT state such as instantaneous and average pressure */
+  void synchronize_npt_state();
+  /** @brief Reinitialize the NpT state. */
+  void npt_ensemble_init(bool recalc_forces);
+  void npt_add_virial_contribution(double energy);
+  bool has_npt_enabled() const;
+#endif // ESPRESSO_NPT
+  Utils::Vector3d *get_npt_virial() const;
+
   /** @brief Calculate all forces. */
   void calculate_forces();
 
-#ifdef DIPOLE_FIELD_TRACKING
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
   /** @brief Calculate dipole fields. */
   void calculate_long_range_fields();
+#endif
+
+#ifdef ESPRESSO_COLLISION_DETECTION
+  bool has_collision_detection_enabled() const;
 #endif
 
   /**
@@ -167,13 +198,29 @@ public:
    * @return Non-bonded energy of the particle.
    */
   double particle_short_range_energy_contribution(int pid);
+  /**
+   * @brief Compute the energy of a given bond which has to exist on the given
+   * particle.
+   *
+   * Requires that bond partners are visible on the same MPI rank as the
+   * primary particle.
+   * Returns nothing if the primary particle is not owned by this MPI rank.
+   *
+   * @param pid       Particle id
+   * @param bond_id   Bond id
+   * @param partners  Particle ids of the bond partners
+   *
+   * @return energy of the bond given the primary particle and bond partners
+   */
+  std::optional<double> particle_bond_energy(int pid, int bond_id,
+                                             std::vector<int> partners);
 
   /** Integrate equations of motion
    *  @param n_steps       Number of integration steps, can be zero
    *  @param reuse_forces  Decide when to re-calculate forces
    *
    *  @details This function calls two hooks for propagation kernels such as
-   *  velocity verlet, velocity verlet + npt box changes, and steepest_descent.
+   *  velocity Verlet, velocity Verlet + NpT, or steepest descent.
    *  One hook is called before and one after the force calculation.
    *  It is up to the propagation kernels to increment the simulation time.
    *
@@ -205,8 +252,6 @@ public:
   int integrate_with_signal_handler(int n_steps, int reuse_forces,
                                     bool update_accumulators);
 
-  /** @brief Calculate initial particle forces from active thermostats. */
-  void thermostat_force_init();
   /** @brief Calculate particle-lattice interactions. */
   void lb_couple_particles();
 
@@ -286,7 +331,7 @@ public:
   std::shared_ptr<Galilei> galilei;
   std::shared_ptr<OifGlobal> oif_global;
   std::shared_ptr<ImmersedBoundaries> immersed_boundaries;
-#ifdef COLLISION_DETECTION
+#ifdef ESPRESSO_COLLISION_DETECTION
   std::shared_ptr<CollisionDetection::CollisionDetection> collision_detection;
 #endif
   std::shared_ptr<BondBreakage::BondBreakage> bond_breakage;
@@ -294,6 +339,14 @@ public:
   std::shared_ptr<Accumulators::AutoUpdateAccumulators>
       auto_update_accumulators;
   std::shared_ptr<Constraints::Constraints> constraints;
+  std::shared_ptr<SteepestDescent> steepest_descent;
+#ifdef ESPRESSO_STOKESIAN_DYNAMICS
+  std::shared_ptr<StokesianDynamics> stokesian_dynamics;
+#endif
+#ifdef ESPRESSO_NPT
+  std::shared_ptr<NptIsoParameters> nptiso;
+  std::shared_ptr<InstantaneousPressure> npt_inst_pressure;
+#endif
 
 protected:
   /** @brief Whether the thermostat has to be reinitialized before integration.
@@ -313,9 +366,13 @@ protected:
   double min_global_cut;
 
   void update_local_geo();
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
   void update_icc_particles();
-#endif // ELECTROSTATICS
+  bool has_icc_enabled() const;
+#endif // ESPRESSO_ELECTROSTATICS
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+  void integrate_magnetodynamics();
+#endif
 
 private:
   /**

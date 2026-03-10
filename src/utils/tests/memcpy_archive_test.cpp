@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2022 The ESPResSo project
+ * Copyright (C) 2019-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -24,7 +24,6 @@
 #include <utils/Vector.hpp>
 #include <utils/serialization/memcpy_archive.hpp>
 #include <utils/serialization/optional.hpp>
-#include <utils/type_traits.hpp>
 
 #include <array>
 #include <cstddef>

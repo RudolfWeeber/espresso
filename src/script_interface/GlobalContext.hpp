@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 The ESPResSo project
+ * Copyright (C) 2020-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -16,8 +16,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef ESPRESSO_SCRIPT_INTERFACE_OBJECTMANAGER_HPP
-#define ESPRESSO_SCRIPT_INTERFACE_OBJECTMANAGER_HPP
+
+#pragma once
 
 /** @file
  *
@@ -30,6 +30,7 @@
 #include "Context.hpp"
 #include "LocalContext.hpp"
 #include "ObjectHandle.hpp"
+#include "ObjectId.hpp"
 #include "ParallelExceptionHandler.hpp"
 #include "packed_variant.hpp"
 
@@ -44,6 +45,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
@@ -63,7 +65,7 @@ namespace ScriptInterface {
  * the remote copies are also destroyed.
  */
 class GlobalContext : public Context {
-  using ObjectId = std::size_t;
+  using ObjectId = ScriptInterface::ObjectId;
 
   /* Instances on this node that are managed by the
    * head node. */
@@ -77,10 +79,10 @@ class GlobalContext : public Context {
   ParallelExceptionHandler m_parallel_exception_handler;
 
   Communication::CallbackHandle<ObjectId, const std::string &,
-                                const PackedMap &>
+                                PackedMap const &>
       cb_make_handle;
   Communication::CallbackHandle<ObjectId, const std::string &,
-                                const PackedVariant &>
+                                PackedVariant const &>
       cb_set_parameter;
   Communication::CallbackHandle<ObjectId, std::string const &,
                                 PackedMap const &>
@@ -95,8 +97,8 @@ public:
         // NOLINTNEXTLINE(bugprone-throw-keyword-missing)
         m_parallel_exception_handler(m_comm),
         cb_make_handle(callbacks,
-                       [this](ObjectId id, const std::string &name,
-                              const PackedMap &parameters) {
+                       [this](ObjectId id, std::string const &name,
+                              PackedMap const &parameters) {
                          make_handle(id, name, parameters);
                        }),
         cb_set_parameter(callbacks,
@@ -116,8 +118,8 @@ private:
   /**
    * @brief Callback for @c cb_make_handle
    */
-  void make_handle(ObjectId id, const std::string &name,
-                   const PackedMap &parameters);
+  void make_handle(ObjectId id, std::string const &name,
+                   PackedMap const &parameters);
   /**
    * @brief Create remote instances
    *
@@ -125,8 +127,8 @@ private:
    * @param name Class name
    * @param parameters Constructor parameters.
    */
-  void remote_make_handle(ObjectId id, const std::string &name,
-                          const VariantMap &parameters);
+  void remote_make_handle(ObjectId id, std::string const &name,
+                          VariantMap const &parameters);
 
 private:
   /**
@@ -136,7 +138,7 @@ private:
                      PackedVariant const &value);
 
 public:
-  void notify_set_parameter(const ObjectHandle *o, std::string const &name,
+  void notify_set_parameter(ObjectHandle const *o, std::string const &name,
                             Variant const &value) override;
 
 private:
@@ -147,7 +149,7 @@ private:
                    PackedMap const &arguments);
 
 public:
-  void notify_call_method(const ObjectHandle *o, std::string const &name,
+  void notify_call_method(ObjectHandle const *o, std::string const &name,
                           VariantMap const &arguments) override;
 
 private:
@@ -164,12 +166,9 @@ public:
    * Remote objects are automatically constructed.
    */
   std::shared_ptr<ObjectHandle>
-  make_shared(std::string const &name, const VariantMap &parameters) override;
-  std::shared_ptr<ObjectHandle>
-  make_shared_local(std::string const &name,
-                    VariantMap const &parameters) override;
+  make_shared(std::string const &name, VariantMap const &parameters) override;
 
-  boost::string_ref name(const ObjectHandle *o) const override;
+  std::string_view name(ObjectHandle const *o) const override;
 
   bool is_head_node() const override { return m_is_head_node; }
   void parallel_try_catch(std::function<void()> const &cb) const override {
@@ -178,5 +177,3 @@ public:
   boost::mpi::communicator const &get_comm() const override { return m_comm; }
 };
 } // namespace ScriptInterface
-
-#endif

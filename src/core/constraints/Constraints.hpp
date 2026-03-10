@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -20,6 +20,7 @@
 #pragma once
 
 #include "Constraint.hpp"
+#include "ParticleRange.hpp"
 #include "system/Leaf.hpp"
 
 #include <algorithm>
@@ -35,9 +36,9 @@ class Constraints : public System::Leaf<Constraints> {
   using container_type = std::vector<std::shared_ptr<Constraint>>;
 
 public:
-  using value_type = typename container_type::value_type;
-  using iterator = typename container_type::iterator;
-  using const_iterator = typename container_type::const_iterator;
+  using value_type = container_type::value_type;
+  using iterator = container_type::iterator;
+  using const_iterator = container_type::const_iterator;
 
 private:
   void reset_forces() const {
@@ -50,7 +51,7 @@ private:
 
 public:
   bool contains(std::shared_ptr<Constraint> const &constraint) const noexcept {
-    return std::find(begin(), end(), constraint) != end();
+    return std::ranges::find(*this, constraint) != end();
   }
   void add(std::shared_ptr<Constraint> const &constraint);
   void remove(std::shared_ptr<Constraint> const &constraint);

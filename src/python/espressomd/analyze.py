@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2013-2022 The ESPResSo project
+# Copyright (C) 2013-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -447,6 +447,16 @@ class Analysis(ScriptInterfaceHelper):
         observable = self.call_method("calculate_pressure_tensor")
         return self._generate_summary(observable, 9, False)
 
+    def get_instantaneous_pressure(self):
+        assert_features("NPT")
+        observable = self.call_method("get_instantaneous_pressure")
+        return observable
+
+    def get_instantaneous_pressure_virial(self):
+        assert_features("NPT")
+        observable = self.call_method("get_instantaneous_pressure_virial")
+        return observable
+
     def energy(self):
         """
         Calculate the system energy in parallel.
@@ -458,6 +468,8 @@ class Analysis(ScriptInterfaceHelper):
 
             * ``"total"``: total energy
             * ``"kinetic"``: linear and rotational kinetic energy
+            * ``"kinetic_lin"``: linear kinetic energy
+            * ``"kinetic_rot"``: rotational kinetic energy
             * ``"bonded"``: total bonded energy
             * ``"bonded", <bond_id>``: bonded energy from the bond
               identified by ``bond_id``
@@ -494,9 +506,13 @@ class Analysis(ScriptInterfaceHelper):
         observable = self.call_method("calculate_energy")
         return self._generate_summary(observable, 1, False)
 
-    def particle_energy(self, particle):
+    def particle_non_bonded_energy(self, particle):
         """
         Calculate the non-bonded energy of a single given particle.
+
+        This excludes the short-range part of electrostatics and magnetostatics
+        solvers, as well as corrections implemented as non-bonded interactions
+        (e.g. :ref:`Thole correction`).
 
         Parameters
         ----------
@@ -504,18 +520,30 @@ class Analysis(ScriptInterfaceHelper):
 
         Returns
         -------
-        :obj: `float`
+        :obj:`float`
             Non-bonded energy of that particle
 
         """
         return self.call_method("particle_energy", pid=particle.id)
 
-    def dipole_fields(self):
+    def particle_bond_energy(self, particle, bond):
         """
-        Calculate the total dipole field on each particle.
+        Calculate the bonded energy for the given particle and bond.
+
+        Parameters
+        ----------
+        particle : :class:`~espressomd.particle_data.ParticleHandle`
+        bond : :class:`~espressomd.interactions.BondedInteraction`. The bond has to exist on the given particle
+
+        Returns
+        -------
+        :obj: `float`
+           Energy contribution of the bond
+
         """
-        assert_features("DIPOLE_FIELD_TRACKING")
-        self.call_method("calc_long_range_fields")
+        interaction, *partners = bond
+        return self.call_method("particle_bond_energy", pid=particle.id,
+                                bond_id=interaction._bond_id, partners=partners)
 
     def dpd_stress(self):
         assert_features("DPD")
@@ -631,6 +659,8 @@ class Analysis(ScriptInterfaceHelper):
             reduction(out, "dipolar")
         if has_features("VIRTUAL_SITES"):
             reduction(out, "virtual_sites")
+        if has_features("DPD"):
+            reduction(out, "dpd")
 
         if dim == 1 or calc_sp:
             return out

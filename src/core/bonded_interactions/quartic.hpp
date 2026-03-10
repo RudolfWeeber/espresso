@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -67,7 +67,7 @@ QuarticBond::force(Utils::Vector3d const &dx) const {
   auto const dr = dist - r;
   auto fac = (k0 * dr + k1 * Utils::int_pow<3>(dr));
 
-  if (dist > ROUND_ERROR_PREC) { /* Regular case */
+  if (dist > round_error_prec) { /* Regular case */
     fac /= dist;
   } else {
     if (r > 0.) {

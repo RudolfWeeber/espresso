@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018-2022 The ESPResSo project
+ * Copyright (C) 2018-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -22,7 +22,7 @@
  */
 #include "wca.hpp"
 
-#ifdef WCA
+#ifdef ESPRESSO_WCA
 #include "nonbonded_interaction_data.hpp"
 
 #include <cmath>
@@ -41,4 +41,4 @@ WCA_Parameters::WCA_Parameters(double epsilon, double sigma)
   }
 }
 
-#endif /* ifdef WCA */
+#endif /* ifdef ESPRESSO_WCA */

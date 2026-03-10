@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2024 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -19,9 +19,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#if defined(P3M) or defined(DP3M)
+#if defined(ESPRESSO_DP3M)
 
 #include "FFTBackendLegacy.hpp"
 
@@ -35,7 +35,7 @@ template <typename FloatType>
 FFTBackendLegacy<FloatType>::FFTBackendLegacy(P3MLocalMesh const &local_mesh)
     : FFTBackend<FloatType>(local_mesh),
       fft{std::make_unique<fft::fft_data_struct<FloatType>>(
-          ::Communication::mpiCallbacksHandle()->share_mpi_env())} {}
+          ::communication_environment->get_mpi_env())} {}
 
 template <typename FloatType>
 FFTBackendLegacy<FloatType>::~FFTBackendLegacy() = default;
@@ -54,10 +54,10 @@ void FFTBackendLegacy<FloatType>::forward_fft(FloatType *rs_mesh) {
 
 template <typename FloatType>
 void FFTBackendLegacy<FloatType>::backward_fft(FloatType *rs_mesh) {
-  fft->backward_fft(::comm_cart, rs_mesh, check_complex_residuals);
+  fft->backward_fft(::comm_cart, rs_mesh);
 }
 
 template class FFTBackendLegacy<float>;
 template class FFTBackendLegacy<double>;
 
-#endif // defined(P3M) or defined(DP3M)
+#endif // defined(ESPRESSO_DP3M)

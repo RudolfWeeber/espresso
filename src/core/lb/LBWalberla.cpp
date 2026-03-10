@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2023 The ESPResSo project
+ * Copyright (C) 2019-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -18,7 +18,7 @@
  */
 #include "config/config.hpp"
 
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
 
 #include "LBWalberla.hpp"
 
@@ -37,8 +37,12 @@
 #include <utils/Vector.hpp>
 #include <utils/math/int_pow.hpp>
 
+#include <functional>
 #include <optional>
+#include <stdexcept>
+#include <utility>
 #include <variant>
+#include <vector>
 
 namespace LB {
 
@@ -67,6 +71,11 @@ void LBWalberla::lebc_sanity_checks(unsigned int shear_direction,
   lb_fluid->check_lebc(shear_direction, shear_plane_normal);
 }
 
+std::function<bool(Utils::Vector3d const &)>
+LBWalberla::make_lattice_position_checker(bool consider_points_in_halo) const {
+  return lb_fluid->make_lattice_position_checker(consider_points_in_halo);
+}
+
 std::optional<Utils::Vector3d>
 LBWalberla::get_velocity_at_pos(Utils::Vector3d const &pos,
                                 bool consider_points_in_halo) const {
@@ -93,6 +102,11 @@ void LBWalberla::add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
   lb_fluid->add_forces_at_pos(pos, forces);
 }
 
+std::vector<double>
+LBWalberla::get_densities_at_pos(std::vector<Utils::Vector3d> const &pos) {
+  return lb_fluid->get_densities_at_pos(pos);
+}
+
 std::vector<Utils::Vector3d>
 LBWalberla::get_velocities_at_pos(std::vector<Utils::Vector3d> const &pos) {
   return lb_fluid->get_velocities_at_pos(pos);
@@ -106,7 +120,7 @@ void LBWalberla::veto_kT(double kT) const {
   auto const energy_conversion =
       Utils::int_pow<2>(lb_params->get_agrid() / lb_params->get_tau());
   auto const lb_kT = lb_fluid->get_kT() * energy_conversion;
-  if (not ::Thermostat::are_kT_equal(lb_kT, kT)) {
+  if (not(::Thermostat::are_kT_equal(lb_kT, kT))) {
     throw std::runtime_error("Temperature change not supported by LB");
   }
 }
@@ -128,9 +142,7 @@ void LBWalberla::sanity_checks(System::System const &system) const {
 void LBWalberla::on_lees_edwards_change() { update_collision_model(); }
 
 void LBWalberla::update_collision_model() {
-  auto const energy_conversion =
-      Utils::int_pow<2>(lb_params->get_agrid() / lb_params->get_tau());
-  auto const kT = lb_fluid->get_kT() * energy_conversion;
+  auto const kT = lb_fluid->get_kT();
   auto const seed = lb_fluid->get_seed();
   update_collision_model(*lb_fluid, *lb_params, kT, seed);
 }
@@ -138,7 +150,7 @@ void LBWalberla::update_collision_model() {
 void LBWalberla::update_collision_model(LBWalberlaBase &lb,
                                         LBWalberlaParams &params, double kT,
                                         unsigned int seed) {
-  auto const &system = ::System::get_system();
+  auto const &system = get_system();
   auto le_protocol = system.lees_edwards->get_protocol();
   if (le_protocol and
       not std::holds_alternative<LeesEdwards::Off>(*le_protocol)) {
@@ -166,4 +178,4 @@ void LBWalberla::update_collision_model(LBWalberlaBase &lb,
 
 } // namespace LB
 
-#endif // WALBERLA
+#endif // ESPRESSO_WALBERLA

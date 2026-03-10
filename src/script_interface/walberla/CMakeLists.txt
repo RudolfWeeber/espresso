@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2021-2023 The ESPResSo project
+# Copyright (C) 2021-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -26,9 +26,8 @@ if(ESPRESSO_BUILD_WITH_WALBERLA)
             ${CMAKE_CURRENT_SOURCE_DIR}/LBFluid.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/EKSpecies.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/EKSpeciesNode.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/EKSpeciesSlice.cpp)
-  target_link_libraries(
-    espresso_script_interface
-    PRIVATE espresso::walberla
-            $<$<BOOL:${ESPRESSO_BUILD_WITH_CUDA}>:espresso::walberla_cuda>)
+            ${CMAKE_CURRENT_SOURCE_DIR}/EKSpeciesSlice.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/EKPoissonSolverNode.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/EKPoissonSolverSlice.cpp)
+  target_link_libraries(espresso_script_interface PRIVATE espresso::walberla)
 endif(ESPRESSO_BUILD_WITH_WALBERLA)

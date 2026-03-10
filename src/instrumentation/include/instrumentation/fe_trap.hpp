@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 The ESPResSo project
+ * Copyright (C) 2024-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -21,7 +21,7 @@
 
 #include <config/config.hpp>
 
-#ifdef FPE
+#ifdef ESPRESSO_FPE
 
 #include <memory>
 #include <mutex>
@@ -144,4 +144,4 @@ public:
   make_shared_scoped(std::optional<int> excepts = std::nullopt);
 };
 
-#endif // FPE
+#endif // ESPRESSO_FPE

@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010-2022 The ESPResSo project
+# Copyright (C) 2010-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -171,6 +171,7 @@ class FieldTest(ut.TestCase):
             F.default_scale = 2.0
         with self.assertRaisesRegex(RuntimeError, "Parameter 'particle_scales' is read-only"):
             F.particle_scales = {0: 0.0}
+        self.assertIsNone(F.call_method("unknown"))
 
         for i in itertools.product(*map(range, 3 * [10])):
             x = (h * i)
@@ -232,6 +233,7 @@ class FieldTest(ut.TestCase):
             F.default_scale = 2.0
         with self.assertRaisesRegex(RuntimeError, "Parameter 'particle_scales' is read-only"):
             F.particle_scales = {0: 0.0}
+        self.assertIsNone(F.call_method("unknown"))
 
         for i in itertools.product(*map(range, 3 * [10])):
             x = (h * i)

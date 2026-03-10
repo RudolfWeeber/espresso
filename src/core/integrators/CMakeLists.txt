@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2020-2022 The ESPResSo project
+# Copyright (C) 2020-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -18,5 +18,7 @@
 #
 
 target_sources(
-  espresso_core PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/velocity_verlet_npt.cpp
-                        ${CMAKE_CURRENT_SOURCE_DIR}/steepest_descent.cpp)
+  espresso_core
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/velocity_verlet_npt_Andersen.cpp
+          ${CMAKE_CURRENT_SOURCE_DIR}/velocity_verlet_npt_MTK.cpp
+          ${CMAKE_CURRENT_SOURCE_DIR}/steepest_descent.cpp)

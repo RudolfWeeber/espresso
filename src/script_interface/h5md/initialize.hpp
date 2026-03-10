@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2022 The ESPResSo project
+ * Copyright (C) 2015-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -21,7 +21,7 @@
 #define SCRIPT_INTERFACE_H5MD_INITIALIZE_HPP
 
 #include "config/config.hpp"
-#ifdef H5MD
+#ifdef ESPRESSO_H5MD
 
 #include <script_interface/ObjectHandle.hpp>
 
@@ -35,5 +35,5 @@ void initialize(Utils::Factory<ObjectHandle> *om);
 } /* namespace Writer */
 } /* namespace ScriptInterface */
 
-#endif // H5MD
+#endif // ESPRESSO_H5MD
 #endif // SCRIPT_INTERFACE_H5MD_INITIALIZE_HPP

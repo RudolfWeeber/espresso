@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2022 The ESPResSo project
+ * Copyright (C) 2014-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -17,14 +17,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ESPRESSO_SRC_CORE_ERROR_HANDLING_RUNTIME_ERROR_COLLECTOR_HPP
-#define ESPRESSO_SRC_CORE_ERROR_HANDLING_RUNTIME_ERROR_COLLECTOR_HPP
+#pragma once
 
 #include "error_handling/RuntimeError.hpp"
 
 #include <boost/mpi/communicator.hpp>
 
-#include <sstream>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -35,23 +34,14 @@ public:
   explicit RuntimeErrorCollector(boost::mpi::communicator comm);
   ~RuntimeErrorCollector();
 
-  void message(RuntimeError message);
-  void message(const RuntimeError &message);
   void message(RuntimeError::ErrorLevel level, const std::string &msg,
                const char *function, const char *file, int line);
 
   void warning(const std::string &msg, const char *function, const char *file,
                int line);
-  void warning(const char *msg, const char *function, const char *file,
-               int line);
-  void warning(const std::ostringstream &mstr, const char *function,
-               const char *file, int line);
 
   void error(const std::string &msg, const char *function, const char *file,
              int line);
-  void error(const char *msg, const char *function, const char *file, int line);
-  void error(const std::ostringstream &mstr, const char *function,
-             const char *file, int line);
 
   /**
    * \brief Get the number of all flying messages on all nodes.
@@ -85,10 +75,9 @@ public:
   const boost::mpi::communicator &comm() const { return m_comm; }
 
 private:
+  mutable std::mutex mutex;
   std::vector<RuntimeError> m_errors;
   boost::mpi::communicator m_comm;
 };
 
 } // namespace ErrorHandling
-
-#endif

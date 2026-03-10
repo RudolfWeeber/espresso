@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The ESPResSo project
+ * Copyright (C) 2023-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -24,9 +24,7 @@
 #include "utils.hpp"
 
 #include <cassert>
-#include <cmath>
 #include <memory>
-#include <optional>
 
 namespace EK {
 
@@ -69,6 +67,8 @@ struct Solver : public System::Leaf<Solver> {
    * All derived parameters and the fluid are reset to their default values.
    */
   void init() const {}
+
+  bool is_gpu() const;
 
   /**
    * @brief Get the EK time step.

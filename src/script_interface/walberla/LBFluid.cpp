@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2023 The ESPResSo project
+ * Copyright (C) 2021-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -16,9 +16,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include "config/config.hpp"
+#include <config/config.hpp>
 
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
 
 #include "LBFluid.hpp"
 #include "LBWalberlaNodeState.hpp"
@@ -30,11 +30,14 @@
 #include "core/lees_edwards/protocols.hpp"
 #include "core/system/System.hpp"
 
+#include <script_interface/code_info/CodeInfo.hpp>
 #include <script_interface/communication.hpp>
 
 #include <walberla_bridge/LatticeWalberla.hpp>
 #include <walberla_bridge/lattice_boltzmann/LeesEdwardsPack.hpp>
 #include <walberla_bridge/lattice_boltzmann/lb_walberla_init.hpp>
+#include <walberla_bridge/utils/ResourceManager.hpp>
+#include <walberla_bridge/walberla_init.hpp>
 
 #include <utils/Vector.hpp>
 #include <utils/matrix.hpp>
@@ -47,12 +50,14 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace ScriptInterface::walberla {
@@ -66,21 +71,25 @@ std::unordered_map<std::string, int> const LBVTKHandle::obs_map = {
 Variant LBFluid::do_call_method(std::string const &name,
                                 VariantMap const &params) {
   if (name == "activate") {
-    context()->parallel_try_catch([this]() {
-      ::System::get_system().lb.set<::LB::LBWalberla>(m_instance, m_lb_params);
-    });
+    auto &system = get_system();
+    context()->parallel_try_catch(
+        [&]() { lb_throw_if_expired(m_mpi_cart_comm_observer); });
+    system.lb.set<::LB::LBWalberla>(m_instance, m_lb_params);
+    system.lb.update_collision_model();
     m_is_active = true;
     return {};
   }
   if (name == "deactivate") {
-    if (m_is_active) {
-      ::System::get_system().lb.reset();
-      m_is_active = false;
-    }
+    get_system().lb.reset();
+    m_is_active = false;
     return {};
   }
+  if (not name.starts_with("get_")) {
+    context()->parallel_try_catch(
+        [&]() { lb_throw_if_expired(m_mpi_cart_comm_observer); });
+  }
   if (name == "add_force_at_pos") {
-    auto const &box_geo = *::System::get_system().box_geo;
+    auto const &box_geo = *get_system().box_geo;
     auto const pos = get_value<Utils::Vector3d>(params, "pos");
     auto const f = get_value<Utils::Vector3d>(params, "force");
     auto const folded_pos = box_geo.folded_position(pos);
@@ -91,24 +100,31 @@ Variant LBFluid::do_call_method(std::string const &name,
     auto const pos = get_value<Utils::Vector3d>(params, "pos");
     return get_interpolated_velocity(pos);
   }
+  if (name == "get_boundary_force_from_shape") {
+    return get_boundary_force_from_shape(
+        get_value<std::vector<int>>(params, "raster"));
+  }
+  if (name == "get_boundary_force") {
+    return get_boundary_force();
+  }
   if (name == "get_pressure_tensor") {
     return get_average_pressure_tensor();
   }
   if (name == "load_checkpoint") {
-    auto const path = get_value<std::string>(params, "path");
+    auto const path = get_value<std::filesystem::path>(params, "path");
     auto const mode = get_value<int>(params, "mode");
     load_checkpoint(path, mode);
     return {};
   }
   if (name == "save_checkpoint") {
-    auto const path = get_value<std::string>(params, "path");
+    auto const path = get_value<std::filesystem::path>(params, "path");
     auto const mode = get_value<int>(params, "mode");
     save_checkpoint(path, mode);
     return {};
   }
   if (name == "clear_boundaries") {
     m_instance->clear_boundaries();
-    ::System::get_system().on_lb_boundary_conditions_change();
+    get_system().on_lb_boundary_conditions_change();
     return {};
   }
   if (name == "add_boundary_from_shape") {
@@ -124,33 +140,31 @@ Variant LBFluid::do_call_method(std::string const &name,
   return Base::do_call_method(name, params);
 }
 
-void LBFluidCPU::make_instance(VariantMap const &params) {
+void LBFluid::make_instance(VariantMap const &params) {
   auto const visc = get_value<double>(params, "kinematic_viscosity");
   auto const dens = get_value<double>(params, "density");
-  auto const precision = get_value<bool>(params, "single_precision");
+  auto const gpu = get_value_or(params, "gpu", false);
+  auto const precision = get_value_or(params, "single_precision", gpu);
   auto const lb_lattice = m_lattice->lattice();
   auto const lb_visc = m_conv_visc * visc;
   auto const lb_dens = m_conv_dens * dens;
-  m_instance = new_lb_walberla_cpu(lb_lattice, lb_visc, lb_dens, precision);
-}
-
-#ifdef CUDA
-void LBFluidGPU::make_instance(VariantMap const &params) {
-  auto const visc = get_value<double>(params, "kinematic_viscosity");
-  auto const dens = get_value<double>(params, "density");
-  auto const precision = get_value<bool>(params, "single_precision");
-  auto const blocks_per_mpi_rank = get_value<Utils::Vector3i>(
-      m_lattice->get_parameter("blocks_per_mpi_rank"));
-  if (blocks_per_mpi_rank != Utils::Vector3i{{1, 1, 1}}) {
-    throw std::runtime_error(
-        "Using more than one block per MPI rank is not supported for GPU LB");
+  auto *make_new_instance = &new_lb_walberla_cpu;
+  if (gpu) {
+    std::vector<std::string> required_features;
+    required_features.emplace_back("CUDA");
+    CodeInfo::check_features(required_features);
+#ifdef ESPRESSO_CUDA
+    auto const blocks_per_mpi_rank = get_value<Utils::Vector3i>(
+        m_lattice->get_parameter("blocks_per_mpi_rank"));
+    if (blocks_per_mpi_rank != Utils::Vector3i{{1, 1, 1}}) {
+      throw std::runtime_error(
+          "Using more than one block per MPI rank is not supported for GPU LB");
+    }
+    make_new_instance = &new_lb_walberla_gpu;
+#endif
   }
-  auto const lb_lattice = m_lattice->lattice();
-  auto const lb_visc = m_conv_visc * visc;
-  auto const lb_dens = m_conv_dens * dens;
-  m_instance = new_lb_walberla_gpu(lb_lattice, lb_visc, lb_dens, precision);
+  m_instance = make_new_instance(lb_lattice, lb_visc, lb_dens, precision);
 }
-#endif // CUDA
 
 void LBFluid::do_construct(VariantMap const &params) {
   m_lattice = get_value<std::shared_ptr<LatticeWalberla>>(params, "lattice");
@@ -194,35 +208,47 @@ void LBFluid::do_construct(VariantMap const &params) {
       throw std::domain_error("Parameter 'kinematic_viscosity' must be >= 0");
     }
     make_instance(params);
-    ::LB::LBWalberla::update_collision_model(*m_instance, *m_lb_params, lb_kT,
-                                             static_cast<unsigned int>(seed));
+    m_mpi_cart_comm_observer = ::walberla::get_mpi_cart_comm_observer();
+    m_instance->set_collision_model(lb_kT, seed);
     m_instance->set_external_force(lb_ext_f);
     m_instance->ghost_communication();
     for (auto &vtk : m_vtk_writers) {
-      vtk->attach_to_lattice(m_instance, get_latice_to_md_units_conversion());
+      vtk->attach_to_lattice(m_instance, get_lattice_to_md_units_conversion());
     }
   });
+}
+
+Variant
+LBFluid::get_boundary_force_from_shape(std::vector<int> const &raster) const {
+  auto const local =
+      m_instance->get_boundary_force_from_shape(raster) / m_conv_force;
+  return mpi_reduce_sum(context()->get_comm(), local);
+}
+
+Variant LBFluid::get_boundary_force() const {
+  auto const local = m_instance->get_boundary_force() / m_conv_force;
+  return mpi_reduce_sum(context()->get_comm(), local);
 }
 
 std::vector<Variant> LBFluid::get_average_pressure_tensor() const {
   auto const local = m_instance->get_pressure_tensor() / m_conv_press;
   auto const tensor_flat = mpi_reduce_sum(context()->get_comm(), local);
   auto tensor = Utils::Matrix<double, 3, 3>{};
-  std::copy(tensor_flat.begin(), tensor_flat.end(), tensor.m_data.begin());
+  std::ranges::copy(tensor_flat, tensor.m_data.begin());
   return std::vector<Variant>{tensor.row<0>().as_vector(),
                               tensor.row<1>().as_vector(),
                               tensor.row<2>().as_vector()};
 }
 
 Variant LBFluid::get_interpolated_velocity(Utils::Vector3d const &pos) const {
-  auto const &box_geo = *::System::get_system().box_geo;
+  auto const &box_geo = *get_system().box_geo;
   auto const lb_pos = box_geo.folded_position(pos) * m_conv_dist;
   auto const result = m_instance->get_velocity_at_pos(lb_pos);
   return Utils::Mpi::reduce_optional(context()->get_comm(), result) /
          m_conv_speed;
 }
 
-void LBFluid::load_checkpoint(std::string const &filename, int mode) {
+void LBFluid::load_checkpoint(std::filesystem::path const &path, int mode) {
   auto &lb_obj = *m_instance;
 
   auto const read_metadata = [&lb_obj](CheckpointFile &cpfile) {
@@ -277,11 +303,11 @@ void LBFluid::load_checkpoint(std::string const &filename, int mode) {
     lb_obj.reallocate_ubb_field();
   };
 
-  load_checkpoint_common(*context(), "LB", filename, mode, read_metadata,
-                         read_data, on_success);
+  load_checkpoint_common(*context(), "LB", path, mode, read_metadata, read_data,
+                         on_success);
 }
 
-void LBFluid::save_checkpoint(std::string const &filename, int mode) {
+void LBFluid::save_checkpoint(std::filesystem::path const &path, int mode) {
   auto &lb_obj = *m_instance;
 
   auto const write_metadata = [&lb_obj,
@@ -374,10 +400,10 @@ void LBFluid::save_checkpoint(std::string const &filename, int mode) {
     }
   };
 
-  save_checkpoint_common(*context(), "LB", filename, mode, write_metadata,
+  save_checkpoint_common(*context(), "LB", path, mode, write_metadata,
                          write_data, on_failure);
 }
 
 } // namespace ScriptInterface::walberla
 
-#endif // WALBERLA
+#endif // ESPRESSO_WALBERLA

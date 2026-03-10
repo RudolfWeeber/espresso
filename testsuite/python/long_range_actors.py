@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2021-2022 The ESPResSo project
+# Copyright (C) 2021-2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -103,15 +103,20 @@ class Test(ut.TestCase):
 
         self.system.electrostatics.solver = p3m
         self.system.electrostatics.extension = icc
-        if espressomd.has_features(["NPT"]):
-            with self.assertRaisesRegex(Exception, "ERROR: ICC does not work in the NPT ensemble"):
+
+        def run_with_npt(barostat):
+            with self.assertRaisesRegex(Exception, "ERROR: ICC does not work in the NpT ensemble"):
                 self.system.thermostat.set_npt(
                     kT=1., gamma0=2., gammav=0., seed=42)
                 self.system.integrator.set_isotropic_npt(
-                    ext_pressure=2., piston=0.01)
+                    ext_pressure=2., piston=0.01, barostat=barostat)
                 self.system.integrator.run(0)
             self.system.thermostat.turn_off()
             self.system.integrator.set_vv()
+
+        if espressomd.has_features(["NPT"]):
+            run_with_npt("Andersen")
+            run_with_npt("MTK")
         with self.assertRaisesRegex(RuntimeError, "Cannot change solver when an extension is active"):
             self.system.electrostatics.solver = p3m_new
         with self.assertRaisesRegex(RuntimeError, "Cannot change solver when an extension is active"):
@@ -168,7 +173,8 @@ class Test(ut.TestCase):
     @utx.skipIfMissingFeatures(["P3M"])
     def test_p3m_gpu_pressure(self):
         self.add_charged_particles()
-        p3m = espressomd.electrostatics.P3MGPU(**self.valid_p3m_parameters())
+        p3m = espressomd.electrostatics.P3M(
+            **self.valid_p3m_parameters(), gpu=True)
         self.system.electrostatics.solver = p3m
         self.check_obs_stats("coulomb")
 
@@ -218,13 +224,14 @@ class Test(ut.TestCase):
     @utx.skipIfMissingFeatures(["DIPOLES"])
     def test_mdds_cpu_no_magnetic_particles(self):
         self.system.part.add(pos=2 * [[1., 1., 1.]], dip=2 * [[0., 0., 0.]])
-        mdds = espressomd.magnetostatics.DipolarDirectSumCpu(prefactor=2.)
+        mdds = espressomd.magnetostatics.DipolarDirectSum(prefactor=2.)
         self.system.magnetostatics.solver = mdds
         energy = self.system.analysis.energy()
         self.assertAlmostEqual(energy["dipolar"], 0., delta=1e-12)
 
-    def check_p3m_pre_conditions(self, container, class_p3m):
-        params = {"prefactor": 1., "accuracy": 1., "r_cut": 1., "alpha": 1.}
+    def check_p3m_pre_conditions(self, container, class_p3m, **kwargs):
+        params = {
+            "prefactor": 1., "accuracy": 1., "r_cut": 1., "alpha": 1., **kwargs}
 
         # P3M pre-condition: cao / mesh[i] < 1
         with self.assertRaisesRegex(RuntimeError, "k-space cutoff .+ is larger than half of box dimension"):
@@ -250,7 +257,7 @@ class Test(ut.TestCase):
         self.add_charged_particles()
         self.check_p3m_pre_conditions(
             self.system.electrostatics,
-            espressomd.electrostatics.P3MGPU)
+            espressomd.electrostatics.P3M, gpu=True)
 
     @utx.skipIfMissingFeatures(["DP3M"])
     @ut.skipIf(n_nodes < 3, "only runs for 3+ MPI ranks")
@@ -270,29 +277,29 @@ class Test(ut.TestCase):
         self.assertFalse(p3m.is_tuned)
         self.assertIsNone(self.system.electrostatics.solver)
 
-    def check_p3m_tuning_errors(self, p3m):
+    def check_p3m_tuning_errors(self, module, p3m):
         # set an incompatible combination of thermostat and integrators
         self.system.integrator.set_isotropic_npt(ext_pressure=2., piston=0.01)
         self.system.thermostat.set_brownian(kT=1.0, gamma=1.0, seed=42)
         with self.assertRaisesRegex(RuntimeError, r"tuning failed: an exception was thrown while benchmarking the integration loop"):
-            self.system.electrostatics.solver = p3m
+            getattr(self.system, module).solver = p3m
         self.assertFalse(p3m.is_tuned)
-        self.assertIsNone(self.system.electrostatics.solver)
+        self.assertIsNone(getattr(self.system, module).solver)
 
     @utx.skipIfMissingFeatures(["P3M", "NPT"])
     def test_p3m_cpu_tuning_errors(self):
         self.add_charged_particles()
         p3m = espressomd.electrostatics.P3M(prefactor=1., accuracy=1e-3)
-        self.check_p3m_tuning_errors(p3m)
+        self.check_p3m_tuning_errors("electrostatics", p3m)
 
     @utx.skipIfMissingFeatures(["DP3M", "NPT"])
     def test_dp3m_cpu_tuning_errors(self):
         self.add_magnetic_particles()
         dp3m = espressomd.magnetostatics.DipolarP3M(
             prefactor=1., accuracy=1e-3)
-        self.check_p3m_tuning_errors(dp3m)
+        self.check_p3m_tuning_errors("magnetostatics", dp3m)
 
-    @utx.skipIfMissingFeatures(["ELECTROSTATICS"])
+    @utx.skipIfMissingFeatures(["MMM1D"])
     def test_mmm1d_cpu_exceptions(self):
         self.system.periodicity = (False, False, True)
         mmm1d = espressomd.electrostatics.MMM1D(prefactor=1., maxPWerror=1e-2)

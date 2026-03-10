@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -54,9 +54,6 @@
 #include "bonded_interactions/bonded_interaction_data.hpp"
 #include "cell_system/CellStructure.hpp"
 #include "errorhandling.hpp"
-#include "system/System.hpp"
-
-#include <utils/Vector.hpp>
 
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/archive/binary_oarchive.hpp>
@@ -73,6 +70,7 @@
 #include <cstdio>
 #include <cstring>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <sys/stat.h>
 #include <tuple>
@@ -81,6 +79,10 @@
 
 namespace Mpiio {
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunreachable-code-return"
+#endif
 /**
  * @brief Fatal error handler.
  * On 1 MPI rank the error is recoverable and an exception is thrown.
@@ -108,6 +110,9 @@ static bool fatal_error(char const *msg, std::string const &fn = "",
   errexit();
   return false;
 }
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 /**
  * @brief Fatal error handler that closes an open file and queries the

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 The ESPResSo project
+ * Copyright (C) 2023-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -17,7 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
 #include "lb/Implementation.hpp"
 #include "lb/Solver.hpp"
@@ -30,7 +30,7 @@
 #include "system/System.hpp"
 #include "thermostat.hpp"
 
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
 #include <walberla_bridge/lattice_boltzmann/LBWalberlaBase.hpp>
 #endif
 
@@ -38,6 +38,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -64,7 +65,11 @@ static void check_solver(std::unique_ptr<Solver::Implementation> const &ptr) {
 bool Solver::is_solver_set() const { return LB::is_solver_set(impl); }
 
 void Solver::reset() {
-  System::get_system().lb.impl->solver = std::nullopt;
+  if (impl->solver) {
+    std::visit([this](auto &ptr) { ptr->detach_system(m_system.lock()); },
+               *impl->solver);
+    impl->solver = std::nullopt;
+  }
   m_conv = Conversions{};
 }
 
@@ -193,6 +198,19 @@ Utils::VectorXd<9> Solver::get_pressure_tensor() const {
                     *impl->solver);
 }
 
+std::function<bool(Utils::Vector3d const &)>
+Solver::make_lattice_position_checker(bool consider_points_in_halo) const {
+  return std::visit(
+      [&](auto &ptr) -> std::function<bool(Utils::Vector3d const &)> {
+        auto const &box_geo = *System::get_system().box_geo;
+        return [&, kernel = ptr->make_lattice_position_checker(
+                       consider_points_in_halo)](Utils::Vector3d const &pos) {
+          return kernel(box_geo.folded_position(pos) * m_conv.pos_to_lb);
+        };
+      },
+      *impl->solver);
+}
+
 std::optional<Utils::Vector3d>
 Solver::get_interpolated_velocity(Utils::Vector3d const &pos) const {
   /* calculate fluid velocity at particle's position
@@ -214,6 +232,22 @@ Solver::get_interpolated_density(Utils::Vector3d const &pos) const {
         auto const &box_geo = *System::get_system().box_geo;
         auto const lb_pos = box_geo.folded_position(pos) * m_conv.pos_to_lb;
         return ptr->get_density_at_pos(lb_pos, false);
+      },
+      *impl->solver);
+}
+
+std::vector<double> Solver::get_interpolated_densities(
+    std::vector<Utils::Vector3d> const &pos) const {
+  return std::visit(
+      [&](auto &ptr) {
+        auto const &box_geo = *System::get_system().box_geo;
+        std::vector<Utils::Vector3d> pos_lb;
+        pos_lb.reserve(pos.size());
+        for (auto const &pos_md : pos) {
+          pos_lb.emplace_back(box_geo.folded_position(pos_md) *
+                              m_conv.pos_to_lb);
+        }
+        return ptr->get_densities_at_pos(pos_lb);
       },
       *impl->solver);
 }
@@ -287,10 +321,11 @@ Utils::Vector3d Solver::get_momentum() const {
 template <> void Solver::set<LBNone>(std::shared_ptr<LBNone> lb_instance) {
   assert(impl);
   assert(not impl->solver.has_value());
+  lb_instance->bind_system(m_system.lock());
   impl->solver = lb_instance;
 }
 
-#ifdef WALBERLA
+#ifdef ESPRESSO_WALBERLA
 template <>
 void Solver::set<LBWalberla>(std::shared_ptr<LBWalberlaBase> lb_fluid,
                              std::shared_ptr<LBWalberlaParams> lb_params) {
@@ -298,6 +333,7 @@ void Solver::set<LBWalberla>(std::shared_ptr<LBWalberlaBase> lb_fluid,
   assert(not impl->solver.has_value());
   auto const &system = get_system();
   auto lb_instance = std::make_shared<LBWalberla>(lb_fluid, lb_params);
+  lb_instance->bind_system(m_system.lock());
   lb_instance->sanity_checks(system);
   auto const &lebc = system.box_geo->lees_edwards_bc();
   lb_fluid->check_lebc(lebc.shear_direction, lebc.shear_plane_normal);
@@ -306,6 +342,6 @@ void Solver::set<LBWalberla>(std::shared_ptr<LBWalberlaBase> lb_fluid,
   auto const tau = lb_instance->get_tau();
   m_conv = Conversions{1. / agrid, agrid / tau, tau * tau / agrid};
 }
-#endif // WALBERLA
+#endif // ESPRESSO_WALBERLA
 
 } // namespace LB

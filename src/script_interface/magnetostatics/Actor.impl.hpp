@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The ESPResSo project
+ * Copyright (C) 2022-2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -21,7 +21,7 @@
 
 #include "config/config.hpp"
 
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
 
 #include "Actor.hpp"
 
@@ -37,8 +37,8 @@ namespace ScriptInterface {
 namespace Dipoles {
 
 template <class SIClass, class CoreClass>
-Variant Actor<SIClass, CoreClass>::do_call_method(std::string const &name,
-                                                  VariantMap const &params) {
+Variant Actor<SIClass, CoreClass>::do_call_method(
+    std::string const &name, [[maybe_unused]] VariantMap const &params) {
   assert(params.empty());
   if (name == "activate") {
     context()->parallel_try_catch([this]() {
@@ -55,4 +55,4 @@ Variant Actor<SIClass, CoreClass>::do_call_method(std::string const &name,
 } // namespace Dipoles
 } // namespace ScriptInterface
 
-#endif // DIPOLES
+#endif // ESPRESSO_DIPOLES

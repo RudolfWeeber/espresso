@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2022 The ESPResSo project
+ * Copyright (C) 2010-2026 The ESPResSo project
  * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
  *   Max-Planck-Institute for Polymer Research, Theory Group
  *
@@ -19,13 +19,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "config/config.hpp"
+#include <config/config.hpp>
 
 #include "BoxGeometry.hpp"
 #include "Observable_stat.hpp"
 #include "Particle.hpp"
-#include "ParticleRange.hpp"
 #include "bonded_interactions/bonded_interaction_data.hpp"
+#include "dpd.hpp"
 #include "electrostatics/coulomb.hpp"
 #include "magnetostatics/dipoles.hpp"
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
@@ -76,11 +76,11 @@ std::shared_ptr<Observable_stat> System::calculate_pressure() {
             iaparams, p1, partners, *box_geo, coulomb_force_kernel_ptr);
         if (result) {
           auto const &tensor = result.value();
+          auto const output = obs_pressure.bonded_contribution(bond_id);
           /* pressure tensor part */
           for (std::size_t k = 0u; k < 3u; k++)
             for (std::size_t l = 0u; l < 3u; l++)
-              obs_pressure.bonded_contribution(bond_id)[k * 3u + l] +=
-                  tensor(k, l);
+              output[k * 3u + l] += tensor(k, l);
 
           return false;
         }
@@ -93,27 +93,32 @@ std::shared_ptr<Observable_stat> System::calculate_pressure() {
         auto const &ia_params =
             nonbonded_ias->get_ia_param(p1.type(), p2.type());
         add_non_bonded_pair_virials(p1, p2, d.vec21, sqrt(d.dist2), ia_params,
-                                    *bonded_ias, coulomb_force_kernel_ptr,
+                                    *bonded_ias, dipoles,
+                                    coulomb_force_kernel_ptr,
                                     coulomb_pressure_kernel_ptr, obs_pressure);
       },
       *cell_structure, maximal_cutoff(), bonded_ias->maximal_cutoff());
 
-#ifdef ELECTROSTATICS
+#ifdef ESPRESSO_ELECTROSTATICS
   /* calculate k-space part of electrostatic interaction. */
-  auto const coulomb_pressure = coulomb.calc_pressure_long_range(local_parts);
+  auto const coulomb_pressure = coulomb.calc_pressure_long_range();
   std::ranges::copy(coulomb_pressure, obs_pressure.coulomb.begin() + 9u);
 #endif
-#ifdef DIPOLES
+#ifdef ESPRESSO_DIPOLES
   /* calculate k-space part of magnetostatic interaction. */
-  Dipoles::get_dipoles().calc_pressure_long_range();
+  dipoles.calc_pressure_long_range();
 #endif
 
-#ifdef VIRTUAL_SITES_RELATIVE
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
   if (!obs_pressure.virtual_sites.empty()) {
     auto const vs_pressure = vs_relative_pressure_tensor(*cell_structure);
     std::ranges::copy(Utils::flatten(vs_pressure),
                       obs_pressure.virtual_sites.begin());
   }
+#endif
+
+#ifdef ESPRESSO_DPD
+  std::ranges::copy(dpd_pressure_local(*this), obs_pressure.dpd.begin());
 #endif
 
   obs_pressure.rescale(volume);
