@@ -178,11 +178,4 @@ int ClusterStructure::get_next_free_cluster_id() {
   return max_id + 1;
 }
 
-void ClusterStructure::sanity_checks() const {
-  if (get_box_geo()->type() != BoxType::CUBOID) {
-    throw std::runtime_error(
-        "Cluster analysis is not compatible with non-cuboid box types");
-  }
-}
-
 } // namespace ClusterAnalysis
