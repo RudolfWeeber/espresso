@@ -189,27 +189,14 @@ static FUNC_PREFIX void colorgradientstreamsweepsingleprecision_colorgradientstr
 void ColorGradientStreamSweepSinglePrecision::run(IBlock * block)
 {
    
-    auto force_a = block->getData< field::GhostLayerField<float, 3> >(force_aID);
+    auto phasefield = block->getData< field::GhostLayerField<float, 1> >(phasefieldID);
+    auto pdfs_a = block->getData< field::GhostLayerField<float, 19> >(pdfs_aID);
+    auto rho_a = block->getData< field::GhostLayerField<float, 1> >(rho_aID);
     auto rho_b = block->getData< field::GhostLayerField<float, 1> >(rho_bID);
     auto velocity = block->getData< field::GhostLayerField<float, 3> >(velocityID);
-    auto pdfs_a = block->getData< field::GhostLayerField<float, 19> >(pdfs_aID);
-    auto phasefield = block->getData< field::GhostLayerField<float, 1> >(phasefieldID);
+    auto force_a = block->getData< field::GhostLayerField<float, 3> >(force_aID);
     auto force_b = block->getData< field::GhostLayerField<float, 3> >(force_bID);
-    auto rho_a = block->getData< field::GhostLayerField<float, 1> >(rho_aID);
     auto pdfs_b = block->getData< field::GhostLayerField<float, 19> >(pdfs_bID);
-    field::GhostLayerField<float, 19> * pdfs_a_tmp;
-    {
-        if (cache_pdfs_a_.find(block) == cache_pdfs_a_.end())
-        {
-            pdfs_a_tmp = pdfs_a->cloneUninitialized();
-            cache_pdfs_a_[block] = pdfs_a_tmp;
-        }
-        else
-        {
-            pdfs_a_tmp = cache_pdfs_a_[block];
-        }
-    }
-
     field::GhostLayerField<float, 19> * pdfs_b_tmp;
     {
         if (cache_pdfs_b_.find(block) == cache_pdfs_b_.end())
@@ -220,6 +207,19 @@ void ColorGradientStreamSweepSinglePrecision::run(IBlock * block)
         else
         {
             pdfs_b_tmp = cache_pdfs_b_[block];
+        }
+    }
+
+    field::GhostLayerField<float, 19> * pdfs_a_tmp;
+    {
+        if (cache_pdfs_a_.find(block) == cache_pdfs_a_.end())
+        {
+            pdfs_a_tmp = pdfs_a->cloneUninitialized();
+            cache_pdfs_a_[block] = pdfs_a_tmp;
+        }
+        else
+        {
+            pdfs_a_tmp = cache_pdfs_a_[block];
         }
     }
 
@@ -315,27 +315,14 @@ void ColorGradientStreamSweepSinglePrecision::runOnCellInterval(const shared_ptr
     if( ci.empty() )
         return;
 
-    auto force_a = block->getData< field::GhostLayerField<float, 3> >(force_aID);
+    auto phasefield = block->getData< field::GhostLayerField<float, 1> >(phasefieldID);
+    auto pdfs_a = block->getData< field::GhostLayerField<float, 19> >(pdfs_aID);
+    auto rho_a = block->getData< field::GhostLayerField<float, 1> >(rho_aID);
     auto rho_b = block->getData< field::GhostLayerField<float, 1> >(rho_bID);
     auto velocity = block->getData< field::GhostLayerField<float, 3> >(velocityID);
-    auto pdfs_a = block->getData< field::GhostLayerField<float, 19> >(pdfs_aID);
-    auto phasefield = block->getData< field::GhostLayerField<float, 1> >(phasefieldID);
+    auto force_a = block->getData< field::GhostLayerField<float, 3> >(force_aID);
     auto force_b = block->getData< field::GhostLayerField<float, 3> >(force_bID);
-    auto rho_a = block->getData< field::GhostLayerField<float, 1> >(rho_aID);
     auto pdfs_b = block->getData< field::GhostLayerField<float, 19> >(pdfs_bID);
-    field::GhostLayerField<float, 19> * pdfs_a_tmp;
-    {
-        if (cache_pdfs_a_.find(block) == cache_pdfs_a_.end())
-        {
-            pdfs_a_tmp = pdfs_a->cloneUninitialized();
-            cache_pdfs_a_[block] = pdfs_a_tmp;
-        }
-        else
-        {
-            pdfs_a_tmp = cache_pdfs_a_[block];
-        }
-    }
-
     field::GhostLayerField<float, 19> * pdfs_b_tmp;
     {
         if (cache_pdfs_b_.find(block) == cache_pdfs_b_.end())
@@ -346,6 +333,19 @@ void ColorGradientStreamSweepSinglePrecision::runOnCellInterval(const shared_ptr
         else
         {
             pdfs_b_tmp = cache_pdfs_b_[block];
+        }
+    }
+
+    field::GhostLayerField<float, 19> * pdfs_a_tmp;
+    {
+        if (cache_pdfs_a_.find(block) == cache_pdfs_a_.end())
+        {
+            pdfs_a_tmp = pdfs_a->cloneUninitialized();
+            cache_pdfs_a_[block] = pdfs_a_tmp;
+        }
+        else
+        {
+            pdfs_a_tmp = cache_pdfs_a_[block];
         }
     }
 

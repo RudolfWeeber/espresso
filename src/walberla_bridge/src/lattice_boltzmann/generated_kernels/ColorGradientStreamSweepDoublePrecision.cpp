@@ -190,13 +190,13 @@ void ColorGradientStreamSweepDoublePrecision::run(IBlock * block)
 {
    
     auto rho_a = block->getData< field::GhostLayerField<double, 1> >(rho_aID);
+    auto velocity = block->getData< field::GhostLayerField<double, 3> >(velocityID);
+    auto rho_b = block->getData< field::GhostLayerField<double, 1> >(rho_bID);
+    auto force_b = block->getData< field::GhostLayerField<double, 3> >(force_bID);
+    auto pdfs_b = block->getData< field::GhostLayerField<double, 19> >(pdfs_bID);
+    auto pdfs_a = block->getData< field::GhostLayerField<double, 19> >(pdfs_aID);
     auto phasefield = block->getData< field::GhostLayerField<double, 1> >(phasefieldID);
     auto force_a = block->getData< field::GhostLayerField<double, 3> >(force_aID);
-    auto pdfs_a = block->getData< field::GhostLayerField<double, 19> >(pdfs_aID);
-    auto rho_b = block->getData< field::GhostLayerField<double, 1> >(rho_bID);
-    auto velocity = block->getData< field::GhostLayerField<double, 3> >(velocityID);
-    auto pdfs_b = block->getData< field::GhostLayerField<double, 19> >(pdfs_bID);
-    auto force_b = block->getData< field::GhostLayerField<double, 3> >(force_bID);
     field::GhostLayerField<double, 19> * pdfs_b_tmp;
     {
         if (cache_pdfs_b_.find(block) == cache_pdfs_b_.end())
@@ -316,13 +316,13 @@ void ColorGradientStreamSweepDoublePrecision::runOnCellInterval(const shared_ptr
         return;
 
     auto rho_a = block->getData< field::GhostLayerField<double, 1> >(rho_aID);
+    auto velocity = block->getData< field::GhostLayerField<double, 3> >(velocityID);
+    auto rho_b = block->getData< field::GhostLayerField<double, 1> >(rho_bID);
+    auto force_b = block->getData< field::GhostLayerField<double, 3> >(force_bID);
+    auto pdfs_b = block->getData< field::GhostLayerField<double, 19> >(pdfs_bID);
+    auto pdfs_a = block->getData< field::GhostLayerField<double, 19> >(pdfs_aID);
     auto phasefield = block->getData< field::GhostLayerField<double, 1> >(phasefieldID);
     auto force_a = block->getData< field::GhostLayerField<double, 3> >(force_aID);
-    auto pdfs_a = block->getData< field::GhostLayerField<double, 19> >(pdfs_aID);
-    auto rho_b = block->getData< field::GhostLayerField<double, 1> >(rho_bID);
-    auto velocity = block->getData< field::GhostLayerField<double, 3> >(velocityID);
-    auto pdfs_b = block->getData< field::GhostLayerField<double, 19> >(pdfs_bID);
-    auto force_b = block->getData< field::GhostLayerField<double, 3> >(force_bID);
     field::GhostLayerField<double, 19> * pdfs_b_tmp;
     {
         if (cache_pdfs_b_.find(block) == cache_pdfs_b_.end())

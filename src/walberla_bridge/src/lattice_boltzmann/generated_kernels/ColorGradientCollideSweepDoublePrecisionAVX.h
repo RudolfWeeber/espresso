@@ -54,8 +54,8 @@ namespace pystencils {
 class ColorGradientCollideSweepDoublePrecisionAVX
 {
 public:
-   ColorGradientCollideSweepDoublePrecisionAVX( BlockDataID force_aID_, BlockDataID force_bID_, BlockDataID pdfs_aID_, BlockDataID pdfs_bID_, BlockDataID phasefieldID_, BlockDataID rho_aID_, BlockDataID rho_bID_, BlockDataID velocityID_, double omega_even_a, double omega_even_b, double omega_odd_a, double omega_odd_b, double omega_shear_a, double omega_shear_b )
-     : force_aID(force_aID_), force_bID(force_bID_), pdfs_aID(pdfs_aID_), pdfs_bID(pdfs_bID_), phasefieldID(phasefieldID_), rho_aID(rho_aID_), rho_bID(rho_bID_), velocityID(velocityID_), omega_even_a_(omega_even_a), omega_even_b_(omega_even_b), omega_odd_a_(omega_odd_a), omega_odd_b_(omega_odd_b), omega_shear_a_(omega_shear_a), omega_shear_b_(omega_shear_b)
+   ColorGradientCollideSweepDoublePrecisionAVX( BlockDataID force_aID_, BlockDataID force_bID_, BlockDataID pdfs_aID_, BlockDataID pdfs_bID_, BlockDataID phasefieldID_, BlockDataID rho_aID_, BlockDataID rho_bID_, BlockDataID velocityID_, double beta, double omega_even_a, double omega_even_b, double omega_odd_a, double omega_odd_b, double omega_shear_a, double omega_shear_b, double sigma )
+     : force_aID(force_aID_), force_bID(force_bID_), pdfs_aID(pdfs_aID_), pdfs_bID(pdfs_bID_), phasefieldID(phasefieldID_), rho_aID(rho_aID_), rho_bID(rho_bID_), velocityID(velocityID_), beta_(beta), omega_even_a_(omega_even_a), omega_even_b_(omega_even_b), omega_odd_a_(omega_odd_a), omega_odd_b_(omega_odd_b), omega_shear_a_(omega_shear_a), omega_shear_b_(omega_shear_b), sigma_(sigma)
    {}
 
    
@@ -105,18 +105,22 @@ public:
 
    
 
+   inline double getBeta() const { return beta_; }
    inline double getOmega_even_a() const { return omega_even_a_; }
    inline double getOmega_even_b() const { return omega_even_b_; }
    inline double getOmega_odd_a() const { return omega_odd_a_; }
    inline double getOmega_odd_b() const { return omega_odd_b_; }
    inline double getOmega_shear_a() const { return omega_shear_a_; }
    inline double getOmega_shear_b() const { return omega_shear_b_; }
+   inline double getSigma() const { return sigma_; }
+   inline void setBeta(const double value) { beta_ = value; }
    inline void setOmega_even_a(const double value) { omega_even_a_ = value; }
    inline void setOmega_even_b(const double value) { omega_even_b_ = value; }
    inline void setOmega_odd_a(const double value) { omega_odd_a_ = value; }
    inline void setOmega_odd_b(const double value) { omega_odd_b_ = value; }
    inline void setOmega_shear_a(const double value) { omega_shear_a_ = value; }
    inline void setOmega_shear_b(const double value) { omega_shear_b_ = value; }
+   inline void setSigma(const double value) { sigma_ = value; }
 
 private:
    
@@ -128,12 +132,14 @@ private:
    BlockDataID rho_aID;
    BlockDataID rho_bID;
    BlockDataID velocityID;
+   double beta_;
    double omega_even_a_;
    double omega_even_b_;
    double omega_odd_a_;
    double omega_odd_b_;
    double omega_shear_a_;
    double omega_shear_b_;
+   double sigma_;
 
    
 

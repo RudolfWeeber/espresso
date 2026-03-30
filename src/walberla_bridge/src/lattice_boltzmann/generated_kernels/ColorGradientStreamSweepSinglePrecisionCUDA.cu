@@ -178,14 +178,14 @@ static FUNC_PREFIX __launch_bounds__(256) void colorgradientstreamsweepsinglepre
 void ColorGradientStreamSweepSinglePrecisionCUDA::run(IBlock * block, gpuStream_t stream)
 {
    
-    auto pdfs_a = block->getData< gpu::GPUField<float> >(pdfs_aID);
-    auto velocity = block->getData< gpu::GPUField<float> >(velocityID);
-    auto phasefield = block->getData< gpu::GPUField<float> >(phasefieldID);
-    auto force_b = block->getData< gpu::GPUField<float> >(force_bID);
-    auto pdfs_b = block->getData< gpu::GPUField<float> >(pdfs_bID);
-    auto rho_a = block->getData< gpu::GPUField<float> >(rho_aID);
     auto force_a = block->getData< gpu::GPUField<float> >(force_aID);
+    auto force_b = block->getData< gpu::GPUField<float> >(force_bID);
+    auto rho_a = block->getData< gpu::GPUField<float> >(rho_aID);
+    auto phasefield = block->getData< gpu::GPUField<float> >(phasefieldID);
     auto rho_b = block->getData< gpu::GPUField<float> >(rho_bID);
+    auto pdfs_a = block->getData< gpu::GPUField<float> >(pdfs_aID);
+    auto pdfs_b = block->getData< gpu::GPUField<float> >(pdfs_bID);
+    auto velocity = block->getData< gpu::GPUField<float> >(velocityID);
     gpu::GPUField<float> * pdfs_b_tmp;
     {
         if (cache_pdfs_b_.find(block) == cache_pdfs_b_.end())
@@ -306,14 +306,14 @@ void ColorGradientStreamSweepSinglePrecisionCUDA::runOnCellInterval(const shared
     if( ci.empty() )
         return;
 
-    auto pdfs_a = block->getData< gpu::GPUField<float> >(pdfs_aID);
-    auto velocity = block->getData< gpu::GPUField<float> >(velocityID);
-    auto phasefield = block->getData< gpu::GPUField<float> >(phasefieldID);
-    auto force_b = block->getData< gpu::GPUField<float> >(force_bID);
-    auto pdfs_b = block->getData< gpu::GPUField<float> >(pdfs_bID);
-    auto rho_a = block->getData< gpu::GPUField<float> >(rho_aID);
     auto force_a = block->getData< gpu::GPUField<float> >(force_aID);
+    auto force_b = block->getData< gpu::GPUField<float> >(force_bID);
+    auto rho_a = block->getData< gpu::GPUField<float> >(rho_aID);
+    auto phasefield = block->getData< gpu::GPUField<float> >(phasefieldID);
     auto rho_b = block->getData< gpu::GPUField<float> >(rho_bID);
+    auto pdfs_a = block->getData< gpu::GPUField<float> >(pdfs_aID);
+    auto pdfs_b = block->getData< gpu::GPUField<float> >(pdfs_bID);
+    auto velocity = block->getData< gpu::GPUField<float> >(velocityID);
     gpu::GPUField<float> * pdfs_b_tmp;
     {
         if (cache_pdfs_b_.find(block) == cache_pdfs_b_.end())

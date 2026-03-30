@@ -194,6 +194,9 @@ def move_main_assignment_to_subexpressions(ac, symbols):
     )
 
 def get_color_gradient(fields):
+    # use second-order isotropic D3Q27 color gradient discretization from leclaire11a
+    # where weights coincide with standard lattice-Boltzmann weights
+
     temp_stencil = lbmpy.stencils.LBStencil("D3Q27")
 
     # lattice speed of sound squared
@@ -229,20 +232,21 @@ def color_gradient_lb_method(stencil, suffix: str, force_field: ps.Field):
             for r in ps.sympyextensions.multidimensional_sum(*args, dim=len(stencil[0])):
                 yield r
 
-        def get_eq_value_offset():
-            alpha = 4/9
+        def get_eq_value_offset(alpha):
+            # for D3Q19
             values = {0: alpha, 1: (1 - alpha) / 12, sp.sqrt(2): (1 - alpha) / 24}
             return tuple(map(lambda x: values[sp.Matrix(x).norm()], stencil.stencil_entries))
 
         # lattice sound speed
         c_s = sp.sqrt(sp.Rational(1, 3))
 
-        #offset values phi for the altered equilibrium
-        phi = get_eq_value_offset()
-
         force_model = lbmpy.forcemodels.Schiller(force_field.center_vector)
         weights = lbmpy.maxwellian_equilibrium.get_weights(stencil)
         kd = ps.sympyextensions.kronecker_delta
+
+        # offset values phi for the altered equilibrium
+        # choose alpha = w_0 such that latice sound speed is c_s_sq = 1/3
+        phi = get_eq_value_offset(alpha = weights[0])
 
         rho = sp.Symbol("rho")
         v = sp.symbols(f"u_:{stencil.D}")
@@ -332,6 +336,32 @@ def single_perturbation_operator(fields, method, config, opt, minimum_color_grad
         pre_collision_pdfs=False,
     )
 
+    def get_interpolated_relaxation_rate(omega_a, omega_b):
+        """
+        Viscosity interpolation model taken from resi07a for the color-gradient model.
+        The bulk values 'omega_r' is imposed for phi > 'delta' and 'omega_b' for phi < '-delta'.
+        It is interpolating the harmonic mean for phi=0 piecewise with second-order polynomials towards bulk values at +/- delta.
+        The constraints for the polynomaials are the bulk values at +/- delta, vanishing derivative at that point and the harmonic mean value
+        at phi=0.
+        """
+
+        delta=0.5 #relaxation interpolation width: value for the phasefield to exceed in order to count as bulk fluid
+
+        phasefield = fields["phasefield"].center
+
+        xi = 2 * omega_a * omega_b / (omega_a + omega_b)
+        eta = 2 / delta * (omega_a - xi)
+        kappa = -eta / (2 * delta)
+        lam = 2 / delta * (xi - omega_b)
+        nu = lam / (2 * delta)
+
+        return sp.Piecewise(
+            (omega_a, phasefield > delta),
+            (omega_b, phasefield < -delta),
+            (xi + eta * phasefield + kappa * phasefield**2, sp.And(phasefield > 0, phasefield <= delta)),
+            (xi + lam * phasefield + nu * phasefield**2, True),
+        )  # sp.And(phi >= -delta, phi < 0)
+
     def get_b_value():
         """Implementation of eq. 17 in leclaire11a/leclaire17b."""
         values = {
@@ -341,7 +371,9 @@ def single_perturbation_operator(fields, method, config, opt, minimum_color_grad
         }
         return tuple(map(lambda x: values[sp.Matrix(x).norm()], stencil.stencil_entries))
 
-    A=sp.Rational(4,9)
+    omega_effective = get_interpolated_relaxation_rate(sp.Symbol("omega_shear_a"), sp.Symbol("omega_shear_b"))
+
+    A = sp.Rational(9, 4) * omega_effective * sp.Symbol("sigma")
     b = get_b_value()
 
     color_gradient = get_color_gradient(fields)
@@ -352,8 +384,7 @@ def single_perturbation_operator(fields, method, config, opt, minimum_color_grad
     for dst, d, w, b_i in zip(pdfs_dst, method.stencil, method.weights, b):
         offset = sp.Piecewise(
             (
-                A
-                / 2
+                A / 2
                 * f_norm
                 * (w * color_gradient.dot(sp.Matrix(d)) ** 2 / f_norm**2 - b_i),
                 f_norm > minimum_color_gradient,
@@ -542,7 +573,7 @@ def create_collide_perturb_recolor_operator(fields, methods, configs, opts):
     # create collide, perturbation and recoloring operator separately
     collide = create_collision_operator(configs, opts)
     perturbation = perturbation_operator(fields, methods, configs, opts)
-    recoloring = recoloring_operator(fields, methods, configs, opts, beta=0.7, minimum_color_gradient=0.0)
+    recoloring = recoloring_operator(fields, methods, configs, opts, beta=sp.Symbol("beta"), minimum_color_gradient=0.0)
 
     # merge collide, perturbation and recoloring operator and store it
     return merged_collide_perturb_and_recoloring_operator(opts, collide, perturbation, recoloring)

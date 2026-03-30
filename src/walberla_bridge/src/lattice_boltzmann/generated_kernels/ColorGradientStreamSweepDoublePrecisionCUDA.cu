@@ -178,27 +178,14 @@ static FUNC_PREFIX __launch_bounds__(256) void colorgradientstreamsweepdoublepre
 void ColorGradientStreamSweepDoublePrecisionCUDA::run(IBlock * block, gpuStream_t stream)
 {
    
-    auto pdfs_a = block->getData< gpu::GPUField<double> >(pdfs_aID);
     auto force_b = block->getData< gpu::GPUField<double> >(force_bID);
-    auto rho_b = block->getData< gpu::GPUField<double> >(rho_bID);
-    auto pdfs_b = block->getData< gpu::GPUField<double> >(pdfs_bID);
-    auto rho_a = block->getData< gpu::GPUField<double> >(rho_aID);
-    auto phasefield = block->getData< gpu::GPUField<double> >(phasefieldID);
     auto force_a = block->getData< gpu::GPUField<double> >(force_aID);
     auto velocity = block->getData< gpu::GPUField<double> >(velocityID);
-    gpu::GPUField<double> * pdfs_b_tmp;
-    {
-        if (cache_pdfs_b_.find(block) == cache_pdfs_b_.end())
-        {
-            pdfs_b_tmp = pdfs_b->cloneUninitialized();
-            cache_pdfs_b_[block] = pdfs_b_tmp;
-        }
-        else
-        {
-            pdfs_b_tmp = cache_pdfs_b_[block];
-        }
-    }
-
+    auto rho_a = block->getData< gpu::GPUField<double> >(rho_aID);
+    auto pdfs_b = block->getData< gpu::GPUField<double> >(pdfs_bID);
+    auto pdfs_a = block->getData< gpu::GPUField<double> >(pdfs_aID);
+    auto phasefield = block->getData< gpu::GPUField<double> >(phasefieldID);
+    auto rho_b = block->getData< gpu::GPUField<double> >(rho_bID);
     gpu::GPUField<double> * pdfs_a_tmp;
     {
         if (cache_pdfs_a_.find(block) == cache_pdfs_a_.end())
@@ -209,6 +196,19 @@ void ColorGradientStreamSweepDoublePrecisionCUDA::run(IBlock * block, gpuStream_
         else
         {
             pdfs_a_tmp = cache_pdfs_a_[block];
+        }
+    }
+
+    gpu::GPUField<double> * pdfs_b_tmp;
+    {
+        if (cache_pdfs_b_.find(block) == cache_pdfs_b_.end())
+        {
+            pdfs_b_tmp = pdfs_b->cloneUninitialized();
+            cache_pdfs_b_[block] = pdfs_b_tmp;
+        }
+        else
+        {
+            pdfs_b_tmp = cache_pdfs_b_[block];
         }
     }
 
@@ -306,27 +306,14 @@ void ColorGradientStreamSweepDoublePrecisionCUDA::runOnCellInterval(const shared
     if( ci.empty() )
         return;
 
-    auto pdfs_a = block->getData< gpu::GPUField<double> >(pdfs_aID);
     auto force_b = block->getData< gpu::GPUField<double> >(force_bID);
-    auto rho_b = block->getData< gpu::GPUField<double> >(rho_bID);
-    auto pdfs_b = block->getData< gpu::GPUField<double> >(pdfs_bID);
-    auto rho_a = block->getData< gpu::GPUField<double> >(rho_aID);
-    auto phasefield = block->getData< gpu::GPUField<double> >(phasefieldID);
     auto force_a = block->getData< gpu::GPUField<double> >(force_aID);
     auto velocity = block->getData< gpu::GPUField<double> >(velocityID);
-    gpu::GPUField<double> * pdfs_b_tmp;
-    {
-        if (cache_pdfs_b_.find(block) == cache_pdfs_b_.end())
-        {
-            pdfs_b_tmp = pdfs_b->cloneUninitialized();
-            cache_pdfs_b_[block] = pdfs_b_tmp;
-        }
-        else
-        {
-            pdfs_b_tmp = cache_pdfs_b_[block];
-        }
-    }
-
+    auto rho_a = block->getData< gpu::GPUField<double> >(rho_aID);
+    auto pdfs_b = block->getData< gpu::GPUField<double> >(pdfs_bID);
+    auto pdfs_a = block->getData< gpu::GPUField<double> >(pdfs_aID);
+    auto phasefield = block->getData< gpu::GPUField<double> >(phasefieldID);
+    auto rho_b = block->getData< gpu::GPUField<double> >(rho_bID);
     gpu::GPUField<double> * pdfs_a_tmp;
     {
         if (cache_pdfs_a_.find(block) == cache_pdfs_a_.end())
@@ -337,6 +324,19 @@ void ColorGradientStreamSweepDoublePrecisionCUDA::runOnCellInterval(const shared
         else
         {
             pdfs_a_tmp = cache_pdfs_a_[block];
+        }
+    }
+
+    gpu::GPUField<double> * pdfs_b_tmp;
+    {
+        if (cache_pdfs_b_.find(block) == cache_pdfs_b_.end())
+        {
+            pdfs_b_tmp = pdfs_b->cloneUninitialized();
+            cache_pdfs_b_[block] = pdfs_b_tmp;
+        }
+        else
+        {
+            pdfs_b_tmp = cache_pdfs_b_[block];
         }
     }
 
