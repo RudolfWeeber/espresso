@@ -239,8 +239,12 @@ public:
   /** @brief Configure the default collision model. */
   virtual void set_collision_model(double kT, unsigned int seed) = 0;
 
-  /** @brief Configure the two-component color gradient collision model. */
-  virtual void set_collision_model_two_component() = 0;
+  /** @brief Configure the two-component color gradient collision model.
+   *  @param sigma Interface tension coefficient.
+   *  @param beta  Interface thickness parameter for recoloring.
+   */
+  virtual void set_collision_model_two_component(double sigma,
+                                                  double beta) = 0;
 
   /** @brief Initialize PDFs from density and velocity fields (two-component). */
   virtual void init_two_component() = 0;

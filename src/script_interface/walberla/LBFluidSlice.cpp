@@ -88,10 +88,12 @@ Variant LBFluidSlice::do_call_method(std::string const &name,
     return call(&LatticeModel::set_slice_population, pop_size);
   }
   if (name == "get_density") {
-    return call(&LatticeModel::get_slice_density, {1}, 1. / m_conv_dens);
+    auto const dens_size = m_shape_val.at("density");
+    return call(&LatticeModel::get_slice_density, dens_size, 1. / m_conv_dens);
   }
   if (name == "set_density") {
-    return call(&LatticeModel::set_slice_density, {1}, m_conv_dens);
+    auto const dens_size = m_shape_val.at("density");
+    return call(&LatticeModel::set_slice_density, dens_size, m_conv_dens);
   }
   if (name == "get_velocity") {
     return call(&LatticeModel::get_slice_velocity, {3}, 1. / m_conv_velocity);

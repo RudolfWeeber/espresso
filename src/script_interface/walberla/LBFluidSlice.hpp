@@ -126,8 +126,11 @@ public:
         get_value<Utils::Vector3i>(params, "slice_lower_corner");
     m_slice_upper_corner =
         get_value<Utils::Vector3i>(params, "slice_upper_corner");
-    m_shape_val["density"] = {1};
-    m_shape_val["population"] = {static_cast<int>(m_lb_fluid->stencil_size())};
+    m_shape_val["density"] = {m_lb_fluid->has_two_components() ? 2 : 1};
+    m_shape_val["population"] = {static_cast<int>(
+        m_lb_fluid->has_two_components()
+            ? 2 * m_lb_fluid->stencil_size()
+            : m_lb_fluid->stencil_size())};
     m_shape_val["velocity"] = {3};
     m_shape_val["velocity_at_boundary"] = {1};
     m_shape_val["is_boundary"] = {1};

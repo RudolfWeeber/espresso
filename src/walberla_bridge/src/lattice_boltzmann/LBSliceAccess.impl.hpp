@@ -103,6 +103,52 @@ void LBWalberlaImpl<FloatType, Architecture>::set_slice_velocity(
 
 template <typename FloatType, lbmpy::Arch Architecture>
 std::vector<double>
+LBWalberlaImpl<FloatType, Architecture>::get_slice_velocity_component(
+    Utils::Vector3i const &lower_corner,
+    Utils::Vector3i const &upper_corner) const {
+  if (!has_two_components()) {
+    throw std::runtime_error(
+        "get_slice_velocity_component is only supported for two-component LB");
+  }
+  // In the CG model, both components share the same barycentric velocity.
+  // Return 2x3 values per node: [v_a_x, v_a_y, v_a_z, v_b_x, v_b_y, v_b_z]
+  std::vector<double> out;
+  for_each_block_in_slice(
+      get_lattice(), lower_corner, upper_corner,
+      [&](auto &block, auto const &bci, auto const &ci,
+          auto const &block_offset) {
+        if (out.empty())
+          out.resize(6u * ci.numCells());
+        auto const field =
+            block.template getData<VectorField>(m_velocity_field_id);
+        auto values = lbm::accessor::Vector::get(field, bci);
+
+        auto kernel = [&values, &out](unsigned const block_index,
+                                      unsigned const local_index,
+                                      Utils::Vector3i const &) {
+          for (uint_t f = 0u; f < 3u; ++f) {
+            auto const v = values[3u * block_index + f];
+            out[6u * local_index + f] = v;
+            out[6u * local_index + 3u + f] = v;
+          }
+        };
+
+        copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+      });
+  return out;
+}
+
+template <typename FloatType, lbmpy::Arch Architecture>
+void LBWalberlaImpl<FloatType, Architecture>::set_slice_velocity_component(
+    Utils::Vector3i const & /*lower_corner*/,
+    Utils::Vector3i const & /*upper_corner*/,
+    std::vector<double> const & /*velocity*/) {
+  throw std::runtime_error(
+      "set_slice_velocity_component is not supported for two-component LB");
+}
+
+template <typename FloatType, lbmpy::Arch Architecture>
+std::vector<double>
 LBWalberlaImpl<FloatType, Architecture>::get_slice_last_applied_force(
     Utils::Vector3i const &lower_corner,
     Utils::Vector3i const &upper_corner) const {
@@ -170,25 +216,52 @@ LBWalberlaImpl<FloatType, Architecture>::get_slice_population(
     Utils::Vector3i const &lower_corner,
     Utils::Vector3i const &upper_corner) const {
   std::vector<double> out;
+  auto const pop_per_node =
+      has_two_components() ? 2u * stencil_size() : stencil_size();
   for_each_block_in_slice(
       get_lattice(), lower_corner, upper_corner,
       [&](auto const &block, auto const &bci, auto const &ci,
           auto const &block_offset) {
         if (out.empty())
-          out.resize(stencil_size() * ci.numCells());
-        auto const pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
-        auto const values = lbm::accessor::Population::get(pdf_field, bci);
+          out.resize(pop_per_node * ci.numCells());
 
-        auto kernel = [&values, &out, this](unsigned const block_index,
-                                            unsigned const local_index,
-                                            Utils::Vector3i const &) {
-          for (uint_t f = 0u; f < stencil_size(); ++f) {
-            out[stencil_size() * local_index + f] =
-                values[stencil_size() * block_index + f];
-          }
-        };
+        auto const pdf_field_a =
+            block.template getData<PdfField>(m_pdf_field_id[0]);
+        auto const values_a =
+            lbm::accessor::Population::get(pdf_field_a, bci);
 
-        copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+        if (has_two_components()) {
+          auto const pdf_field_b =
+              block.template getData<PdfField>(m_pdf_field_id[1]);
+          auto const values_b =
+              lbm::accessor::Population::get(pdf_field_b, bci);
+
+          auto kernel = [&values_a, &values_b, &out, this](
+                            unsigned const block_index,
+                            unsigned const local_index,
+                            Utils::Vector3i const &) {
+            auto const ss = stencil_size();
+            for (uint_t f = 0u; f < ss; ++f) {
+              out[2u * ss * local_index + f] =
+                  values_a[ss * block_index + f];
+              out[2u * ss * local_index + ss + f] =
+                  values_b[ss * block_index + f];
+            }
+          };
+
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+        } else {
+          auto kernel = [&values_a, &out, this](unsigned const block_index,
+                                                unsigned const local_index,
+                                                Utils::Vector3i const &) {
+            for (uint_t f = 0u; f < stencil_size(); ++f) {
+              out[stencil_size() * local_index + f] =
+                  values_a[stencil_size() * block_index + f];
+            }
+          };
+
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+        }
       });
   return out;
 }
@@ -197,30 +270,60 @@ template <typename FloatType, lbmpy::Arch Architecture>
 void LBWalberlaImpl<FloatType, Architecture>::set_slice_population(
     Utils::Vector3i const &lower_corner, Utils::Vector3i const &upper_corner,
     std::vector<double> const &population) {
+  auto const pop_per_node =
+      has_two_components() ? 2u * stencil_size() : stencil_size();
   for_each_block_in_slice(
       get_lattice(), lower_corner, upper_corner,
       [&](auto &block, auto const &bci, auto const &ci,
           auto const &block_offset) {
-        assert(population.size() == stencil_size() * ci.numCells());
-        auto pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
+        assert(population.size() == pop_per_node * ci.numCells());
+        auto pdf_field_a =
+            block.template getData<PdfField>(m_pdf_field_id[0]);
         auto force_field =
             block.template getData<VectorField>(m_last_applied_force_field_id);
         auto vel_field =
             block.template getData<VectorField>(m_velocity_field_id);
-        std::vector<FloatType> values(stencil_size() * bci.numCells());
+        std::vector<FloatType> values_a(stencil_size() * bci.numCells());
 
-        auto kernel = [&values, &population, this](unsigned const block_index,
-                                                   unsigned const local_index,
-                                                   Utils::Vector3i const &) {
-          for (uint_t f = 0u; f < stencil_size(); ++f) {
-            values[stencil_size() * block_index + f] = numeric_cast<FloatType>(
-                population[stencil_size() * local_index + f]);
-          }
-        };
+        if (has_two_components()) {
+          auto pdf_field_b =
+              block.template getData<PdfField>(m_pdf_field_id[1]);
+          std::vector<FloatType> values_b(stencil_size() * bci.numCells());
 
-        copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
-        lbm::accessor::Population::set(pdf_field, vel_field, force_field,
-                                       values, bci);
+          auto kernel = [&values_a, &values_b, &population, this](
+                            unsigned const block_index,
+                            unsigned const local_index,
+                            Utils::Vector3i const &) {
+            auto const ss = stencil_size();
+            for (uint_t f = 0u; f < ss; ++f) {
+              values_a[ss * block_index + f] = numeric_cast<FloatType>(
+                  population[2u * ss * local_index + f]);
+              values_b[ss * block_index + f] = numeric_cast<FloatType>(
+                  population[2u * ss * local_index + ss + f]);
+            }
+          };
+
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+          lbm::accessor::Population::set(pdf_field_a, vel_field, force_field,
+                                         values_a, bci);
+          lbm::accessor::Population::set(pdf_field_b, vel_field, force_field,
+                                         values_b, bci);
+        } else {
+          auto kernel = [&values_a, &population, this](
+                            unsigned const block_index,
+                            unsigned const local_index,
+                            Utils::Vector3i const &) {
+            for (uint_t f = 0u; f < stencil_size(); ++f) {
+              values_a[stencil_size() * block_index + f] =
+                  numeric_cast<FloatType>(
+                      population[stencil_size() * local_index + f]);
+            }
+          };
+
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+          lbm::accessor::Population::set(pdf_field_a, vel_field, force_field,
+                                         values_a, bci);
+        }
       });
 }
 
@@ -229,23 +332,56 @@ std::vector<double> LBWalberlaImpl<FloatType, Architecture>::get_slice_density(
     Utils::Vector3i const &lower_corner,
     Utils::Vector3i const &upper_corner) const {
   std::vector<double> out;
+  auto const n_components = has_two_components() ? 2u : 1u;
   for_each_block_in_slice(
       get_lattice(), lower_corner, upper_corner,
       [&](auto const &block, auto const &bci, auto const &ci,
           auto const &block_offset) {
         if (out.empty())
-          out.resize(ci.numCells());
-        auto const pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
-        auto const values =
-            lbm::accessor::Density::get(pdf_field, m_density, bci);
+          out.resize(n_components * ci.numCells());
 
-        auto kernel = [&values, &out](unsigned const block_index,
-                                      unsigned const local_index,
-                                      Utils::Vector3i const &) {
-          out[local_index] = values[block_index];
-        };
+        if (has_two_components()) {
+          auto const rho_a_field =
+              block.template getData<ScalarField>(m_rho_field_id[0]);
+          auto const rho_b_field =
+              block.template getData<ScalarField>(m_rho_field_id[1]);
+          // Pre-collect scalar field values into flat arrays
+          std::vector<double> values_a(bci.numCells());
+          std::vector<double> values_b(bci.numCells());
+          unsigned idx = 0u;
+          for (auto x = bci.xMin(); x <= bci.xMax(); ++x) {
+            for (auto y = bci.yMin(); y <= bci.yMax(); ++y) {
+              for (auto z = bci.zMin(); z <= bci.zMax(); ++z) {
+                values_a[idx] = double_c(rho_a_field->get(x, y, z));
+                values_b[idx] = double_c(rho_b_field->get(x, y, z));
+                ++idx;
+              }
+            }
+          }
 
-        copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+          auto kernel = [&values_a, &values_b, &out](
+                            unsigned const block_index,
+                            unsigned const local_index,
+                            Utils::Vector3i const &) {
+            out[2u * local_index + 0u] = values_a[block_index];
+            out[2u * local_index + 1u] = values_b[block_index];
+          };
+
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+        } else {
+          auto const pdf_field =
+              block.template getData<PdfField>(m_pdf_field_id[0]);
+          auto const values =
+              lbm::accessor::Density::get(pdf_field, m_density, bci);
+
+          auto kernel = [&values, &out](unsigned const block_index,
+                                        unsigned const local_index,
+                                        Utils::Vector3i const &) {
+            out[local_index] = values[block_index];
+          };
+
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+        }
       });
   return out;
 }
@@ -255,22 +391,60 @@ void LBWalberlaImpl<FloatType, Architecture>::set_slice_density(
     Utils::Vector3i const &lower_corner, Utils::Vector3i const &upper_corner,
     std::vector<double> const &density) {
   m_pending_ghost_comm.set(GhostComm::PDF);
+  auto const n_components = has_two_components() ? 2u : 1u;
   for_each_block_in_slice(
       get_lattice(), lower_corner, upper_corner,
       [&](auto &block, auto const &bci, auto const &ci,
           auto const &block_offset) {
-        assert(density.size() == ci.numCells());
-        auto pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
-        std::vector<FloatType> values(bci.numCells());
+        assert(density.size() == n_components * ci.numCells());
 
-        auto kernel = [&values, &density](unsigned const block_index,
-                                          unsigned const local_index,
-                                          Utils::Vector3i const &) {
-          values[block_index] = numeric_cast<FloatType>(density[local_index]);
-        };
+        if (has_two_components()) {
+          auto rho_a_field =
+              block.template getData<ScalarField>(m_rho_field_id[0]);
+          auto rho_b_field =
+              block.template getData<ScalarField>(m_rho_field_id[1]);
+          // Collect values from input into block-local arrays
+          std::vector<FloatType> values_a(bci.numCells());
+          std::vector<FloatType> values_b(bci.numCells());
 
-        copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
-        lbm::accessor::Density::set(pdf_field, values, m_density, bci);
+          auto kernel = [&values_a, &values_b, &density](
+                            unsigned const block_index,
+                            unsigned const local_index,
+                            Utils::Vector3i const &) {
+            values_a[block_index] =
+                numeric_cast<FloatType>(density[2u * local_index + 0u]);
+            values_b[block_index] =
+                numeric_cast<FloatType>(density[2u * local_index + 1u]);
+          };
+
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+
+          // Write to scalar fields
+          unsigned idx = 0u;
+          for (auto x = bci.xMin(); x <= bci.xMax(); ++x) {
+            for (auto y = bci.yMin(); y <= bci.yMax(); ++y) {
+              for (auto z = bci.zMin(); z <= bci.zMax(); ++z) {
+                rho_a_field->get(x, y, z) = values_a[idx];
+                rho_b_field->get(x, y, z) = values_b[idx];
+                ++idx;
+              }
+            }
+          }
+        } else {
+          auto pdf_field =
+              block.template getData<PdfField>(m_pdf_field_id[0]);
+          std::vector<FloatType> values(bci.numCells());
+
+          auto kernel = [&values, &density](unsigned const block_index,
+                                            unsigned const local_index,
+                                            Utils::Vector3i const &) {
+            values[block_index] =
+                numeric_cast<FloatType>(density[local_index]);
+          };
+
+          copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
+          lbm::accessor::Density::set(pdf_field, values, m_density, bci);
+        }
       });
 }
 

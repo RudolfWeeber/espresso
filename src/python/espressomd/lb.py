@@ -69,6 +69,12 @@ class LBFluid(ScriptInterfaceHelper, espressomd.detail.walberla.LatticeModel):
     kinematic_viscosity : :obj:`float` or (:obj:`float`, :obj:`float`)
         Fluid kinematic viscosity. A scalar for single-component LB,
         or a tuple of two values for two-component color gradient LB.
+    sigma : :obj:`float`, optional
+        Interface tension coefficient for two-component color gradient LB.
+    beta : :obj:`float`, optional
+        Interface thickness parameter for recoloring in two-component color
+        gradient LB. Controls how sharp the interface is: smaller values yield
+        thicker interfaces. Defaults to 0.7.
     ext_force_density : (3,) array_like of :obj:`float`, optional
         Force density applied on the fluid.
     kT : :obj:`float`, optional
@@ -224,13 +230,14 @@ class LBFluid(ScriptInterfaceHelper, espressomd.detail.walberla.LatticeModel):
         utils.check_valid_keys(self.valid_keys(), params.keys())
 
     def default_params(self):
-        return {"lattice": None, "seed": 0, "kT": 0., "gpu": False,
+        return {"lattice": None, "seed": 0, "kT": 0., "sigma": 0.,
+                "beta": 0.7, "gpu": False,
                 "ext_force_density": [0.0, 0.0, 0.0]}
 
     def valid_keys(self):
         return {"agrid", "tau", "lattice", "density", "ext_force_density",
-                "kinematic_viscosity", "kT", "seed", "blocks_per_mpi_rank",
-                "single_precision", "gpu"}
+                "kinematic_viscosity", "kT", "seed", "sigma", "beta",
+                "blocks_per_mpi_rank", "single_precision", "gpu"}
 
     def required_keys(self):
         return {"lattice", "density", "kinematic_viscosity", "tau"}

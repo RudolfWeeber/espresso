@@ -168,6 +168,8 @@ protected:
 
   // Physical parameters
   std::array<FloatType, 2> m_viscosity; /// kinematic viscosity (per component)
+  FloatType m_sigma{}; /// interface tension coefficient (two-component)
+  FloatType m_beta{}; /// interface thickness parameter (two-component)
   FloatType m_density;
   FloatType m_kT;
   unsigned int m_seed;
@@ -289,10 +291,6 @@ public:
     m_force_to_be_applied_id = add_to_storage<_VectorField>("force next");
     m_velocity_field_id = add_to_storage<_VectorField>("velocity");
     m_vel_tmp_field_id = add_to_storage<_VectorField>("velocity_tmp");
-
-    if (!has_two_components()){
-
-    }
 
     if (has_two_components()) {
       m_pdf_field_id[1] = add_to_storage<_PdfField>("pdfs_b");
@@ -514,7 +512,10 @@ public:
     return m_two_components;
   }
 
-  void set_collision_model_two_component() override {
+  void set_collision_model_two_component(double sigma, double beta) override {
+    m_sigma = FloatType_c(sigma);
+    m_beta = FloatType_c(beta);
+
     // Compute relaxation rates from viscosities: omega = 2/(6*nu + 1)
     auto const omega_a = shear_mode_relaxation_rate(0u);
     auto const omega_odd_a = odd_mode_relaxation_rate(omega_a);
@@ -528,9 +529,11 @@ public:
         m_phasefield_id,
         m_rho_field_id[0], m_rho_field_id[1],
         m_velocity_field_id,
+        m_beta,                // beta (interface thickness)
         omega_a, omega_b,      // omega_even
         omega_odd_a, omega_odd_b,  // omega_odd
-        omega_a, omega_b       // omega_shear
+        omega_a, omega_b,      // omega_shear
+        m_sigma                // sigma (interface tension)
     );
 
     // Instantiate stream kernel
@@ -702,8 +705,10 @@ private:
   // ---- Lees-Edwards Boundary Conditions ----
 
   auto has_lees_edwards_bc() const {
-    return std::holds_alternative<
-        typename Kernels::StreamCollisionModelLeesEdwards>(*m_collision_model);
+    return m_collision_model and
+           std::holds_alternative<
+               typename Kernels::StreamCollisionModelLeesEdwards>(
+               *m_collision_model);
   }
 
   void apply_lees_edwards_pdf_interpolation(

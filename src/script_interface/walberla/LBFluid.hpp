@@ -133,10 +133,13 @@ public:
            }
            m_instance->set_viscosity(visc);
          },
-         [this]() {
+         [this]() -> Variant {
            auto visc = m_instance->get_viscosity();
            for (auto &vi : visc) {
              vi /= m_conv_visc;
+           }
+           if (visc.size() == 1u) {
+             return visc[0];
            }
            return visc;
          }},

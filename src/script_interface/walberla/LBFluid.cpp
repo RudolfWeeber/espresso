@@ -222,7 +222,9 @@ void LBFluid::do_construct(VariantMap const &params) {
     make_instance(params);
     m_mpi_cart_comm_observer = ::walberla::get_mpi_cart_comm_observer();
     if (m_instance->has_two_components()) {
-      m_instance->set_collision_model_two_component();
+      auto const sigma = get_value_or<double>(params, "sigma", 0.) * m_conv_energy;
+      auto const beta = get_value_or<double>(params, "beta", 0.7);
+      m_instance->set_collision_model_two_component(sigma, beta);
     } else {
       m_instance->set_collision_model(lb_kT, seed);
     }
