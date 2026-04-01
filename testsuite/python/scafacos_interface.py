@@ -74,6 +74,8 @@ class ScafacosInterface(ut.TestCase):
     @utx.skipIfMissingFeatures(["SCAFACOS"])
     @utx.skipIfMissingScafacosMethod("p3m")
     @utx.skipIfMissingScafacosMethod("ewald")
+    @ut.skipIf(espressomd.has_features("FPE"),
+               "cannot run with FPE instrumentation")
     def test_electrostatics_actor_exceptions(self):
         with self.assertRaisesRegex(ValueError, "Parameter 'prefactor' must be > 0"):
             espressomd.electrostatics.Scafacos(
@@ -218,6 +220,8 @@ class ScafacosInterface(ut.TestCase):
 
     @utx.skipIfMissingFeatures(["SCAFACOS_DIPOLES"])
     @utx.skipIfMissingScafacosMethod("p2nfft")
+    @ut.skipIf(espressomd.has_features("FPE"),
+               "cannot run with FPE instrumentation")
     def test_actor_dipoles(self):
         system = self.system
 

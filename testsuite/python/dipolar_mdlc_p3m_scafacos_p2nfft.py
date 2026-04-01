@@ -33,6 +33,8 @@ DIPOLAR_PREFACTOR = 1.1
 
 
 @utx.skipIfMissingFeatures(["DIPOLES", "FFTW"])
+@ut.skipIf(espressomd.has_features("FPE"),
+           "cannot run with FPE instrumentation")
 class Test(ut.TestCase):
 
     """Tests mdlc (2d)  as well as dipolar p3m and dipolar p2nfft (3d) against
