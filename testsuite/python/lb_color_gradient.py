@@ -22,10 +22,17 @@ Basic tests for two-component color gradient LB.
 
 Tests:
   - Construction with two viscosities triggers two-component mode
-  - Setting/getting per-component densities at nodes
-  - Bulk slice density set/get for two-component mode
+  - Density set/get for two-component mode (node and slice)
   - Population get/set for two-component mode (node and slice)
   - Setting velocity raises RuntimeError in two-component mode
+  - Pressure tensor raises RuntimeError in two-component mode
+  - Adding boundaries raises RuntimeError in two-component mode
+  - Velocity getter returns sensible values after integration
+  - init_two_component produces PDFs consistent with set densities
+  - Viscosity setter works on live CG fluid
+  - Bulk slice init matches per-node init
+  - kT > 0 is rejected for two-component mode
+  - Single viscosity does not create two-component mode
   - Running integration steps without crash
   - Mass conservation (total rho_a and rho_b are conserved)
 """
@@ -95,14 +102,11 @@ class ColorGradientLBTest(ut.TestCase):
         return lbf
 
     def _init_droplet(self, lbf):
-        """Set per-node densities to a spherical droplet profile and
+        """Set densities to a spherical droplet profile and
         initialize the PDFs."""
         rho_a, rho_b = droplet_densities(
             DOMAIN_SIZE, RADIUS, SMOOTHING_WIDTH, RHO_0, EPSILON)
-        for x in range(DOMAIN_SIZE):
-            for y in range(DOMAIN_SIZE):
-                for z in range(DOMAIN_SIZE):
-                    lbf[x, y, z].density = [rho_a[x, y, z], rho_b[x, y, z]]
+        lbf[:, :, :].density = np.stack([rho_a, rho_b], axis=-1)
         lbf.init_two_component()
 
     def test_construction(self):
@@ -192,6 +196,113 @@ class ColorGradientLBTest(ut.TestCase):
         with self.assertRaisesRegex(RuntimeError, "not supported for two-component"):
             lbf[:, :, :].velocity = np.zeros((DOMAIN_SIZE,) * 3 + (3,))
 
+    def test_pressure_tensor_raises(self):
+        """Pressure tensor should raise in two-component mode."""
+        lbf = self._create_lbf()
+        self._init_droplet(lbf)
+
+        with self.assertRaisesRegex(RuntimeError, "not implemented for two-component"):
+            _ = lbf[0, 0, 0].pressure_tensor
+
+        with self.assertRaisesRegex(RuntimeError, "not implemented for two-component"):
+            _ = lbf[:, :, :].pressure_tensor
+
+    def test_boundary_raises(self):
+        """Adding boundaries should raise in two-component mode."""
+        lbf = self._create_lbf()
+        self._init_droplet(lbf)
+
+        with self.assertRaisesRegex(RuntimeError, "not implemented for two-component"):
+            lbf[0, 0, 0].boundary = espressomd.lb.VelocityBounceBack([0, 0, 0])
+
+    def test_velocity_getter(self):
+        """Velocity getter should return finite values after integration."""
+        lbf = self._create_lbf()
+        self._init_droplet(lbf)
+        self.system.integrator.run(5)
+
+        # Node velocity
+        vel = np.copy(lbf[3, 3, 3].velocity)
+        self.assertEqual(len(vel), 3)
+        self.assertTrue(np.all(np.isfinite(vel)))
+
+        # Slice velocity
+        vel_slice = np.copy(lbf[:, :, :].velocity)
+        N = DOMAIN_SIZE
+        self.assertEqual(vel_slice.shape, (N, N, N, 3))
+        self.assertTrue(np.all(np.isfinite(vel_slice)))
+
+        # Node and slice should be consistent
+        np.testing.assert_allclose(vel_slice[3, 3, 3], vel, atol=1e-10)
+
+    def test_init_two_component_consistency(self):
+        """After init_two_component, densities should match what was set."""
+        lbf = self._create_lbf()
+        rho_a, rho_b = droplet_densities(
+            DOMAIN_SIZE, RADIUS, SMOOTHING_WIDTH, RHO_0, EPSILON)
+        lbf[:, :, :].density = np.stack([rho_a, rho_b], axis=-1)
+        lbf.init_two_component()
+
+        # Densities should still match after init
+        densities = np.copy(lbf[:, :, :].density)
+        np.testing.assert_allclose(densities[:, :, :, 0], rho_a, rtol=1e-5)
+        np.testing.assert_allclose(densities[:, :, :, 1], rho_b, rtol=1e-5)
+
+    def test_viscosity_setter(self):
+        """Changing viscosity on a live CG fluid should work."""
+        lbf = self._create_lbf()
+        self._init_droplet(lbf)
+
+        new_visc = [VISCOSITY * 2, VISCOSITY * 3]
+        lbf.kinematic_viscosity = new_visc
+        visc = lbf.kinematic_viscosity
+        self.assertEqual(len(visc), 2)
+        self.assertAlmostEqual(visc[0], new_visc[0], places=10)
+        self.assertAlmostEqual(visc[1], new_visc[1], places=10)
+
+    def test_bulk_slice_init_matches_node_init(self):
+        """Bulk slice density init should match per-node init."""
+        lbf = self._create_lbf()
+        N = DOMAIN_SIZE
+        rho_a, rho_b = droplet_densities(
+            N, RADIUS, SMOOTHING_WIDTH, RHO_0, EPSILON)
+
+        # Init via bulk slice
+        lbf[:, :, :].density = np.stack([rho_a, rho_b], axis=-1)
+        lbf.init_two_component()
+        densities_slice = np.copy(lbf[:, :, :].density)
+
+        # Reset and init via per-node loop (to verify both paths)
+        self.system.lb = None
+        lbf2 = self._create_lbf()
+        for x in range(N):
+            for y in range(N):
+                for z in range(N):
+                    lbf2[x, y, z].density = [rho_a[x, y, z], rho_b[x, y, z]]
+        lbf2.init_two_component()
+        densities_node = np.copy(lbf2[:, :, :].density)
+
+        np.testing.assert_allclose(
+            densities_slice, densities_node, rtol=1e-10)
+
+    def test_thermalized_cg_rejected(self):
+        """kT > 0 should be rejected for two-component mode."""
+        with self.assertRaisesRegex(ValueError, "not supported.*two-component"):
+            espressomd.lb.LBFluid(
+                agrid=AGRID, density=RHO_0, tau=self.system.time_step,
+                kinematic_viscosity=[VISCOSITY, VISCOSITY],
+                kT=1.0, seed=42)
+
+    def test_single_viscosity_not_two_component(self):
+        """Single viscosity should not create a two-component LB."""
+        lbf = espressomd.lb.LBFluid(
+            agrid=AGRID, density=RHO_0, tau=self.system.time_step,
+            kinematic_viscosity=VISCOSITY)
+        self.system.lb = lbf
+        # Single-component: density should be a scalar
+        dens = lbf[0, 0, 0].density
+        self.assertIsInstance(dens, float)
+
     def test_run_steps(self):
         """Two-component LB with droplet should run without crash."""
         lbf = self._create_lbf()
@@ -204,14 +315,9 @@ class ColorGradientLBTest(ut.TestCase):
         self._init_droplet(lbf)
 
         # Measure initial total density per component
-        rho_a_init = 0.0
-        rho_b_init = 0.0
-        for x in range(DOMAIN_SIZE):
-            for y in range(DOMAIN_SIZE):
-                for z in range(DOMAIN_SIZE):
-                    d = lbf[x, y, z].density
-                    rho_a_init += d[0]
-                    rho_b_init += d[1]
+        densities = np.copy(lbf[:, :, :].density)
+        rho_a_init = np.sum(densities[:, :, :, 0])
+        rho_b_init = np.sum(densities[:, :, :, 1])
 
         self.assertGreater(rho_a_init, 0.0, "rho_a should be > 0 after init")
         self.assertGreater(rho_b_init, 0.0, "rho_b should be > 0 after init")
@@ -220,14 +326,9 @@ class ColorGradientLBTest(ut.TestCase):
         self.system.integrator.run(20)
 
         # Measure final total density per component
-        rho_a_final = 0.0
-        rho_b_final = 0.0
-        for x in range(DOMAIN_SIZE):
-            for y in range(DOMAIN_SIZE):
-                for z in range(DOMAIN_SIZE):
-                    d = lbf[x, y, z].density
-                    rho_a_final += d[0]
-                    rho_b_final += d[1]
+        densities = np.copy(lbf[:, :, :].density)
+        rho_a_final = np.sum(densities[:, :, :, 0])
+        rho_b_final = np.sum(densities[:, :, :, 1])
 
         self.assertAlmostEqual(rho_a_init, rho_a_final, places=8,
                                msg="rho_a not conserved")
