@@ -67,7 +67,8 @@ bool LBWalberlaImpl<FloatType, Architecture>::set_node_velocity(
 
   if (has_two_components()) {
     throw std::runtime_error(
-        "set_node_velocity is not supported for two-component LB");
+        "set_node_velocity is not supported for two-component LB. "
+        "Set densities and populations instead to control the barycentric velocity.");
   }
 
   // We have to set both, the pdf and the stored velocity field

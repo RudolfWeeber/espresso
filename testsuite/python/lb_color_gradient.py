@@ -23,6 +23,9 @@ Basic tests for two-component color gradient LB.
 Tests:
   - Construction with two viscosities triggers two-component mode
   - Setting/getting per-component densities at nodes
+  - Bulk slice density set/get for two-component mode
+  - Population get/set for two-component mode (node and slice)
+  - Setting velocity raises RuntimeError in two-component mode
   - Running integration steps without crash
   - Mass conservation (total rho_a and rho_b are conserved)
 """
@@ -123,6 +126,71 @@ class ColorGradientLBTest(ut.TestCase):
         dens = lbf[0, 0, 0].density
         self.assertAlmostEqual(dens[0], 0.7, places=10)
         self.assertAlmostEqual(dens[1], 0.3, places=10)
+
+    def test_slice_density_set_get(self):
+        """Bulk slice density set/get should round-trip for two components."""
+        lbf = self._create_lbf()
+        N = DOMAIN_SIZE
+        rho_a, rho_b = droplet_densities(
+            N, RADIUS, SMOOTHING_WIDTH, RHO_0, EPSILON)
+
+        # Set via bulk slice
+        lbf[:, :, :].density = np.stack([rho_a, rho_b], axis=-1)
+
+        # Read back via bulk slice
+        densities = np.copy(lbf[:, :, :].density)
+        self.assertEqual(densities.shape, (N, N, N, 2))
+        np.testing.assert_allclose(densities[:, :, :, 0], rho_a, rtol=1e-10)
+        np.testing.assert_allclose(densities[:, :, :, 1], rho_b, rtol=1e-10)
+
+        # Verify consistency with per-node access
+        for x in range(0, N, N // 3):
+            for y in range(0, N, N // 3):
+                for z in range(0, N, N // 3):
+                    d = lbf[x, y, z].density
+                    self.assertAlmostEqual(d[0], rho_a[x, y, z], places=10)
+                    self.assertAlmostEqual(d[1], rho_b[x, y, z], places=10)
+
+    def test_node_population_set_get(self):
+        """Node population get/set should round-trip for two components."""
+        lbf = self._create_lbf()
+        self._init_droplet(lbf)
+
+        # Read populations (2 * stencil_size values)
+        pop = np.copy(lbf[3, 3, 3]._population)
+        stencil_size = len(pop) // 2
+        self.assertEqual(len(pop), 2 * stencil_size)
+
+        # Modify and write back
+        pop_modified = pop * 0.99
+        lbf[3, 3, 3]._population = pop_modified
+        pop_read = np.copy(lbf[3, 3, 3]._population)
+        np.testing.assert_allclose(pop_read, pop_modified, rtol=1e-10)
+
+    def test_slice_population_set_get(self):
+        """Slice population get/set should round-trip for two components."""
+        lbf = self._create_lbf()
+        self._init_droplet(lbf)
+
+        N = DOMAIN_SIZE
+        pop = np.copy(lbf[:, :, :]._population)
+        stencil_size = pop.shape[-1] // 2
+        self.assertEqual(pop.shape, (N, N, N, 2 * stencil_size))
+
+        # Verify consistency with per-node access
+        node_pop = np.copy(lbf[2, 3, 4]._population)
+        np.testing.assert_allclose(pop[2, 3, 4], node_pop, rtol=1e-10)
+
+    def test_set_velocity_raises(self):
+        """Setting velocity should raise in two-component mode."""
+        lbf = self._create_lbf()
+        self._init_droplet(lbf)
+
+        with self.assertRaisesRegex(RuntimeError, "not supported for two-component"):
+            lbf[0, 0, 0].velocity = [0.1, 0.0, 0.0]
+
+        with self.assertRaisesRegex(RuntimeError, "not supported for two-component"):
+            lbf[:, :, :].velocity = np.zeros((DOMAIN_SIZE,) * 3 + (3,))
 
     def test_run_steps(self):
         """Two-component LB with droplet should run without crash."""

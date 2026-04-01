@@ -74,7 +74,8 @@ void LBWalberlaImpl<FloatType, Architecture>::set_slice_velocity(
     std::vector<double> const &velocity) {
   if (has_two_components()) {
     throw std::runtime_error(
-        "set_slice_velocity is not supported for two-component LB");
+        "set_slice_velocity is not supported for two-component LB. "
+        "Set densities and populations instead to control the barycentric velocity.");
   }
   m_pending_ghost_comm.set(GhostComm::PDF);
   m_pending_ghost_comm.set(GhostComm::VEL);
