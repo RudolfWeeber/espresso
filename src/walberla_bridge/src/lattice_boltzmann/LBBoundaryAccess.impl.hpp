@@ -189,6 +189,10 @@ void LBWalberlaImpl<FloatType, Architecture>::reallocate_ubb_field() {
  */
 template <typename FloatType, lbmpy::Arch Architecture>
 void LBWalberlaImpl<FloatType, Architecture>::on_boundary_add() {
+  if (has_two_components()) {
+    throw std::runtime_error(
+        "boundaries are not implemented for two-component LB");
+  }
   if (not m_has_boundaries) {
     m_has_boundaries = true;
     setup_streaming_communicator();
