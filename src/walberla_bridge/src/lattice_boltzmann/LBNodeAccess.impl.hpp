@@ -83,35 +83,6 @@ bool LBWalberlaImpl<FloatType, Architecture>::set_node_velocity(
   return true;
 }
 
-// Per-component velocity (CG only)
-
-template <typename FloatType, lbmpy::Arch Architecture>
-std::optional<std::array<Utils::Vector3d, 2>>
-LBWalberlaImpl<FloatType, Architecture>::get_node_velocity_component(
-    Utils::Vector3i const &node, bool consider_ghosts) const {
-  if (!has_two_components()) {
-    throw std::runtime_error(
-        "get_node_velocity_component is only supported for two-component LB");
-  }
-  auto const bc = get_block_and_cell(get_lattice(), node, consider_ghosts);
-  if (!bc)
-    return std::nullopt;
-
-  auto const field = bc->block->template uncheckedFastGetData<VectorField>(
-      m_velocity_field_id);
-  auto const vec = lbm::accessor::Vector::get(field, bc->cell);
-  auto const v = to_vector3d(vec);
-  return std::array<Utils::Vector3d, 2>{v, v};
-}
-
-template <typename FloatType, lbmpy::Arch Architecture>
-bool LBWalberlaImpl<FloatType, Architecture>::set_node_velocity_component(
-    Utils::Vector3i const &node,
-    std::array<Utils::Vector3d, 2> const & /*v*/) {
-  throw std::runtime_error(
-      "set_node_velocity_component is not supported for two-component LB");
-}
-
 template <typename FloatType, lbmpy::Arch Architecture>
 std::optional<std::vector<double>>
 LBWalberlaImpl<FloatType, Architecture>::get_node_density(

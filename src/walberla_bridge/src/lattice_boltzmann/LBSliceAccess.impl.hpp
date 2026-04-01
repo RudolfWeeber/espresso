@@ -72,6 +72,10 @@ template <typename FloatType, lbmpy::Arch Architecture>
 void LBWalberlaImpl<FloatType, Architecture>::set_slice_velocity(
     Utils::Vector3i const &lower_corner, Utils::Vector3i const &upper_corner,
     std::vector<double> const &velocity) {
+  if (has_two_components()) {
+    throw std::runtime_error(
+        "set_slice_velocity is not supported for two-component LB");
+  }
   m_pending_ghost_comm.set(GhostComm::PDF);
   m_pending_ghost_comm.set(GhostComm::VEL);
   for_each_block_in_slice(
@@ -99,52 +103,6 @@ void LBWalberlaImpl<FloatType, Architecture>::set_slice_velocity(
         lbm::accessor::Velocity::set(pdf_field, vel_field, force_field, values,
                                      bci);
       });
-}
-
-template <typename FloatType, lbmpy::Arch Architecture>
-std::vector<double>
-LBWalberlaImpl<FloatType, Architecture>::get_slice_velocity_component(
-    Utils::Vector3i const &lower_corner,
-    Utils::Vector3i const &upper_corner) const {
-  if (!has_two_components()) {
-    throw std::runtime_error(
-        "get_slice_velocity_component is only supported for two-component LB");
-  }
-  // In the CG model, both components share the same barycentric velocity.
-  // Return 2x3 values per node: [v_a_x, v_a_y, v_a_z, v_b_x, v_b_y, v_b_z]
-  std::vector<double> out;
-  for_each_block_in_slice(
-      get_lattice(), lower_corner, upper_corner,
-      [&](auto &block, auto const &bci, auto const &ci,
-          auto const &block_offset) {
-        if (out.empty())
-          out.resize(6u * ci.numCells());
-        auto const field =
-            block.template getData<VectorField>(m_velocity_field_id);
-        auto values = lbm::accessor::Vector::get(field, bci);
-
-        auto kernel = [&values, &out](unsigned const block_index,
-                                      unsigned const local_index,
-                                      Utils::Vector3i const &) {
-          for (uint_t f = 0u; f < 3u; ++f) {
-            auto const v = values[3u * block_index + f];
-            out[6u * local_index + f] = v;
-            out[6u * local_index + 3u + f] = v;
-          }
-        };
-
-        copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
-      });
-  return out;
-}
-
-template <typename FloatType, lbmpy::Arch Architecture>
-void LBWalberlaImpl<FloatType, Architecture>::set_slice_velocity_component(
-    Utils::Vector3i const & /*lower_corner*/,
-    Utils::Vector3i const & /*upper_corner*/,
-    std::vector<double> const & /*velocity*/) {
-  throw std::runtime_error(
-      "set_slice_velocity_component is not supported for two-component LB");
 }
 
 template <typename FloatType, lbmpy::Arch Architecture>

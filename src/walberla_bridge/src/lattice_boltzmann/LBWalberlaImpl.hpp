@@ -746,24 +746,12 @@ public:
                     bool consider_ghosts = false) const override;
   bool set_node_velocity(Utils::Vector3i const &node,
                          Utils::Vector3d const &v) override;
-  std::optional<std::array<Utils::Vector3d, 2>>
-  get_node_velocity_component(Utils::Vector3i const &node,
-                              bool consider_ghosts = false) const;
-  bool set_node_velocity_component(Utils::Vector3i const &node,
-                                   std::array<Utils::Vector3d, 2> const &v);
-
   std::vector<double>
   get_slice_velocity(Utils::Vector3i const &lower_corner,
                      Utils::Vector3i const &upper_corner) const override;
   void set_slice_velocity(Utils::Vector3i const &lower_corner,
                           Utils::Vector3i const &upper_corner,
                           std::vector<double> const &velocity) override;
-  std::vector<double>
-  get_slice_velocity_component(Utils::Vector3i const &lower_corner,
-                               Utils::Vector3i const &upper_corner) const;
-  void set_slice_velocity_component(Utils::Vector3i const &lower_corner,
-                                    Utils::Vector3i const &upper_corner,
-                                    std::vector<double> const &velocity);
   
 
   // Density
