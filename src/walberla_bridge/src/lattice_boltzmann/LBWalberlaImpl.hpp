@@ -175,7 +175,6 @@ protected:
   unsigned int m_seed;
   double m_zc_to_md; // zero-centered conversion factor to MD units
   double m_zc_to_lb; // zero-centered conversion factor to LB units
-  bool m_two_components;
 
   // lattice
   std::shared_ptr<LatticeWalberla> m_lattice;
@@ -222,6 +221,7 @@ protected:
   std::shared_ptr<RegularFullCommunicator> m_phasefield_communicator;
   std::bitset<GhostComm::SIZE> m_pending_ghost_comm;
   ResourceObserver m_mpi_cart_comm_observer;
+  bool m_two_components;
 
   // collision sweep
   std::shared_ptr<CollisionModel> m_collision_model;

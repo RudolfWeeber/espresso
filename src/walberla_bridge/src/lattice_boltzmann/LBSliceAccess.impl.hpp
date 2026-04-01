@@ -229,13 +229,14 @@ template <typename FloatType, lbmpy::Arch Architecture>
 void LBWalberlaImpl<FloatType, Architecture>::set_slice_population(
     Utils::Vector3i const &lower_corner, Utils::Vector3i const &upper_corner,
     std::vector<double> const &population) {
-  auto const pop_per_node =
-      has_two_components() ? 2u * stencil_size() : stencil_size();
   for_each_block_in_slice(
       get_lattice(), lower_corner, upper_corner,
       [&](auto &block, auto const &bci, auto const &ci,
           auto const &block_offset) {
+        auto const pop_per_node =
+            has_two_components() ? 2u * stencil_size() : stencil_size();
         assert(population.size() == pop_per_node * ci.numCells());
+        (void)pop_per_node;
         auto pdf_field_a =
             block.template getData<PdfField>(m_pdf_field_id[0]);
         auto force_field =
@@ -350,12 +351,13 @@ void LBWalberlaImpl<FloatType, Architecture>::set_slice_density(
     Utils::Vector3i const &lower_corner, Utils::Vector3i const &upper_corner,
     std::vector<double> const &density) {
   m_pending_ghost_comm.set(GhostComm::PDF);
-  auto const n_components = has_two_components() ? 2u : 1u;
   for_each_block_in_slice(
       get_lattice(), lower_corner, upper_corner,
       [&](auto &block, auto const &bci, auto const &ci,
           auto const &block_offset) {
+        auto const n_components = has_two_components() ? 2u : 1u;
         assert(density.size() == n_components * ci.numCells());
+        (void)n_components;
 
         if (has_two_components()) {
           auto rho_a_field =
