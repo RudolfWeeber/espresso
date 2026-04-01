@@ -680,7 +680,6 @@ if(NOT DEFINED Kokkos_FOUND OR NOT ${Kokkos_FOUND})
     TARGET kokkos APPEND
     PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
              $<TARGET_PROPERTY:kokkos,INTERFACE_INCLUDE_DIRECTORIES>)
-  set_target_properties(kokkos PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")
 endif()
 
 if(NOT EXISTS ${FETCHCONTENT_BASE_DIR}/cabana-src)
@@ -697,6 +696,11 @@ if(NOT DEFINED Cabana_FOUND OR NOT ${Cabana_FOUND})
   # cmake-format: on
   set(Cabana_REQUIRE_HEFFTE ${ESPRESSO_BUILD_WITH_FFTW} CACHE BOOL "")
   FetchContent_MakeAvailable(cabana)
+  # mark Cabana headers as system headers to disable compiler diagnostics
+  set_property(
+    TARGET Core APPEND
+    PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
+             $<TARGET_PROPERTY:Core,INTERFACE_INCLUDE_DIRECTORIES>)
 endif()
 
 # We need the parallel hdf5 version!
