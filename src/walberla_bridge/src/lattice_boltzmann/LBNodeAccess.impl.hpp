@@ -275,6 +275,11 @@ LBWalberlaImpl<FloatType, Architecture>::get_node_pressure_tensor(
   if (!bc)
     return std::nullopt;
 
+  if (has_two_components()) {
+    throw std::runtime_error(
+        "pressure tensor not implemented for two-component LB");
+  }
+
   auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id[0]);
   auto tensor =
       lbm::accessor::PressureTensor::get(pdf_field, m_density, bc->cell);

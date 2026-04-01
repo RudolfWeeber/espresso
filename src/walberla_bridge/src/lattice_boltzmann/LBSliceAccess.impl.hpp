@@ -412,6 +412,10 @@ std::vector<double>
 LBWalberlaImpl<FloatType, Architecture>::get_slice_pressure_tensor(
     Utils::Vector3i const &lower_corner,
     Utils::Vector3i const &upper_corner) const {
+  if (has_two_components()) {
+    throw std::runtime_error(
+        "pressure tensor not implemented for two-component LB");
+  }
   std::vector<double> out;
   for_each_block_in_slice(
       get_lattice(), lower_corner, upper_corner,

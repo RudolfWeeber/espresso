@@ -880,6 +880,10 @@ public:
 
   // Global pressure tensor
   [[nodiscard]] Utils::VectorXd<9> get_pressure_tensor() const override {
+    if (has_two_components()) {
+      throw std::runtime_error(
+          "pressure tensor not implemented for two-component LB");
+    }
     Matrix3<FloatType> tensor(FloatType{0});
     for (auto const &block : *get_lattice().get_blocks()) {
       auto pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
