@@ -329,9 +329,7 @@ inline void add_non_bonded_pair_force(
  *  @param[in] dx          Vector between @p p1 and @p p2.
  *  @param[in] kernel      Coulomb force kernel.
  */
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
 ESPRESSO_ATTR_ALWAYS_INLINE
-#endif
 inline std::optional<Utils::Vector3d> calc_bond_pair_force(
     Bonded_IA_Parameters const &iaparams, Utils::Vector3d const &dx,
     double const q1q2,
@@ -408,9 +406,7 @@ inline bool add_bonded_two_body_force(
   return true;
 }
 
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
 ESPRESSO_ATTR_ALWAYS_INLINE
-#endif
 inline std::optional<
     std::tuple<Utils::Vector3d, Utils::Vector3d, Utils::Vector3d>>
 calc_bonded_three_body_force(Bonded_IA_Parameters const &iaparams,
@@ -458,9 +454,7 @@ inline bool add_bonded_three_body_force(Bonded_IA_Parameters const &iaparams,
   return true;
 }
 
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
 ESPRESSO_ATTR_ALWAYS_INLINE
-#endif
 inline std::optional<std::tuple<Utils::Vector3d, Utils::Vector3d,
                                 Utils::Vector3d, Utils::Vector3d>>
 calc_bonded_four_body_force(

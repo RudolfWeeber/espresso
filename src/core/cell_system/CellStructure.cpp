@@ -411,7 +411,6 @@ int CellStructure::get_max_local_particle_id() const {
   return (it != m_particle_index.rend()) ? (*it)->id() : -1;
 }
 
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
 int CellStructure::get_local_pair_bond_numbers() const {
   return m_bond_state->pair_count;
 }
@@ -433,7 +432,6 @@ void CellStructure::add_new_bond(int bond_id,
 }
 void CellStructure::rebuild_bond_list() { m_bond_state->rebuild(); }
 #endif // ESPRESSO_COLLISION_DETECTION
-#endif // ESPRESSO_SHARED_MEMORY_PARALLELISM
 
 void CellStructure::remove_all_particles() {
   for (auto cell : decomposition().local_cells()) {
@@ -441,9 +439,7 @@ void CellStructure::remove_all_particles() {
   }
 
   m_particle_index.clear();
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
   clear_bond_properties();
-#endif
 }
 
 /* Map the data parts flags from cells to those used internally
