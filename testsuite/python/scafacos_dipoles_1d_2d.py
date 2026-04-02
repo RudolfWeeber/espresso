@@ -31,8 +31,6 @@ import tests_common
 
 
 @utx.skipIfMissingFeatures(["SCAFACOS_DIPOLES"])
-@ut.skipIf(espressomd.has_features("FPE"),
-           "cannot run with FPE instrumentation")
 class Scafacos1d2d(ut.TestCase):
 
     system = espressomd.System(box_l=[1.0, 1.0, 1.0])

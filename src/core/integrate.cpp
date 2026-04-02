@@ -62,6 +62,8 @@
 #include "virtual_sites/lb_tracers.hpp"
 #include "virtual_sites/relative.hpp"
 
+#include <instrumentation/fe_trap.hpp>
+
 #include <boost/mpi/collectives/all_reduce.hpp>
 
 #ifdef ESPRESSO_CALIPER
@@ -752,6 +754,11 @@ int System::System::integrate(int n_steps, int reuse_forces) {
           lb.ghost_communication_vel();
 #ifdef ESPRESSO_CALIPER
           CALI_MARK_END("lb_propagation");
+#endif
+#ifdef ESPRESSO_FPE
+          auto const trap_pause = fe_trap::make_shared_pause_scoped();
+#endif
+#ifdef ESPRESSO_CALIPER
           CALI_MARK_BEGIN("ek_propagation");
 #endif
           ek.propagate();
@@ -777,6 +784,9 @@ int System::System::integrate(int n_steps, int reuse_forces) {
         propagation.ek_skipped_md_steps += 1;
         if (propagation.ek_skipped_md_steps >= md_steps_per_ek_step) {
           propagation.ek_skipped_md_steps = 0;
+#ifdef ESPRESSO_FPE
+          auto const trap_pause = fe_trap::make_shared_pause_scoped();
+#endif
 #ifdef ESPRESSO_CALIPER
           CALI_MARK_BEGIN("ek_propagation");
 #endif
