@@ -46,6 +46,7 @@ import espressomd.lb
 
 DOMAIN_SIZE = 12
 AGRID = 1.0
+TAU = 1.0
 RHO_0 = 1.0
 EPSILON = 1e-6
 VISCOSITY = 1.0 / 6.0
@@ -86,7 +87,7 @@ class ColorGradientLBTest(ut.TestCase):
     """Test the two-component color gradient LB method."""
 
     system = espressomd.System(box_l=[DOMAIN_SIZE] * 3)
-    system.time_step = 1
+    system.time_step = TAU
     system.cell_system.skin = 0.4
     system.periodicity = [True, True, True]
 
