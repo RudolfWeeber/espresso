@@ -86,7 +86,7 @@ class ColorGradientLBTest(ut.TestCase):
     """Test the two-component color gradient LB method."""
 
     system = espressomd.System(box_l=[DOMAIN_SIZE] * 3)
-    system.time_step = 0.01
+    system.time_step = 1
     system.cell_system.skin = 0.4
     system.periodicity = [True, True, True]
 
