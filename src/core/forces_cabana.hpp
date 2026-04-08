@@ -111,9 +111,26 @@ struct ForcesKernel {
 
   // Helper functions to check if specific algorithms are active
 #ifdef ESPRESSO_GAY_BERNE
+  // Configured-for-type-pair: mask bit set iff gay_berne has a real cutoff.
+  // In-range check is deferred to where it matters.
+  ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION bool
+  gay_berne_configured(IA_parameters const &ia_params) const {
+    return (ia_params.active_pair_mask &
+            pair_potential_bit(PairPotential::GayBerne)) != 0u;
+  }
   ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION bool
   gay_berne_active(double dist, IA_parameters const &ia_params) const {
-    return dist < ia_params.gay_berne.cut;
+    return gay_berne_configured(ia_params) and dist < ia_params.gay_berne.cut;
+  }
+#endif
+
+#ifdef ESPRESSO_DPD
+  // True iff the DPD thermostat is on AND this type pair has DPD configured.
+  ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION bool
+  dpd_active(IA_parameters const &ia_params) const {
+    return (thermostat.thermo_switch & THERMO_DPD) and
+           ((ia_params.active_pair_mask &
+             pair_potential_bit(PairPotential::DPD)) != 0u);
   }
 #endif
 
@@ -243,7 +260,7 @@ struct ForcesKernel {
 
     /* The inter dpd force should not be part of the virial */
 #ifdef ESPRESSO_DPD
-    if (thermostat.thermo_switch & THERMO_DPD) {
+    if (dpd_active(ia_params)) {
       auto const pos1 = aosoa.get_vector_at(aosoa.position, i);
       auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
       auto const vel1 = aosoa.get_vector_at(aosoa.velocity, i);
