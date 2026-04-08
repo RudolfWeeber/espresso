@@ -66,7 +66,7 @@ struct ForcesKernel {
 #ifdef ESPRESSO_P3M
   CoulombP3M const *p3m;
 #endif
-  double system_max_cutoff;
+  double system_max_cutoff_sq;
 
   ForcesKernel(
       BondedInteractionsMap const &bonded_ias_,
@@ -98,7 +98,7 @@ struct ForcesKernel {
 #ifdef ESPRESSO_NPT
         global_virial(global_virial_), local_virial(local_virial_),
 #endif
-        aosoa(aosoa_), system_max_cutoff(system_max_cutoff_) {
+        aosoa(aosoa_), system_max_cutoff_sq(Utils::sqr(system_max_cutoff_)) {
 #ifdef ESPRESSO_P3M
     p3m = nullptr;
     if (auto &solver = coulomb_.impl->solver; solver.has_value()) {
@@ -141,16 +141,18 @@ struct ForcesKernel {
   ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION void
   operator()(std::size_t i, std::size_t j) const {
 
-    // calc distance
-    auto const pos1 = aosoa.get_vector_at(aosoa.position, i);
-    auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
-    auto const d = box_geo.get_mi_vector(pos1, pos2);
-    auto const dist = d.norm();
+    // calc distance (component-wise, avoids constructing pos1/pos2 Vector3d
+    // on the hot early-exit path; pos1/pos2 are built lazily below only
+    // where kernels actually require them)
+    auto const d = box_geo.get_mi_vector(
+        aosoa.position(i, 0), aosoa.position(i, 1), aosoa.position(i, 2),
+        aosoa.position(j, 0), aosoa.position(j, 1), aosoa.position(j, 2));
+    auto const dist_sq = d.norm2();
 
     // Early exit if distance > maximal global cutoff
-    if (dist > system_max_cutoff)
+    if (dist_sq > system_max_cutoff_sq)
       return;
-
+    auto const dist = std::sqrt(dist_sq);
     auto const &ia_params =
         nonbonded_ias.get_ia_param(aosoa.type(i), aosoa.type(j));
 
@@ -242,18 +244,18 @@ struct ForcesKernel {
     /* The inter dpd force should not be part of the virial */
 #ifdef ESPRESSO_DPD
     if (thermostat.thermo_switch & THERMO_DPD) {
-      auto const dist2 = dist * dist;
+      auto const pos1 = aosoa.get_vector_at(aosoa.position, i);
+      auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
       auto const vel1 = aosoa.get_vector_at(aosoa.velocity, i);
       auto const vel2 = aosoa.get_vector_at(aosoa.velocity, j);
       auto const force =
           dpd_pair_force(pos1, vel1, aosoa.id(i), pos2, vel2, aosoa.id(j),
-                         *thermostat.dpd, box_geo, ia_params, d, dist, dist2);
+                         *thermostat.dpd, box_geo, ia_params, d, dist, dist_sq);
       pf += force;
     }
 #endif // ESPRESSO_DPD
 
 #ifdef ESPRESSO_ELECTROSTATICS
-    Utils::Vector3d f1_asym{};
     Utils::Vector3d f2_asym{};
     // real-space electrostatic charge-charge interaction
     if (coulomb_kernel != nullptr) {
@@ -268,10 +270,17 @@ struct ForcesKernel {
           pf.f += (*coulomb_kernel)(q1q2, d, dist);
         }
         if (elc_kernel) {
+          auto const pos1 = aosoa.get_vector_at(aosoa.position, i);
+          auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
+          Utils::Vector3d f1_asym{};
           (*elc_kernel)(pos1, pos2, f1_asym, f2_asym, q1q2);
+          pf.f += f1_asym;
+          // f2_asym i applied to the opposing forces, later
         }
 #ifdef ESPRESSO_NPT
         if (npt_active()) {
+          auto const pos1 = aosoa.get_vector_at(aosoa.position, i);
+          auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
           virial[0] += (*coulomb_u_kernel)(pos1, pos2, q1q2, d, dist);
         }
 #endif // ESPRESSO_NPT
@@ -292,7 +301,6 @@ struct ForcesKernel {
 
     auto opf = calc_opposing_force(pf, d);
 #ifdef ESPRESSO_ELECTROSTATICS
-    pf.f += f1_asym;
     opf.f += f2_asym;
 #endif // ESPRESSO_ELECTROSTATICS
 
