@@ -36,13 +36,13 @@
 #include <utility>
 #include <vector>
 
-namespace {
 // Set mask bit and fold cutoff into max_cut if the potential's max_cutoff()
 // exceeds the current maximum. The "active" criterion matches each kernel's
 // own guard: a kernel can only contribute when its max_cutoff() > 0 (since
 // dist >= 0 and inactive_cutoff = -1).
-inline void consider(double &max_cut_current, unsigned &mask, PairPotential p,
-                     double sub_cutoff) {
+static void __attribute__((unused)) // shut up sanitizer
+consider(double &max_cut_current, unsigned &mask, PairPotential p,
+         double sub_cutoff) {
   if (sub_cutoff > 0.) {
     mask |= pair_potential_bit(p);
     if (sub_cutoff > max_cut_current) {
@@ -50,7 +50,6 @@ inline void consider(double &max_cut_current, unsigned &mask, PairPotential p,
     }
   }
 }
-} // namespace
 
 static std::pair<double, unsigned>
 recalc_maximal_cutoff(IA_parameters const &data,

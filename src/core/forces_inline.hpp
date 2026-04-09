@@ -81,6 +81,8 @@ inline Utils::Vector3d calc_central_radial_force(IA_parameters const &ia_params,
                                                  double const dist) {
 
   auto const mask = ia_params.active_pair_mask;
+  static_cast<void>(mask);
+
   auto force_factor = 0.;
 #ifdef ESPRESSO_LENNARD_JONES
   if (mask & pair_potential_bit(PairPotential::LennardJones))
