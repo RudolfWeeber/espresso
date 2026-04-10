@@ -617,10 +617,10 @@ void p3m_gpu_init(std::shared_ptr<P3MGpuParams> &data, int cao,
 
     {
 #ifdef ESPRESSO_FPE
-      // starting with CUDA 12.0, cuFFT builds device kernels using CUDA-JIT
+      // cuFFT builds device kernels using CUDA-JIT
       // (https://docs.nvidia.com/cuda/archive/13.1.1/cufft/#plan-initialization-time)
-      // at runtime; this operation is not guaranteed to succeed for all mesh
-      // sizes, and in rare cases, it can send the SIGFPE signal
+      // please note this operation is not guaranteed to succeed for all
+      // mesh sizes, and in rare cases, it can send the SIGFPE signal
       auto const trap_pause = fe_trap::make_shared_pause_scoped();
 #endif
       if (cufftPlan3d(&(data->p3m_fft.forw_plan), mesh[0], mesh[1], mesh[2],

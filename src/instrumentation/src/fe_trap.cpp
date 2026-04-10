@@ -141,8 +141,7 @@ fe_trap::make_shared_scoped(std::optional<int> excepts) {
   return fe_trap::scoped_instance(watched);
 }
 
-std::optional<std::shared_ptr<fe_trap::scoped_pause>>
-fe_trap::make_shared_pause_scoped() {
+std::shared_ptr<fe_trap::scoped_pause> fe_trap::make_shared_pause_scoped() {
   std::lock_guard<std::mutex> lock(fe_trap::global_state.mutex);
   if (auto watched = fe_trap::global_state.observer.lock()) {
     if (auto pause = watched->m_pause.lock()) {
@@ -152,7 +151,7 @@ fe_trap::make_shared_pause_scoped() {
     watched->m_pause = pause;
     return pause;
   }
-  return std::nullopt;
+  return {};
 }
 
 #endif // ESPRESSO_FPE

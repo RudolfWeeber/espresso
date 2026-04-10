@@ -173,9 +173,9 @@ public:
   /**
    * @brief Generate a shared handle to temporarily disable any currently
    * active exception trap for the lifetime of the current scope.
+   * If no exception trap is currently active, return a null pointer.
    */
-  static std::optional<std::shared_ptr<scoped_pause>>
-  make_shared_pause_scoped();
+  static std::shared_ptr<scoped_pause> make_shared_pause_scoped();
 
   /** @brief Manually activate the exception trap. */
   void activate();
@@ -185,7 +185,7 @@ public:
    * Useful when calling a third-party library that is known to send signals.
    * This should only be used in exceptional cases
    * (@ref make_shared_pause_scoped provides a scope-based alternative).
-   * Call @ref activate_trap() to re-activate the exception trap.
+   * Call @ref activate() to re-activate the exception trap.
    */
   void deactivate();
 };
