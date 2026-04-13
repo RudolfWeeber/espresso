@@ -17,7 +17,7 @@
 //! \\author pystencils
 //======================================================================================================================
 
-// kernel generated with pystencils v1.4+1.ge851f4e, lbmpy v1.4+1.ge9efe34, sympy v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit 17fc54c872bd8ceabf271a7e9e636c7c583f55af
+// kernel generated with pystencils v1.4+1.ge851f4e, lbmpy v1.4+1.ge9efe34, sympy v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit 3247aa7395049ca5bfb69d34d55e45db19fa439c
 
 
 #pragma once
@@ -54,8 +54,8 @@ namespace pystencils {
 class ColorGradientCollideSweepSinglePrecision
 {
 public:
-   ColorGradientCollideSweepSinglePrecision( BlockDataID force_aID_, BlockDataID force_bID_, BlockDataID pdfs_aID_, BlockDataID pdfs_bID_, BlockDataID phasefieldID_, BlockDataID rho_aID_, BlockDataID rho_bID_, BlockDataID velocityID_, float beta, float omega_even_a, float omega_even_b, float omega_odd_a, float omega_odd_b, float omega_shear_a, float omega_shear_b, float sigma )
-     : force_aID(force_aID_), force_bID(force_bID_), pdfs_aID(pdfs_aID_), pdfs_bID(pdfs_bID_), phasefieldID(phasefieldID_), rho_aID(rho_aID_), rho_bID(rho_bID_), velocityID(velocityID_), beta_(beta), omega_even_a_(omega_even_a), omega_even_b_(omega_even_b), omega_odd_a_(omega_odd_a), omega_odd_b_(omega_odd_b), omega_shear_a_(omega_shear_a), omega_shear_b_(omega_shear_b), sigma_(sigma)
+   ColorGradientCollideSweepSinglePrecision( BlockDataID color_gradientID_, BlockDataID force_aID_, BlockDataID force_bID_, BlockDataID pdfs_aID_, BlockDataID pdfs_bID_, BlockDataID phasefieldID_, BlockDataID rho_aID_, BlockDataID rho_bID_, BlockDataID velocityID_, float beta, float omega_even_a, float omega_even_b, float omega_odd_a, float omega_odd_b, float omega_shear_a, float omega_shear_b, float sigma )
+     : color_gradientID(color_gradientID_), force_aID(force_aID_), force_bID(force_bID_), pdfs_aID(pdfs_aID_), pdfs_bID(pdfs_bID_), phasefieldID(phasefieldID_), rho_aID(rho_aID_), rho_bID(rho_bID_), velocityID(velocityID_), beta_(beta), omega_even_a_(omega_even_a), omega_even_b_(omega_even_b), omega_odd_a_(omega_odd_a), omega_odd_b_(omega_odd_b), omega_shear_a_(omega_shear_a), omega_shear_b_(omega_shear_b), sigma_(sigma)
    {}
 
    
@@ -124,6 +124,7 @@ public:
 
 private:
    
+   BlockDataID color_gradientID;
    BlockDataID force_aID;
    BlockDataID force_bID;
    BlockDataID pdfs_aID;

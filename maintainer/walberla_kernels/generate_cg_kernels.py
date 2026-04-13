@@ -24,7 +24,7 @@ import pystencils as ps
 
 import lbmpy
 
-kernel_codes = "cg_init cg_stream cg_collide".split()
+kernel_codes = "cg_init cg_stream cg_color_gradient cg_collide".split()
 parser = argparse.ArgumentParser(description="Generate the waLBerla kernels.")
 parser.add_argument("--single-precision", action="store_true", required=False,
                     help="Use single-precision")
@@ -88,6 +88,15 @@ def generate_cg_init_kernels(ctx, cg_fields, cg_methods):
         ctx.patch_file(stem, get_ext_source(target_suffix), patch_openmp_kernels)
 
 
+def generate_cg_color_gradient_kernels(ctx, cg_fields):
+    precision_prefix = pystencils_espresso.precision_prefix[ctx.double_accuracy]
+    cg_op = color_gradient.create_color_gradient_operator(cg_fields)
+    for params, target_suffix in paramlist(parameters, ("GPU", "CPU", "AVX")):
+        stem = f"ColorGradientSweep{precision_prefix}{target_suffix}"
+        pystencils_walberla.generate_sweep(ctx, stem, cg_op, **params)
+        ctx.patch_file(stem, get_ext_source(target_suffix), patch_openmp_kernels)
+
+
 def generate_cg_collide_kernels(ctx, cg_fields, cg_methods, cg_configs, cg_opts):
     precision_prefix = pystencils_espresso.precision_prefix[ctx.double_accuracy]
     collide = color_gradient.create_collide_perturb_recolor_operator(cg_fields, cg_methods, cg_configs, cg_opts)
@@ -138,5 +147,7 @@ with code_generation_context.CodeGeneration() as ctx:
         generate_cg_init_kernels(ctx, cg_fields, cg_methods)
     if "cg_stream" in args.kernels:
         generate_cg_stream_kernels(ctx, cg_fields, cg_methods, cg_configs, cg_opts)
+    if "cg_color_gradient" in args.kernels:
+        generate_cg_color_gradient_kernels(ctx, cg_fields)
     if "cg_collide" in args.kernels:
         generate_cg_collide_kernels(ctx, cg_fields, cg_methods, cg_configs, cg_opts)

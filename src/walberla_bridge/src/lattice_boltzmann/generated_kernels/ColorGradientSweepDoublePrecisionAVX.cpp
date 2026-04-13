@@ -1,0 +1,185 @@
+//======================================================================================================================
+//
+//  This file is part of waLBerla. waLBerla is free software: you can
+//  redistribute it and/or modify it under the terms of the GNU General Public
+//  License as published by the Free Software Foundation, either version 3 of
+//  the License, or (at your option) any later version.
+//
+//  waLBerla is distributed in the hope that it will be useful, but WITHOUT
+//  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+//  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+//  for more details.
+//
+//  You should have received a copy of the GNU General Public License along
+//  with waLBerla (see COPYING.txt). If not, see <http://www.gnu.org/licenses/>.
+//
+//! \\file ColorGradientSweepDoublePrecisionAVX.cpp
+//! \\author pystencils
+//======================================================================================================================
+
+// kernel generated with pystencils v1.4+1.ge851f4e, lbmpy v1.4+1.ge9efe34, sympy v1.12.1, lbmpy_walberla/pystencils_walberla from waLBerla commit 3247aa7395049ca5bfb69d34d55e45db19fa439c
+
+
+#include <cmath>
+
+#include "core/DataTypes.h"
+#include "core/Macros.h"
+#include "ColorGradientSweepDoublePrecisionAVX.h"
+
+
+#include <immintrin.h>
+
+
+
+#define FUNC_PREFIX
+
+#if ( defined WALBERLA_CXX_COMPILER_IS_GNU ) || ( defined WALBERLA_CXX_COMPILER_IS_CLANG )
+#   pragma GCC diagnostic push
+#   pragma GCC diagnostic ignored "-Wfloat-equal"
+#   pragma GCC diagnostic ignored "-Wshadow"
+#   pragma GCC diagnostic ignored "-Wconversion"
+#   pragma GCC diagnostic ignored "-Wunused-variable"
+#endif
+
+#if ( defined WALBERLA_CXX_COMPILER_IS_INTEL )
+#pragma warning push
+#pragma warning( disable :  1599 )
+#endif
+
+using namespace std;
+
+namespace walberla {
+namespace pystencils {
+
+
+namespace internal_496a6cbb9a226c3048e4801d55174ed1 {
+static FUNC_PREFIX void colorgradientsweepdoubleprecisionavx_colorgradientsweepdoubleprecisionavx(double * RESTRICT  _data_color_gradient, double * RESTRICT const _data_phasefield, int64_t const _size_color_gradient_0, int64_t const _size_color_gradient_1, int64_t const _size_color_gradient_2, int64_t const _stride_color_gradient_1, int64_t const _stride_color_gradient_2, int64_t const _stride_color_gradient_3, int64_t const _stride_phasefield_1, int64_t const _stride_phasefield_2)
+{
+#ifdef _OPENMP
+   #pragma omp parallel
+#endif
+   {
+#ifdef _OPENMP
+      #pragma omp for schedule(static)
+#endif
+      for (int64_t ctr_2 = 1; ctr_2 < _size_color_gradient_2 - 1; ctr_2 += 1)
+      {
+         for (int64_t ctr_1 = 1; ctr_1 < _size_color_gradient_1 - 1; ctr_1 += 1)
+         {
+            {
+               for (int64_t ctr_0 = 1; ctr_0 < (int64_t)((_size_color_gradient_0 - 2) / (4)) * (4) + 1; ctr_0 += 4)
+               {
+                  _mm256_store_pd(&_data_color_gradient[_stride_color_gradient_1*ctr_1 + _stride_color_gradient_2*ctr_2 + ctr_0],_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.013888888888888888,0.013888888888888888,0.013888888888888888,0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1])),_mm256_mul_pd(_mm256_set_pd(0.013888888888888888,0.013888888888888888,0.013888888888888888,0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(0.013888888888888888,0.013888888888888888,0.013888888888888888,0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(0.013888888888888888,0.013888888888888888,0.013888888888888888,0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(0.055555555555555552,0.055555555555555552,0.055555555555555552,0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(0.055555555555555552,0.055555555555555552,0.055555555555555552,0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(0.055555555555555552,0.055555555555555552,0.055555555555555552,0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(0.055555555555555552,0.055555555555555552,0.055555555555555552,0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(0.22222222222222221,0.22222222222222221,0.22222222222222221,0.22222222222222221),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(-0.013888888888888888,-0.013888888888888888,-0.013888888888888888,-0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(-0.013888888888888888,-0.013888888888888888,-0.013888888888888888,-0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(-0.013888888888888888,-0.013888888888888888,-0.013888888888888888,-0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(-0.013888888888888888,-0.013888888888888888,-0.013888888888888888,-0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(-0.055555555555555552,-0.055555555555555552,-0.055555555555555552,-0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(-0.055555555555555552,-0.055555555555555552,-0.055555555555555552,-0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(-0.055555555555555552,-0.055555555555555552,-0.055555555555555552,-0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(-0.055555555555555552,-0.055555555555555552,-0.055555555555555552,-0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(-0.22222222222222221,-0.22222222222222221,-0.22222222222222221,-0.22222222222222221),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 + ctr_0 - 1]))));
+                  _mm256_storeu_pd(&_data_color_gradient[_stride_color_gradient_1*ctr_1 + _stride_color_gradient_2*ctr_2 + _stride_color_gradient_3 + ctr_0],_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.013888888888888888,0.013888888888888888,0.013888888888888888,0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1])),_mm256_mul_pd(_mm256_set_pd(0.013888888888888888,0.013888888888888888,0.013888888888888888,0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(0.013888888888888888,0.013888888888888888,0.013888888888888888,0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(0.013888888888888888,0.013888888888888888,0.013888888888888888,0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(0.055555555555555552,0.055555555555555552,0.055555555555555552,0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(0.055555555555555552,0.055555555555555552,0.055555555555555552,0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(0.055555555555555552,0.055555555555555552,0.055555555555555552,0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0]))),_mm256_mul_pd(_mm256_set_pd(0.055555555555555552,0.055555555555555552,0.055555555555555552,0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0]))),_mm256_mul_pd(_mm256_set_pd(0.22222222222222221,0.22222222222222221,0.22222222222222221,0.22222222222222221),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0]))),_mm256_mul_pd(_mm256_set_pd(-0.013888888888888888,-0.013888888888888888,-0.013888888888888888,-0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(-0.013888888888888888,-0.013888888888888888,-0.013888888888888888,-0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(-0.013888888888888888,-0.013888888888888888,-0.013888888888888888,-0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(-0.013888888888888888,-0.013888888888888888,-0.013888888888888888,-0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(-0.055555555555555552,-0.055555555555555552,-0.055555555555555552,-0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(-0.055555555555555552,-0.055555555555555552,-0.055555555555555552,-0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(-0.055555555555555552,-0.055555555555555552,-0.055555555555555552,-0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0]))),_mm256_mul_pd(_mm256_set_pd(-0.055555555555555552,-0.055555555555555552,-0.055555555555555552,-0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0]))),_mm256_mul_pd(_mm256_set_pd(-0.22222222222222221,-0.22222222222222221,-0.22222222222222221,-0.22222222222222221),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0]))));
+                  _mm256_storeu_pd(&_data_color_gradient[_stride_color_gradient_1*ctr_1 + _stride_color_gradient_2*ctr_2 + 2*_stride_color_gradient_3 + ctr_0],_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_add_pd(_mm256_mul_pd(_mm256_set_pd(0.013888888888888888,0.013888888888888888,0.013888888888888888,0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1])),_mm256_mul_pd(_mm256_set_pd(0.013888888888888888,0.013888888888888888,0.013888888888888888,0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(0.013888888888888888,0.013888888888888888,0.013888888888888888,0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(0.013888888888888888,0.013888888888888888,0.013888888888888888,0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(0.055555555555555552,0.055555555555555552,0.055555555555555552,0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(0.055555555555555552,0.055555555555555552,0.055555555555555552,0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(0.055555555555555552,0.055555555555555552,0.055555555555555552,0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0]))),_mm256_mul_pd(_mm256_set_pd(0.055555555555555552,0.055555555555555552,0.055555555555555552,0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0]))),_mm256_mul_pd(_mm256_set_pd(0.22222222222222221,0.22222222222222221,0.22222222222222221,0.22222222222222221),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0]))),_mm256_mul_pd(_mm256_set_pd(-0.013888888888888888,-0.013888888888888888,-0.013888888888888888,-0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(-0.013888888888888888,-0.013888888888888888,-0.013888888888888888,-0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(-0.013888888888888888,-0.013888888888888888,-0.013888888888888888,-0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(-0.013888888888888888,-0.013888888888888888,-0.013888888888888888,-0.013888888888888888),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(-0.055555555555555552,-0.055555555555555552,-0.055555555555555552,-0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1]))),_mm256_mul_pd(_mm256_set_pd(-0.055555555555555552,-0.055555555555555552,-0.055555555555555552,-0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1]))),_mm256_mul_pd(_mm256_set_pd(-0.055555555555555552,-0.055555555555555552,-0.055555555555555552,-0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0]))),_mm256_mul_pd(_mm256_set_pd(-0.055555555555555552,-0.055555555555555552,-0.055555555555555552,-0.055555555555555552),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0]))),_mm256_mul_pd(_mm256_set_pd(-0.22222222222222221,-0.22222222222222221,-0.22222222222222221,-0.22222222222222221),_mm256_loadu_pd(& _data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0]))));
+               }
+               for (int64_t ctr_0 = (int64_t)((_size_color_gradient_0 - 2) / (4)) * (4) + 1; ctr_0 < _size_color_gradient_0 - 1; ctr_0 += 1)
+               {
+                  _data_color_gradient[_stride_color_gradient_1*ctr_1 + _stride_color_gradient_2*ctr_2 + ctr_0] = -0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1] - 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1] - 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1] - 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1] - 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 - 1] - 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1] - 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1] - 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 - 1] - 0.22222222222222221*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 + ctr_0 - 1] + 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1] + 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1] + 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1] + 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1] + 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 + 1] + 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1] + 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1] + 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 + 1] + 0.22222222222222221*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 + ctr_0 + 1];
+                  _data_color_gradient[_stride_color_gradient_1*ctr_1 + _stride_color_gradient_2*ctr_2 + _stride_color_gradient_3 + ctr_0] = -0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1] - 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1] - 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1] - 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1] - 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0] - 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 + 1] - 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 - 1] - 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0] - 0.22222222222222221*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0] + 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1] + 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1] + 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1] + 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1] + 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0] + 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 + 1] + 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0 - 1] + 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0] + 0.22222222222222221*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + ctr_0];
+                  _data_color_gradient[_stride_color_gradient_1*ctr_1 + _stride_color_gradient_2*ctr_2 + 2*_stride_color_gradient_3 + ctr_0] = -0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1] - 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1] - 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1] - 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1] - 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0] - 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 + 1] - 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0 - 1] - 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0] - 0.22222222222222221*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 - _stride_phasefield_2 + ctr_0] + 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1] + 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1] + 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1] + 0.013888888888888888*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1] + 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0] + 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 + 1] + 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0 - 1] + 0.055555555555555552*_data_phasefield[_stride_phasefield_1*ctr_1 - _stride_phasefield_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0] + 0.22222222222222221*_data_phasefield[_stride_phasefield_1*ctr_1 + _stride_phasefield_2*ctr_2 + _stride_phasefield_2 + ctr_0];
+               }
+            }
+         }
+      }
+   }
+}
+}
+
+
+void ColorGradientSweepDoublePrecisionAVX::run(IBlock * block)
+{
+   
+    auto phasefield = block->getData< field::GhostLayerField<double, 1> >(phasefieldID);
+    auto color_gradient = block->getData< field::GhostLayerField<double, 3> >(color_gradientID);
+
+    
+    WALBERLA_ASSERT_GREATER_EQUAL(-1, -int_c(color_gradient->nrOfGhostLayers()))
+    double * RESTRICT  _data_color_gradient = color_gradient->dataAt(-1, -1, -1, 0);
+    WALBERLA_ASSERT_EQUAL(color_gradient->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) color_gradient->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(-1, -int_c(phasefield->nrOfGhostLayers()))
+    double * RESTRICT const _data_phasefield = phasefield->dataAt(-1, -1, -1, 0);
+    WALBERLA_ASSERT_EQUAL((uintptr_t) phasefield->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(color_gradient->xSizeWithGhostLayer(), int64_t(int64_c(color_gradient->xSize()) + 2))
+    const int64_t _size_color_gradient_0 = int64_t(int64_c(color_gradient->xSize()) + 2);
+    WALBERLA_ASSERT_EQUAL(color_gradient->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) color_gradient->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(color_gradient->ySizeWithGhostLayer(), int64_t(int64_c(color_gradient->ySize()) + 2))
+    const int64_t _size_color_gradient_1 = int64_t(int64_c(color_gradient->ySize()) + 2);
+    WALBERLA_ASSERT_EQUAL(color_gradient->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) color_gradient->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(color_gradient->zSizeWithGhostLayer(), int64_t(int64_c(color_gradient->zSize()) + 2))
+    const int64_t _size_color_gradient_2 = int64_t(int64_c(color_gradient->zSize()) + 2);
+    WALBERLA_ASSERT_EQUAL(color_gradient->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) color_gradient->dataAt(0, 0, 0, 0) %32, 0)
+    const int64_t _stride_color_gradient_1 = int64_t(color_gradient->yStride());
+    const int64_t _stride_color_gradient_2 = int64_t(color_gradient->zStride());
+    const int64_t _stride_color_gradient_3 = int64_t(1 * int64_t(color_gradient->fStride()));
+    const int64_t _stride_phasefield_1 = int64_t(phasefield->yStride());
+    const int64_t _stride_phasefield_2 = int64_t(phasefield->zStride());
+    internal_496a6cbb9a226c3048e4801d55174ed1::colorgradientsweepdoubleprecisionavx_colorgradientsweepdoubleprecisionavx(_data_color_gradient, _data_phasefield, _size_color_gradient_0, _size_color_gradient_1, _size_color_gradient_2, _stride_color_gradient_1, _stride_color_gradient_2, _stride_color_gradient_3, _stride_phasefield_1, _stride_phasefield_2);
+    
+}
+
+
+void ColorGradientSweepDoublePrecisionAVX::runOnCellInterval(const shared_ptr<StructuredBlockStorage> & blocks, const CellInterval & globalCellInterval, cell_idx_t ghostLayers, IBlock * block)
+{
+   
+    CellInterval ci = globalCellInterval;
+    CellInterval blockBB = blocks->getBlockCellBB( *block);
+    blockBB.expand( ghostLayers );
+    ci.intersect( blockBB );
+    blocks->transformGlobalToBlockLocalCellInterval( ci, *block );
+    if( ci.empty() )
+        return;
+
+    auto phasefield = block->getData< field::GhostLayerField<double, 1> >(phasefieldID);
+    auto color_gradient = block->getData< field::GhostLayerField<double, 3> >(color_gradientID);
+
+    
+    WALBERLA_ASSERT_GREATER_EQUAL(ci.xMin() - 1, -int_c(color_gradient->nrOfGhostLayers()))
+    WALBERLA_ASSERT_GREATER_EQUAL(ci.yMin() - 1, -int_c(color_gradient->nrOfGhostLayers()))
+    WALBERLA_ASSERT_GREATER_EQUAL(ci.zMin() - 1, -int_c(color_gradient->nrOfGhostLayers()))
+    double * RESTRICT  _data_color_gradient = color_gradient->dataAt(ci.xMin() - 1, ci.yMin() - 1, ci.zMin() - 1, 0);
+    WALBERLA_ASSERT_EQUAL(color_gradient->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) color_gradient->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(ci.xMin() - 1, -int_c(phasefield->nrOfGhostLayers()))
+    WALBERLA_ASSERT_GREATER_EQUAL(ci.yMin() - 1, -int_c(phasefield->nrOfGhostLayers()))
+    WALBERLA_ASSERT_GREATER_EQUAL(ci.zMin() - 1, -int_c(phasefield->nrOfGhostLayers()))
+    double * RESTRICT const _data_phasefield = phasefield->dataAt(ci.xMin() - 1, ci.yMin() - 1, ci.zMin() - 1, 0);
+    WALBERLA_ASSERT_EQUAL((uintptr_t) phasefield->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(color_gradient->xSizeWithGhostLayer(), int64_t(int64_c(ci.xSize()) + 2))
+    const int64_t _size_color_gradient_0 = int64_t(int64_c(ci.xSize()) + 2);
+    WALBERLA_ASSERT_EQUAL(color_gradient->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) color_gradient->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(color_gradient->ySizeWithGhostLayer(), int64_t(int64_c(ci.ySize()) + 2))
+    const int64_t _size_color_gradient_1 = int64_t(int64_c(ci.ySize()) + 2);
+    WALBERLA_ASSERT_EQUAL(color_gradient->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) color_gradient->dataAt(0, 0, 0, 0) %32, 0)
+    WALBERLA_ASSERT_GREATER_EQUAL(color_gradient->zSizeWithGhostLayer(), int64_t(int64_c(ci.zSize()) + 2))
+    const int64_t _size_color_gradient_2 = int64_t(int64_c(ci.zSize()) + 2);
+    WALBERLA_ASSERT_EQUAL(color_gradient->layout(), field::fzyx)
+    WALBERLA_ASSERT_EQUAL((uintptr_t) color_gradient->dataAt(0, 0, 0, 0) %32, 0)
+    const int64_t _stride_color_gradient_1 = int64_t(color_gradient->yStride());
+    const int64_t _stride_color_gradient_2 = int64_t(color_gradient->zStride());
+    const int64_t _stride_color_gradient_3 = int64_t(1 * int64_t(color_gradient->fStride()));
+    const int64_t _stride_phasefield_1 = int64_t(phasefield->yStride());
+    const int64_t _stride_phasefield_2 = int64_t(phasefield->zStride());
+    internal_496a6cbb9a226c3048e4801d55174ed1::colorgradientsweepdoubleprecisionavx_colorgradientsweepdoubleprecisionavx(_data_color_gradient, _data_phasefield, _size_color_gradient_0, _size_color_gradient_1, _size_color_gradient_2, _stride_color_gradient_1, _stride_color_gradient_2, _stride_color_gradient_3, _stride_phasefield_1, _stride_phasefield_2);
+    
+}
+
+
+
+} // namespace pystencils
+} // namespace walberla
+
+
+#if ( defined WALBERLA_CXX_COMPILER_IS_GNU ) || ( defined WALBERLA_CXX_COMPILER_IS_CLANG )
+#   pragma GCC diagnostic pop
+#endif
+
+#if ( defined WALBERLA_CXX_COMPILER_IS_INTEL )
+#pragma warning pop
+#endif

@@ -44,6 +44,7 @@ if(ESPRESSO_BUILD_WITH_WALBERLA_AVX)
 endif()
 configure_codegen_kernel(StreamCollideSweepLeesEdwards)
 configure_codegen_kernel(StreamCollideSweepThermalized)
+configure_codegen_kernel(ColorGradientSweep)
 configure_codegen_kernel(ColorGradientStreamSweep)
 configure_codegen_kernel(ColorGradientCollideSweep)
 

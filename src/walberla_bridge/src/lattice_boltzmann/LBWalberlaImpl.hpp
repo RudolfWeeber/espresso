@@ -100,6 +100,7 @@ protected:
 
   using CollisionModelTwoComponent = typename Kernels::CollisionModelTwoComponent;
   using StreamModelTwoComponent = typename Kernels::StreamModelTwoComponent;
+  using ColorGradientModel = typename Kernels::ColorGradientModel;
 
 public:
   /** @brief Stencil for collision and streaming operations. */
@@ -193,6 +194,7 @@ protected:
   // Color gradient fields
   std::array<BlockDataID,2> m_rho_field_id;
   BlockDataID m_phasefield_id;
+  BlockDataID m_color_gradient_field_id;
   std::array<BlockDataID,2> m_force_cg_field_id;
 
 
@@ -219,6 +221,7 @@ protected:
   std::shared_ptr<RegularFullCommunicator> m_pdf_a_communicator;
   std::shared_ptr<RegularFullCommunicator> m_pdf_b_communicator;
   std::shared_ptr<RegularFullCommunicator> m_phasefield_communicator;
+  std::shared_ptr<RegularFullCommunicator> m_color_gradient_communicator;
   std::bitset<GhostComm::SIZE> m_pending_ghost_comm;
   ResourceObserver m_mpi_cart_comm_observer;
   bool m_two_components;
@@ -229,6 +232,7 @@ protected:
   // color gradient sweeps
   std::shared_ptr<CollisionModelTwoComponent> m_collision_model_two_component;
   std::shared_ptr<StreamModelTwoComponent> m_stream_model_two_component;
+  std::shared_ptr<ColorGradientModel> m_color_gradient_model;
 
   // force reset sweep + external force handling
   std::shared_ptr<ResetForce<PdfField, VectorField>> m_reset_force;
@@ -298,6 +302,7 @@ public:
       m_rho_field_id[0] = add_to_storage<ScalarField>("rho_a");
       m_rho_field_id[1] = add_to_storage<ScalarField>("rho_b");
       m_phasefield_id = add_to_storage<ScalarField>("phasefield");
+      m_color_gradient_field_id = add_to_storage<_VectorField>("color_gradient");
       m_force_cg_field_id[0] = add_to_storage<_VectorField>("force_a");
       m_force_cg_field_id[1] = add_to_storage<_VectorField>("force_b");
 
@@ -372,9 +377,17 @@ private:
     if (has_two_components()) {
       // CG stream
       integrate_stream_two_component(blocks);
-       // Sync phasefield
+      // Sync phasefield
       m_phasefield_communicator->communicate();
-      
+
+      // Compute color gradient field
+      integrate_color_gradient(blocks);
+      // Sync color gradient (needed for off-lattice interpolation)
+      m_color_gradient_communicator->communicate();
+
+      // TODO: solvation force via B-spline interpolation goes here
+      // (read color_gradient field, compute force, write to force_a/force_b)
+
       // CG collision
       integrate_collide_two_component(blocks);
       // Sync pdfs
@@ -424,6 +437,11 @@ private:
   void integrate_collide_two_component(std::shared_ptr<BlockStorage> const &blocks) {
     for (auto &block : *blocks)
     (*m_collision_model_two_component)(&block);
+  }
+
+  void integrate_color_gradient(std::shared_ptr<BlockStorage> const &blocks) {
+    for (auto &block : *blocks)
+      (*m_color_gradient_model)(&block);
   }
 
   void integrate_stream_two_component(std::shared_ptr<BlockStorage> const &blocks) {
@@ -522,8 +540,14 @@ public:
     auto const omega_b = shear_mode_relaxation_rate(1u);
     auto const omega_odd_b = odd_mode_relaxation_rate(omega_b);
 
+    // Instantiate color gradient kernel
+    m_color_gradient_model = std::make_shared<ColorGradientModel>(
+        m_color_gradient_field_id, m_phasefield_id
+    );
+
     // Instantiate collide kernel
     m_collision_model_two_component = std::make_shared<CollisionModelTwoComponent>(
+        m_color_gradient_field_id,
         m_force_cg_field_id[0], m_force_cg_field_id[1],
         m_pdf_field_id[0], m_pdf_field_id[1],
         m_phasefield_id,
@@ -565,6 +589,11 @@ public:
     m_phasefield_communicator = std::make_shared<RegularFullCommunicator>(blocks);
     m_phasefield_communicator->addPackInfo(
         std::make_shared<PackInfo<ScalarField>>(m_phasefield_id));
+
+    // Color gradient communicator (needed for B-spline interpolation of solvation force)
+    m_color_gradient_communicator = std::make_shared<RegularFullCommunicator>(blocks);
+    m_color_gradient_communicator->addPackInfo(
+        std::make_shared<PackInfo<VectorField>>(m_color_gradient_field_id));
   }
 
   void init_two_component() {
