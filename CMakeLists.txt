@@ -628,9 +628,9 @@ if(ESPRESSO_BUILD_WITH_CUDA)
   list(APPEND ESPRESSO_OPENMP_COMPONENTS CUDA)
 endif()
 # ESPResSo and Kokkos require some of the new features from OpenMP 5.0, but a
-# version check cannot be enforced here, since GCC versions 12 to 15 report
-# 4.5 support for the CXX component, and NVHPC versions <= 26.3 report 4.5
-# support for the CUDA component
+# version check cannot be enforced here, since GCC versions 12 to 15 report 4.5
+# support for the CXX component, and NVHPC versions <= 26.3 report 4.5 support
+# for the CUDA component
 find_package(OpenMP REQUIRED COMPONENTS ${ESPRESSO_OPENMP_COMPONENTS})
 
 if(ESPRESSO_BUILD_WITH_FFTW)
