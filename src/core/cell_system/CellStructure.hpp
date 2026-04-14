@@ -46,7 +46,6 @@
 #include <cassert>
 #include <concepts>
 #include <cstddef>
-#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -87,8 +86,6 @@ template <typename Callable>
 concept ParticleCallback = requires(Callable c, Particle &p) {
   { c(p) } -> std::same_as<void>;
 };
-
-using ParticleUnaryOp = std::function<void(Particle &)>;
 
 namespace Cells {
 enum Resort : unsigned {
@@ -368,8 +365,8 @@ public:
    * @brief Run a kernel on all local particles.
    * The kernel is assumed to be thread-safe.
    */
-  void for_each_local_particle(ParticleUnaryOp &&f,
-                               bool parallel = true) const {
+  template <typename Callable>
+  void for_each_local_particle(Callable &&f, bool parallel = true) const {
 #ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
     if (parallel and use_parallel_for_each_local_particle()) {
       parallel_for_each_particle_impl(decomposition().local_cells(), f);
@@ -385,7 +382,8 @@ public:
    * @brief Run a kernel on all ghost particles.
    * The kernel is assumed to be thread-safe.
    */
-  void for_each_ghost_particle(ParticleUnaryOp &&f) const {
+  template <typename Callable>
+  void for_each_ghost_particle(Callable &&f) const {
     for (auto &p : ghost_particles()) {
       f(p);
     }
@@ -406,8 +404,9 @@ private:
   }
 
 #ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
-  void parallel_for_each_particle_impl(std::span<Cell *const> cells,
-                                       ParticleUnaryOp &f) const;
+  template <typename Callable>
+  inline void parallel_for_each_particle_impl(std::span<Cell *const> cells,
+                                              Callable &f) const;
 #endif
 
 public:
