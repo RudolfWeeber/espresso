@@ -27,8 +27,6 @@
 #include <field/communication/PackInfo.h>
 #include <stencil/Directions.h>
 
-#include <omp.h>
-
 #include <memory>
 #include <tuple>
 #include <utility>

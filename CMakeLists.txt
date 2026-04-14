@@ -20,6 +20,9 @@
 #
 
 cmake_minimum_required(VERSION 3.27.6)
+if(ESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM AND ESPRESSO_BUILD_WITH_CUDA)
+  cmake_minimum_required(VERSION 3.31.0)
+endif()
 cmake_policy(VERSION 3.27.6)
 if(POLICY CMP0167)
   # use BoostConfig.cmake shipped with Boost 1.70+ instead of the one in CMake
@@ -620,6 +623,16 @@ endif()
 # Libraries
 #
 
+set(ESPRESSO_OPENMP_COMPONENTS CXX)
+if(ESPRESSO_BUILD_WITH_CUDA)
+  list(APPEND ESPRESSO_OPENMP_COMPONENTS CUDA)
+endif()
+# ESPResSo and Kokkos require some of the new features from OpenMP 5.0, but a
+# version check cannot be enforced here, since GCC versions 12 to 15 report
+# 4.5 support for the CXX component, and NVHPC versions <= 26.3 report 4.5
+# support for the CUDA component
+find_package(OpenMP REQUIRED COMPONENTS ${ESPRESSO_OPENMP_COMPONENTS})
+
 if(ESPRESSO_BUILD_WITH_FFTW)
   find_package(fftw3 REQUIRED COMPONENTS omp)
 
@@ -653,12 +666,6 @@ if(ESPRESSO_BUILD_WITH_FFTW)
     install(TARGETS Heffte LIBRARY DESTINATION "${ESPRESSO_INSTALL_LIBDIR}")
   endif()
 endif()
-
-set(ESPRESSO_OPENMP_COMPONENTS CXX)
-if(ESPRESSO_BUILD_WITH_CUDA)
-  list(APPEND ESPRESSO_OPENMP_COMPONENTS CUDA)
-endif()
-find_package(OpenMP 4.5 REQUIRED COMPONENTS ${ESPRESSO_OPENMP_COMPONENTS})
 
 if(NOT EXISTS ${FETCHCONTENT_BASE_DIR}/kokkos-src)
   find_package(Kokkos 4.6 QUIET)
