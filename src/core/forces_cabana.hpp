@@ -273,6 +273,7 @@ struct ForcesKernel {
 #endif // ESPRESSO_DPD
 
 #ifdef ESPRESSO_ELECTROSTATICS
+    Utils::Vector3d f1_asym{};
     Utils::Vector3d f2_asym{};
     // real-space electrostatic charge-charge interaction
     if (coulomb_kernel != nullptr) {
@@ -289,10 +290,7 @@ struct ForcesKernel {
         if (elc_kernel) {
           auto const pos1 = aosoa.get_vector_at(aosoa.position, i);
           auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
-          Utils::Vector3d f1_asym{};
           (*elc_kernel)(pos1, pos2, f1_asym, f2_asym, q1q2);
-          pf.f += f1_asym;
-          // f2_asym i applied to the opposing forces, later
         }
 #ifdef ESPRESSO_NPT
         if (npt_active()) {
@@ -318,6 +316,7 @@ struct ForcesKernel {
 
     auto opf = calc_opposing_force(pf, d);
 #ifdef ESPRESSO_ELECTROSTATICS
+    pf.f += f1_asym;
     opf.f += f2_asym;
 #endif // ESPRESSO_ELECTROSTATICS
 
