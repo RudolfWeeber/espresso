@@ -457,9 +457,13 @@ private:
       (*m_reset_force)(&block);
   }
 
-  void integrate_reset_force_two_components(std::shared_ptr<BlockStorage> const &blocks) {
-    for (auto &block : *blocks)
-      (*m_reset_force)(&block);
+  void integrate_reset_force_two_component(std::shared_ptr<BlockStorage> const &blocks) {
+    for (auto &block : *blocks) {
+      auto force_a = block.template getData<VectorField>(m_force_cg_field_id[0]);
+      auto force_b = block.template getData<VectorField>(m_force_cg_field_id[1]);
+      lbm::accessor::Vector::initialize(force_a, Vector3<FloatType>{0});
+      lbm::accessor::Vector::initialize(force_b, Vector3<FloatType>{0});
+    }
   }
 
   void integrate_boundaries(std::shared_ptr<BlockStorage> const &blocks) {
@@ -938,6 +942,9 @@ public:
 
   // Global momentum
   [[nodiscard]] Utils::Vector3d get_momentum() const override {
+    if (has_two_components())
+      throw std::runtime_error(
+          "get_momentum is not yet implemented for two-component LB");
     Vector3<FloatType> mom(FloatType{0});
     for (auto const &block : *get_lattice().get_blocks()) {
       auto pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);

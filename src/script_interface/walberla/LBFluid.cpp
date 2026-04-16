@@ -155,7 +155,10 @@ void LBFluid::make_instance(VariantMap const &params) {
     vi *= m_conv_visc;
   }
   auto const lb_dens = m_conv_dens * dens;
-  auto *make_new_instance = &new_lb_walberla_cpu;
+  using LBFactory = std::shared_ptr<LBWalberlaBase>(
+      std::shared_ptr<::LatticeWalberla> const &, std::vector<double>, double,
+      bool);
+  LBFactory *make_new_instance = &new_lb_walberla_cpu;
   if (gpu) {
     std::vector<std::string> required_features;
     required_features.emplace_back("CUDA");
