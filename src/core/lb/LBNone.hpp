@@ -63,6 +63,14 @@ struct LBNone : public System::Leaf<LBNone> {
                          std::vector<Utils::Vector3d> const &) const {
     throw NoLBActive{};
   }
+
+  bool has_two_components() const { return false;}
+
+   void add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &,
+                         std::vector<Utils::Vector3d> const &) const {
+    throw NoLBActive{};
+  }
+
   std::vector<double>
   get_densities_at_pos(std::vector<Utils::Vector3d> const &) const {
     throw NoLBActive{};

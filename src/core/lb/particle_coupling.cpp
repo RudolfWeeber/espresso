@@ -325,7 +325,11 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
       ++it_positions_force_coupling;
     }
   }
-  m_lb.add_forces_at_pos(positions_force_coupling, force_coupling_forces);
+  if (m_lb.has_two_components()) {
+    m_lb.add_density_weighted_forces_at_pos(positions_force_coupling, force_coupling_forces);
+  } else {
+    m_lb.add_forces_at_pos(positions_force_coupling, force_coupling_forces);
+  }
 }
 
 #if defined(ESPRESSO_THERMOSTAT_PER_PARTICLE) and                              \

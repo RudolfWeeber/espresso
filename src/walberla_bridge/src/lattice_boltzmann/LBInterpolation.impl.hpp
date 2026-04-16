@@ -155,6 +155,76 @@ auto LBWalberlaImpl<FloatType, Architecture>::make_force_interpolation_kernel()
   };
 }
 
+/**
+ * @brief Distribute forces density-weigthed to the two lattices
+ * for the two components at given positions.
+ * Uses B-spline interpolation to spread each force over the surrounding
+ * lattice nodes. On GPU, positions are transformed to block-local
+ * coordinates and the operation is performed in a single kernel launch.
+ */
+template <typename FloatType, lbmpy::Arch Architecture>
+void LBWalberlaImpl<FloatType, Architecture>::add_density_weighted_forces_at_pos(
+    std::vector<Utils::Vector3d> const &pos,
+    std::vector<Utils::Vector3d> const &forces) {
+  assert(pos.size() == forces.size());
+  if (pos.empty()) {
+    return;
+  }
+  if constexpr (Architecture == lbmpy::Arch::CPU) {
+    auto const kernel = make_density_weighted_force_interpolation_kernel();
+    for (std::size_t i = 0ul; i < pos.size(); ++i) {
+      kernel(pos[i], forces[i]);
+    }
+  }
+#if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
+  if constexpr (Architecture == lbmpy::Arch::GPU) {
+    throw std::runtime_error(
+        "Density-weighted force interpolation not implemented on GPU");
+  }
+#endif
+}
+
+template <typename FloatType, lbmpy::Arch Architecture>
+auto LBWalberlaImpl<FloatType, Architecture>::make_density_weighted_force_interpolation_kernel()
+/* Only for two-component LB, e.g. friction coupling*/
+    const {
+  auto const &lattice = *m_lattice;
+  auto const &blocks = *lattice.get_blocks();
+  assert(lattice.get_ghost_layers() == 1u);
+  return [&](Utils::Vector3d const &pos, Utils::Vector3d const &force) {
+    if (not get_block_extended(lattice, pos, 1u)) {
+      return;
+    }
+    interpolate_bspline_at_pos(
+        pos, [&](
+                 std::array<int, 3> const node, double weight) {
+          /* no conversion factor m_zc_to_lb since densities for two-component lbs are not saved zero_centered*/
+          auto block = get_block_extended(lattice, node, 0u);
+          if (!block)
+            block = get_block_extended(lattice, node, 1u);
+          if (block) {
+            auto cell = to_cell(node);
+            blocks.transformGlobalToBlockLocalCell(cell, *block);
+            auto rho_a_field = block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[0]);
+            auto rho_b_field = block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[1]);
+            auto const rho_a = static_cast<double>(rho_a_field->get(cell));
+            auto const rho_b = static_cast<double>(rho_b_field->get(cell));
+            auto const total_rho = rho_a + rho_b;
+            if (total_rho == 0.)
+              /* No fluid to couple to */
+              return;
+            auto const inv_rho = 1. / total_rho;
+            auto const weighted_force_a = to_vector3<FloatType>(weight * (rho_a * inv_rho) * force);
+            auto const weighted_force_b = to_vector3<FloatType>(weight * (rho_b * inv_rho) * force);
+            auto field_a = block->template uncheckedFastGetData<VectorField>(m_force_cg_field_id[0]);
+            auto field_b = block->template uncheckedFastGetData<VectorField>(m_force_cg_field_id[1]);
+            lbm::accessor::Vector::add(field_a, weighted_force_a, cell);
+            lbm::accessor::Vector::add(field_b, weighted_force_b, cell);
+          }
+        });
+  };
+}
+
 template <typename FloatType, lbmpy::Arch Architecture>
 auto LBWalberlaImpl<FloatType,
                     Architecture>::make_velocity_interpolation_kernel() const {
@@ -344,6 +414,9 @@ LBWalberlaImpl<FloatType, Architecture>::get_density_at_pos(
 template <typename FloatType, lbmpy::Arch Architecture>
 bool LBWalberlaImpl<FloatType, Architecture>::add_force_at_pos(
     Utils::Vector3d const &pos, Utils::Vector3d const &force) {
+  if (has_two_components())
+    throw std::runtime_error(
+        "add_force_at_pos is not implemented for two-component LB");
   if (!m_lattice->pos_in_local_halo(pos))
     return false;
   auto const kernel = make_force_interpolation_kernel();

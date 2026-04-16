@@ -106,6 +106,11 @@ public:
   add_forces_at_pos(std::vector<Utils::Vector3d> const &positions,
                     std::vector<Utils::Vector3d> const &forces) = 0;
 
+  virtual void
+  add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &positions,
+                    std::vector<Utils::Vector3d> const &forces) = 0;
+
+
   /** @brief Get stored force to be applied on node in the next time step. */
   virtual std::optional<Utils::Vector3d>
   get_node_force_to_be_applied(Utils::Vector3i const &node) const = 0;

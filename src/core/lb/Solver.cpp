@@ -177,6 +177,11 @@ bool Solver::is_gpu() const {
   return std::visit([](auto &ptr) { return ptr->is_gpu(); }, *impl->solver);
 }
 
+bool Solver::has_two_components() const {
+  check_solver(impl);
+  return std::visit([](auto &ptr) { return ptr->has_two_components(); }, *impl->solver);
+}
+
 double Solver::get_agrid() const {
   check_solver(impl);
   return std::visit([](auto &ptr) { return ptr->get_agrid(); }, *impl->solver);
@@ -296,6 +301,25 @@ void Solver::add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
           force_lb.emplace_back(force_md * m_conv.force_to_lb);
         }
         ptr->add_forces_at_pos(pos_lb, force_lb);
+      },
+      *impl->solver);
+}
+
+void Solver::add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
+                               std::vector<Utils::Vector3d> const &forces) {
+  std::visit(
+      [&](auto &ptr) {
+        std::vector<Utils::Vector3d> pos_lb;
+        std::vector<Utils::Vector3d> force_lb;
+        pos_lb.reserve(pos.size());
+        force_lb.reserve(pos.size());
+        for (auto const &pos_md : pos) {
+          pos_lb.emplace_back(pos_md * m_conv.pos_to_lb);
+        }
+        for (auto const &force_md : forces) {
+          force_lb.emplace_back(force_md * m_conv.force_to_lb);
+        }
+        ptr->add_density_weighted_forces_at_pos(pos_lb, force_lb);
       },
       *impl->solver);
 }

@@ -836,6 +836,8 @@ private:
 
   /** @brief Return a B-spline interpolation kernel for force distribution. */
   auto make_force_interpolation_kernel() const;
+  /** @brief Return a density_weighted B-spline interpolation kernel for force distribution in two_component LB. */
+  auto make_density_weighted_force_interpolation_kernel() const;
   /** @brief Return a B-spline interpolation kernel for velocity readout. */
   auto make_velocity_interpolation_kernel() const;
   /** @brief Return a B-spline interpolation kernel for density readout. */
@@ -847,6 +849,8 @@ public:
   bool add_force_at_pos(Utils::Vector3d const &pos,
                         Utils::Vector3d const &force) override;
   void add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
+                         std::vector<Utils::Vector3d> const &forces) override;
+  void add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
                          std::vector<Utils::Vector3d> const &forces) override;
   std::optional<Utils::Vector3d>
   get_velocity_at_pos(Utils::Vector3d const &pos,

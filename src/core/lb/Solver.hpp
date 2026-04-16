@@ -115,6 +115,11 @@ struct Solver : public System::Leaf<Solver> {
   bool is_gpu() const;
 
   /**
+   * @brief Is two-component LB
+   */
+  bool has_two_components() const;
+
+  /**
    * @brief Get the LB time step.
    */
   double get_tau() const;
@@ -191,6 +196,9 @@ struct Solver : public System::Leaf<Solver> {
       std::vector<Utils::Vector3d> const &pos) const;
 
   void add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
+                         std::vector<Utils::Vector3d> const &forces);
+
+  void add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
                          std::vector<Utils::Vector3d> const &forces);
 
   /**

@@ -63,6 +63,7 @@ struct LBWalberla : public System::Leaf<LBWalberla> {
   auto get_lattice_speed() const { return get_agrid() / get_tau(); }
   Utils::VectorXd<9> get_pressure_tensor() const;
   bool is_gpu() const;
+  bool has_two_components() const;
   std::optional<Utils::Vector3d>
   get_velocity_at_pos(Utils::Vector3d const &pos,
                       bool consider_points_in_halo) const;
@@ -74,6 +75,8 @@ struct LBWalberla : public System::Leaf<LBWalberla> {
   bool add_force_at_pos(Utils::Vector3d const &pos,
                         Utils::Vector3d const &force);
   void add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
+                         std::vector<Utils::Vector3d> const &forces);
+  void add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
                          std::vector<Utils::Vector3d> const &forces);
   std::vector<double>
   get_densities_at_pos(std::vector<Utils::Vector3d> const &pos);
