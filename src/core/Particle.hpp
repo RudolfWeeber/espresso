@@ -234,6 +234,11 @@ struct ParticleProperties {
   ParticleParametersSwimming swim;
 #endif
 
+#ifdef ESPRESSO_WALBERLA
+  /** Solvation free energy parameter for two-component LB coupling. */
+  double solvation_delta_mu = 0.;
+#endif
+
 #ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
   ThermalStonerWohlfarthParameters magnetodynamics;
 #endif
@@ -282,6 +287,9 @@ struct ParticleProperties {
 #endif // ESPRESSO_EXTERNAL_FORCES
 #ifdef ESPRESSO_ENGINE
     ar & swim;
+#endif
+#ifdef ESPRESSO_WALBERLA
+    ar & solvation_delta_mu;
 #endif
 #ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
     ar & magnetodynamics;
@@ -583,6 +591,10 @@ public:
 #ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
   auto const &mu_E() const { return p.mu_E; }
   auto &mu_E() { return p.mu_E; }
+#endif
+#ifdef ESPRESSO_WALBERLA
+  auto const &solvation_delta_mu() const { return p.solvation_delta_mu; }
+  auto &solvation_delta_mu() { return p.solvation_delta_mu; }
 #endif
 #ifdef ESPRESSO_VIRTUAL_SITES
   auto is_virtual() const {

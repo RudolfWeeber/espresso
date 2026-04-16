@@ -389,6 +389,13 @@ ParticleHandle::ParticleHandle() {
        },
        [this]() { return get_particle_data(m_pid).mu_E(); }},
 #endif // ESPRESSO_LB_ELECTROHYDRODYNAMICS
+#ifdef ESPRESSO_WALBERLA
+      {"solvation_delta_mu",
+       [this](Variant const &value) {
+         set_particle_property(&Particle::solvation_delta_mu, value);
+       },
+       [this]() { return get_particle_data(m_pid).solvation_delta_mu(); }},
+#endif // ESPRESSO_WALBERLA
 #ifdef ESPRESSO_EXTERNAL_FORCES
       {"fix",
        [this](Variant const &value) {
