@@ -221,6 +221,9 @@ template <typename FloatType, lbmpy::Arch Architecture>
 std::optional<Utils::Vector3d>
 LBWalberlaImpl<FloatType, Architecture>::get_node_force_to_be_applied(
     Utils::Vector3i const &node) const {
+  if (has_two_components())
+    throw std::runtime_error(
+        "get_node_force_to_be_applied is not implemented for two-component LB");
   auto const bc = get_block_and_cell(get_lattice(), node, true);
   if (!bc)
     return std::nullopt;
@@ -235,6 +238,9 @@ template <typename FloatType, lbmpy::Arch Architecture>
 std::optional<Utils::Vector3d>
 LBWalberlaImpl<FloatType, Architecture>::get_node_last_applied_force(
     Utils::Vector3i const &node, bool consider_ghosts) const {
+  if (has_two_components())
+    throw std::runtime_error(
+        "get_node_last_applied_force is not implemented for two-component LB");
   assert(not(consider_ghosts and m_pending_ghost_comm.test(GhostComm::LAF)));
   auto const bc = get_block_and_cell(get_lattice(), node, consider_ghosts);
   if (!bc)

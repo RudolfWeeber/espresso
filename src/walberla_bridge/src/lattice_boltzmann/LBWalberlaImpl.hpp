@@ -390,6 +390,9 @@ private:
 
       // CG collision
       integrate_collide_two_component(blocks);
+      // Reset component force fields (consumed by collision)
+      integrate_reset_force_two_component(blocks);
+
       // Sync pdfs
       m_pdf_a_communicator->communicate();
       m_pdf_b_communicator->communicate();
@@ -450,6 +453,11 @@ private:
   }
 
   void integrate_reset_force(std::shared_ptr<BlockStorage> const &blocks) {
+    for (auto &block : *blocks)
+      (*m_reset_force)(&block);
+  }
+
+  void integrate_reset_force_two_components(std::shared_ptr<BlockStorage> const &blocks) {
     for (auto &block : *blocks)
       (*m_reset_force)(&block);
   }
