@@ -63,6 +63,8 @@
 #include "virtual_sites/lb_tracers.hpp"
 #include "virtual_sites/relative.hpp"
 
+#include <instrumentation/fe_trap.hpp>
+
 #include <boost/mpi/collectives/all_reduce.hpp>
 
 #ifdef ESPRESSO_CALIPER
@@ -753,6 +755,8 @@ int System::System::integrate(int n_steps, int reuse_forces) {
           lb.ghost_communication_vel();
 #ifdef ESPRESSO_CALIPER
           CALI_MARK_END("lb_propagation");
+#endif
+#ifdef ESPRESSO_CALIPER
           CALI_MARK_BEGIN("ek_propagation");
 #endif
           ek.propagate();
@@ -809,13 +813,9 @@ int System::System::integrate(int n_steps, int reuse_forces) {
 #endif
 
 #ifdef ESPRESSO_COLLISION_DETECTION
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
       cell_structure->clear_new_bonds();
-#endif // ESPRESSO_SHARED_MEMORY_PARALLELISM
       collision_detection->handle_collisions();
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
       cell_structure->rebuild_bond_list();
-#endif // ESPRESSO_SHARED_MEMORY_PARALLELISM
 #endif
       bond_breakage->process_queue(*this);
     }
@@ -872,12 +872,10 @@ int System::System::integrate(int n_steps, int reuse_forces) {
   if (caught_error) {
     return INTEG_ERROR_RUNTIME;
   }
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
   if (boost::mpi::all_reduce(::comm_cart, not cell_structure->use_verlet_list,
                              std::logical_or<>())) {
     cell_structure->use_verlet_list = false;
   }
-#endif
   return integrated_steps;
 }
 

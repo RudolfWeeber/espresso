@@ -61,7 +61,6 @@
 #endif
 
 // forward declarations
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
 namespace Kokkos {
 template <class DataType, class... Properties> class View;
 class HostSpace;
@@ -80,7 +79,6 @@ struct KokkosHandle;
 template <class MemorySpace, class ListAlgorithm, class Layout, class BuildTag>
 class CustomVerletList;
 struct LocalBondState;
-#endif // ESPRESSO_SHARED_MEMORY_PARALLELISM
 
 template <typename Callable>
 concept ParticleCallback = requires(Callable c, Particle &p) {
@@ -166,7 +164,6 @@ struct EuclidianDistance {
  *  be stored in separate structures.
  */
 class CellStructure : public System::Leaf<CellStructure> {
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
 public:
   static constexpr auto vector_length = 1;
   struct AoSoA_pack;
@@ -177,7 +174,6 @@ public:
   using ListType =
       CustomVerletList<Kokkos::HostSpace, ListAlgorithm, Cabana::VerletLayout2D,
                        Cabana::TeamVectorOpTag>;
-#endif // ESPRESSO_SHARED_MEMORY_PARALLELISM
 
 private:
   /** The local id-to-particle index */
@@ -197,7 +193,6 @@ private:
   /** @brief Verlet list skin. */
   double m_verlet_skin = 0.;
   double m_verlet_reuse = 0.;
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
   int m_cached_max_local_particle_id = 0;
   std::size_t m_num_local_particles_cached = 0;
   int m_max_id = 0;
@@ -216,7 +211,6 @@ private:
   /** The local id-to-index for aosoa data */
   std::vector<Particle *> m_unique_particles;
   std::shared_ptr<KokkosHandle> m_kokkos_handle;
-#endif // ESPRESSO_SHARED_MEMORY_PARALLELISM
 
 public:
   CellStructure(BoxGeometry const &box);
@@ -353,13 +347,7 @@ public:
   }
 
   /** @brief whether to use parallel version of @ref for_each_local_particle */
-  bool use_parallel_for_each_local_particle() const {
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
-    return true;
-#else
-    return false;
-#endif
-  }
+  bool use_parallel_for_each_local_particle() const { return true; }
 
   /**
    * @brief Run a kernel on all local particles.
@@ -367,12 +355,10 @@ public:
    */
   template <typename Callable>
   void for_each_local_particle(Callable &&f, bool parallel = true) const {
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
     if (parallel and use_parallel_for_each_local_particle()) {
       parallel_for_each_particle_impl(decomposition().local_cells(), f);
       return;
     }
-#endif
     for (auto &p : local_particles()) {
       f(p);
     }
@@ -403,11 +389,9 @@ private:
     return decomposition().particle_to_cell(p);
   }
 
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
   template <typename Callable>
   inline void parallel_for_each_particle_impl(std::span<Cell *const> cells,
                                               Callable &f) const;
-#endif
 
 public:
   /**
@@ -457,7 +441,6 @@ public:
    * this node, or -1 if there are no particles on this node.
    */
   int get_max_local_particle_id() const;
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
   int get_cached_max_local_particle_id() const {
     return m_cached_max_local_particle_id;
   }
@@ -473,7 +456,6 @@ public:
   void add_new_bond(int bond_id, std::vector<int> const &particle_ids);
   void rebuild_bond_list();
 #endif // ESPRESSO_COLLISION_DETECTION
-#endif
 
   /**
    * @brief Remove all particles from the cell system.
@@ -738,7 +720,6 @@ private:
     }
   }
 
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
 public:
   auto get_max_id() const { return m_max_id; }
 
@@ -810,7 +791,6 @@ public:
   inline void cell_list_loop(auto &&kernel) {
     kernel(m_decomposition->local_cells(), m_decomposition->box());
   }
-#endif
 
 private:
   /** Non-bonded pair loop with verlet lists.

@@ -24,8 +24,6 @@
 
 #include "cell_system/CellStructure.hpp"
 
-#ifdef ESPRESSO_SHARED_MEMORY_PARALLELISM
-
 #include <Kokkos_Core.hpp>
 
 #include <span>
@@ -47,5 +45,3 @@ CellStructure::parallel_for_each_particle_impl(std::span<Cell *const> cells,
         [&](auto part_idx) { f(*(particles.begin() + part_idx)); });
   }
 }
-
-#endif // ESPRESSO_SHARED_MEMORY_PARALLELISM
