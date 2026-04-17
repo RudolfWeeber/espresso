@@ -165,6 +165,104 @@ class ColorGradientParticleCouplingTest(ut.TestCase):
         self.assertAlmostEqual(mass_b_init, mass_b_final, places=8,
                                msg="rho_b not conserved with particle coupling")
 
+    def test_solvation_force_at_center(self):
+        """At the droplet center the color gradient is zero,
+        so solvation force should be zero regardless of delta_mu."""
+        lbf = self._create_lbf()
+        self._init_droplet(lbf)
+        # Run one step to compute the color gradient field
+        self.system.integrator.run(1)
+
+        # Particle at rest at droplet center with nonzero delta_mu
+        center = [DOMAIN_SIZE / 2.0] * 3
+        p = self.system.part.add(pos=center, v=[0, 0, 0],
+                                 solvation_delta_mu=1.0)
+        self.system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
+        self.system.integrator.run(1)
+
+        # No drag (v=0), no solvation force (grad_phi=0 at center)
+        np.testing.assert_allclose(
+            np.copy(p.f), [0, 0, 0], atol=1e-10,
+            err_msg="Force should be zero at droplet center")
+
+    def test_solvation_force_at_interface(self):
+        """At the interface, solvation force should be nonzero and
+        point radially (along the color gradient)."""
+        lbf = self._create_lbf()
+        self._init_droplet(lbf)
+        # Run one step to compute the color gradient field
+        self.system.integrator.run(1)
+
+        # Particle at rest on the interface along x-axis
+        center = DOMAIN_SIZE / 2.0
+        pos_interface = [center + RADIUS, center + 0.5, center + 0.5]
+        delta_mu = 2.0
+        p = self.system.part.add(pos=pos_interface, v=[0, 0, 0],
+                                 solvation_delta_mu=delta_mu)
+        self.system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
+        self.system.integrator.run(1)
+
+        force = np.copy(p.f)
+        # Solvation force should be nonzero
+        self.assertGreater(np.linalg.norm(force), 1e-6,
+                           "Solvation force should be nonzero at interface")
+        # Force should be predominantly along x (radial direction)
+        # since the color gradient points radially at this position
+        self.assertGreater(abs(force[0]), abs(force[1]),
+                           "Solvation force should be mainly radial (x)")
+        self.assertGreater(abs(force[0]), abs(force[2]),
+                           "Solvation force should be mainly radial (x)")
+
+    def test_solvation_force_sign(self):
+        """Flipping the sign of delta_mu should flip the solvation force."""
+        lbf = self._create_lbf()
+        self._init_droplet(lbf)
+
+        center = DOMAIN_SIZE / 2.0
+        pos_interface = [center + RADIUS, center + 0.5, center + 0.5]
+
+        # Positive delta_mu
+        p1 = self.system.part.add(pos=pos_interface, v=[0, 0, 0],
+                                  solvation_delta_mu=1.0)
+        self.system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
+        self.system.integrator.run(1)
+        force_pos = np.copy(p1.f)
+
+        # Reset
+        self.system.part.clear()
+        self.system.thermostat.turn_off()
+        self.system.lb = None
+
+        # Negative delta_mu at same position
+        lbf = self._create_lbf()
+        self._init_droplet(lbf)
+        p2 = self.system.part.add(pos=pos_interface, v=[0, 0, 0],
+                                  solvation_delta_mu=-1.0)
+        self.system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
+        self.system.integrator.run(1)
+        force_neg = np.copy(p2.f)
+
+        # Forces should be opposite
+        np.testing.assert_allclose(
+            force_pos, -force_neg, atol=1e-10,
+            err_msg="Flipping delta_mu should flip the solvation force")
+
+    def test_solvation_force_zero_delta_mu(self):
+        """With delta_mu=0, solvation force should be zero even at interface."""
+        lbf = self._create_lbf()
+        self._init_droplet(lbf)
+
+        center = DOMAIN_SIZE / 2.0
+        pos_interface = [center + RADIUS, center + 0.5, center + 0.5]
+        p = self.system.part.add(pos=pos_interface, v=[0, 0, 0],
+                                 solvation_delta_mu=0.0)
+        self.system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
+        self.system.integrator.run(1)
+
+        np.testing.assert_allclose(
+            np.copy(p.f), [0, 0, 0], atol=1e-10,
+            err_msg="Force should be zero when delta_mu=0")
+
     def test_run_with_coupling(self):
         """Two-component LB with particle coupling should run
         without crash for multiple steps."""

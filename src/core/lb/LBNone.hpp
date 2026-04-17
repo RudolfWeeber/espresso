@@ -79,6 +79,10 @@ struct LBNone : public System::Leaf<LBNone> {
   get_velocities_at_pos(std::vector<Utils::Vector3d> const &) const {
     throw NoLBActive{};
   }
+   std::vector<Utils::Vector3d>
+  get_color_gradients_at_pos(std::vector<Utils::Vector3d> const &) const {
+    throw NoLBActive{};
+  }
   Utils::Vector3d get_momentum() const { throw NoLBActive{}; }
   void veto_time_step(double) const { throw NoLBActive{}; }
   void veto_kT(double) const { throw NoLBActive{}; }

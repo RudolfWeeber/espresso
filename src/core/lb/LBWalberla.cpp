@@ -119,6 +119,11 @@ LBWalberla::get_velocities_at_pos(std::vector<Utils::Vector3d> const &pos) {
   return lb_fluid->get_velocities_at_pos(pos);
 }
 
+std::vector<Utils::Vector3d>
+LBWalberla::get_color_gradients_at_pos(std::vector<Utils::Vector3d> const &pos) {
+  return lb_fluid->get_color_gradients_at_pos(pos);
+}
+
 void LBWalberla::veto_time_step(double time_step) const {
   walberla_tau_sanity_checks("LB", lb_params->get_tau(), time_step);
 }

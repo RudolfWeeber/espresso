@@ -176,6 +176,16 @@ struct Solver : public System::Leaf<Solver> {
   get_interpolated_densities(std::vector<Utils::Vector3d> const &pos) const;
 
   /**
+   * @brief Calculate the interpolated color gradients in LB units.
+   * The LB ghost layer is used.
+   * Achieved by linear interpolation (eq. 11 in @cite ahlrichs99a).
+   * @param pos Positions in MD units at which the velocities are calculated.
+   * @retval interpolated color gradients in LB units.
+   */
+  std::vector<Utils::Vector3d>
+  get_interpolated_color_gradients(std::vector<Utils::Vector3d> const &pos) const;
+
+  /**
    * @brief Calculate the interpolated fluid velocity in MD units.
    * Special method used only for particle coupling. Uses the LB ghost layer.
    * Achieved by linear interpolation (eq. 11 in @cite ahlrichs99a).
@@ -193,6 +203,16 @@ struct Solver : public System::Leaf<Solver> {
    * @retval interpolated fluid velocities in MD units.
    */
   std::vector<Utils::Vector3d> get_coupling_interpolated_velocities(
+      std::vector<Utils::Vector3d> const &pos) const;
+
+  /**
+   * @brief Calculate the interpolated fluid color gradients in MD units.
+   * Special method used only for particle coupling. Uses the LB ghost layer.
+   * Achieved by linear interpolation (eq. 11 in @cite ahlrichs99a).
+   * @param pos Positions in MD units at which the color gradients are calculated.
+   * @retval interpolated color gradients.
+   */
+  std::vector<Utils::Vector3d> get_coupling_interpolated_color_gradients(
       std::vector<Utils::Vector3d> const &pos) const;
 
   void add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,

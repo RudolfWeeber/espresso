@@ -74,6 +74,10 @@ static Utils::Vector3d lb_drag_force(Particle const &p, double lb_gamma,
   return Utils::hadamard_product(gamma, v_drift - p.v());
 }
 
+static Utils::Vector3d lb_particle_solvation_force(Particle const &p, Utils::Vector3d const &grad_phi){
+  return -0.5 * p.solvation_delta_mu() * grad_phi;
+}
+
 Utils::Vector3d lb_drag_force(LB::Solver const &lb, double lb_gamma,
                               Particle const &p,
                               Utils::Vector3d const &shifted_pos) {
@@ -274,6 +278,13 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
   auto it_positions_velocity_coupling = positions_velocity_coupling.begin();
   auto it_positions_force_coupling_counter =
       positions_force_coupling_counter.begin();
+
+  std::vector<Utils::Vector3d> interpolated_color_gradients;
+  if (m_lb.has_two_components()) {
+    interpolated_color_gradients = m_lb.get_coupling_interpolated_color_gradients(positions_velocity_coupling);
+  }
+  auto it_interpolated_color_gradients = interpolated_color_gradients.begin();
+
   for (auto ptr : coupled_particles) {
     auto &p = *ptr;
     auto coupling_mode = particle_force;
@@ -283,6 +294,7 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
     }
 #endif
     Utils::Vector3d force_on_particle = {};
+    Utils::Vector3d solvation_force_on_particle = {};
     if (coupling_mode == particle_force) {
 #ifndef ESPRESSO_THERMOSTAT_PER_PARTICLE
       if (m_thermostat.gamma > 0.)
@@ -300,11 +312,18 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
         auto const drag_force = lb_drag_force(p, m_thermostat.gamma, v_fluid);
         auto const random_force = get_noise_term(p);
         force_on_particle = drag_force + random_force;
+        // Solvation force on particle, not backcoupled to fluid here
+        if (m_lb.has_two_components() && p.solvation_delta_mu() != 0.){
+          auto const &grad_phi = *it_interpolated_color_gradients;
+          solvation_force_on_particle += lb_particle_solvation_force(p, grad_phi);
+        }
       }
       ++it_interpolated_velocities;
       ++it_positions_velocity_coupling;
+      if (m_lb.has_two_components()){
+        ++it_interpolated_color_gradients;
+      }
     }
-
     auto force_on_fluid = -force_on_particle;
 #ifdef ESPRESSO_ENGINE
     if (coupling_mode == swimmer_force_on_fluid) {
@@ -319,6 +338,9 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
       if (pos >= domain_lower_corner and pos < domain_upper_corner) {
         /* Particle is in our LB volume, so this node
          * is responsible to adding its force */
+        if (m_lb.has_two_components() && p.solvation_delta_mu() != 0.){
+          p.force() += solvation_force_on_particle;
+        }
         p.force() += force_on_particle;
       }
       force_coupling_forces.emplace_back(force_on_fluid);

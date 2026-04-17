@@ -257,6 +257,23 @@ std::vector<double> Solver::get_interpolated_densities(
       *impl->solver);
 }
 
+std::vector<Utils::Vector3d> Solver::get_interpolated_color_gradients(
+    std::vector<Utils::Vector3d> const &pos) const {
+  return std::visit(
+      [&](auto &ptr) {
+        auto const &box_geo = *System::get_system().box_geo;
+        std::vector<Utils::Vector3d> pos_lb;
+        pos_lb.reserve(pos.size());
+        for (auto const &pos_md : pos) {
+          pos_lb.emplace_back(box_geo.folded_position(pos_md) *
+                              m_conv.pos_to_lb);
+        }
+        return ptr->get_color_gradients_at_pos(pos_lb);
+      },
+      *impl->solver);
+}
+
+
 Utils::Vector3d
 Solver::get_coupling_interpolated_velocity(Utils::Vector3d const &pos) const {
   return std::visit(
@@ -280,6 +297,24 @@ std::vector<Utils::Vector3d> Solver::get_coupling_interpolated_velocities(
         auto res = ptr->get_velocities_at_pos(pos_lb);
         for (auto &v : res) {
           v *= m_conv.vel_to_md;
+        }
+        return res;
+      },
+      *impl->solver);
+}
+
+std::vector<Utils::Vector3d> Solver::get_coupling_interpolated_color_gradients(
+    std::vector<Utils::Vector3d> const &pos) const {
+  return std::visit(
+      [&](auto &ptr) {
+        std::vector<Utils::Vector3d> pos_lb;
+        pos_lb.reserve(pos.size());
+        for (auto const &pos_md : pos) {
+          pos_lb.emplace_back(pos_md * m_conv.pos_to_lb);
+        }
+        auto res = ptr->get_color_gradients_at_pos(pos_lb);
+        for (auto &cg : res) {
+          cg *= m_conv.pos_to_lb; // 1/agrid: LB gradient to MD gradient
         }
         return res;
       },

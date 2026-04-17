@@ -91,6 +91,10 @@ public:
   virtual std::vector<double>
   get_densities_at_pos(std::vector<Utils::Vector3d> const &pos) = 0;
 
+  /** @brief Get interpolated color gradients at positions, two component LB only. */
+  virtual std::vector<Utils::Vector3d>
+  get_color_gradients_at_pos(std::vector<Utils::Vector3d> const &pos) = 0;
+
   /**
    * @brief Interpolate a force to the stored forces to be applied on nodes
    * in the next time step.

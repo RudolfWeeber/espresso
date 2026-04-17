@@ -854,6 +854,8 @@ private:
   auto make_velocity_interpolation_kernel() const;
   /** @brief Return a B-spline interpolation kernel for density readout. */
   auto make_density_interpolation_kernel() const;
+  /** @brief Return a B-spline interpolation kernel for color gradient readout. */
+  auto make_color_gradient_interpolation_kernel() const;
 
 public:
   std::function<bool(Utils::Vector3d const &)>
@@ -874,6 +876,9 @@ public:
                      bool consider_points_in_halo = false) const override;
   std::vector<double>
   get_densities_at_pos(std::vector<Utils::Vector3d> const &pos) override;
+
+  std::vector<Utils::Vector3d>
+  get_color_gradients_at_pos(std::vector<Utils::Vector3d> const &pos) override;
 
 public:
   // ---- Boundary Handling ----
