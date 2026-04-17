@@ -102,31 +102,6 @@ struct ForcesKernel {
 #endif
   }
 
-  // Helper functions to check if specific algorithms are active
-#ifdef ESPRESSO_GAY_BERNE
-  // Configured-for-type-pair: mask bit set iff gay_berne has a real cutoff.
-  // In-range check is deferred to where it matters.
-  ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION bool
-  gay_berne_configured(IA_parameters const &ia_params) const {
-    return (ia_params.active_pair_mask &
-            pair_potential_bit(PairPotential::GayBerne)) != 0u;
-  }
-  ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION bool
-  gay_berne_active(double dist, IA_parameters const &ia_params) const {
-    return gay_berne_configured(ia_params) and dist < ia_params.gay_berne.cut;
-  }
-#endif
-
-#ifdef ESPRESSO_DPD
-  // True iff the DPD thermostat is on AND this type pair has DPD configured.
-  ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION bool
-  dpd_active(IA_parameters const &ia_params) const {
-    return (thermostat.thermo_switch & THERMO_DPD) and
-           ((ia_params.active_pair_mask &
-             pair_potential_bit(PairPotential::DPD)) != 0u);
-  }
-#endif
-
 #ifdef ESPRESSO_NPT
   ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION bool npt_active() const {
     return global_virial != nullptr;
@@ -154,28 +129,15 @@ struct ForcesKernel {
     ParticleForce pf{};
 
     // Determine which data needs to be loaded based on active algorithms
-#if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES) or                \
-    defined(ESPRESSO_EXCLUSIONS) or defined(ESPRESSO_THOLE)
-    auto const flag =
-        compute_pair_data_flags(dist, ia_params, coulomb_kernel != nullptr,
-                                dipoles_kernel != nullptr, aosoa, i, j);
-#endif
-
 #if defined(ESPRESSO_EXCLUSIONS) or defined(ESPRESSO_THOLE)
+    auto const flag = compute_pair_data_flags(
+        dist, ia_params, coulomb_kernel != nullptr, aosoa, i, j);
+
     Particle const *p1_ptr = nullptr;
     Particle const *p2_ptr = nullptr;
     if (flag.need_particle_pointers) {
       p1_ptr = unique_particles.at(i);
       p2_ptr = unique_particles.at(j);
-    }
-#endif
-
-    // Load directors only if needed
-#if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
-    Utils::Vector3d dir1{}, dir2{};
-    if (flag.need_directors) {
-      dir1 = aosoa.get_vector_at(aosoa.director, i);
-      dir2 = aosoa.get_vector_at(aosoa.director, j);
     }
 #endif
 
@@ -205,6 +167,8 @@ struct ForcesKernel {
         // Only call Gay-Berne force kernel if active
 #ifdef ESPRESSO_GAY_BERNE
         if (gay_berne_active(dist, ia_params)) {
+          auto const dir1 = aosoa.get_vector_at(aosoa.director, i);
+          auto const dir2 = aosoa.get_vector_at(aosoa.director, j);
           pf += gb_pair_force(dir1, dir2, ia_params, d, dist);
         }
 #endif
@@ -229,7 +193,7 @@ struct ForcesKernel {
 
     /* The inter dpd force should not be part of the virial */
 #ifdef ESPRESSO_DPD
-    if (dpd_active(ia_params)) {
+    if (dpd_active(ia_params, thermostat.thermo_switch)) {
       auto const pos1 = aosoa.get_vector_at(aosoa.position, i);
       auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
       auto const vel1 = aosoa.get_vector_at(aosoa.velocity, i);
@@ -277,6 +241,8 @@ struct ForcesKernel {
     if (dipoles_kernel != nullptr) {
       auto const d1d2 = aosoa.dipm(i) * aosoa.dipm(j);
       if (d1d2 != 0.) {
+        auto const dir1 = aosoa.get_vector_at(aosoa.director, i);
+        auto const dir2 = aosoa.get_vector_at(aosoa.director, j);
         pf += (*dipoles_kernel)(d1d2, aosoa.dipm(i) * dir1,
                                 aosoa.dipm(j) * dir2, d, dist, dist * dist);
       }
