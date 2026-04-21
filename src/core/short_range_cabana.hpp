@@ -86,6 +86,8 @@ commit_particle(Particle const &p, auto const index,
 #else
   aosoa.flags(index) = 0;
 #endif
+
+  aosoa.set_is_virtual(index, p.is_virtual());
 }
 
 ESPRESSO_ATTR_ALWAYS_INLINE inline void

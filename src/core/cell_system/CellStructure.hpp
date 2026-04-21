@@ -195,6 +195,7 @@ private:
   double m_verlet_reuse = 0.;
   int m_cached_max_local_particle_id = 0;
   std::size_t m_num_local_particles_cached = 0;
+  std::size_t m_first_ghost_idx = 0;
   int m_max_id = 0;
   std::unique_ptr<Kokkos::View<int *>> m_id_to_index;
   std::unique_ptr<ForceType> m_local_force;
@@ -447,6 +448,7 @@ public:
   std::size_t get_num_local_particles_cached() const {
     return m_num_local_particles_cached;
   }
+  std::size_t get_first_ghost_idx() const { return m_first_ghost_idx; }
   int get_local_pair_bond_numbers() const;
   int get_local_angle_bond_numbers() const;
   int get_local_dihedral_bond_numbers() const;

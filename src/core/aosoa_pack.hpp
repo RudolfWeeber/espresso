@@ -150,8 +150,22 @@ struct CellStructure::AoSoA_pack {
   }
 
   void set_has_exclusion(std::size_t i, bool value) {
-    flags(i) = value ? uint8_t{1} : uint8_t{0};
+    if (value)
+      flags(i) |= uint8_t{1};
+    else
+      flags(i) &= ~uint8_t{1};
   }
 
-  bool has_exclusion(std::size_t i) const { return flags(i) == uint8_t{1}; }
+  bool has_exclusion(std::size_t i) const {
+    return (flags(i) & uint8_t{1}) != 0;
+  }
+
+  void set_is_virtual(std::size_t i, bool value) {
+    if (value)
+      flags(i) |= uint8_t{2};
+    else
+      flags(i) &= ~uint8_t{2};
+  }
+
+  bool is_virtual(std::size_t i) const { return (flags(i) & uint8_t{2}) != 0; }
 };

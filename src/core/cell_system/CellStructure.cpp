@@ -278,6 +278,7 @@ void CellStructure::set_index_map() {
         }
       });
   Kokkos::fence();
+  m_first_ghost_idx = count_local_particles();
   int pair_count = std::reduce(std::begin(pair_counts), std::end(pair_counts));
   int angle_count =
       std::reduce(std::begin(angle_counts), std::end(angle_counts));
