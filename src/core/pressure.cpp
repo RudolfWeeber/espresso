@@ -112,7 +112,8 @@ std::shared_ptr<Observable_stat> System::calculate_pressure() {
                                layout,
                                cell_structure->get_aosoa(),
                                mol_id_view,
-                               maximal_cutoff()};
+                               maximal_cutoff(),
+                               thermostat->thermo_switch};
 
   auto &bs = cell_structure->bond_state();
   BondsPressureKernelData bonds_p_data{*bonded_ias, *box_geo, local_pressure,

@@ -108,6 +108,7 @@ struct PressureKernel {
   CellStructure::AoSoA_pack const &aosoa;
   Kokkos::View<int *> mol_id_view;
   double system_max_cutoff;
+  int thermo_switch;
 
   PressureKernel(
       BondedInteractionsMap const &bonded_ias_,
@@ -119,13 +120,14 @@ struct PressureKernel {
       std::vector<Particle *> const &unique_particles_,
       Kokkos::View<double **, Kokkos::LayoutRight> const &local_pressure_,
       PressureBinLayout layout_, CellStructure::AoSoA_pack const &aosoa_,
-      Kokkos::View<int *> mol_id_view_, double system_max_cutoff_)
+      Kokkos::View<int *> mol_id_view_, double system_max_cutoff_,
+      int thermo_switch_)
       : bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
         coulomb(coulomb_), coulomb_f_kernel(coulomb_f_kernel_),
         coulomb_p_kernel(coulomb_p_kernel_), box_geo(box_geo_),
         unique_particles(unique_particles_), local_pressure(local_pressure_),
         layout(layout_), aosoa(aosoa_), mol_id_view(std::move(mol_id_view_)),
-        system_max_cutoff(system_max_cutoff_) {}
+        system_max_cutoff(system_max_cutoff_), thermo_switch(thermo_switch_) {}
 
   KOKKOS_INLINE_FUNCTION
   void operator()(std::size_t i, std::size_t j) const {
@@ -174,6 +176,24 @@ struct PressureKernel {
                              : layout.nb_inter_idx(t1, t2);
         for (std::size_t k = 0; k < 9; ++k)
           local_pressure(tid, layout.tensor_offset(bin, k)) += stress[k];
+
+#ifdef ESPRESSO_DPD
+        if (dpd_active(ia_params, thermo_switch)) {
+          auto const vel1 = aosoa.get_vector_at(aosoa.velocity, i);
+          auto const vel2 = aosoa.get_vector_at(aosoa.velocity, j);
+          auto const v21 = box_geo.velocity_difference(pos1, pos2, vel1, vel2);
+          auto const dist2 = d.norm2();
+          // f_r/f_t: dissipative force from radial/transverse DPD channel
+          auto const f_r = dpd_pair_force(ia_params.dpd.radial, v21, dist, {});
+          auto const f_t = dpd_pair_force(ia_params.dpd.trans, v21, dist, {});
+          auto const P = Utils::tensor_product(d / dist2, d);
+          auto const f_d = P * (f_r - f_t) + f_t;
+          auto const s = Utils::flatten(Utils::tensor_product(d, f_d));
+          for (std::size_t k = 0; k < 9; ++k)
+            local_pressure(tid, layout.tensor_offset(layout.dpd_idx(), k)) -=
+                s[k];
+        }
+#endif
       }
     }
 
@@ -186,22 +206,6 @@ struct PressureKernel {
           local_pressure(tid, layout.tensor_offset(layout.coulomb_idx(), k)) +=
               p_c[k];
       }
-    }
-#endif
-
-#ifdef ESPRESSO_DPD
-    {
-      auto const vel1 = aosoa.get_vector_at(aosoa.velocity, i);
-      auto const vel2 = aosoa.get_vector_at(aosoa.velocity, j);
-      auto const v21 = box_geo.velocity_difference(pos1, pos2, vel1, vel2);
-      auto const dist2 = d.norm2();
-      auto const f_r = dpd_pair_force(ia_params.dpd.radial, v21, dist, {});
-      auto const f_t = dpd_pair_force(ia_params.dpd.trans, v21, dist, {});
-      auto const P = Utils::tensor_product(d / dist2, d);
-      auto const f_d = P * (f_r - f_t) + f_t;
-      auto const s = Utils::flatten(Utils::tensor_product(d, f_d));
-      for (std::size_t k = 0; k < 9; ++k)
-        local_pressure(tid, layout.tensor_offset(layout.dpd_idx(), k)) -= s[k];
     }
 #endif
   }
