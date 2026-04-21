@@ -164,7 +164,7 @@ struct PressureKernel {
         if (thole_active(ia_params, coulomb_f_kernel != nullptr)) {
           f += thole_pair_force(*unique_particles.at(i),
                                 *unique_particles.at(j), ia_params, d, dist,
-                                bonded_ias, coulomb, coulomb_f_kernel);
+                                bonded_ias, coulomb_f_kernel);
         }
 #endif
 
