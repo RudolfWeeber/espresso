@@ -101,26 +101,6 @@ inline void add_non_bonded_pair_virials(
 #endif // ESPRESSO_DIPOLES
 }
 
-inline std::optional<Utils::Matrix<double, 3, 3>>
-calc_bonded_virial_pressure_tensor(
-    Bonded_IA_Parameters const &iaparams, Particle const &p1,
-    Particle const &p2, BoxGeometry const &box_geo,
-    Coulomb::ShortRangeForceKernel::kernel_type const *kernel) {
-  auto const dx = box_geo.get_mi_vector(p1.pos(), p2.pos());
-  auto const pair_force = calc_bond_pair_force(iaparams, dx,
-#ifdef ESPRESSO_ELECTROSTATICS
-                                               p1.q() * p2.q(), kernel
-#else
-                                               0.0, nullptr
-#endif
-  );
-  std::optional<Utils::Matrix<double, 3, 3>> pressure{std::nullopt};
-  if (pair_force) {
-    pressure = Utils::tensor_product(*pair_force, dx);
-  }
-  return pressure;
-}
-
 // Overload for Cabana kernels: takes positions and charge product directly
 inline std::optional<Utils::Matrix<double, 3, 3>>
 calc_bonded_virial_pressure_tensor(
@@ -143,35 +123,18 @@ calc_bonded_virial_pressure_tensor(
 }
 
 inline std::optional<Utils::Matrix<double, 3, 3>>
-calc_bonded_three_body_pressure_tensor(Bonded_IA_Parameters const &iaparams,
-                                       Particle const &p1, Particle const &p2,
-                                       Particle const &p3,
-                                       BoxGeometry const &box_geo) {
-  if (std::holds_alternative<AngleHarmonicBond>(iaparams) or
-      std::holds_alternative<AngleCosineBond>(iaparams) or
-#ifdef ESPRESSO_TABULATED
-      std::holds_alternative<TabulatedAngleBond>(iaparams) or
+calc_bonded_virial_pressure_tensor(
+    Bonded_IA_Parameters const &iaparams, Particle const &p1,
+    Particle const &p2, BoxGeometry const &box_geo,
+    Coulomb::ShortRangeForceKernel::kernel_type const *kernel) {
+  return calc_bonded_virial_pressure_tensor(iaparams, p1.pos(), p2.pos(),
+                                            box_geo, kernel,
+#ifdef ESPRESSO_ELECTROSTATICS
+                                            p1.q() * p2.q()
+#else
+                                            0.0
 #endif
-      std::holds_alternative<AngleCossquareBond>(iaparams)) {
-    auto const dx21 = -box_geo.get_mi_vector(p1.pos(), p2.pos());
-    auto const dx31 = box_geo.get_mi_vector(p3.pos(), p1.pos());
-
-    auto const result = calc_bonded_three_body_force(iaparams, dx21, dx31);
-    if (result) {
-      Utils::Vector3d force2, force3;
-      std::tie(std::ignore, force2, force3) = result.value();
-
-      return Utils::tensor_product(force2, dx21) +
-             Utils::tensor_product(force3, dx31);
-    }
-  } else {
-    runtimeWarningMsg() << "Unsupported bond type " +
-                               std::to_string(iaparams.index()) +
-                               " in pressure calculation.";
-    return Utils::Matrix<double, 3, 3>{};
-  }
-
-  return {};
+  );
 }
 
 // Overload for Cabana kernels: takes positions directly
@@ -215,8 +178,8 @@ inline std::optional<Utils::Matrix<double, 3, 3>> calc_bonded_pressure_tensor(
     return calc_bonded_virial_pressure_tensor(iaparams, p1, *partners[0],
                                               box_geo, kernel);
   case 2:
-    return calc_bonded_three_body_pressure_tensor(iaparams, p1, *partners[0],
-                                                  *partners[1], box_geo);
+    return calc_bonded_three_body_pressure_tensor(
+        iaparams, p1.pos(), partners[0]->pos(), partners[1]->pos(), box_geo);
   default:
     runtimeWarningMsg() << "Unsupported bond type " +
                                std::to_string(iaparams.index()) +
