@@ -78,7 +78,7 @@ Same 2D per-thread layout as `local_energy`, but wider due to 9× bins.
    - Thole force: `f += thole_pair_force(...)` if active
    - Gay-Berne force: `f += gb_pair_force(...)` if active (includes non-central contributions)
    - `stress = Utils::tensor_product(d, f)` → 9 elements written to nb_inter/nb_intra bin based on `mol_id_view(i)` vs `mol_id_view(j)`
-4. **DPD** (dissipative only, no noise): `dpd_pair_force(...)` with zero noise → `stress_dpd = -Utils::tensor_product(d, f_dpd)` → DPD bin
+4. **DPD** (dissipative only, no noise): call the inner `dpd_pair_force(params, v21, dist, zero_noise)` with `zero_noise = Utils::Vector3d{}` to get deterministic dissipative force only (no stochastic term). Compute `stress_dpd = -Utils::tensor_product(d, f_dpd)` → DPD bin. Requires velocity data from AoSoA and DPD thermostat parameters.
 5. **Coulomb real-space**: `kernel_pressure(q1q2, d, dist)` returns a `Utils::Matrix<double,3,3>` → write 9 elements to coulomb bin
 6. **Dipolar**: stderr warning only, no tensor written
 
