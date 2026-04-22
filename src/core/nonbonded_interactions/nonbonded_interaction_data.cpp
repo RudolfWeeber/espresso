@@ -40,9 +40,8 @@
 // exceeds the current maximum. The "active" criterion matches each kernel's
 // own guard: a kernel can only contribute when its max_cutoff() > 0 (since
 // dist >= 0 and inactive_cutoff = -1).
-static void __attribute__((unused)) // shut up sanitizer
-consider(double &max_cut_current, unsigned &mask, PairPotential p,
-         double sub_cutoff) {
+[[maybe_unused]] static void consider(double &max_cut_current, unsigned &mask,
+                                      PairPotential p, double sub_cutoff) {
   if (sub_cutoff > 0.) {
     mask |= pair_potential_bit(p);
     if (sub_cutoff > max_cut_current) {
