@@ -56,6 +56,28 @@ template <typename CutoffGetter = GetNonbondedCutoff> class VerletCriterion {
   }
   CutoffGetter get_nonbonded_cutoff;
 
+private:
+  bool check_pair(double dist2, double q1, double q2, double dipm1,
+                  double dipm2, int type1, int type2) const {
+    if (dist2 > m_eff_max_cut2)
+      return false;
+#ifdef ESPRESSO_ELECTROSTATICS
+    if (dist2 <= m_eff_coulomb_cut2 and q1 != 0. and q2 != 0.)
+      return true;
+#endif
+#ifdef ESPRESSO_DIPOLES
+    if (dist2 <= m_eff_dipolar_cut2 and dipm1 != 0. and dipm2 != 0.)
+      return true;
+#endif
+#ifdef ESPRESSO_COLLISION_DETECTION
+    if (dist2 <= m_collision_cut2)
+      return true;
+#endif
+    auto const ia_cut = get_nonbonded_cutoff(type1, type2);
+    return (ia_cut != inactive_cutoff) &&
+           (dist2 <= Utils::sqr(ia_cut + m_skin));
+  }
+
 public:
   VerletCriterion(System::System const &system, double skin, double max_cut,
                   double coulomb_cut = 0., double dipolar_cut = 0.,
@@ -69,31 +91,17 @@ public:
   template <typename Distance>
   bool operator()(const Particle &p1, const Particle &p2,
                   Distance const &dist) const {
-    auto const &dist2 = dist.dist2;
-    if (dist2 > m_eff_max_cut2)
-      return false;
-
+    return check_pair(dist.dist2,
 #ifdef ESPRESSO_ELECTROSTATICS
-    // Within real space cutoff of electrostatics and both are charged
-    if (dist2 <= m_eff_coulomb_cut2 and p1.q() != 0. and p2.q() != 0.)
-      return true;
+                      p1.q(), p2.q(),
+#else
+                      0., 0.,
 #endif
-
 #ifdef ESPRESSO_DIPOLES
-    // Within dipolar cutoff and both carry magnetic moments
-    if (dist2 <= m_eff_dipolar_cut2 and p1.dipm() != 0. and p2.dipm() != 0.)
-      return true;
+                      p1.dipm(), p2.dipm(),
+#else
+                      0., 0.,
 #endif
-
-#ifdef ESPRESSO_COLLISION_DETECTION
-    // Collision detection
-    if (dist2 <= m_collision_cut2)
-      return true;
-#endif
-
-    // Within short-range distance (including dpd and the like)
-    auto const ia_cut = get_nonbonded_cutoff(p1.type(), p2.type());
-    return (ia_cut != inactive_cutoff) &&
-           (dist2 <= Utils::sqr(ia_cut + m_skin));
+                      p1.type(), p2.type());
   }
 };
