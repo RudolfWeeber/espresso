@@ -110,3 +110,76 @@ BOOST_AUTO_TEST_CASE(VerletCriterion_test) {
   }
 #endif // ESPRESSO_COLLISION_DETECTION
 }
+
+BOOST_AUTO_TEST_CASE(VerletCriterion_pack_test) {
+  auto constexpr skin = 0.4;
+  auto constexpr max_cut = 2.5;
+  auto constexpr coulomb_cut = 2.0;
+  auto constexpr dipolar_cut = 1.8;
+
+  struct GetMaxCutoff {
+    GetMaxCutoff(System::System const &) {}
+    double operator()(int, int) const { return skin + max_cut; }
+  };
+
+  // Minimal mock pack: supports .charge(), .dipm(), .type()
+  struct MockPack {
+    std::vector<double> charges = {0., 0.};
+    std::vector<double> dipms = {0., 0.};
+    std::vector<int> types = {0, 0};
+    double charge(std::size_t i) const { return charges[i]; }
+    double dipm(std::size_t i) const { return dipms[i]; }
+    int type(std::size_t i) const { return types[i]; }
+  };
+
+  auto const &system = System::get_system();
+  VerletCriterion<GetMaxCutoff> criterion(system, skin, max_cut);
+
+  MockPack pack;
+
+  // Below cutoff → criterion accepts
+  {
+    auto constexpr cutoff = skin + max_cut;
+    Distance const below{Utils::Vector3d{cutoff - 0.1, 0., 0.}};
+    Distance const above{Utils::Vector3d{cutoff + 0.1, 0., 0.}};
+    BOOST_CHECK(criterion(pack, 0u, 1u, below));
+    BOOST_CHECK(!criterion(pack, 0u, 1u, above));
+  }
+
+#ifdef ESPRESSO_ELECTROSTATICS
+  {
+    struct GetZeroCutoff {
+      GetZeroCutoff(System::System const &) {}
+      double operator()(int, int) const { return -skin; }
+    };
+    VerletCriterion<GetZeroCutoff> crit_lr(system, skin, max_cut, coulomb_cut);
+    auto constexpr cutoff = skin + coulomb_cut;
+    Distance const below{Utils::Vector3d{cutoff - 0.1, 0., 0.}};
+    Distance const above{Utils::Vector3d{cutoff + 0.1, 0., 0.}};
+    pack.charges = {0., 0.};
+    BOOST_CHECK(!crit_lr(pack, 0u, 1u, below));
+    pack.charges = {1., 1.};
+    BOOST_CHECK(crit_lr(pack, 0u, 1u, below));
+    BOOST_CHECK(!crit_lr(pack, 0u, 1u, above));
+    pack.charges = {0., 0.};
+  }
+#endif
+
+#ifdef ESPRESSO_DIPOLES
+  {
+    struct GetZeroCutoff {
+      GetZeroCutoff(System::System const &) {}
+      double operator()(int, int) const { return -skin; }
+    };
+    VerletCriterion<GetZeroCutoff> crit_lr(system, skin, max_cut, 0.,
+                                           dipolar_cut);
+    auto constexpr cutoff = skin + dipolar_cut;
+    Distance const below{Utils::Vector3d{cutoff - 0.1, 0., 0.}};
+    pack.dipms = {0., 0.};
+    BOOST_CHECK(!crit_lr(pack, 0u, 1u, below));
+    pack.dipms = {1., 1.};
+    BOOST_CHECK(crit_lr(pack, 0u, 1u, below));
+    pack.dipms = {0., 0.};
+  }
+#endif
+}

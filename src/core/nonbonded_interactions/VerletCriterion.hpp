@@ -107,4 +107,21 @@ public:
 #endif
     return check_pair(dist.dist2, q1, q2, dipm1, dipm2, p1.type(), p2.type());
   }
+
+  template <typename ParticlePack, typename Distance>
+  bool operator()(ParticlePack const &pack, std::size_t i, std::size_t j,
+                  Distance const &dist) const {
+#ifdef ESPRESSO_ELECTROSTATICS
+    auto const q1 = pack.charge(i), q2 = pack.charge(j);
+#else
+    double const q1 = 0., q2 = 0.;
+#endif
+#ifdef ESPRESSO_DIPOLES
+    auto const dipm1 = pack.dipm(i), dipm2 = pack.dipm(j);
+#else
+    double const dipm1 = 0., dipm2 = 0.;
+#endif
+    return check_pair(dist.dist2, q1, q2, dipm1, dipm2, pack.type(i),
+                      pack.type(j));
+  }
 };
