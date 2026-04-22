@@ -158,6 +158,10 @@ BOOST_AUTO_TEST_CASE(VerletCriterion_pack_test) {
     Distance const above{Utils::Vector3d{cutoff + 0.1, 0., 0.}};
     pack.charges = {0., 0.};
     BOOST_CHECK(!crit_lr(pack, 0u, 1u, below));
+    pack.charges = {1., 0.};
+    BOOST_CHECK(!crit_lr(pack, 0u, 1u, below));
+    pack.charges = {0., 1.};
+    BOOST_CHECK(!crit_lr(pack, 0u, 1u, below));
     pack.charges = {1., 1.};
     BOOST_CHECK(crit_lr(pack, 0u, 1u, below));
     BOOST_CHECK(!crit_lr(pack, 0u, 1u, above));
@@ -176,6 +180,10 @@ BOOST_AUTO_TEST_CASE(VerletCriterion_pack_test) {
     auto constexpr cutoff = skin + dipolar_cut;
     Distance const below{Utils::Vector3d{cutoff - 0.1, 0., 0.}};
     pack.dipms = {0., 0.};
+    BOOST_CHECK(!crit_lr(pack, 0u, 1u, below));
+    pack.dipms = {1., 0.};
+    BOOST_CHECK(!crit_lr(pack, 0u, 1u, below));
+    pack.dipms = {0., 1.};
     BOOST_CHECK(!crit_lr(pack, 0u, 1u, below));
     pack.dipms = {1., 1.};
     BOOST_CHECK(crit_lr(pack, 0u, 1u, below));
