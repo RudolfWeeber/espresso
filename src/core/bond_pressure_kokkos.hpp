@@ -167,7 +167,6 @@ struct DihedralBondsPressureKernel {
   operator()(std::size_t idx) const {
     auto &local_pressure = data.local_pressure;
     auto const &layout = data.layout;
-    auto const &aosoa = data.aosoa;
     auto const bond_id = bond_ids(idx);
 
     auto const tid = omp_get_thread_num();
