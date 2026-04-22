@@ -213,6 +213,8 @@ private:
   std::unique_ptr<AoSoA_pack> m_aosoa;
   /** The local id-to-index for aosoa data */
   std::vector<Particle *> m_unique_particles;
+  /** AoSoA start index for each local cell, parallel to local_cells() */
+  std::vector<std::size_t> m_local_cell_aosoa_offsets;
   std::shared_ptr<KokkosHandle> m_kokkos_handle;
 
 public:
@@ -739,6 +741,9 @@ public:
 #endif
   auto &get_aosoa() { return *m_aosoa; }
   auto const &get_unique_particles() const { return m_unique_particles; }
+  std::span<std::size_t const> get_local_cell_aosoa_offsets() const {
+    return m_local_cell_aosoa_offsets;
+  }
   auto const &get_verlet_list_cabana() const { return *m_verlet_list_cabana; }
   auto &bond_state() { return *m_bond_state; }
   auto const &bond_state() const { return *m_bond_state; }
