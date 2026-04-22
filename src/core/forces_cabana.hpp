@@ -244,7 +244,7 @@ struct ForcesKernel {
         auto const dir1 = aosoa.get_vector_at(aosoa.director, i);
         auto const dir2 = aosoa.get_vector_at(aosoa.director, j);
         pf += (*dipoles_kernel)(d1d2, aosoa.dipm(i) * dir1,
-                                aosoa.dipm(j) * dir2, d, dist, dist * dist);
+                                aosoa.dipm(j) * dir2, d, dist, dist_sq);
       }
     }
 #endif // ESPRESSO_DIPOLES
