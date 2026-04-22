@@ -122,28 +122,15 @@ struct EnergyKernel {
     auto const &ia_params = nonbonded_ias.get_ia_param(t1, t2);
 
     // Determine which data needs to be loaded based on active algorithms
-#if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES) or                \
-    defined(ESPRESSO_EXCLUSIONS) or defined(ESPRESSO_THOLE)
-    auto const flag =
-        compute_pair_data_flags(dist, ia_params, coulomb_u_kernel != nullptr,
-                                dipoles_u_kernel != nullptr, aosoa, i, j);
-#endif
-
 #if defined(ESPRESSO_EXCLUSIONS) or defined(ESPRESSO_THOLE)
+    auto const flag = compute_pair_data_flags(
+        dist, ia_params, coulomb_u_kernel != nullptr, aosoa, i, j);
+
     Particle const *p1_ptr = nullptr;
     Particle const *p2_ptr = nullptr;
     if (flag.need_particle_pointers) {
       p1_ptr = unique_particles.at(i);
       p2_ptr = unique_particles.at(j);
-    }
-#endif
-
-    // Load directors only if needed
-#if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
-    Utils::Vector3d dir1{}, dir2{};
-    if (flag.need_directors) {
-      dir1 = aosoa.get_vector_at(aosoa.director, i);
-      dir2 = aosoa.get_vector_at(aosoa.director, j);
     }
 #endif
 
@@ -170,6 +157,8 @@ struct EnergyKernel {
         // Only call Gay-Berne energy kernel if active
 #ifdef ESPRESSO_GAY_BERNE
         if (gay_berne_active(dist, ia_params)) {
+          auto const dir1 = aosoa.get_vector_at(aosoa.director, i);
+          auto const dir2 = aosoa.get_vector_at(aosoa.director, j);
           e_nb += gb_pair_energy(dir1, dir2, ia_params, d, dist);
         }
 #endif
@@ -195,6 +184,8 @@ struct EnergyKernel {
 #ifdef ESPRESSO_DIPOLES
     if (dipoles_u_kernel != nullptr) {
       if (aosoa.dipm(i) != 0. and aosoa.dipm(j) != 0.) {
+        auto const dir1 = aosoa.get_vector_at(aosoa.director, i);
+        auto const dir2 = aosoa.get_vector_at(aosoa.director, j);
         double const e_d = (*dipoles_u_kernel)(
             aosoa.dipm(i) * dir1, aosoa.dipm(j) * dir2, d, dist, dist * dist);
         local_energy(tid, layout.dipolar_idx()) += e_d;
