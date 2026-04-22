@@ -37,6 +37,7 @@
 
 #include <iterator>
 #include <span>
+#include <unordered_map>
 #include <utility>
 
 template <class KokkosRangePolicy = Kokkos::RangePolicy<>>
@@ -88,61 +89,91 @@ commit_particle(Particle const &p, auto const index,
 #endif
 }
 
+/** Build a reverse-lookup map Cell* → index in the local-cells span.
+ *  Called once per Verlet list rebuild; O(N_cells). */
+inline auto make_cell_index_map(std::span<Cell *const> cells)
+    -> std::unordered_map<Cell *, std::size_t> {
+  std::unordered_map<Cell *, std::size_t> map;
+  map.reserve(cells.size());
+  for (std::size_t i = 0; i < cells.size(); ++i)
+    map[cells[i]] = i;
+  return map;
+}
+
+/** AoSoA index of the k-th particle in local cell @p cell_idx.
+ *  Pure arithmetic — no memory access. */
+inline std::size_t cell_particle_index(std::span<std::size_t const> offsets,
+                                       std::size_t cell_idx, std::size_t k) {
+  return offsets[cell_idx] + k;
+}
+
+/** AoSoA index of a ghost-cell particle via id lookup.
+ *  Reads p.id() from the Particle struct only.
+ *  Returns -1 if the particle has no AoSoA entry. */
+inline int ghost_particle_index(Particle const &p,
+                                Kokkos::View<int *> const &id_to_index,
+                                int max_id) {
+  if (p.id() > max_id)
+    return -1;
+  return id_to_index(p.id());
+}
+
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
                  auto const &verlet_criterion,
                  Kokkos::View<int *> const &id_to_index, int const max_id,
+                 CellStructure::AoSoA_pack const &aosoa,
+                 std::span<std::size_t const> offsets,
                  auto const &intra_operator, auto const &inter_operator) {
 
-  auto const distance_function = detail::MinimalImageDistance{box_geo};
+  auto const cell_map = make_cell_index_map(cells);
 
-  // implementation detail: max_id refers to the max local particle id,
-  // but ghost particles from other ranks may have larger particle ids;
-  // -1 is used as a sentinel value for particle ids from other threads
-
-  auto intra_kernel = [&cells, &distance_function, &verlet_criterion,
-                       &id_to_index, &intra_operator, max_id](const int i) {
-    auto &local_particles = cells[i]->particles();
-    for (auto it = local_particles.begin(); it != local_particles.end(); ++it) {
-      auto const &p1 = *it;
-      if (p1.id() <= max_id) {
-        auto const ii = id_to_index(p1.id());
-        if (ii >= 0) {
-          // pairs in this cell
-          for (auto jt = std::next(it); jt != local_particles.end(); ++jt) {
-            if ((*jt).id() <= max_id) {
-              if (verlet_criterion(p1, *jt, distance_function(p1, *jt))) {
-                auto const jj = id_to_index((*jt).id());
-                if (jj >= 0) {
-                  intra_operator(ii, jj);
-                }
-              }
-            }
-          }
-        }
+  auto intra_kernel = [&cells, &box_geo, &verlet_criterion, &aosoa, &offsets,
+                       &intra_operator](const int i) {
+    auto const n_i = cells[i]->particles().size();
+    for (std::size_t k = 0; k < n_i; ++k) {
+      auto const ii = cell_particle_index(offsets, i, k);
+      auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
+      for (std::size_t l = k + 1; l < n_i; ++l) {
+        auto const jj = cell_particle_index(offsets, i, l);
+        Distance const dist{box_geo.get_mi_vector(
+            pos1, aosoa.get_vector_at(aosoa.position, jj))};
+        if (verlet_criterion(aosoa, ii, jj, dist))
+          intra_operator(static_cast<int>(ii), static_cast<int>(jj));
       }
     }
   };
 
-  auto inter_kernel = [&cells, &distance_function, &verlet_criterion,
-                       &id_to_index, &inter_operator, max_id](const int i) {
-    auto &local_particles = cells[i]->particles();
-    for (auto const &p1 : local_particles) {
-      if (p1.id() <= max_id) {
-        auto const ii = id_to_index(p1.id());
-        if (ii >= 0) {
-          // pairs with neighboring cells
-          for (auto &neighbor : cells[i]->neighbors().red()) {
-            for (auto const &p2 : neighbor->particles()) {
-              if (p2.id() <= max_id) {
-                if (verlet_criterion(p1, p2, distance_function(p1, p2))) {
-                  auto const jj = id_to_index(p2.id());
-                  if (jj >= 0) {
-                    inter_operator(ii, jj);
-                  }
-                }
-              }
-            }
+  auto inter_kernel = [&cells, &box_geo, &verlet_criterion, &aosoa, &offsets,
+                       &id_to_index, &cell_map, &inter_operator,
+                       max_id](const int i) {
+    auto const n_i = cells[i]->particles().size();
+    for (std::size_t k = 0; k < n_i; ++k) {
+      auto const ii = cell_particle_index(offsets, i, k);
+      auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
+      for (auto *neighbor : cells[i]->neighbors().red()) {
+        auto const it = cell_map.find(neighbor);
+        if (it != cell_map.end()) {
+          // Local neighbor cell — no Particle struct access.
+          auto const nidx = it->second;
+          auto const n_j = neighbor->particles().size();
+          for (std::size_t l = 0; l < n_j; ++l) {
+            auto const jj = cell_particle_index(offsets, nidx, l);
+            Distance const dist{box_geo.get_mi_vector(
+                pos1, aosoa.get_vector_at(aosoa.position, jj))};
+            if (verlet_criterion(aosoa, ii, jj, dist))
+              inter_operator(static_cast<int>(ii), static_cast<int>(jj));
+          }
+        } else {
+          // Ghost neighbor cell — read p2.id() only, rest from AoSoA.
+          for (auto const &p2 : neighbor->particles()) {
+            auto const jj = ghost_particle_index(p2, id_to_index, max_id);
+            if (jj < 0)
+              continue;
+            Distance const dist{box_geo.get_mi_vector(
+                pos1, aosoa.get_vector_at(aosoa.position, jj))};
+            if (verlet_criterion(aosoa, ii, jj, dist))
+              inter_operator(static_cast<int>(ii), static_cast<int>(jj));
           }
         }
       }
@@ -238,6 +269,8 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
             CellStructure::ListType &verlet_list) {
           link_cell_kokkos(
               std::move(cells), box, verlet_criterion, id_to_index, max_id,
+              cell_structure.get_aosoa(),
+              cell_structure.get_local_cell_aosoa_offsets(),
               [&](const int i, const int j) {
                 // intra cell loop
                 verlet_list.addNeighborLB(i, j);
@@ -357,6 +390,8 @@ void cabana_short_range(auto const &pair_bonds_kernel,
                 std::move(cells), box, verlet_criterion,
                 cell_structure.get_id_to_index(),
                 cell_structure.get_cached_max_local_particle_id(),
+                cell_structure.get_aosoa(),
+                cell_structure.get_local_cell_aosoa_offsets(),
                 [&](const int i, const int j) {
                   // intra cell loop
                   nonbonded_kernel(i, j);
