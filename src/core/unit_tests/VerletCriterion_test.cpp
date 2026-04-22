@@ -121,6 +121,10 @@ BOOST_AUTO_TEST_CASE(VerletCriterion_pack_test) {
     GetMaxCutoff(System::System const &) {}
     double operator()(int, int) const { return skin + max_cut; }
   };
+  struct GetZeroCutoff {
+    GetZeroCutoff(System::System const &) {}
+    double operator()(int, int) const { return -skin; }
+  };
 
   // Minimal mock pack: supports .charge(), .dipm(), .type()
   struct MockPack {
@@ -148,10 +152,6 @@ BOOST_AUTO_TEST_CASE(VerletCriterion_pack_test) {
 
 #ifdef ESPRESSO_ELECTROSTATICS
   {
-    struct GetZeroCutoff {
-      GetZeroCutoff(System::System const &) {}
-      double operator()(int, int) const { return -skin; }
-    };
     VerletCriterion<GetZeroCutoff> crit_lr(system, skin, max_cut, coulomb_cut);
     auto constexpr cutoff = skin + coulomb_cut;
     Distance const below{Utils::Vector3d{cutoff - 0.1, 0., 0.}};
@@ -167,18 +167,15 @@ BOOST_AUTO_TEST_CASE(VerletCriterion_pack_test) {
     BOOST_CHECK(!crit_lr(pack, 0u, 1u, above));
     pack.charges = {0., 0.};
   }
-#endif
+#endif // ESPRESSO_ELECTROSTATICS
 
 #ifdef ESPRESSO_DIPOLES
   {
-    struct GetZeroCutoff {
-      GetZeroCutoff(System::System const &) {}
-      double operator()(int, int) const { return -skin; }
-    };
     VerletCriterion<GetZeroCutoff> crit_lr(system, skin, max_cut, 0.,
                                            dipolar_cut);
     auto constexpr cutoff = skin + dipolar_cut;
     Distance const below{Utils::Vector3d{cutoff - 0.1, 0., 0.}};
+    Distance const above{Utils::Vector3d{cutoff + 0.1, 0., 0.}};
     pack.dipms = {0., 0.};
     BOOST_CHECK(!crit_lr(pack, 0u, 1u, below));
     pack.dipms = {1., 0.};
@@ -187,7 +184,8 @@ BOOST_AUTO_TEST_CASE(VerletCriterion_pack_test) {
     BOOST_CHECK(!crit_lr(pack, 0u, 1u, below));
     pack.dipms = {1., 1.};
     BOOST_CHECK(crit_lr(pack, 0u, 1u, below));
+    BOOST_CHECK(!crit_lr(pack, 0u, 1u, above));
     pack.dipms = {0., 0.};
   }
-#endif
+#endif // ESPRESSO_DIPOLES
 }
