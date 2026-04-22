@@ -35,7 +35,6 @@
 #include <caliper/cali.h>
 #endif
 
-#include <iterator>
 #include <span>
 #include <unordered_map>
 #include <utility>
@@ -89,6 +88,8 @@ commit_particle(Particle const &p, auto const index,
 #endif
 }
 
+namespace detail {
+
 /** Build a reverse-lookup map Cell* → index in the local-cells span.
  *  Called once per Verlet list rebuild; O(N_cells). */
 inline auto make_cell_index_map(std::span<Cell *const> cells)
@@ -118,6 +119,8 @@ inline int ghost_particle_index(Particle const &p,
   return id_to_index(p.id());
 }
 
+} // namespace detail
+
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
                  auto const &verlet_criterion,
@@ -126,16 +129,16 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
                  std::span<std::size_t const> offsets,
                  auto const &intra_operator, auto const &inter_operator) {
 
-  auto const cell_map = make_cell_index_map(cells);
+  auto const cell_map = detail::make_cell_index_map(cells);
 
   auto intra_kernel = [&cells, &box_geo, &verlet_criterion, &aosoa, &offsets,
                        &intra_operator](const int i) {
     auto const n_i = cells[i]->particles().size();
     for (std::size_t k = 0; k < n_i; ++k) {
-      auto const ii = cell_particle_index(offsets, i, k);
+      auto const ii = detail::cell_particle_index(offsets, i, k);
       auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
       for (std::size_t l = k + 1; l < n_i; ++l) {
-        auto const jj = cell_particle_index(offsets, i, l);
+        auto const jj = detail::cell_particle_index(offsets, i, l);
         Distance const dist{box_geo.get_mi_vector(
             pos1, aosoa.get_vector_at(aosoa.position, jj))};
         if (verlet_criterion(aosoa, ii, jj, dist))
@@ -148,26 +151,32 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
                        &id_to_index, &cell_map, &inter_operator,
                        max_id](const int i) {
     auto const n_i = cells[i]->particles().size();
-    for (std::size_t k = 0; k < n_i; ++k) {
-      auto const ii = cell_particle_index(offsets, i, k);
-      auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
-      for (auto *neighbor : cells[i]->neighbors().red()) {
-        auto const it = cell_map.find(neighbor);
-        if (it != cell_map.end()) {
-          // Local neighbor cell — no Particle struct access.
-          auto const nidx = it->second;
-          auto const n_j = neighbor->particles().size();
+    for (auto *neighbor : cells[i]->neighbors().red()) {
+      auto const it = cell_map.find(neighbor);
+      if (it != cell_map.end()) {
+        // Local neighbor — no Particle struct access.
+        // read-only map access; safe for parallel Kokkos threads
+        auto const nidx = it->second;
+        auto const n_j = neighbor->particles().size();
+        for (std::size_t k = 0; k < n_i; ++k) {
+          auto const ii = detail::cell_particle_index(offsets, i, k);
+          auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
           for (std::size_t l = 0; l < n_j; ++l) {
-            auto const jj = cell_particle_index(offsets, nidx, l);
+            auto const jj = detail::cell_particle_index(offsets, nidx, l);
             Distance const dist{box_geo.get_mi_vector(
                 pos1, aosoa.get_vector_at(aosoa.position, jj))};
             if (verlet_criterion(aosoa, ii, jj, dist))
               inter_operator(static_cast<int>(ii), static_cast<int>(jj));
           }
-        } else {
-          // Ghost neighbor cell — read p2.id() only, rest from AoSoA.
+        }
+      } else {
+        // Ghost neighbor — read p2.id() only, rest from AoSoA.
+        for (std::size_t k = 0; k < n_i; ++k) {
+          auto const ii = detail::cell_particle_index(offsets, i, k);
+          auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
           for (auto const &p2 : neighbor->particles()) {
-            auto const jj = ghost_particle_index(p2, id_to_index, max_id);
+            auto const jj =
+                detail::ghost_particle_index(p2, id_to_index, max_id);
             if (jj < 0)
               continue;
             Distance const dist{box_geo.get_mi_vector(
