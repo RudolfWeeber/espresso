@@ -25,6 +25,7 @@
 #include <boost/range/iterator_range.hpp>
 
 #include <algorithm>
+#include <limits>
 #include <span>
 #include <utility>
 #include <vector>
@@ -97,8 +98,14 @@ class Cell {
   using neighbors_type = Neighbors<Cell *>;
 
   ParticleList m_particles;
+  /** AoSoA start index for this cell's particles; no_aosoa_slot for ghost
+   * cells. */
+  std::size_t m_aosoa_offset = no_aosoa_slot;
 
 public:
+  static constexpr std::size_t no_aosoa_slot =
+      std::numeric_limits<std::size_t>::max();
+
   /** Particles */
   auto &particles() { return m_particles; }
   auto const &particles() const { return m_particles; }
@@ -112,4 +119,10 @@ public:
    * @brief All neighbors of the cell.
    */
   neighbors_type &neighbors() { return m_neighbors; }
+
+  /** AoSoA index of the first particle in this cell.
+   *  Valid only for local cells after set_index_map(); returns no_aosoa_slot
+   *  for ghost cells. */
+  std::size_t aosoa_offset() const { return m_aosoa_offset; }
+  void set_aosoa_offset(std::size_t off) { m_aosoa_offset = off; }
 };

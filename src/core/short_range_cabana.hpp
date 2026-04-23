@@ -36,7 +36,6 @@
 #endif
 
 #include <span>
-#include <unordered_map>
 #include <utility>
 
 template <class KokkosRangePolicy = Kokkos::RangePolicy<>>
@@ -90,24 +89,6 @@ commit_particle(Particle const &p, auto const index,
 
 namespace detail {
 
-/** Build a reverse-lookup map Cell* → index in the local-cells span.
- *  Called once per Verlet list rebuild; O(N_cells). */
-inline auto make_cell_index_map(std::span<Cell *const> cells)
-    -> std::unordered_map<Cell *, std::size_t> {
-  std::unordered_map<Cell *, std::size_t> map;
-  map.reserve(cells.size());
-  for (std::size_t i = 0; i < cells.size(); ++i)
-    map[cells[i]] = i;
-  return map;
-}
-
-/** AoSoA index of the k-th particle in local cell @p cell_idx.
- *  Pure arithmetic — no memory access. */
-inline std::size_t cell_particle_index(std::span<std::size_t const> offsets,
-                                       std::size_t cell_idx, std::size_t k) {
-  return offsets[cell_idx] + k;
-}
-
 /** AoSoA index of a ghost-cell particle via id lookup.
  *  Reads p.id() from the Particle struct only.
  *  Returns -1 if the particle has no AoSoA entry. */
@@ -126,19 +107,17 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
                  auto const &verlet_criterion,
                  Kokkos::View<int *> const &id_to_index, int const max_id,
                  CellStructure::AoSoA_pack const &aosoa,
-                 std::span<std::size_t const> offsets,
                  auto const &intra_operator, auto const &inter_operator) {
 
-  auto const cell_map = detail::make_cell_index_map(cells);
-
-  auto intra_kernel = [&cells, &box_geo, &verlet_criterion, &aosoa, &offsets,
+  auto intra_kernel = [&cells, &box_geo, &verlet_criterion, &aosoa,
                        &intra_operator](const int i) {
+    auto const base = cells[i]->aosoa_offset();
     auto const n_i = cells[i]->particles().size();
     for (std::size_t k = 0; k < n_i; ++k) {
-      auto const ii = detail::cell_particle_index(offsets, i, k);
+      auto const ii = base + k;
       auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
       for (std::size_t l = k + 1; l < n_i; ++l) {
-        auto const jj = detail::cell_particle_index(offsets, i, l);
+        auto const jj = base + l;
         Distance const dist{box_geo.get_mi_vector(
             pos1, aosoa.get_vector_at(aosoa.position, jj))};
         if (verlet_criterion(aosoa, ii, jj, dist))
@@ -147,33 +126,28 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
     }
   };
 
-  auto inter_kernel = [&cells, &box_geo, &verlet_criterion, &aosoa, &offsets,
-                       &id_to_index, &cell_map, &inter_operator,
-                       max_id](const int i) {
+  auto inter_kernel = [&cells, &box_geo, &verlet_criterion, &aosoa,
+                       &id_to_index, &inter_operator, max_id](const int i) {
+    auto const base_i = cells[i]->aosoa_offset();
     auto const n_i = cells[i]->particles().size();
-    for (auto *neighbor : cells[i]->neighbors().red()) {
-      auto const it = cell_map.find(neighbor);
-      if (it != cell_map.end()) {
-        // Local neighbor — no Particle struct access.
-        // read-only map access; safe for parallel Kokkos threads
-        auto const nidx = it->second;
-        auto const n_j = neighbor->particles().size();
-        for (std::size_t k = 0; k < n_i; ++k) {
-          auto const ii = detail::cell_particle_index(offsets, i, k);
-          auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
+    for (std::size_t k = 0; k < n_i; ++k) {
+      auto const ii = base_i + k;
+      // pos1 read once per particle, amortised over all neighbor cells
+      auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
+      for (auto *neighbor : cells[i]->neighbors().red()) {
+        auto const base_j = neighbor->aosoa_offset();
+        if (base_j != Cell::no_aosoa_slot) {
+          // Local neighbor — no Particle struct access.
+          auto const n_j = neighbor->particles().size();
           for (std::size_t l = 0; l < n_j; ++l) {
-            auto const jj = detail::cell_particle_index(offsets, nidx, l);
+            auto const jj = base_j + l;
             Distance const dist{box_geo.get_mi_vector(
                 pos1, aosoa.get_vector_at(aosoa.position, jj))};
             if (verlet_criterion(aosoa, ii, jj, dist))
               inter_operator(static_cast<int>(ii), static_cast<int>(jj));
           }
-        }
-      } else {
-        // Ghost neighbor — read p2.id() only, rest from AoSoA.
-        for (std::size_t k = 0; k < n_i; ++k) {
-          auto const ii = detail::cell_particle_index(offsets, i, k);
-          auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
+        } else {
+          // Ghost neighbor — read p2.id() only, rest from AoSoA.
           for (auto const &p2 : neighbor->particles()) {
             auto const jj =
                 detail::ghost_particle_index(p2, id_to_index, max_id);
@@ -279,7 +253,6 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
           link_cell_kokkos(
               std::move(cells), box, verlet_criterion, id_to_index, max_id,
               cell_structure.get_aosoa(),
-              cell_structure.get_local_cell_aosoa_offsets(),
               [&](const int i, const int j) {
                 // intra cell loop
                 verlet_list.addNeighborLB(i, j);
@@ -400,7 +373,6 @@ void cabana_short_range(auto const &pair_bonds_kernel,
                 cell_structure.get_id_to_index(),
                 cell_structure.get_cached_max_local_particle_id(),
                 cell_structure.get_aosoa(),
-                cell_structure.get_local_cell_aosoa_offsets(),
                 [&](const int i, const int j) {
                   // intra cell loop
                   nonbonded_kernel(i, j);

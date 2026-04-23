@@ -100,15 +100,19 @@ public:
       return false;
 #ifdef ESPRESSO_ELECTROSTATICS
     // Within real space cutoff of electrostatics and both are charged
-    if (dist.dist2 <= m_eff_coulomb_cut2 and pack.charge(i) != 0. and
-        pack.charge(j) != 0.)
-      return true;
+    if (dist.dist2 <= m_eff_coulomb_cut2) {
+      if (pack.charge(i) != 0. and pack.charge(j) != 0.) {
+        return true;
+      }
+    }
 #endif
 #ifdef ESPRESSO_DIPOLES
     // Within dipolar cutoff and both carry magnetic moments
-    if (dist.dist2 <= m_eff_dipolar_cut2 and pack.dipm(i) != 0. and
-        pack.dipm(j) != 0.)
-      return true;
+    if (dist.dist2 <= m_eff_dipolar_cut2) {
+      if (pack.dipm(i) != 0. and pack.dipm(j) != 0.) {
+        return true;
+      }
+    }
 #endif
 #ifdef ESPRESSO_COLLISION_DETECTION
     // Collision detection
