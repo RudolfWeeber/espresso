@@ -56,32 +56,6 @@ template <typename CutoffGetter = GetNonbondedCutoff> class VerletCriterion {
   }
   CutoffGetter get_nonbonded_cutoff;
 
-private:
-  bool check_pair(double dist2, double q1, double q2, double dipm1,
-                  double dipm2, int type1, int type2) const {
-    if (dist2 > m_eff_max_cut2)
-      return false;
-#ifdef ESPRESSO_ELECTROSTATICS
-    // Within real space cutoff of electrostatics and both are charged
-    if (dist2 <= m_eff_coulomb_cut2 and q1 != 0. and q2 != 0.)
-      return true;
-#endif
-#ifdef ESPRESSO_DIPOLES
-    // Within dipolar cutoff and both carry magnetic moments
-    if (dist2 <= m_eff_dipolar_cut2 and dipm1 != 0. and dipm2 != 0.)
-      return true;
-#endif
-#ifdef ESPRESSO_COLLISION_DETECTION
-    // Collision detection
-    if (dist2 <= m_collision_cut2)
-      return true;
-#endif
-    // Within short-range distance (including dpd and the like)
-    auto const ia_cut = get_nonbonded_cutoff(type1, type2);
-    return (ia_cut != inactive_cutoff) &&
-           (dist2 <= Utils::sqr(ia_cut + m_skin));
-  }
-
 public:
   VerletCriterion(System::System const &system, double skin, double max_cut,
                   double coulomb_cut = 0., double dipolar_cut = 0.,
@@ -95,33 +69,55 @@ public:
   template <typename Distance>
   bool operator()(const Particle &p1, const Particle &p2,
                   Distance const &dist) const {
+    if (dist.dist2 > m_eff_max_cut2)
+      return false;
 #ifdef ESPRESSO_ELECTROSTATICS
-    auto const q1 = p1.q(), q2 = p2.q();
-#else
-    double const q1 = 0., q2 = 0.;
+    // Within real space cutoff of electrostatics and both are charged
+    if (dist.dist2 <= m_eff_coulomb_cut2 and p1.q() != 0. and p2.q() != 0.)
+      return true;
 #endif
 #ifdef ESPRESSO_DIPOLES
-    auto const dipm1 = p1.dipm(), dipm2 = p2.dipm();
-#else
-    double const dipm1 = 0., dipm2 = 0.;
+    // Within dipolar cutoff and both carry magnetic moments
+    if (dist.dist2 <= m_eff_dipolar_cut2 and p1.dipm() != 0. and
+        p2.dipm() != 0.)
+      return true;
 #endif
-    return check_pair(dist.dist2, q1, q2, dipm1, dipm2, p1.type(), p2.type());
+#ifdef ESPRESSO_COLLISION_DETECTION
+    // Collision detection
+    if (dist.dist2 <= m_collision_cut2)
+      return true;
+#endif
+    // Within short-range distance (including dpd and the like)
+    auto const ia_cut = get_nonbonded_cutoff(p1.type(), p2.type());
+    return (ia_cut != inactive_cutoff) &&
+           (dist.dist2 <= Utils::sqr(ia_cut + m_skin));
   }
 
   template <typename ParticlePack, typename Distance>
   bool operator()(ParticlePack const &pack, std::size_t i, std::size_t j,
                   Distance const &dist) const {
+    if (dist.dist2 > m_eff_max_cut2)
+      return false;
 #ifdef ESPRESSO_ELECTROSTATICS
-    auto const q1 = pack.charge(i), q2 = pack.charge(j);
-#else
-    double const q1 = 0., q2 = 0.;
+    // Within real space cutoff of electrostatics and both are charged
+    if (dist.dist2 <= m_eff_coulomb_cut2 and pack.charge(i) != 0. and
+        pack.charge(j) != 0.)
+      return true;
 #endif
 #ifdef ESPRESSO_DIPOLES
-    auto const dipm1 = pack.dipm(i), dipm2 = pack.dipm(j);
-#else
-    double const dipm1 = 0., dipm2 = 0.;
+    // Within dipolar cutoff and both carry magnetic moments
+    if (dist.dist2 <= m_eff_dipolar_cut2 and pack.dipm(i) != 0. and
+        pack.dipm(j) != 0.)
+      return true;
 #endif
-    return check_pair(dist.dist2, q1, q2, dipm1, dipm2, pack.type(i),
-                      pack.type(j));
+#ifdef ESPRESSO_COLLISION_DETECTION
+    // Collision detection
+    if (dist.dist2 <= m_collision_cut2)
+      return true;
+#endif
+    // Within short-range distance (including dpd and the like)
+    auto const ia_cut = get_nonbonded_cutoff(pack.type(i), pack.type(j));
+    return (ia_cut != inactive_cutoff) &&
+           (dist.dist2 <= Utils::sqr(ia_cut + m_skin));
   }
 };
