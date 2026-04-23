@@ -130,15 +130,14 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
                        &id_to_index, &inter_operator, max_id](const int i) {
     auto const base_i = cells[i]->aosoa_offset();
     auto const n_i = cells[i]->particles().size();
-    for (std::size_t k = 0; k < n_i; ++k) {
-      auto const ii = base_i + k;
-      // pos1 read once per particle, amortised over all neighbor cells
-      auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
-      for (auto *neighbor : cells[i]->neighbors().red()) {
-        auto const base_j = neighbor->aosoa_offset();
-        if (base_j != Cell::no_aosoa_slot) {
-          // Local neighbor — no Particle struct access.
-          auto const n_j = neighbor->particles().size();
+    for (auto *neighbor : cells[i]->neighbors().red()) {
+      auto const base_j = neighbor->aosoa_offset();
+      if (base_j != Cell::no_aosoa_slot) {
+        // Local neighbor — no Particle struct access.
+        auto const n_j = neighbor->particles().size();
+        for (std::size_t k = 0; k < n_i; ++k) {
+          auto const ii = base_i + k;
+          auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
           for (std::size_t l = 0; l < n_j; ++l) {
             auto const jj = base_j + l;
             Distance const dist{box_geo.get_mi_vector(
@@ -146,8 +145,12 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
             if (verlet_criterion(aosoa, ii, jj, dist))
               inter_operator(static_cast<int>(ii), static_cast<int>(jj));
           }
-        } else {
-          // Ghost neighbor — read p2.id() only, rest from AoSoA.
+        }
+      } else {
+        // Ghost neighbor — read p2.id() only, rest from AoSoA.
+        for (std::size_t k = 0; k < n_i; ++k) {
+          auto const ii = base_i + k;
+          auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
           for (auto const &p2 : neighbor->particles()) {
             auto const jj =
                 detail::ghost_particle_index(p2, id_to_index, max_id);
