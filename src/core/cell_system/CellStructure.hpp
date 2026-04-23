@@ -741,6 +741,7 @@ public:
 #endif
   auto &get_aosoa() { return *m_aosoa; }
   auto const &get_unique_particles() const { return m_unique_particles; }
+  /** AoSoA start index for each local cell, valid after set_index_map(). */
   std::span<std::size_t const> get_local_cell_aosoa_offsets() const {
     return m_local_cell_aosoa_offsets;
   }

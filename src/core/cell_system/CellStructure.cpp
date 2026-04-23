@@ -279,15 +279,13 @@ void CellStructure::set_index_map() {
         }
       });
   Kokkos::fence();
-  {
-    auto const local_cells_span = m_decomposition->local_cells();
-    m_local_cell_aosoa_offsets.resize(local_cells_span.size());
-    std::exclusive_scan(local_cells_span.begin(), local_cells_span.end(),
-                        m_local_cell_aosoa_offsets.begin(), std::size_t{0},
-                        [](std::size_t acc, Cell const *c) {
-                          return acc + c->particles().size();
-                        });
-  }
+  auto const local_cells_span = m_decomposition->local_cells();
+  m_local_cell_aosoa_offsets.resize(local_cells_span.size());
+  std::exclusive_scan(local_cells_span.begin(), local_cells_span.end(),
+                      m_local_cell_aosoa_offsets.begin(), std::size_t{0},
+                      [](std::size_t acc, Cell const *c) {
+                        return acc + c->particles().size();
+                      });
   int pair_count = std::reduce(std::begin(pair_counts), std::end(pair_counts));
   int angle_count =
       std::reduce(std::begin(angle_counts), std::end(angle_counts));
