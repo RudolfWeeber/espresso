@@ -28,6 +28,7 @@
 #include <utils/Vector.hpp>
 
 #include <Cabana_Core.hpp>
+#include <Kokkos_ScatterView.hpp>
 
 #include <omp.h>
 
@@ -47,9 +48,9 @@ struct ForcesKernel {
   Thermostat::Thermostat const &thermostat;
   BoxGeometry const &box_geo;
   std::vector<Particle *> const &unique_particles;
-  CellStructure::ForceType const &local_force;
+  CellStructure::ScatterForce &local_force;
 #ifdef ESPRESSO_ROTATION
-  CellStructure::ForceType const &local_torque;
+  CellStructure::ScatterForce &local_torque;
 #endif
 #ifdef ESPRESSO_NPT
   Utils::Vector3d *const global_virial;
@@ -71,9 +72,9 @@ struct ForcesKernel {
       Coulomb::Solver const &coulomb_,
       Thermostat::Thermostat const &thermostat_, BoxGeometry const &box_geo_,
       std::vector<Particle *> const &unique_particles_,
-      CellStructure::ForceType const &local_force_,
+      CellStructure::ScatterForce &local_force_,
 #ifdef ESPRESSO_ROTATION
-      CellStructure::ForceType const &local_torque_,
+      CellStructure::ScatterForce &local_torque_,
 #endif
 #ifdef ESPRESSO_NPT
       Utils::Vector3d *const global_virial_,
@@ -262,23 +263,25 @@ struct ForcesKernel {
 #endif // ESPRESSO_ELECTROSTATICS
 
     auto const thread_id = omp_get_thread_num();
+    auto access_force = local_force.access(); 
 
-    local_force(i, thread_id, 0) += pf.f[0];
-    local_force(i, thread_id, 1) += pf.f[1];
-    local_force(i, thread_id, 2) += pf.f[2];
+    access_force(i, 0) += pf.f[0];
+    access_force(i, 1) += pf.f[1];
+    access_force(i, 2) += pf.f[2];
 #ifdef ESPRESSO_ROTATION
-    local_torque(i, thread_id, 0) += pf.torque[0];
-    local_torque(i, thread_id, 1) += pf.torque[1];
-    local_torque(i, thread_id, 2) += pf.torque[2];
+    auto access_torque = local_torque.access(); 
+    access_torque(i, 0) += pf.torque[0];
+    access_torque(i, 1) += pf.torque[1];
+    access_torque(i, 2) += pf.torque[2];
 #endif
 
-    local_force(j, thread_id, 0) += opf.f[0];
-    local_force(j, thread_id, 1) += opf.f[1];
-    local_force(j, thread_id, 2) += opf.f[2];
+    access_force(j, 0) += opf.f[0];
+    access_force(j, 1) += opf.f[1];
+    access_force(j, 2) += opf.f[2];
 #ifdef ESPRESSO_ROTATION
-    local_torque(j, thread_id, 0) += opf.torque[0];
-    local_torque(j, thread_id, 1) += opf.torque[1];
-    local_torque(j, thread_id, 2) += opf.torque[2];
+    access_torque(j, 0) += opf.torque[0];
+    access_torque(j, 1) += opf.torque[1];
+    access_torque(j, 2) += opf.torque[2];
 #endif
 #ifdef ESPRESSO_NPT
     if (npt_active()) {

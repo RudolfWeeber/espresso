@@ -28,6 +28,7 @@
 #include <utils/Vector.hpp>
 
 #include <Kokkos_Core.hpp>
+#include <Kokkos_ScatterView.hpp>
 
 #include <omp.h>
 
@@ -39,7 +40,7 @@ struct BondsKernelData {
   BondedInteractionsMap const &bonded_ias;
   BondBreakage::BondBreakage &bond_breakage;
   BoxGeometry const &box_geo;
-  CellStructure::ForceType &local_force;
+  CellStructure::ScatterForce &local_force;
 #ifdef ESPRESSO_NPT
   CellStructure::VirialType &local_virial;
 #endif
@@ -64,7 +65,7 @@ struct PairBondsKernel {
   operator()(std::size_t idx) const {
     auto const &bonded_ias = data.bonded_ias;
     auto const &box_geo = data.box_geo;
-    auto &local_force = data.local_force;
+    auto local_force = data.local_force.access(); 
     auto const &aosoa = data.aosoa;
     auto &bond_breakage = data.bond_breakage;
 #ifdef ESPRESSO_NPT
@@ -103,12 +104,12 @@ struct PairBondsKernel {
       if (result) {
         auto const &forces = result.value();
 
-        local_force(i, thread_id, 0) += std::get<0>(forces)[0];
-        local_force(i, thread_id, 1) += std::get<0>(forces)[1];
-        local_force(i, thread_id, 2) += std::get<0>(forces)[2];
-        local_force(j, thread_id, 0) += std::get<1>(forces)[0];
-        local_force(j, thread_id, 1) += std::get<1>(forces)[1];
-        local_force(j, thread_id, 2) += std::get<1>(forces)[2];
+        local_force(i, 0) += std::get<0>(forces)[0];
+        local_force(i, 1) += std::get<0>(forces)[1];
+        local_force(i, 2) += std::get<0>(forces)[2];
+        local_force(j, 0) += std::get<1>(forces)[0];
+        local_force(j, 1) += std::get<1>(forces)[1];
+        local_force(j, 2) += std::get<1>(forces)[2];
       } else {
         auto partner_id = aosoa.id(j);
         bond_broken_error(aosoa.id(i), {&partner_id, 1});
@@ -127,12 +128,12 @@ struct PairBondsKernel {
 
     if (result) {
       auto const f = result.value();
-      local_force(i, thread_id, 0) += f[0];
-      local_force(i, thread_id, 1) += f[1];
-      local_force(i, thread_id, 2) += f[2];
-      local_force(j, thread_id, 0) -= f[0];
-      local_force(j, thread_id, 1) -= f[1];
-      local_force(j, thread_id, 2) -= f[2];
+      local_force(i, 0) += f[0];
+      local_force(i, 1) += f[1];
+      local_force(i, 2) += f[2];
+      local_force(j, 0) -= f[0];
+      local_force(j, 1) -= f[1];
+      local_force(j, 2) -= f[2];
 #ifdef ESPRESSO_NPT
       auto const virial = hadamard_product(f, dx);
       local_virial(thread_id, 0) += virial[0];
@@ -161,7 +162,7 @@ struct AngleBondsKernel {
   operator()(std::size_t idx) const {
     auto const &bonded_ias = data.bonded_ias;
     auto const &box_geo = data.box_geo;
-    auto &local_force = data.local_force;
+    auto local_force = data.local_force.access(); 
     auto const &aosoa = data.aosoa;
     auto &bond_breakage = data.bond_breakage;
     auto const has_breakage_specs = data.has_breakage_specs;
@@ -169,7 +170,7 @@ struct AngleBondsKernel {
 
     // TODO: omp_get_thread_num() is only available for the OpenMP backend.
     // This should be updated when using other Kokkos backends.
-    auto const thread_id = omp_get_thread_num();
+    //auto const thread_id = omp_get_thread_num();
 
     auto const i = bond_list(idx, 0);
     auto const j = bond_list(idx, 1);
@@ -198,15 +199,15 @@ struct AngleBondsKernel {
     if (result) {
       auto const &forces = result.value();
 
-      local_force(i, thread_id, 0) += std::get<0>(forces)[0];
-      local_force(i, thread_id, 1) += std::get<0>(forces)[1];
-      local_force(i, thread_id, 2) += std::get<0>(forces)[2];
-      local_force(j, thread_id, 0) += std::get<1>(forces)[0];
-      local_force(j, thread_id, 1) += std::get<1>(forces)[1];
-      local_force(j, thread_id, 2) += std::get<1>(forces)[2];
-      local_force(k, thread_id, 0) += std::get<2>(forces)[0];
-      local_force(k, thread_id, 1) += std::get<2>(forces)[1];
-      local_force(k, thread_id, 2) += std::get<2>(forces)[2];
+      local_force(i, 0) += std::get<0>(forces)[0];
+      local_force(i, 1) += std::get<0>(forces)[1];
+      local_force(i, 2) += std::get<0>(forces)[2];
+      local_force(j, 0) += std::get<1>(forces)[0];
+      local_force(j, 1) += std::get<1>(forces)[1];
+      local_force(j, 2) += std::get<1>(forces)[2];
+      local_force(k, 0) += std::get<2>(forces)[0];
+      local_force(k, 1) += std::get<2>(forces)[1];
+      local_force(k, 2) += std::get<2>(forces)[2];
     } else {
       std::array<int, 2> pids = {aosoa.id(j), aosoa.id(k)};
       bond_broken_error(aosoa.id(i), {pids.data(), 2});
@@ -229,13 +230,13 @@ struct DihedralBondsKernel {
   operator()(std::size_t idx) const {
     auto const &bonded_ias = data.bonded_ias;
     auto const &box_geo = data.box_geo;
-    auto &local_force = data.local_force;
+    auto local_force = data.local_force.access(); 
     auto const &aosoa = data.aosoa;
     auto const bond_id = bond_ids(idx);
 
     // TODO: omp_get_thread_num() is only available for the OpenMP backend.
     // This should be updated when using other Kokkos backends.
-    auto const thread_id = omp_get_thread_num();
+    // auto const thread_id = omp_get_thread_num();
 
     auto const i = bond_list(idx, 0);
     auto const j = bond_list(idx, 1);
@@ -257,18 +258,18 @@ struct DihedralBondsKernel {
     if (result) {
       auto const &forces = result.value();
 
-      local_force(i, thread_id, 0) += std::get<0>(forces)[0];
-      local_force(i, thread_id, 1) += std::get<0>(forces)[1];
-      local_force(i, thread_id, 2) += std::get<0>(forces)[2];
-      local_force(j, thread_id, 0) += std::get<1>(forces)[0];
-      local_force(j, thread_id, 1) += std::get<1>(forces)[1];
-      local_force(j, thread_id, 2) += std::get<1>(forces)[2];
-      local_force(k, thread_id, 0) += std::get<2>(forces)[0];
-      local_force(k, thread_id, 1) += std::get<2>(forces)[1];
-      local_force(k, thread_id, 2) += std::get<2>(forces)[2];
-      local_force(m, thread_id, 0) += std::get<3>(forces)[0];
-      local_force(m, thread_id, 1) += std::get<3>(forces)[1];
-      local_force(m, thread_id, 2) += std::get<3>(forces)[2];
+      local_force(i, 0) += std::get<0>(forces)[0];
+      local_force(i, 1) += std::get<0>(forces)[1];
+      local_force(i, 2) += std::get<0>(forces)[2];
+      local_force(j, 0) += std::get<1>(forces)[0];
+      local_force(j, 1) += std::get<1>(forces)[1];
+      local_force(j, 2) += std::get<1>(forces)[2];
+      local_force(k, 0) += std::get<2>(forces)[0];
+      local_force(k, 1) += std::get<2>(forces)[1];
+      local_force(k, 2) += std::get<2>(forces)[2];
+      local_force(m, 0) += std::get<3>(forces)[0];
+      local_force(m, 1) += std::get<3>(forces)[1];
+      local_force(m, 2) += std::get<3>(forces)[2];
     } else {
       std::array<int, 3> pids = {aosoa.id(j), aosoa.id(k), aosoa.id(m)};
       bond_broken_error(aosoa.id(i), {pids.data(), 3});
