@@ -124,12 +124,18 @@ struct EnergyKernel {
 
     // Determine which data needs to be loaded based on active algorithms
 #if defined(ESPRESSO_EXCLUSIONS) or defined(ESPRESSO_THOLE)
-    auto const flag = compute_pair_data_flags(
-        dist, ia_params, coulomb_u_kernel != nullptr, aosoa, i, j);
+    bool need_particle_pointers = false;
+#ifdef ESPRESSO_EXCLUSIONS
+    need_particle_pointers |= aosoa.has_exclusion(i) or aosoa.has_exclusion(j);
+#endif
+#ifdef ESPRESSO_THOLE
+    need_particle_pointers |=
+        thole_active(ia_params, coulomb_u_kernel != nullptr);
+#endif
 
     Particle const *p1_ptr = nullptr;
     Particle const *p2_ptr = nullptr;
-    if (flag.need_particle_pointers) {
+    if (need_particle_pointers) {
       p1_ptr = unique_particles.at(i);
       p2_ptr = unique_particles.at(j);
     }

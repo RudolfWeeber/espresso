@@ -59,23 +59,3 @@ KOKKOS_INLINE_FUNCTION bool thole_active(IA_parameters const &ia_params,
           has_coulomb_kernel);
 }
 #endif
-
-struct PairDataFlags {
-  bool need_particle_pointers = false;
-};
-
-KOKKOS_INLINE_FUNCTION PairDataFlags compute_pair_data_flags(
-    [[maybe_unused]] double dist,
-    [[maybe_unused]] IA_parameters const &ia_params,
-    [[maybe_unused]] bool has_coulomb, [[maybe_unused]] auto const &aosoa,
-    [[maybe_unused]] std::size_t i, [[maybe_unused]] std::size_t j) {
-  PairDataFlags flags;
-#ifdef ESPRESSO_EXCLUSIONS
-  flags.need_particle_pointers |=
-      aosoa.has_exclusion(i) or aosoa.has_exclusion(j);
-#endif
-#ifdef ESPRESSO_THOLE
-  flags.need_particle_pointers |= thole_active(ia_params, has_coulomb);
-#endif
-  return flags;
-}
