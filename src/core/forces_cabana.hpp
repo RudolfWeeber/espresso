@@ -48,9 +48,9 @@ struct ForcesKernel {
   Thermostat::Thermostat const &thermostat;
   BoxGeometry const &box_geo;
   std::vector<Particle *> const &unique_particles;
-  CellStructure::ScatterForce &local_force;
+  CellStructure::ScatterForce local_force;
 #ifdef ESPRESSO_ROTATION
-  CellStructure::ScatterForce &local_torque;
+  CellStructure::ScatterForce local_torque;
 #endif
 #ifdef ESPRESSO_NPT
   Utils::Vector3d *const global_virial;
@@ -72,9 +72,9 @@ struct ForcesKernel {
       Coulomb::Solver const &coulomb_,
       Thermostat::Thermostat const &thermostat_, BoxGeometry const &box_geo_,
       std::vector<Particle *> const &unique_particles_,
-      CellStructure::ScatterForce &local_force_,
+      CellStructure::ScatterForce local_force_,
 #ifdef ESPRESSO_ROTATION
-      CellStructure::ScatterForce &local_torque_,
+      CellStructure::ScatterForce local_torque_,
 #endif
 #ifdef ESPRESSO_NPT
       Utils::Vector3d *const global_virial_,

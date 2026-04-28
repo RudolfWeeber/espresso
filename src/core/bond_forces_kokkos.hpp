@@ -40,7 +40,7 @@ struct BondsKernelData {
   BondedInteractionsMap const &bonded_ias;
   BondBreakage::BondBreakage &bond_breakage;
   BoxGeometry const &box_geo;
-  CellStructure::ScatterForce &local_force;
+  CellStructure::ScatterForce local_force;
 #ifdef ESPRESSO_NPT
   CellStructure::VirialType &local_virial;
 #endif

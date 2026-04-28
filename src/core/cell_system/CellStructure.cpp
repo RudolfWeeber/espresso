@@ -209,15 +209,19 @@ void CellStructure::reset_local_force() {
   CALI_CXX_MARK_FUNCTION;
 #endif
   Kokkos::deep_copy(get_local_force(), 0.);
-  //m_scatter_force->reset();
+  m_scatter_force->reset();
+#ifdef ESPRESSO_ROTATION
+  Kokkos::deep_copy(get_local_torque(), 0.);
+  m_scatter_torque->reset();
+#endif
 }
 
 void CellStructure::reset_local_properties() {
   Kokkos::deep_copy(get_local_force(), 0.);
-  //m_scatter_force->reset();
+  m_scatter_force->reset();
 #ifdef ESPRESSO_ROTATION
   Kokkos::deep_copy(get_local_torque(), 0.);
-  //m_scatter_torque->reset();
+  m_scatter_torque->reset();
 #endif
 #ifdef ESPRESSO_NPT
   Kokkos::deep_copy(get_local_virial(), 0.);

@@ -137,10 +137,6 @@ void ICCStar::iteration() {
         "reduction", std::size_t{0}, unique_particles.size(),
         [&local_force, &unique_particles](std::size_t const i) {
           auto &force = unique_particles.at(i)->force();
-	  std::cout << i << " "
-	  	    << local_force(i, 0) << " "
-	  	    << local_force(i, 1) << " "
-	  	    << local_force(i, 2) << std::endl;
 	  force[0] += local_force(i, 0);
 	  force[1] += local_force(i, 1);
 	  force[2] += local_force(i, 2);

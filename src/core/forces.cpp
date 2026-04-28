@@ -153,7 +153,7 @@ static void reinit_dip_fld(CellStructure const &cell_structure) {
 static BondsKernelData
 create_kokkos_bonds_kernel_data(System::System const &system) {
 
-  auto &local_force = system.cell_structure->get_scatter_force();
+  auto local_force = system.cell_structure->get_scatter_force();
 #ifdef ESPRESSO_NPT
   auto &local_virial = system.cell_structure->get_local_virial();
 #endif
@@ -175,7 +175,7 @@ static ForcesKernel create_cabana_neighbor_kernel(
     auto const &dipoles_kernel, auto const &coulomb_u_kernel) {
 
   auto const &unique_particles = system.cell_structure->get_unique_particles();
-  auto &local_force = system.cell_structure->get_scatter_force();
+  auto local_force = system.cell_structure->get_scatter_force();
 #ifdef ESPRESSO_ROTATION
   auto &local_torque = system.cell_structure->get_scatter_torque();
 #endif
@@ -333,7 +333,6 @@ void System::System::calculate_forces() {
 #ifdef ESPRESSO_CALIPER
   CALI_MARK_BEGIN("cabana_short_range");
 #endif
-  cell_structure->reset_local_properties(); // zeros both dest + scratch
   auto &bs = cell_structure->bond_state();
   auto bonds_kernel_data = create_kokkos_bonds_kernel_data(*this);
   auto pair_bonds_kernel = PairBondsKernel{
