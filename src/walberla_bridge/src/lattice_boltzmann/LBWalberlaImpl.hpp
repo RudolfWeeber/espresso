@@ -38,7 +38,6 @@
 #include <waLBerlaDefinitions.h>
 #if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
 #include <gpu/AddGPUFieldToStorage.h>
-#include <gpu/HostFieldAllocator.h>
 #endif
 
 #include "../BoundaryHandling.hpp"
@@ -117,10 +116,6 @@ public:
   using FlagField = BoundaryModel::FlagField;
 #if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
   using GPUField = gpu::GPUField<FloatType>;
-  using PdfFieldCpu =
-      FieldTrait<FloatType, Stencil, lbmpy::Arch::CPU>::PdfField;
-  using VectorFieldCpu =
-      FieldTrait<FloatType, Stencil, lbmpy::Arch::CPU>::VectorField;
 #endif
 
   struct GhostComm {
@@ -183,11 +178,6 @@ protected:
   BlockDataID m_velocity_field_id;
   BlockDataID m_vel_tmp_field_id;
 
-#if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
-  std::optional<BlockDataID> m_pdf_cpu_field_id;
-  std::optional<BlockDataID> m_vel_cpu_field_id;
-#endif
-
   /** Flag for boundary cells. */
   FlagUID const Boundary_flag{"boundary"};
   bool m_has_boundaries{false};
@@ -223,10 +213,6 @@ protected:
       m_lees_edwards_vel_interpol_sweep;
   std::shared_ptr<InterpolateAndShiftAtBoundary<_VectorField, FloatType>>
       m_lees_edwards_last_applied_force_interpol_sweep;
-
-#if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
-  std::shared_ptr<gpu::HostFieldAllocator<FloatType>> m_host_field_allocator;
-#endif
 
 public:
   template <typename T> FloatType FloatType_c(T t) const {
@@ -265,10 +251,6 @@ public:
     m_force_to_be_applied_id = add_to_storage<_VectorField>("force next");
     m_velocity_field_id = add_to_storage<_VectorField>("velocity");
     m_vel_tmp_field_id = add_to_storage<_VectorField>("velocity_tmp");
-#if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
-    m_host_field_allocator =
-        std::make_shared<gpu::HostFieldAllocator<FloatType>>();
-#endif
 
     // Initialize and register pdf field with zero centered density
     auto pdf_setter = typename Kernels::InitialPDFsSetter(
@@ -872,23 +854,8 @@ protected:
   template <typename Field> auto add_to_storage(std::string const tag) {
     auto const &blocks = m_lattice->get_blocks();
     auto const n_ghost_layers = m_lattice->get_ghost_layers();
-    if constexpr (Architecture == lbmpy::Arch::CPU) {
-#ifdef ESPRESSO_BUILD_WITH_AVX_KERNELS
-      constexpr auto alignment = field::SIMDAlignment();
-      using value_type = Field::value_type;
-      using Allocator = field::AllocateAligned<value_type, alignment>;
-      auto const allocator = std::make_shared<Allocator>();
-      auto const empty_set = Set<SUID>::emptySet();
-      return field::addToStorage<Field>(
-          blocks, tag, field::internal::defaultSize, FloatType{0}, field::fzyx,
-          n_ghost_layers, false, {}, empty_set, empty_set, allocator);
-#else  // ESPRESSO_BUILD_WITH_AVX_KERNELS
-      return field::addToStorage<Field>(blocks, tag, FloatType{0}, field::fzyx,
-                                        n_ghost_layers);
-#endif // ESPRESSO_BUILD_WITH_AVX_KERNELS
-    }
 #if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
-    else {
+    if constexpr (Architecture == lbmpy::Arch::GPU) {
       auto field_id = gpu::addGPUFieldToStorage<GPUField>(
           blocks, tag, Field::F_SIZE, field::fzyx, n_ghost_layers);
       if constexpr (std::is_same_v<Field, _VectorField>) {
@@ -906,6 +873,21 @@ protected:
       return field_id;
     }
 #endif
+    {
+#ifdef ESPRESSO_BUILD_WITH_AVX_KERNELS
+      constexpr auto alignment = field::SIMDAlignment();
+      using value_type = Field::value_type;
+      using Allocator = field::AllocateAligned<value_type, alignment>;
+      auto const allocator = std::make_shared<Allocator>();
+      auto const empty_set = Set<SUID>::emptySet();
+      return field::addToStorage<Field>(
+          blocks, tag, field::internal::defaultSize, FloatType{0}, field::fzyx,
+          n_ghost_layers, false, {}, empty_set, empty_set, allocator);
+#else  // ESPRESSO_BUILD_WITH_AVX_KERNELS
+      return field::addToStorage<Field>(blocks, tag, FloatType{0}, field::fzyx,
+                                        n_ghost_layers);
+#endif // ESPRESSO_BUILD_WITH_AVX_KERNELS
+    }
   }
 
   /**
