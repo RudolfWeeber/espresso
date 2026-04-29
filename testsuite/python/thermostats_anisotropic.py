@@ -102,7 +102,7 @@ class Test(ut.TestCase):
     def test_friction_langevin_single_step(self):
         """Single-step force check for the anisotropic Langevin fast path.
 
-        Verifies that the friction force O*(−γ⊙(O^T·v)) is computed correctly
+        Verifies that the friction force is computed correctly
         for a particle with a non-trivial orientation quaternion.
         """
         v0 = np.array([1.2, -0.7, 0.5])
