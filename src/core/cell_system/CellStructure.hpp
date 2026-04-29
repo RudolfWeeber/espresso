@@ -621,7 +621,7 @@ private:
    *                should indicate if the bond was broken.
    */
   template <class Handler>
-  void execute_bond_handler(Particle &p, Handler handler) {
+  void execute_bond_handler(Particle &p, Handler const &handler) {
     for (const BondView bond : p.bonds()) {
       auto const partner_ids = bond.partner_ids();
 
@@ -632,7 +632,7 @@ private:
         if (bond_broken) {
           bond_broken_error(p.id(), partner_ids);
         }
-      } catch (const BondResolutionError &) {
+      } catch (BondResolutionError const &) {
         bond_resolution_error(partner_ids);
       }
     }
