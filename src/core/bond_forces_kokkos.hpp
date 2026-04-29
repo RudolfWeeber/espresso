@@ -37,10 +37,11 @@
 #include <variant>
 
 struct BondsKernelData {
+  using ScatterForce = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
   BondedInteractionsMap const &bonded_ias;
   BondBreakage::BondBreakage &bond_breakage;
   BoxGeometry const &box_geo;
-  CellStructure::ScatterForce local_force;
+  ScatterForce local_force;
 #ifdef ESPRESSO_NPT
   CellStructure::VirialType &local_virial;
 #endif

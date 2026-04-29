@@ -66,20 +66,6 @@ template <class DataType, class... Properties> class View;
 class HostSpace;
 struct LayoutRight;
 template <unsigned T> struct MemoryTraits;
-namespace Experimental {
-struct ScatterSum;
-struct ScatterProd;
-struct ScatterMax;
-struct ScatterMin;
-
-struct ScatterNonDuplicated;
-struct ScatterDuplicated;
-
-struct ScatterNonAtomic;
-struct ScatterAtomic;
-template <typename DT, typename LY, typename ES, typename OP, typename DP,
-          typename CT> class ScatterView;
-}
 } // namespace Kokkos
 namespace Cabana {
 class HalfNeighborTag;
@@ -178,14 +164,10 @@ class CellStructure : public System::Leaf<CellStructure> {
 public:
   static constexpr auto vector_length = 1;
   struct AoSoA_pack;
+  struct ScatterImpl;
+  ScatterImpl* m_scatter_pimpl = nullptr;
   using ForceType = Kokkos::View<double *[3], Kokkos::LayoutRight>;
   using VirialType = Kokkos::View<double *[3], Kokkos::LayoutRight>;
-  using ScatterForce = Kokkos::Experimental::ScatterView<double *[3],
-  		       Kokkos::LayoutRight,
-		       Kokkos::HostSpace,
-		       Kokkos::Experimental::ScatterSum,
-		       Kokkos::Experimental::ScatterNonDuplicated,
-		       Kokkos::Experimental::ScatterNonAtomic>;
   using memory_space = Kokkos::HostSpace;
   using ListAlgorithm = Cabana::HalfNeighborTag;
   using ListType =
@@ -215,10 +197,10 @@ private:
   int m_max_id = 0;
   std::unique_ptr<Kokkos::View<int *>> m_id_to_index;
   std::unique_ptr<ForceType> m_local_force;
-  std::unique_ptr<ScatterForce>  m_scatter_force;
+  //std::unique_ptr<ScatterForce>  m_scatter_force;
 #ifdef ESPRESSO_ROTATION
   std::unique_ptr<ForceType> m_local_torque;
-  std::unique_ptr<ScatterForce>  m_scatter_torque;
+  //std::unique_ptr<ScatterForce>  m_scatter_torque;
 #endif
 #ifdef ESPRESSO_NPT
   std::unique_ptr<VirialType> m_local_virial;
@@ -235,9 +217,11 @@ public:
   CellStructure(BoxGeometry const &box);
   virtual ~CellStructure();
 
-  auto get_scatter_force() -> ScatterForce&;
+  //auto get_scatter_force() -> ScatterForce&;
+  void* get_scatter_force();
 #ifdef ESPRESSO_ROTATION
-  auto get_scatter_torque() -> ScatterForce&;
+  //auto get_scatter_torque() -> ScatterForce&;
+  void* get_scatter_torque();
 #endif
 
   bool use_verlet_list = true;
