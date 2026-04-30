@@ -38,12 +38,13 @@
 
 struct BondsKernelData {
   using ScatterForce = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
+  using ScatterVirial = Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight>;
   BondedInteractionsMap const &bonded_ias;
   BondBreakage::BondBreakage &bond_breakage;
   BoxGeometry const &box_geo;
   ScatterForce local_force;
 #ifdef ESPRESSO_NPT
-  CellStructure::VirialType &local_virial;
+  ScatterVirial local_virial;
 #endif
   CellStructure::AoSoA_pack const &aosoa;
   bool const has_breakage_specs;
@@ -70,14 +71,10 @@ struct PairBondsKernel {
     auto const &aosoa = data.aosoa;
     auto &bond_breakage = data.bond_breakage;
 #ifdef ESPRESSO_NPT
-    auto &local_virial = data.local_virial;
+    auto local_virial = data.local_virial.access();
 #endif
     auto const has_breakage_specs = data.has_breakage_specs;
     auto const bond_id = bond_ids(idx);
-
-    // TODO: omp_get_thread_num() is only available for the OpenMP backend.
-    // This should be updated when using other Kokkos backends.
-    auto const thread_id = omp_get_thread_num();
 
     auto const i = bond_list(idx, 0);
     auto const j = bond_list(idx, 1);
@@ -137,9 +134,9 @@ struct PairBondsKernel {
       local_force(j, 2) -= f[2];
 #ifdef ESPRESSO_NPT
       auto const virial = hadamard_product(f, dx);
-      local_virial(thread_id, 0) += virial[0];
-      local_virial(thread_id, 1) += virial[1];
-      local_virial(thread_id, 2) += virial[2];
+      local_virial(0) += virial[0];
+      local_virial(1) += virial[1];
+      local_virial(2) += virial[2];
 #endif
     } else {
       auto partner_id = aosoa.id(j);
@@ -168,10 +165,6 @@ struct AngleBondsKernel {
     auto &bond_breakage = data.bond_breakage;
     auto const has_breakage_specs = data.has_breakage_specs;
     auto const bond_id = bond_ids(idx);
-
-    // TODO: omp_get_thread_num() is only available for the OpenMP backend.
-    // This should be updated when using other Kokkos backends.
-    //auto const thread_id = omp_get_thread_num();
 
     auto const i = bond_list(idx, 0);
     auto const j = bond_list(idx, 1);
@@ -234,10 +227,6 @@ struct DihedralBondsKernel {
     auto local_force = data.local_force.access(); 
     auto const &aosoa = data.aosoa;
     auto const bond_id = bond_ids(idx);
-
-    // TODO: omp_get_thread_num() is only available for the OpenMP backend.
-    // This should be updated when using other Kokkos backends.
-    // auto const thread_id = omp_get_thread_num();
 
     auto const i = bond_list(idx, 0);
     auto const j = bond_list(idx, 1);

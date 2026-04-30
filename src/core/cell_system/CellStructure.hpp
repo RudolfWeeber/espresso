@@ -167,7 +167,7 @@ public:
   struct ScatterImpl;
   ScatterImpl* m_scatter_pimpl = nullptr;
   using ForceType = Kokkos::View<double *[3], Kokkos::LayoutRight>;
-  using VirialType = Kokkos::View<double *[3], Kokkos::LayoutRight>;
+  using VirialType = Kokkos::View<double [3], Kokkos::LayoutRight>;
   using memory_space = Kokkos::HostSpace;
   using ListAlgorithm = Cabana::HalfNeighborTag;
   using ListType =
@@ -217,10 +217,9 @@ public:
   CellStructure(BoxGeometry const &box);
   virtual ~CellStructure();
 
-  //auto get_scatter_force() -> ScatterForce&;
   void* get_scatter_force();
+  void* get_scatter_virial();
 #ifdef ESPRESSO_ROTATION
-  //auto get_scatter_torque() -> ScatterForce&;
   void* get_scatter_torque();
 #endif
 
@@ -738,10 +737,8 @@ public:
 
   auto &get_id_to_index() { return *m_id_to_index; }
   auto &get_local_force() { return *m_local_force; }
-  //auto& get_scatter_force();
 #ifdef ESPRESSO_ROTATION
   auto &get_local_torque() { return *m_local_torque; }
-  //auto& get_scatter_torque();
 #endif
 #ifdef ESPRESSO_NPT
   auto &get_local_virial() { return *m_local_virial; }

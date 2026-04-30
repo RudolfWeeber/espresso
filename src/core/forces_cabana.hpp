@@ -40,6 +40,7 @@
 
 struct ForcesKernel {
   using ScatterForce = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
+  using ScatterVirial = Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight>;
   BondedInteractionsMap const &bonded_ias;
   InteractionsNonBonded const &nonbonded_ias;
   Coulomb::ShortRangeForceKernel::kernel_type const *const coulomb_kernel;
@@ -55,7 +56,7 @@ struct ForcesKernel {
 #endif
 #ifdef ESPRESSO_NPT
   Utils::Vector3d *const global_virial;
-  CellStructure::VirialType const &local_virial;
+  ScatterVirial local_virial;
 #endif
   CellStructure::AoSoA_pack const &aosoa;
 #ifdef ESPRESSO_P3M
@@ -79,7 +80,7 @@ struct ForcesKernel {
 #endif
 #ifdef ESPRESSO_NPT
       Utils::Vector3d *const global_virial_,
-      CellStructure::VirialType const &local_virial_,
+      ScatterVirial local_virial_,
 #endif
       CellStructure::AoSoA_pack const &aosoa_, double system_max_cutoff_)
       : bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
@@ -91,7 +92,7 @@ struct ForcesKernel {
         local_torque(std::move(local_torque_)),
 #endif
 #ifdef ESPRESSO_NPT
-        global_virial(global_virial_), local_virial(local_virial_),
+        global_virial(global_virial_), local_virial(std::move(local_virial_)),
 #endif
         aosoa(aosoa_), system_max_cutoff_sq(Utils::sqr(system_max_cutoff_)) {
 #ifdef ESPRESSO_P3M
@@ -263,7 +264,6 @@ struct ForcesKernel {
     opf.f += f2_asym;
 #endif // ESPRESSO_ELECTROSTATICS
 
-    auto const thread_id = omp_get_thread_num();
     auto access_force = local_force.access(); 
 
     access_force(i, 0) += pf.f[0];
@@ -286,9 +286,10 @@ struct ForcesKernel {
 #endif
 #ifdef ESPRESSO_NPT
     if (npt_active()) {
-      local_virial(thread_id, 0) += virial[0];
-      local_virial(thread_id, 1) += virial[1];
-      local_virial(thread_id, 2) += virial[2];
+      auto access_virial = local_virial.access(); 
+      access_virial(0) += virial[0];
+      access_virial(1) += virial[1];
+      access_virial(2) += virial[2];
     }
 #endif
   }

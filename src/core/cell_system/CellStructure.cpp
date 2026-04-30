@@ -87,6 +87,9 @@ struct CellStructure::ScatterImpl {
 #ifdef ESPRESSO_ROTATION
   Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight> torque;
 #endif
+#ifdef ESPRESSO_NPT
+  Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight> virial;
+#endif
 };
 
 void CellStructure::clear_local_properties() {
@@ -97,6 +100,7 @@ void CellStructure::clear_local_properties() {
   m_local_torque.reset();
 #endif
 #ifdef ESPRESSO_NPT
+  if (m_scatter_pimpl) m_scatter_pimpl->virial.reset();
   m_local_virial.reset();
 #endif
   m_id_to_index.reset();
@@ -150,14 +154,17 @@ void* CellStructure::get_scatter_torque() {
   return &(m_scatter_pimpl->torque);
 }
 #endif
+#ifdef ESPRESSO_NPT
+void* CellStructure::get_scatter_virial() {
+  return &(m_scatter_pimpl->virial);
+}
+#endif
 
 void CellStructure::rebuild_local_properties(double const pair_cutoff) {
 #ifdef ESPRESSO_CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif
   assert(m_kokkos_handle);
-  using execution_space = Kokkos::DefaultExecutionSpace;
-  auto const num_threads = execution_space().concurrency();
   auto const num_part = get_unique_particles().size();
   auto const &system = get_system();
   auto const local_box_volume = system.local_geo->volume();
@@ -207,7 +214,8 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
         std::make_unique<ListType>(0ul, num_part, max_counts);
   }
 #ifdef ESPRESSO_NPT
-  m_local_virial = std::make_unique<VirialType>("local_virial", num_threads);
+  m_local_virial = std::make_unique<VirialType>("local_virial");
+  m_scatter_pimpl->virial = Kokkos::Experimental::create_scatter_view(*m_local_virial);
 #endif
 }
 
@@ -232,6 +240,7 @@ void CellStructure::reset_local_properties() {
 #endif
 #ifdef ESPRESSO_NPT
   Kokkos::deep_copy(get_local_virial(), 0.);
+  m_scatter_pimpl->virial.reset();
 #endif
   Kokkos::deep_copy(get_aosoa().flags, uint8_t{0});
 }

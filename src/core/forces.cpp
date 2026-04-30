@@ -152,13 +152,16 @@ static void reinit_dip_fld(CellStructure const &cell_structure) {
 
 static BondsKernelData
 create_kokkos_bonds_kernel_data(System::System const &system) {
-  using ScatterType = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
+  using ScatterForce = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
 
   void* raw_ptr_force = system.cell_structure->get_scatter_force();
-  auto ptr_force = static_cast<ScatterType*>(raw_ptr_force);
+  auto ptr_force = static_cast<ScatterForce*>(raw_ptr_force);
   auto local_force = *ptr_force;
 #ifdef ESPRESSO_NPT
-  auto &local_virial = system.cell_structure->get_local_virial();
+  using ScatterVirial = Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight>;
+  void* raw_ptr_virial = system.cell_structure->get_scatter_virial();
+  auto ptr_virial = static_cast<ScatterVirial*>(raw_ptr_virial);
+  auto local_virial = *ptr_virial;
 #endif
   auto const &aosoa = system.cell_structure->get_aosoa();
   return /* BondsKernelData */ {*system.bonded_ias,
@@ -179,17 +182,21 @@ static ForcesKernel create_cabana_neighbor_kernel(
 
   auto const &unique_particles = system.cell_structure->get_unique_particles();
 
-  using ScatterType = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
+  using ScatterForce = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
   void* raw_ptr_force = system.cell_structure->get_scatter_force();
-  auto ptr_force = static_cast<ScatterType*>(raw_ptr_force);
+  auto ptr_force = static_cast<ScatterForce*>(raw_ptr_force);
   auto local_force = *ptr_force;
 #ifdef ESPRESSO_ROTATION
   void* raw_ptr_torque = system.cell_structure->get_scatter_torque();
-  auto ptr_torque = static_cast<ScatterType*>(raw_ptr_torque);
+  auto ptr_torque = static_cast<ScatterForce*>(raw_ptr_torque);
   auto local_torque = *ptr_torque;
 #endif
 #ifdef ESPRESSO_NPT
-  auto const &local_virial = system.cell_structure->get_local_virial();
+  using ScatterVirial = Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight>;
+  //auto const &local_virial = system.cell_structure->get_local_virial();
+  void* raw_ptr_virial = system.cell_structure->get_scatter_virial();
+  auto ptr_virial = static_cast<ScatterVirial*>(raw_ptr_virial);
+  auto local_virial = *ptr_virial;
 #endif
   auto const &aosoa = system.cell_structure->get_aosoa();
 
@@ -217,24 +224,28 @@ static ForcesKernel create_cabana_neighbor_kernel(
 
 static void reduce_cabana_forces_and_torques(System::System const &system,
                                              Utils::Vector3d *virial) {
-  using ScatterType = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
+  using ScatterForce = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
+
   auto const &unique_particles = system.cell_structure->get_unique_particles();
   auto &local_force = system.cell_structure->get_local_force();
   void* raw_ptr_force = system.cell_structure->get_scatter_force();
-  auto ptr_force = static_cast<ScatterType*>(raw_ptr_force);
+  auto ptr_force = static_cast<ScatterForce*>(raw_ptr_force);
   Kokkos::Experimental::contribute(local_force, *ptr_force);
 #ifdef ESPRESSO_ROTATION
   auto &local_torque = system.cell_structure->get_local_torque();
   void* raw_ptr_torque = system.cell_structure->get_scatter_torque();
-  auto ptr_torque = static_cast<ScatterType*>(raw_ptr_torque);
+  auto ptr_torque = static_cast<ScatterForce*>(raw_ptr_torque);
   Kokkos::Experimental::contribute(local_torque, *ptr_torque);
 #endif
 #ifdef ESPRESSO_NPT
-  auto const &local_virial = system.cell_structure->get_local_virial();
+  using ScatterVirial = Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight>;
+  auto &local_virial = system.cell_structure->get_local_virial();
+  void* raw_ptr_virial = system.cell_structure->get_scatter_virial();
+  auto ptr_virial = static_cast<ScatterVirial*>(raw_ptr_virial);
+  Kokkos::Experimental::contribute(local_virial, *ptr_virial);
 #endif
 
   using execution_space = Kokkos::DefaultExecutionSpace;
-  int num_threads = execution_space().concurrency();
   Kokkos::RangePolicy<execution_space> policy(std::size_t{0},
                                               unique_particles.size());
   Kokkos::parallel_for("reduction", policy,
@@ -264,11 +275,9 @@ static void reduce_cabana_forces_and_torques(System::System const &system,
 
 #ifdef ESPRESSO_NPT
   if (virial) {
-    for (int tid = 0; tid < num_threads; ++tid) {
-      (*virial)[0] += local_virial(tid, 0);
-      (*virial)[1] += local_virial(tid, 1);
-      (*virial)[2] += local_virial(tid, 2);
-    }
+    (*virial)[0] += local_virial(0);
+    (*virial)[1] += local_virial(1);
+    (*virial)[2] += local_virial(2);
   }
 #endif
 }
