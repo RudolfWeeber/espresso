@@ -83,9 +83,9 @@ CellStructure::~CellStructure() {
 }
 
 struct CellStructure::ScatterImpl {
-  Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight> force;
+  Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight> force;
 #ifdef ESPRESSO_ROTATION
-  Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight> torque;
+  Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight> torque;
 #endif
 #ifdef ESPRESSO_NPT
   Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight> virial;
@@ -93,14 +93,17 @@ struct CellStructure::ScatterImpl {
 };
 
 void CellStructure::clear_local_properties() {
-  if (m_scatter_pimpl) m_scatter_pimpl->force.reset();
+  if (m_scatter_pimpl)
+    m_scatter_pimpl->force.reset();
   m_local_force.reset();
 #ifdef ESPRESSO_ROTATION
-  if (m_scatter_pimpl) m_scatter_pimpl->torque.reset();
+  if (m_scatter_pimpl)
+    m_scatter_pimpl->torque.reset();
   m_local_torque.reset();
 #endif
 #ifdef ESPRESSO_NPT
-  if (m_scatter_pimpl) m_scatter_pimpl->virial.reset();
+  if (m_scatter_pimpl)
+    m_scatter_pimpl->virial.reset();
   m_local_virial.reset();
 #endif
   m_id_to_index.reset();
@@ -146,18 +149,12 @@ static auto estimate_max_counts(double pair_cutoff,
   return max_counts;
 }
 
-void* CellStructure::get_scatter_force() {
-  return &(m_scatter_pimpl->force);
-}
+void *CellStructure::get_scatter_force() { return &(m_scatter_pimpl->force); }
 #ifdef ESPRESSO_ROTATION
-void* CellStructure::get_scatter_torque() {
-  return &(m_scatter_pimpl->torque);
-}
+void *CellStructure::get_scatter_torque() { return &(m_scatter_pimpl->torque); }
 #endif
 #ifdef ESPRESSO_NPT
-void* CellStructure::get_scatter_virial() {
-  return &(m_scatter_pimpl->virial);
-}
+void *CellStructure::get_scatter_virial() { return &(m_scatter_pimpl->virial); }
 #endif
 
 void CellStructure::rebuild_local_properties(double const pair_cutoff) {
@@ -179,11 +176,13 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
   if (m_local_force) { // local properties are reallocated
     Kokkos::realloc(get_local_force(), num_part);
     // underlying View extent changed → scratch buffers must be rebuilt
-    m_scatter_pimpl->force = Kokkos::Experimental::create_scatter_view(get_local_force());
+    m_scatter_pimpl->force =
+        Kokkos::Experimental::create_scatter_view(get_local_force());
 #ifdef ESPRESSO_ROTATION
     Kokkos::realloc(get_local_torque(), num_part);
     // underlying View extent changed → scratch buffers must be rebuilt
-    m_scatter_pimpl->torque = Kokkos::Experimental::create_scatter_view(get_local_torque());
+    m_scatter_pimpl->torque =
+        Kokkos::Experimental::create_scatter_view(get_local_torque());
 #endif
     Kokkos::realloc(get_id_to_index(), get_cached_max_local_particle_id() + 1);
     Kokkos::deep_copy(get_id_to_index(), -1);
@@ -192,14 +191,14 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
     Kokkos::deep_copy(m_aosoa->flags, uint8_t{0});
     m_verlet_list_cabana->reallocData(num_part, max_counts);
   } else { // local properties are initialized
-    m_scatter_pimpl = new ScatterImpl(); 
-    m_local_force =
-        std::make_unique<ForceType>("local_force", num_part);
-    m_scatter_pimpl->force = Kokkos::Experimental::create_scatter_view(*m_local_force);
+    m_scatter_pimpl = new ScatterImpl();
+    m_local_force = std::make_unique<ForceType>("local_force", num_part);
+    m_scatter_pimpl->force =
+        Kokkos::Experimental::create_scatter_view(*m_local_force);
 #ifdef ESPRESSO_ROTATION
-    m_local_torque =
-        std::make_unique<ForceType>("local_torque", num_part);
-    m_scatter_pimpl->torque = Kokkos::Experimental::create_scatter_view(*m_local_torque);
+    m_local_torque = std::make_unique<ForceType>("local_torque", num_part);
+    m_scatter_pimpl->torque =
+        Kokkos::Experimental::create_scatter_view(*m_local_torque);
 #endif
     m_id_to_index = std::make_unique<Kokkos::View<int *>>(
         Kokkos::ViewAllocateWithoutInitializing("id_to_index"),
@@ -215,7 +214,8 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
   }
 #ifdef ESPRESSO_NPT
   m_local_virial = std::make_unique<VirialType>("local_virial");
-  m_scatter_pimpl->virial = Kokkos::Experimental::create_scatter_view(*m_local_virial);
+  m_scatter_pimpl->virial =
+      Kokkos::Experimental::create_scatter_view(*m_local_virial);
 #endif
 }
 

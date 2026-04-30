@@ -39,8 +39,10 @@
 #include <vector>
 
 struct ForcesKernel {
-  using ScatterForce = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
-  using ScatterVirial = Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight>;
+  using ScatterForce =
+      Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight>;
+  using ScatterVirial =
+      Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight>;
   BondedInteractionsMap const &bonded_ias;
   InteractionsNonBonded const &nonbonded_ias;
   Coulomb::ShortRangeForceKernel::kernel_type const *const coulomb_kernel;
@@ -79,15 +81,15 @@ struct ForcesKernel {
       ScatterForce local_torque_,
 #endif
 #ifdef ESPRESSO_NPT
-      Utils::Vector3d *const global_virial_,
-      ScatterVirial local_virial_,
+      Utils::Vector3d *const global_virial_, ScatterVirial local_virial_,
 #endif
       CellStructure::AoSoA_pack const &aosoa_, double system_max_cutoff_)
       : bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
         coulomb_kernel(coulomb_kernel_), dipoles_kernel(dipoles_kernel_),
         elc_kernel(elc_kernel_), coulomb_u_kernel(coulomb_u_kernel_),
         thermostat(thermostat_), box_geo(box_geo_),
-        unique_particles(unique_particles_), local_force(std::move(local_force_)),
+        unique_particles(unique_particles_),
+        local_force(std::move(local_force_)),
 #ifdef ESPRESSO_ROTATION
         local_torque(std::move(local_torque_)),
 #endif
@@ -264,13 +266,13 @@ struct ForcesKernel {
     opf.f += f2_asym;
 #endif // ESPRESSO_ELECTROSTATICS
 
-    auto access_force = local_force.access(); 
+    auto access_force = local_force.access();
 
     access_force(i, 0) += pf.f[0];
     access_force(i, 1) += pf.f[1];
     access_force(i, 2) += pf.f[2];
 #ifdef ESPRESSO_ROTATION
-    auto access_torque = local_torque.access(); 
+    auto access_torque = local_torque.access();
     access_torque(i, 0) += pf.torque[0];
     access_torque(i, 1) += pf.torque[1];
     access_torque(i, 2) += pf.torque[2];
@@ -286,7 +288,7 @@ struct ForcesKernel {
 #endif
 #ifdef ESPRESSO_NPT
     if (npt_active()) {
-      auto access_virial = local_virial.access(); 
+      auto access_virial = local_virial.access();
       access_virial(0) += virial[0];
       access_virial(1) += virial[1];
       access_virial(2) += virial[2];

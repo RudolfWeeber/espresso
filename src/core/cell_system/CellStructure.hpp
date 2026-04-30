@@ -165,9 +165,9 @@ public:
   static constexpr auto vector_length = 1;
   struct AoSoA_pack;
   struct ScatterImpl;
-  ScatterImpl* m_scatter_pimpl = nullptr;
+  ScatterImpl *m_scatter_pimpl = nullptr;
   using ForceType = Kokkos::View<double *[3], Kokkos::LayoutRight>;
-  using VirialType = Kokkos::View<double [3], Kokkos::LayoutRight>;
+  using VirialType = Kokkos::View<double[3], Kokkos::LayoutRight>;
   using memory_space = Kokkos::HostSpace;
   using ListAlgorithm = Cabana::HalfNeighborTag;
   using ListType =
@@ -197,10 +197,10 @@ private:
   int m_max_id = 0;
   std::unique_ptr<Kokkos::View<int *>> m_id_to_index;
   std::unique_ptr<ForceType> m_local_force;
-  //std::unique_ptr<ScatterForce>  m_scatter_force;
+  // std::unique_ptr<ScatterForce>  m_scatter_force;
 #ifdef ESPRESSO_ROTATION
   std::unique_ptr<ForceType> m_local_torque;
-  //std::unique_ptr<ScatterForce>  m_scatter_torque;
+  // std::unique_ptr<ScatterForce>  m_scatter_torque;
 #endif
 #ifdef ESPRESSO_NPT
   std::unique_ptr<VirialType> m_local_virial;
@@ -217,10 +217,10 @@ public:
   CellStructure(BoxGeometry const &box);
   virtual ~CellStructure();
 
-  void* get_scatter_force();
-  void* get_scatter_virial();
+  void *get_scatter_force();
+  void *get_scatter_virial();
 #ifdef ESPRESSO_ROTATION
-  void* get_scatter_torque();
+  void *get_scatter_torque();
 #endif
 
   bool use_verlet_list = true;

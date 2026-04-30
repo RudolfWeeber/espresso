@@ -452,9 +452,10 @@ template <int cao> struct AssignForces {
 
     auto const n_part = cell_structure.count_local_particles();
     auto const &aosoa = cell_structure.get_aosoa();
-    using ScatterType = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
-    void* raw_ptr_force = cell_structure.get_scatter_force();
-    auto ptr_force = static_cast<ScatterType*>(raw_ptr_force);
+    using ScatterType =
+        Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight>;
+    void *raw_ptr_force = cell_structure.get_scatter_force();
+    auto ptr_force = static_cast<ScatterType *>(raw_ptr_force);
     auto local_force = *ptr_force;
     kokkos_parallel_range_for(
         "AssignForces", std::size_t{0u}, n_part, [&](std::size_t p_index) {
@@ -652,9 +653,10 @@ double CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::long_range_kernel(
 
   kernel_ks_charge_density();
 
-  using ScatterType = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
-  void* raw_ptr_force = system.cell_structure->get_scatter_force();
-  auto ptr_force = static_cast<ScatterType*>(raw_ptr_force);
+  using ScatterType =
+      Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight>;
+  void *raw_ptr_force = system.cell_structure->get_scatter_force();
+  auto ptr_force = static_cast<ScatterType *>(raw_ptr_force);
   auto local_force = *ptr_force;
   auto const &aosoa = cell_structure.get_aosoa();
 
@@ -683,15 +685,15 @@ double CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::long_range_kernel(
     if (box_dipole) {
       auto const dm = prefactor * pref * box_dipole.value();
       auto const n_part = cell_structure.count_local_particles();
-      kokkos_parallel_range_for(
-          "AssignForcesBoxDipole", std::size_t{0u}, n_part,
-          [&aosoa, &local_force, dm](auto p_index) {
-            auto access = local_force.access();
-            auto const q = aosoa.charge(p_index);
-            access(p_index, 0) -= q * dm[0];
-            access(p_index, 1) -= q * dm[1];
-            access(p_index, 2) -= q * dm[2];
-          });
+      kokkos_parallel_range_for("AssignForcesBoxDipole", std::size_t{0u},
+                                n_part,
+                                [&aosoa, &local_force, dm](auto p_index) {
+                                  auto access = local_force.access();
+                                  auto const q = aosoa.charge(p_index);
+                                  access(p_index, 0) -= q * dm[0];
+                                  access(p_index, 1) -= q * dm[1];
+                                  access(p_index, 2) -= q * dm[2];
+                                });
     }
   }
 

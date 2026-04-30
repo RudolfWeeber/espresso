@@ -37,8 +37,10 @@
 #include <variant>
 
 struct BondsKernelData {
-  using ScatterForce = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
-  using ScatterVirial = Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight>;
+  using ScatterForce =
+      Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight>;
+  using ScatterVirial =
+      Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight>;
   BondedInteractionsMap const &bonded_ias;
   BondBreakage::BondBreakage &bond_breakage;
   BoxGeometry const &box_geo;
@@ -67,7 +69,7 @@ struct PairBondsKernel {
   operator()(std::size_t idx) const {
     auto const &bonded_ias = data.bonded_ias;
     auto const &box_geo = data.box_geo;
-    auto local_force = data.local_force.access(); 
+    auto local_force = data.local_force.access();
     auto const &aosoa = data.aosoa;
     auto &bond_breakage = data.bond_breakage;
 #ifdef ESPRESSO_NPT
@@ -160,7 +162,7 @@ struct AngleBondsKernel {
   operator()(std::size_t idx) const {
     auto const &bonded_ias = data.bonded_ias;
     auto const &box_geo = data.box_geo;
-    auto local_force = data.local_force.access(); 
+    auto local_force = data.local_force.access();
     auto const &aosoa = data.aosoa;
     auto &bond_breakage = data.bond_breakage;
     auto const has_breakage_specs = data.has_breakage_specs;
@@ -224,7 +226,7 @@ struct DihedralBondsKernel {
   operator()(std::size_t idx) const {
     auto const &bonded_ias = data.bonded_ias;
     auto const &box_geo = data.box_geo;
-    auto local_force = data.local_force.access(); 
+    auto local_force = data.local_force.access();
     auto const &aosoa = data.aosoa;
     auto const bond_id = bond_ids(idx);
 
