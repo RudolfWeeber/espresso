@@ -263,7 +263,7 @@ template <int cao> struct AssignTorques {
     auto const &unique_particles = cell_structure.get_unique_particles();
     using ScatterType = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
     void* raw_ptr_torque = cell_structure.get_scatter_torque();
-    ScatterType* ptr_torque = static_cast<ScatterType*>(raw_ptr_torque);
+    auto ptr_torque = static_cast<ScatterType*>(raw_ptr_torque);
     auto local_torque = *ptr_torque;
     kokkos_parallel_range_for(
         "AssignTorques", std::size_t{0u}, n_part, [&](std::size_t p_index) {
@@ -301,7 +301,7 @@ template <int cao> struct AssignForcesDip {
     auto const &unique_particles = cell_structure.get_unique_particles();
     using ScatterType = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
     void* raw_ptr_force = cell_structure.get_scatter_force();
-    ScatterType* ptr_force = static_cast<ScatterType*>(raw_ptr_force);
+    auto ptr_force = static_cast<ScatterType*>(raw_ptr_force);
     auto local_force = *ptr_force;
     kokkos_parallel_range_for(
         "AssignForcesDip", std::size_t{0u}, n_part, [&](std::size_t p_index) {

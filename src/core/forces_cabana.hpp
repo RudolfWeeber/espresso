@@ -86,9 +86,9 @@ struct ForcesKernel {
         coulomb_kernel(coulomb_kernel_), dipoles_kernel(dipoles_kernel_),
         elc_kernel(elc_kernel_), coulomb_u_kernel(coulomb_u_kernel_),
         thermostat(thermostat_), box_geo(box_geo_),
-        unique_particles(unique_particles_), local_force(local_force_),
+        unique_particles(unique_particles_), local_force(std::move(local_force_)),
 #ifdef ESPRESSO_ROTATION
-        local_torque(local_torque_),
+        local_torque(std::move(local_torque_)),
 #endif
 #ifdef ESPRESSO_NPT
         global_virial(global_virial_), local_virial(local_virial_),

@@ -454,7 +454,7 @@ template <int cao> struct AssignForces {
     auto const &aosoa = cell_structure.get_aosoa();
     using ScatterType = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
     void* raw_ptr_force = cell_structure.get_scatter_force();
-    ScatterType* ptr_force = static_cast<ScatterType*>(raw_ptr_force);
+    auto ptr_force = static_cast<ScatterType*>(raw_ptr_force);
     auto local_force = *ptr_force;
     kokkos_parallel_range_for(
         "AssignForces", std::size_t{0u}, n_part, [&](std::size_t p_index) {
@@ -654,7 +654,7 @@ double CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::long_range_kernel(
 
   using ScatterType = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
   void* raw_ptr_force = system.cell_structure->get_scatter_force();
-  ScatterType* ptr_force = static_cast<ScatterType*>(raw_ptr_force);
+  auto ptr_force = static_cast<ScatterType*>(raw_ptr_force);
   auto local_force = *ptr_force;
   auto const &aosoa = cell_structure.get_aosoa();
 

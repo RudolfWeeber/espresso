@@ -155,7 +155,7 @@ create_kokkos_bonds_kernel_data(System::System const &system) {
   using ScatterType = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
 
   void* raw_ptr_force = system.cell_structure->get_scatter_force();
-  ScatterType* ptr_force = static_cast<ScatterType*>(raw_ptr_force);
+  auto ptr_force = static_cast<ScatterType*>(raw_ptr_force);
   auto local_force = *ptr_force;
 #ifdef ESPRESSO_NPT
   auto &local_virial = system.cell_structure->get_local_virial();
@@ -181,11 +181,11 @@ static ForcesKernel create_cabana_neighbor_kernel(
 
   using ScatterType = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
   void* raw_ptr_force = system.cell_structure->get_scatter_force();
-  ScatterType* ptr_force = static_cast<ScatterType*>(raw_ptr_force);
+  auto ptr_force = static_cast<ScatterType*>(raw_ptr_force);
   auto local_force = *ptr_force;
 #ifdef ESPRESSO_ROTATION
   void* raw_ptr_torque = system.cell_structure->get_scatter_torque();
-  ScatterType* ptr_torque = static_cast<ScatterType*>(raw_ptr_torque);
+  auto ptr_torque = static_cast<ScatterType*>(raw_ptr_torque);
   auto local_torque = *ptr_torque;
 #endif
 #ifdef ESPRESSO_NPT
@@ -221,12 +221,12 @@ static void reduce_cabana_forces_and_torques(System::System const &system,
   auto const &unique_particles = system.cell_structure->get_unique_particles();
   auto &local_force = system.cell_structure->get_local_force();
   void* raw_ptr_force = system.cell_structure->get_scatter_force();
-  ScatterType* ptr_force = static_cast<ScatterType*>(raw_ptr_force);
+  auto ptr_force = static_cast<ScatterType*>(raw_ptr_force);
   Kokkos::Experimental::contribute(local_force, *ptr_force);
 #ifdef ESPRESSO_ROTATION
   auto &local_torque = system.cell_structure->get_local_torque();
   void* raw_ptr_torque = system.cell_structure->get_scatter_torque();
-  ScatterType* ptr_torque = static_cast<ScatterType*>(raw_ptr_torque);
+  auto ptr_torque = static_cast<ScatterType*>(raw_ptr_torque);
   Kokkos::Experimental::contribute(local_torque, *ptr_torque);
 #endif
 #ifdef ESPRESSO_NPT

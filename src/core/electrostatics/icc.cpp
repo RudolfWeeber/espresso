@@ -123,7 +123,7 @@ void ICCStar::iteration() {
   auto &local_force = cell_structure.get_local_force();
   using ScatterType = Kokkos::Experimental::ScatterView<double*[3], Kokkos::LayoutRight>;
   void* raw_ptr_force = system.cell_structure->get_scatter_force();
-  ScatterType* ptr_force = static_cast<ScatterType*>(raw_ptr_force);
+  auto ptr_force = static_cast<ScatterType*>(raw_ptr_force);
 
   auto global_max_rel_diff = 0.;
 
