@@ -121,10 +121,7 @@ void ICCStar::iteration() {
   using execution_space = Kokkos::DefaultExecutionSpace;
   auto const &unique_particles = cell_structure.get_unique_particles();
   auto &local_force = cell_structure.get_local_force();
-  using ScatterType =
-      Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight>;
-  void *raw_ptr_force = system.cell_structure->get_scatter_force();
-  auto ptr_force = static_cast<ScatterType *>(raw_ptr_force);
+  auto scatter_force = system.cell_structure->get_scatter_force();
 
   auto global_max_rel_diff = 0.;
 
@@ -136,7 +133,7 @@ void ICCStar::iteration() {
     system.coulomb.calc_long_range_force();
     cell_structure.ghosts_reduce_forces();
     // force reduction
-    Kokkos::Experimental::contribute(local_force, *ptr_force);
+    Kokkos::Experimental::contribute(local_force, scatter_force);
     kokkos_parallel_range_for<Kokkos::RangePolicy<execution_space>>(
         "reduction", std::size_t{0}, unique_particles.size(),
         [&local_force, &unique_particles](std::size_t const i) {

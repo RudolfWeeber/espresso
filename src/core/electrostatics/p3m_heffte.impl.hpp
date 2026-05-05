@@ -452,15 +452,11 @@ template <int cao> struct AssignForces {
 
     auto const n_part = cell_structure.count_local_particles();
     auto const &aosoa = cell_structure.get_aosoa();
-    using ScatterType =
-        Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight>;
-    void *raw_ptr_force = cell_structure.get_scatter_force();
-    auto ptr_force = static_cast<ScatterType *>(raw_ptr_force);
-    auto local_force = *ptr_force;
+    auto scatter_force = cell_structure.get_scatter_force();
     kokkos_parallel_range_for(
         "AssignForces", std::size_t{0u}, n_part, [&](std::size_t p_index) {
           if (auto const pref = aosoa.charge(p_index) * force_prefac) {
-            kernel(pref, local_force, p_index);
+            kernel(pref, scatter_force, p_index);
           }
         });
   }
@@ -653,11 +649,7 @@ double CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::long_range_kernel(
 
   kernel_ks_charge_density();
 
-  using ScatterType =
-      Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight>;
-  void *raw_ptr_force = system.cell_structure->get_scatter_force();
-  auto ptr_force = static_cast<ScatterType *>(raw_ptr_force);
-  auto local_force = *ptr_force;
+  auto scatter_force = system.cell_structure->get_scatter_force();
   auto const &aosoa = cell_structure.get_aosoa();
 
   // The dipole moment is only needed if we don't have metallic boundaries
@@ -687,8 +679,8 @@ double CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::long_range_kernel(
       auto const n_part = cell_structure.count_local_particles();
       kokkos_parallel_range_for("AssignForcesBoxDipole", std::size_t{0u},
                                 n_part,
-                                [&aosoa, &local_force, dm](auto p_index) {
-                                  auto access = local_force.access();
+                                [&aosoa, &scatter_force, dm](auto p_index) {
+                                  auto access = scatter_force.access();
                                   auto const q = aosoa.charge(p_index);
                                   access(p_index, 0) -= q * dm[0];
                                   access(p_index, 1) -= q * dm[1];
