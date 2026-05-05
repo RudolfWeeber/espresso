@@ -130,12 +130,18 @@ struct ForcesKernel {
 
     // Determine which data needs to be loaded based on active algorithms
 #if defined(ESPRESSO_EXCLUSIONS) or defined(ESPRESSO_THOLE)
-    auto const flag = compute_pair_data_flags(
-        dist, ia_params, coulomb_kernel != nullptr, aosoa, i, j);
+    bool need_particle_pointers = false;
+#ifdef ESPRESSO_EXCLUSIONS
+    need_particle_pointers |= aosoa.has_exclusion(i) or aosoa.has_exclusion(j);
+#endif
+#ifdef ESPRESSO_THOLE
+    need_particle_pointers |=
+        thole_active(ia_params, coulomb_kernel != nullptr);
+#endif
 
     Particle const *p1_ptr = nullptr;
     Particle const *p2_ptr = nullptr;
-    if (flag.need_particle_pointers) {
+    if (need_particle_pointers) {
       p1_ptr = unique_particles.at(i);
       p2_ptr = unique_particles.at(j);
     }
@@ -244,7 +250,7 @@ struct ForcesKernel {
         auto const dir1 = aosoa.get_vector_at(aosoa.director, i);
         auto const dir2 = aosoa.get_vector_at(aosoa.director, j);
         pf += (*dipoles_kernel)(d1d2, aosoa.dipm(i) * dir1,
-                                aosoa.dipm(j) * dir2, d, dist, dist * dist);
+                                aosoa.dipm(j) * dir2, d, dist, dist_sq);
       }
     }
 #endif // ESPRESSO_DIPOLES
