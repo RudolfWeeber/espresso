@@ -78,25 +78,15 @@ CellStructure::~CellStructure() {
   m_kokkos_handle.reset();
 }
 
-/*struct CellStructure::ScatterImpl {
-  Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight> force;
-#ifdef ESPRESSO_ROTATION
-  Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight> torque;
-#endif
-#ifdef ESPRESSO_NPT
-  Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight> virial;
-#endif
-};*/
-
 void CellStructure::clear_local_properties() {
-  m_scatter_force = ScatterForce();
+  m_scatter_force.reset();
   m_local_force.reset();
 #ifdef ESPRESSO_ROTATION
-  m_scatter_torque = ScatterForce();
+  m_scatter_torque.reset();
   m_local_torque.reset();
 #endif
 #ifdef ESPRESSO_NPT
-  m_scatter_virial = ScatterVirial();
+  m_scatter_virial.reset();
   m_local_virial.reset();
 #endif
   m_id_to_index.reset();
@@ -161,13 +151,13 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
   if (m_local_force) { // local properties are reallocated
     Kokkos::realloc(get_local_force(), num_part);
     // underlying View extent changed → scratch buffers must be rebuilt
-    m_scatter_force =
-        Kokkos::Experimental::create_scatter_view(get_local_force());
+    m_scatter_force.emplace(
+        Kokkos::Experimental::create_scatter_view(get_local_force()));
 #ifdef ESPRESSO_ROTATION
     Kokkos::realloc(get_local_torque(), num_part);
     // underlying View extent changed → scratch buffers must be rebuilt
-    m_scatter_torque =
-        Kokkos::Experimental::create_scatter_view(get_local_torque());
+    m_scatter_torque.emplace(
+        Kokkos::Experimental::create_scatter_view(get_local_torque()));
 #endif
     Kokkos::realloc(get_id_to_index(), get_cached_max_local_particle_id() + 1);
     Kokkos::deep_copy(get_id_to_index(), -1);
@@ -178,12 +168,12 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
   } else { // local properties are initialized
     //m_scatter_pimpl = new ScatterImpl();
     m_local_force = std::make_unique<ForceType>("local_force", num_part);
-    m_scatter_force =
-        Kokkos::Experimental::create_scatter_view(*m_local_force);
+    m_scatter_force.emplace(
+        Kokkos::Experimental::create_scatter_view(*m_local_force));
 #ifdef ESPRESSO_ROTATION
     m_local_torque = std::make_unique<ForceType>("local_torque", num_part);
-    m_scatter_torque =
-        Kokkos::Experimental::create_scatter_view(*m_local_torque);
+    m_scatter_torque.emplace(
+        Kokkos::Experimental::create_scatter_view(*m_local_torque));
 #endif
     m_id_to_index = std::make_unique<Kokkos::View<int *>>(
         Kokkos::ViewAllocateWithoutInitializing("id_to_index"),
@@ -199,8 +189,8 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
   }
 #ifdef ESPRESSO_NPT
   m_local_virial = std::make_unique<VirialType>("local_virial");
-  m_scatter_virial =
-      Kokkos::Experimental::create_scatter_view(*m_local_virial);
+  m_scatter_virial.emplace(
+      Kokkos::Experimental::create_scatter_view(*m_local_virial));
 #endif
 }
 
@@ -209,23 +199,23 @@ void CellStructure::reset_local_force() {
   CALI_CXX_MARK_FUNCTION;
 #endif
   Kokkos::deep_copy(get_local_force(), 0.);
-  m_scatter_force.reset();
+  m_scatter_force->reset();
 #ifdef ESPRESSO_ROTATION
   Kokkos::deep_copy(get_local_torque(), 0.);
-  m_scatter_torque.reset();
+  m_scatter_torque->reset();
 #endif
 }
 
 void CellStructure::reset_local_properties() {
   Kokkos::deep_copy(get_local_force(), 0.);
-  m_scatter_force.reset();
+  m_scatter_force->reset();
 #ifdef ESPRESSO_ROTATION
   Kokkos::deep_copy(get_local_torque(), 0.);
-  m_scatter_torque.reset();
+  m_scatter_torque->reset();
 #endif
 #ifdef ESPRESSO_NPT
   Kokkos::deep_copy(get_local_virial(), 0.);
-  m_scatter_virial.reset();
+  m_scatter_virial->reset();
 #endif
   Kokkos::deep_copy(get_aosoa().flags, uint8_t{0});
 }
