@@ -160,8 +160,10 @@ public:
   struct AoSoA_pack;
   using ForceType = Kokkos::View<double *[3], Kokkos::LayoutRight>;
   using VirialType = Kokkos::View<double[3], Kokkos::LayoutRight>;
-  using ScatterForce = Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight>;
-  using ScatterVirial = Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight>;
+  using ScatterForce =
+      Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight>;
+  using ScatterVirial =
+      Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight>;
   using memory_space = Kokkos::HostSpace;
   using ListAlgorithm = Cabana::HalfNeighborTag;
   using ListType =

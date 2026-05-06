@@ -43,10 +43,10 @@ foreach(TEST_NUM_PROC 1 3 4)
     endif()
   endforeach()
 endforeach()
-espresso_unit_test(SRC EspressoSystem_test.cpp DEPENDS espresso::core Kokkos::kokkos Cabana::Core
-                   Boost::mpi NUM_PROC 2)
-espresso_unit_test(SRC ResourceCleanup_test.cpp DEPENDS espresso::core Kokkos::kokkos Cabana::Core
-                   Boost::mpi NUM_PROC 2)
+espresso_unit_test(SRC EspressoSystem_test.cpp DEPENDS espresso::core
+                   Kokkos::kokkos Cabana::Core Boost::mpi NUM_PROC 2)
+espresso_unit_test(SRC ResourceCleanup_test.cpp DEPENDS espresso::core
+                   Kokkos::kokkos Cabana::Core Boost::mpi NUM_PROC 2)
 espresso_unit_test(SRC MpiCallbacks_test.cpp DEPENDS espresso::utils Boost::mpi
                    MPI::MPI_CXX NUM_PROC 2)
 espresso_unit_test(SRC ParticleIterator_test.cpp DEPENDS espresso::utils)
@@ -70,19 +70,24 @@ espresso_unit_test(SRC grid_test.cpp DEPENDS espresso::core)
 espresso_unit_test(SRC lees_edwards_test.cpp DEPENDS espresso::core)
 espresso_unit_test(SRC BoxGeometry_test.cpp DEPENDS espresso::core)
 espresso_unit_test(SRC LocalBox_test.cpp DEPENDS espresso::core)
-espresso_unit_test(SRC Verlet_list_test.cpp DEPENDS espresso::core Kokkos::kokkos Cabana::Core NUM_PROC 4)
+espresso_unit_test(SRC Verlet_list_test.cpp DEPENDS espresso::core
+                   Kokkos::kokkos Cabana::Core NUM_PROC 4)
 espresso_unit_test(SRC VerletCriterion_test.cpp DEPENDS espresso::core)
 espresso_unit_test(SRC thermostats_test.cpp DEPENDS espresso::core)
 espresso_unit_test(SRC random_test.cpp DEPENDS espresso::utils Random123)
 espresso_unit_test(SRC BondList_test.cpp DEPENDS espresso::core)
-espresso_unit_test(SRC energy_test.cpp DEPENDS espresso::core Kokkos::kokkos Cabana::Core)
-espresso_unit_test(SRC bonded_interactions_map_test.cpp DEPENDS espresso::core Kokkos::kokkos Cabana::Core)
+espresso_unit_test(SRC energy_test.cpp DEPENDS espresso::core Kokkos::kokkos
+                   Cabana::Core)
+espresso_unit_test(SRC bonded_interactions_map_test.cpp DEPENDS espresso::core
+                   Kokkos::kokkos Cabana::Core)
 espresso_unit_test(SRC bond_breakage_test.cpp DEPENDS espresso::core)
 if(ESPRESSO_BUILD_WITH_WALBERLA)
-  espresso_unit_test(SRC lb_particle_coupling_test.cpp DEPENDS espresso::core
-                     Boost::mpi MPI::MPI_CXX Kokkos::kokkos Cabana::Core NUM_PROC 2)
-  espresso_unit_test(SRC ek_interface_test.cpp DEPENDS espresso::core Kokkos::kokkos Cabana::Core
-                     Boost::mpi MPI::MPI_CXX NUM_PROC 2)
+  espresso_unit_test(
+    SRC lb_particle_coupling_test.cpp DEPENDS espresso::core Boost::mpi
+    MPI::MPI_CXX Kokkos::kokkos Cabana::Core NUM_PROC 2)
+  espresso_unit_test(
+    SRC ek_interface_test.cpp DEPENDS espresso::core Kokkos::kokkos
+    Cabana::Core Boost::mpi MPI::MPI_CXX NUM_PROC 2)
   target_link_libraries(
     lb_particle_coupling_test PRIVATE espresso::walberla
                                       espresso::walberla::compiler_flags)

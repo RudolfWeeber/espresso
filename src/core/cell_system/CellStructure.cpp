@@ -166,7 +166,7 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
     Kokkos::deep_copy(m_aosoa->flags, uint8_t{0});
     m_verlet_list_cabana->reallocData(num_part, max_counts);
   } else { // local properties are initialized
-    //m_scatter_pimpl = new ScatterImpl();
+    // m_scatter_pimpl = new ScatterImpl();
     m_local_force = std::make_unique<ForceType>("local_force", num_part);
     m_scatter_force.emplace(
         Kokkos::Experimental::create_scatter_view(*m_local_force));
