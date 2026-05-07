@@ -33,6 +33,7 @@
 #include "cell_system/Cell.hpp"
 #include "cell_system/CellStructureType.hpp"
 #include "config/config.hpp"
+#include "custom_verlet_list.hpp"
 #include "ghosts.hpp"
 #include "system/Leaf.hpp"
 
@@ -67,8 +68,6 @@
 
 // forward declarations
 struct KokkosHandle;
-template <class MemorySpace, class ListAlgorithm, class Layout, class BuildTag>
-class CustomVerletList;
 struct LocalBondState;
 
 template <typename Callable>
