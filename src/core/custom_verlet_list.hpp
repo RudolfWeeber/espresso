@@ -30,10 +30,9 @@
 template <class MemorySpace, class ListAlgorithm, class Layout, class BuildTag>
 class CustomVerletList;
 namespace Cabana {
-template<class MemorySpace, class AlgorithmTag, class BuildTag>
+template <class MemorySpace, class AlgorithmTag, class BuildTag>
 class NeighborList<
-    CustomVerletList<MemorySpace, AlgorithmTag,
-                     VerletLayout2D, BuildTag>>;
+    CustomVerletList<MemorySpace, AlgorithmTag, VerletLayout2D, BuildTag>>;
 }
 
 // ONLY FOR 2D LAYOUT, OTHERWISE NEIGHBOR LIST INTERFACE IMPLEMENTATION WILL
