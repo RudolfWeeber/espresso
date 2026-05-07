@@ -152,17 +152,17 @@ static void reinit_dip_fld(CellStructure const &cell_structure) {
 
 static BondsKernelData
 create_kokkos_bonds_kernel_data(System::System const &system) {
-  auto local_force = system.cell_structure->get_scatter_force();
+  auto scatter_force = system.cell_structure->get_scatter_force();
 #ifdef ESPRESSO_NPT
-  auto local_virial = system.cell_structure->get_scatter_virial();
+  auto scatter_virial = system.cell_structure->get_scatter_virial();
 #endif
   auto const &aosoa = system.cell_structure->get_aosoa();
   return /* BondsKernelData */ {*system.bonded_ias,
                                 *system.bond_breakage,
                                 *system.box_geo,
-                                local_force,
+                                scatter_force,
 #ifdef ESPRESSO_NPT
-                                local_virial,
+                                scatter_virial,
 #endif
                                 aosoa,
                                 !system.bond_breakage->breakage_specs.empty()};
@@ -175,12 +175,12 @@ static ForcesKernel create_cabana_neighbor_kernel(
 
   auto const &unique_particles = system.cell_structure->get_unique_particles();
 
-  auto local_force = system.cell_structure->get_scatter_force();
+  auto scatter_force = system.cell_structure->get_scatter_force();
 #ifdef ESPRESSO_ROTATION
-  auto local_torque = system.cell_structure->get_scatter_torque();
+  auto scatter_torque = system.cell_structure->get_scatter_torque();
 #endif
 #ifdef ESPRESSO_NPT
-  auto local_virial = system.cell_structure->get_scatter_virial();
+  auto scatter_virial = system.cell_structure->get_scatter_virial();
 #endif
   auto const &aosoa = system.cell_structure->get_aosoa();
 
@@ -194,13 +194,13 @@ static ForcesKernel create_cabana_neighbor_kernel(
                              *system.thermostat,
                              *system.box_geo,
                              unique_particles,
-                             local_force,
+                             scatter_force,
 #ifdef ESPRESSO_ROTATION
-                             local_torque,
+                             scatter_torque,
 #endif
 #ifdef ESPRESSO_NPT
                              virial,
-                             local_virial,
+                             scatter_virial,
 #endif
                              aosoa,
                              system.maximal_cutoff()};
