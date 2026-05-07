@@ -727,14 +727,14 @@ public:
 
   auto &get_id_to_index() { return *m_id_to_index; }
   auto &get_local_force() { return *m_local_force; }
-  auto get_scatter_force() { return *m_scatter_force; };
+  auto get_scatter_force() { return *m_scatter_force; }
 #ifdef ESPRESSO_ROTATION
   auto &get_local_torque() { return *m_local_torque; }
-  auto get_scatter_torque() { return *m_scatter_torque; };
+  auto get_scatter_torque() { return *m_scatter_torque; }
 #endif
 #ifdef ESPRESSO_NPT
   auto &get_local_virial() { return *m_local_virial; }
-  auto get_scatter_virial() { return *m_scatter_virial; };
+  auto get_scatter_virial() { return *m_scatter_virial; }
 #endif
 
   auto &get_aosoa() { return *m_aosoa; }
