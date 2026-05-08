@@ -51,8 +51,13 @@ struct CellStructure::AoSoA_pack {
   using TypeViewType = Kokkos::View<int *, Kokkos::HostSpace>;
   using MassViewType = Kokkos::View<double *, Kokkos::HostSpace>;
   using FlagsViewType = Kokkos::View<uint8_t *, Kokkos::HostSpace>;
+  using PositionComponentViewType = Kokkos::View<double *, Kokkos::HostSpace>;
 
   PositionViewType position;
+  // SoA shadow of position; kept in sync by commit_particle.
+  PositionComponentViewType position_x;
+  PositionComponentViewType position_y;
+  PositionComponentViewType position_z;
   VelocityViewType velocity;
   DirectorViewType director;
   ImageViewType image;
@@ -71,6 +76,9 @@ struct CellStructure::AoSoA_pack {
     if (position.extent(0) == 0) {
       // First allocation
       position = PositionViewType("position", num_particles);
+      position_x = PositionComponentViewType("position_x", num_particles);
+      position_y = PositionComponentViewType("position_y", num_particles);
+      position_z = PositionComponentViewType("position_z", num_particles);
       image = ImageViewType("image", num_particles);
 #ifdef ESPRESSO_ELECTROSTATICS
       charge = ChargeViewType("charge", num_particles);
@@ -91,6 +99,9 @@ struct CellStructure::AoSoA_pack {
     } else {
       // Reallocation
       Kokkos::realloc(position, num_particles);
+      Kokkos::realloc(position_x, num_particles);
+      Kokkos::realloc(position_y, num_particles);
+      Kokkos::realloc(position_z, num_particles);
       Kokkos::realloc(image, num_particles);
 #ifdef ESPRESSO_ELECTROSTATICS
       Kokkos::realloc(charge, num_particles);
@@ -155,6 +166,11 @@ struct CellStructure::AoSoA_pack {
 
   void set_has_exclusion(std::size_t i, bool value) {
     flags(i) = value ? uint8_t{1} : uint8_t{0};
+  }
+
+  ESPRESSO_ATTR_ALWAYS_INLINE inline Utils::Vector3d
+  get_position(std::size_t i) const {
+    return {position_x(i), position_y(i), position_z(i)};
   }
 
   bool has_exclusion(std::size_t i) const { return flags(i) == uint8_t{1}; }

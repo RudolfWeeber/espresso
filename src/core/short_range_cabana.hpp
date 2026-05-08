@@ -56,7 +56,11 @@ ESPRESSO_ATTR_ALWAYS_INLINE inline void
 commit_particle(Particle const &p, auto const index,
                 CellStructure::AoSoA_pack &aosoa, bool const rebuild) {
   // Always commit: positions, velocities, charges, directors, dipm
-  aosoa.set_vector_at(aosoa.position, index, p.pos());
+  auto const pos = p.pos();
+  aosoa.set_vector_at(aosoa.position, index, pos);
+  aosoa.position_x(index) = pos[0];
+  aosoa.position_y(index) = pos[1];
+  aosoa.position_z(index) = pos[2];
 #ifdef ESPRESSO_ELECTROSTATICS
   aosoa.charge(index) = p.q();
 #endif
@@ -109,55 +113,88 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
                  CellStructure::AoSoA_pack const &aosoa,
                  auto const &intra_operator, auto const &inter_operator) {
 
-  auto intra_kernel = [&cells, box_geo, verlet_criterion, &aosoa,
-                       &intra_operator](const int i) {
+  // Hoist box constants for SIMD path (CUBOID + fully periodic only).
+  bool const simd_eligible = box_geo.type() == BoxType::CUBOID and
+                             box_geo.periodic(0u) and box_geo.periodic(1u) and
+                             box_geo.periodic(2u);
+  auto const lx = box_geo.length()[0];
+  auto const ly = box_geo.length()[1];
+  auto const lz = box_geo.length()[2];
+  auto const lxi = box_geo.length_inv()[0];
+  auto const lyi = box_geo.length_inv()[1];
+  auto const lzi = box_geo.length_inv()[2];
+
+  auto kernel = [&cells, box_geo, verlet_criterion, &aosoa, &id_to_index,
+                 &intra_operator, &inter_operator, max_id, simd_eligible, lx,
+                 ly, lz, lxi, lyi, lzi](const int i) {
     auto const base = cells[i]->aosoa_offset();
     auto const n_i = cells[i]->particles().size();
+
+    // Intra-cell pairs.
     for (std::size_t k = 0; k < n_i; ++k) {
       auto const ii = base + k;
-      auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
+      auto const pos1 = aosoa.get_position(ii);
       for (std::size_t l = k + 1; l < n_i; ++l) {
         auto const jj = base + l;
-        auto const dist2 =
-            box_geo.get_mi_dist2(pos1, aosoa.get_vector_at(aosoa.position, jj));
+        auto const dist2 = box_geo.get_mi_dist2(pos1, aosoa.get_position(jj));
         if (verlet_criterion(aosoa, ii, jj, dist2))
           intra_operator(static_cast<int>(ii), static_cast<int>(jj));
       }
     }
-  };
 
-  auto inter_kernel = [&cells, box_geo, verlet_criterion, &aosoa, &id_to_index,
-                       &inter_operator, max_id](const int i) {
-    auto const base_i = cells[i]->aosoa_offset();
-    auto const n_i = cells[i]->particles().size();
+    // Inter-cell pairs (red neighbors only — visits each pair once).
+    constexpr std::size_t MAX_NJ = 64;
+    alignas(64) double dist2_buf[MAX_NJ];
     for (auto *neighbor : cells[i]->neighbors().red()) {
       auto const base_j = neighbor->aosoa_offset();
       if (base_j != Cell::no_aosoa_slot) {
         // Local neighbor — no Particle struct access.
         auto const n_j = neighbor->particles().size();
+        bool const use_simd = simd_eligible and n_j <= MAX_NJ;
         for (std::size_t k = 0; k < n_i; ++k) {
-          auto const ii = base_i + k;
-          auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
-          for (std::size_t l = 0; l < n_j; ++l) {
-            auto const jj = base_j + l;
-            auto const dist2 = box_geo.get_mi_dist2(
-                pos1, aosoa.get_vector_at(aosoa.position, jj));
-            if (verlet_criterion(aosoa, ii, jj, dist2))
-              inter_operator(static_cast<int>(ii), static_cast<int>(jj));
+          auto const ii = base + k;
+          auto const pos1 = aosoa.get_position(ii);
+          if (use_simd) {
+            auto const px = pos1[0];
+            auto const py = pos1[1];
+            auto const pz = pos1[2];
+#pragma omp simd
+            for (std::size_t l = 0; l < n_j; ++l) {
+              auto const dx0 = px - aosoa.position_x(base_j + l);
+              auto const dy0 = py - aosoa.position_y(base_j + l);
+              auto const dz0 = pz - aosoa.position_z(base_j + l);
+              auto const dx = dx0 - std::rint(dx0 * lxi) * lx;
+              auto const dy = dy0 - std::rint(dy0 * lyi) * ly;
+              auto const dz = dz0 - std::rint(dz0 * lzi) * lz;
+              dist2_buf[l] = dx * dx + dy * dy + dz * dz;
+            }
+            for (std::size_t l = 0; l < n_j; ++l) {
+              auto const jj = base_j + l;
+              if (verlet_criterion(aosoa, ii, jj, dist2_buf[l]))
+                inter_operator(static_cast<int>(ii), static_cast<int>(jj));
+            }
+          } else {
+            for (std::size_t l = 0; l < n_j; ++l) {
+              auto const jj = base_j + l;
+              auto const dist2 =
+                  box_geo.get_mi_dist2(pos1, aosoa.get_position(jj));
+              if (verlet_criterion(aosoa, ii, jj, dist2))
+                inter_operator(static_cast<int>(ii), static_cast<int>(jj));
+            }
           }
         }
       } else {
         // Ghost neighbor — read p2.id() only, rest from AoSoA.
         for (std::size_t k = 0; k < n_i; ++k) {
-          auto const ii = base_i + k;
-          auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
+          auto const ii = base + k;
+          auto const pos1 = aosoa.get_position(ii);
           for (auto const &p2 : neighbor->particles()) {
             auto const jj =
                 detail::ghost_particle_index(p2, id_to_index, max_id);
             if (jj < 0)
               continue;
-            auto const dist2 = box_geo.get_mi_dist2(
-                pos1, aosoa.get_vector_at(aosoa.position, jj));
+            auto const dist2 =
+                box_geo.get_mi_dist2(pos1, aosoa.get_position(jj));
             if (verlet_criterion(aosoa, ii, jj, dist2))
               inter_operator(static_cast<int>(ii), static_cast<int>(jj));
           }
@@ -166,10 +203,10 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
     }
   };
 
-  Kokkos::parallel_for("intra", cells.size(), intra_kernel);
-  Kokkos::fence();
-
-  Kokkos::parallel_for("inter", cells.size(), inter_kernel);
+  Kokkos::RangePolicy<Kokkos::Schedule<Kokkos::Dynamic>> policy(0,
+                                                                cells.size());
+  policy.set_chunk_size(4);
+  Kokkos::parallel_for("link_cell", policy, kernel);
   Kokkos::fence();
 }
 
