@@ -27,6 +27,8 @@
 #include "nonbonded_interactions/VerletCriterion.hpp"
 #include "system/System.hpp"
 
+#include <utils/math/sqr.hpp>
+
 BOOST_AUTO_TEST_CASE(VerletCriterion_test) {
   auto constexpr skin = 0.4;
   auto constexpr max_cut = 2.5;
@@ -56,8 +58,8 @@ BOOST_AUTO_TEST_CASE(VerletCriterion_test) {
 
   {
     auto constexpr cutoff = skin + max_cut;
-    auto const below = Distance{Utils::Vector3d{cutoff - 0.1, 0.0, 0.0}};
-    auto const above = Distance{Utils::Vector3d{cutoff + 0.1, 0.0, 0.0}};
+    auto const below = Utils::sqr(cutoff - 0.1);
+    auto const above = Utils::sqr(cutoff + 0.1);
     BOOST_CHECK(criterion(p1, p2, below));
     BOOST_CHECK(!criterion_inactive(p1, p2, below));
     BOOST_CHECK(!criterion(p1, p2, above));
@@ -67,8 +69,8 @@ BOOST_AUTO_TEST_CASE(VerletCriterion_test) {
 #ifdef ESPRESSO_ELECTROSTATICS
   {
     auto constexpr cutoff = skin + coulomb_cut;
-    auto const below = Distance{Utils::Vector3d{cutoff - 0.1, 0.0, 0.0}};
-    auto const above = Distance{Utils::Vector3d{cutoff + 0.1, 0.0, 0.0}};
+    auto const below = Utils::sqr(cutoff - 0.1);
+    auto const above = Utils::sqr(cutoff + 0.1);
     BOOST_CHECK(!criterion_long_range(p1, p2, below));
     BOOST_CHECK(!criterion_long_range(p1, p2, above));
     p2.q() = 1.;
@@ -85,8 +87,8 @@ BOOST_AUTO_TEST_CASE(VerletCriterion_test) {
 #ifdef ESPRESSO_DIPOLES
   {
     auto constexpr cutoff = skin + dipolar_cut;
-    auto const below = Distance{Utils::Vector3d{cutoff - 0.1, 0.0, 0.0}};
-    auto const above = Distance{Utils::Vector3d{cutoff + 0.1, 0.0, 0.0}};
+    auto const below = Utils::sqr(cutoff - 0.1);
+    auto const above = Utils::sqr(cutoff + 0.1);
     BOOST_CHECK(!criterion_long_range(p1, p2, below));
     BOOST_CHECK(!criterion_long_range(p1, p2, above));
     p2.dipm() = 1.;
@@ -103,8 +105,8 @@ BOOST_AUTO_TEST_CASE(VerletCriterion_test) {
 #ifdef ESPRESSO_COLLISION_DETECTION
   {
     auto constexpr cutoff = skin + collision_cut;
-    auto const below = Distance{Utils::Vector3d{cutoff - 0.1, 0.0, 0.0}};
-    auto const above = Distance{Utils::Vector3d{cutoff + 0.1, 0.0, 0.0}};
+    auto const below = Utils::sqr(cutoff - 0.1);
+    auto const above = Utils::sqr(cutoff + 0.1);
     BOOST_CHECK(criterion_long_range(p1, p2, below));
     BOOST_CHECK(!criterion_long_range(p1, p2, above));
   }

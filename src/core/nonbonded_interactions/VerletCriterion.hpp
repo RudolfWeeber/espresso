@@ -66,31 +66,28 @@ public:
         m_collision_cut2(eff_cutoff_sqr(collision_detection_cutoff)),
         get_nonbonded_cutoff(system) {}
 
-  template <typename Distance>
-  bool operator()(const Particle &p1, const Particle &p2,
-                  Distance const &dist) const {
-    if (dist.dist2 > m_eff_max_cut2)
+  bool operator()(const Particle &p1, const Particle &p2, double dist2) const {
+    if (dist2 > m_eff_max_cut2)
       return false;
 #ifdef ESPRESSO_ELECTROSTATICS
     // Within real space cutoff of electrostatics and both are charged
-    if (dist.dist2 <= m_eff_coulomb_cut2 and p1.q() != 0. and p2.q() != 0.)
+    if (dist2 <= m_eff_coulomb_cut2 and p1.q() != 0. and p2.q() != 0.)
       return true;
 #endif
 #ifdef ESPRESSO_DIPOLES
     // Within dipolar cutoff and both carry magnetic moments
-    if (dist.dist2 <= m_eff_dipolar_cut2 and p1.dipm() != 0. and
-        p2.dipm() != 0.)
+    if (dist2 <= m_eff_dipolar_cut2 and p1.dipm() != 0. and p2.dipm() != 0.)
       return true;
 #endif
 #ifdef ESPRESSO_COLLISION_DETECTION
     // Collision detection
-    if (dist.dist2 <= m_collision_cut2)
+    if (dist2 <= m_collision_cut2)
       return true;
 #endif
     // Within short-range distance (including dpd and the like)
     auto const ia_cut = get_nonbonded_cutoff(p1.type(), p2.type());
     return (ia_cut != inactive_cutoff) &&
-           (dist.dist2 <= Utils::sqr(ia_cut + m_skin));
+           (dist2 <= Utils::sqr(ia_cut + m_skin));
   }
 
   template <typename ParticlePack, typename Distance>
