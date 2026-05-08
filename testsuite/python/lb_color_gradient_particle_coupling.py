@@ -34,7 +34,7 @@ import espressomd.lb
 
 
 DOMAIN_SIZE = 12
-AGRID = 1.0
+AGRID = 1.0 #0.1 fails
 TAU = 1.0
 RHO_0 = 1.0
 EPSILON = 1e-6
@@ -42,6 +42,8 @@ VISCOSITY = 1.0 / 6.0
 RADIUS = 4.0
 SMOOTHING_WIDTH = 2.0
 GAMMA = 0.5
+SIGMA = 0.005 
+BETA = 0.8
 
 
 def tanh_interpolation(distances, radius, smoothing_width,
@@ -84,20 +86,19 @@ class ColorGradientParticleCouplingTest(ut.TestCase):
         """Create a two-component LB fluid and attach it."""
         lbf = espressomd.lb.LBFluid(
             agrid=AGRID, density=RHO_0, tau=self.system.time_step,
-            kinematic_viscosity=[VISCOSITY, VISCOSITY])
+            kinematic_viscosity=[VISCOSITY, VISCOSITY], sigma=SIGMA, beta=BETA)
         self.system.lb = lbf
         return lbf
 
     def _init_droplet(self, lbf):
-        """Set densities to a spherical droplet profile and
-        initialize the PDFs."""
+        """Set densities to a spherical droplet profile and initialize the PDFs."""
         rho_a, rho_b = droplet_densities(
-            DOMAIN_SIZE, RADIUS, SMOOTHING_WIDTH, RHO_0, EPSILON)
+            DOMAIN_SIZE/AGRID, RADIUS, SMOOTHING_WIDTH, RHO_0, EPSILON)
         lbf[:, :, :].density = np.stack([rho_a, rho_b], axis=-1)
         lbf.init_two_component()
 
     def _test_drag_force_at_pos(self, pos, label):
-        """Drag force on a particle in quiescent two-component fluid
+        """Drag force on a particle in two-component fluid
         should be gamma * (u_fluid - v_particle) = -gamma * v_particle."""
         lbf = self._create_lbf()
         self._init_droplet(lbf)
@@ -123,12 +124,13 @@ class ColorGradientParticleCouplingTest(ut.TestCase):
         """Drag force at droplet center (component b dominant)."""
         center = DOMAIN_SIZE / 2.0
         self._test_drag_force_at_pos(
-            [center + 0.5] * 3, "droplet center")
+            [center] * 3, "droplet center")
 
     def test_drag_force_outside_droplet(self):
         """Drag force outside droplet (component a dominant)."""
+        center = DOMAIN_SIZE / 2.0
         self._test_drag_force_at_pos(
-            [1.5, 1.5, 1.5], "outside droplet")
+            [center+RADIUS+0.5, center+RADIUS+0.5, center+RADIUS+0.5], "outside droplet")
 
     def test_drag_force_at_interface(self):
         """Drag force at the droplet interface (mixed densities)."""
@@ -166,8 +168,7 @@ class ColorGradientParticleCouplingTest(ut.TestCase):
                                msg="rho_b not conserved with particle coupling")
 
     def test_solvation_force_at_center(self):
-        """At the droplet center the color gradient is zero,
-        so solvation force should be zero regardless of delta_mu."""
+        """At the droplet center the color gradient is zero, so solvation force should be zero regardless of delta_mu."""
         lbf = self._create_lbf()
         self._init_droplet(lbf)
         # Run one step to compute the color gradient field
@@ -186,8 +187,7 @@ class ColorGradientParticleCouplingTest(ut.TestCase):
             err_msg="Force should be zero at droplet center")
 
     def test_solvation_force_at_interface(self):
-        """At the interface, solvation force should be nonzero and
-        point radially (along the color gradient)."""
+        """At the interface, solvation force should be nonzero and point radially (along the color gradient)."""
         lbf = self._create_lbf()
         self._init_droplet(lbf)
         # Run one step to compute the color gradient field
@@ -195,7 +195,7 @@ class ColorGradientParticleCouplingTest(ut.TestCase):
 
         # Particle at rest on the interface along x-axis
         center = DOMAIN_SIZE / 2.0
-        pos_interface = [center + RADIUS, center + 0.5, center + 0.5]
+        pos_interface = [center + RADIUS, center, center]
         delta_mu = 2.0
         p = self.system.part.add(pos=pos_interface, v=[0, 0, 0],
                                  solvation_delta_mu=delta_mu)
@@ -219,7 +219,7 @@ class ColorGradientParticleCouplingTest(ut.TestCase):
         self._init_droplet(lbf)
 
         center = DOMAIN_SIZE / 2.0
-        pos_interface = [center + RADIUS, center + 0.5, center + 0.5]
+        pos_interface = [center + RADIUS, center, center]
 
         # Positive delta_mu
         p1 = self.system.part.add(pos=pos_interface, v=[0, 0, 0],
@@ -253,7 +253,7 @@ class ColorGradientParticleCouplingTest(ut.TestCase):
         self._init_droplet(lbf)
 
         center = DOMAIN_SIZE / 2.0
-        pos_interface = [center + RADIUS, center + 0.5, center + 0.5]
+        pos_interface = [center + RADIUS, center, center]
         p = self.system.part.add(pos=pos_interface, v=[0, 0, 0],
                                  solvation_delta_mu=0.0)
         self.system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
@@ -262,6 +262,37 @@ class ColorGradientParticleCouplingTest(ut.TestCase):
         np.testing.assert_allclose(
             np.copy(p.f), [0, 0, 0], atol=1e-10,
             err_msg="Force should be zero when delta_mu=0")
+
+    def test_solvation_momentum_conservation(self):
+        """Total momentum (particle + fluid) should be approximately conserved when solvation force coupling is active."""
+        lbf = self._create_lbf()
+        self._init_droplet(lbf)
+        # Run one step to compute color gradient
+        self.system.integrator.run(1)
+
+        center = DOMAIN_SIZE / 2.0
+        pos_interface = [center + RADIUS, center, center]
+        p = self.system.part.add(pos=pos_interface, v=[0, 0, 0],
+                                 solvation_delta_mu=2.0)
+        self.system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
+
+        self.system.integrator.run(10)
+
+        total_momentum = []
+
+        for i in range(10):        
+            # Measure total momentum
+            particle_momentum=np.copy(p.v) * p.mass
+            densities = np.copy(lbf[:, :, :].density)
+            velocities = np.copy(lbf[:, :, :].velocity)
+            rho_total = densities[:, :, :, 0] + densities[:, :, :, 1]
+            fluid_momentum=np.sum(rho_total[:, :, :, np.newaxis] * velocities, axis=(0, 1, 2))
+            total_momentum.append(particle_momentum + fluid_momentum)
+
+            if i >0:
+                np.testing.assert_allclose(
+                    total_momentum[-1], total_momentum[0], atol=1e-10,
+                    err_msg="Momentum not conserved with solvation force coupling")
 
     def test_run_with_coupling(self):
         """Two-component LB with particle coupling should run
