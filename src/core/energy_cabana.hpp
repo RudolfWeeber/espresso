@@ -113,7 +113,20 @@ struct EnergyKernel {
     auto const d = box_geo.get_mi_vector(
         aosoa.position(i, 0), aosoa.position(i, 1), aosoa.position(i, 2),
         aosoa.position(j, 0), aosoa.position(j, 1), aosoa.position(j, 2));
-    auto const dist_sq = d.norm2();
+    pair_body(i, j, d.norm2(), d);
+  }
+
+  // Overload accepting precomputed distance — used by SIMD pre-filter path.
+  KOKKOS_INLINE_FUNCTION
+  void operator()(std::size_t i, std::size_t j, double dist_sq,
+                  Utils::Vector3d const &d) const {
+    pair_body(i, j, dist_sq, d);
+  }
+
+private:
+  KOKKOS_INLINE_FUNCTION
+  void pair_body(std::size_t i, std::size_t j, double dist_sq,
+                 Utils::Vector3d const &d) const {
     if (dist_sq > system_max_cutoff_sq)
       return;
     auto const dist = std::sqrt(dist_sq);

@@ -400,11 +400,69 @@ void cabana_short_range(auto const &pair_bonds_kernel,
     if (integ_switch != INTEG_METHOD_STEEPEST_DESCENT and
         cell_structure.use_verlet_list) {
       auto const &verlet_list = cell_structure.get_verlet_list_cabana();
+      auto const &counts_view = verlet_list.counts;
+      auto const &neighbors_view = verlet_list.neighbors;
+      auto const &aosoa = cell_structure.get_aosoa();
+      auto const &box_geo = nonbonded_kernel.box_geo;
+      double const cutoff_sq = nonbonded_kernel.system_max_cutoff_sq;
+      bool const simd_eligible = box_geo.type() == BoxType::CUBOID and
+                                 box_geo.periodic(0u) and
+                                 box_geo.periodic(1u) and box_geo.periodic(2u);
+      auto const lx = box_geo.length()[0];
+      auto const ly = box_geo.length()[1];
+      auto const lz = box_geo.length()[2];
+      auto const lxi = box_geo.length_inv()[0];
+      auto const lyi = box_geo.length_inv()[1];
+      auto const lzi = box_geo.length_inv()[2];
       Kokkos::RangePolicy<execution_space> policy(
           std::size_t{0}, cell_structure.get_unique_particles().size());
-      Cabana::neighbor_parallel_for(policy, nonbonded_kernel, verlet_list,
-                                    Cabana::FirstNeighborsTag(),
-                                    Cabana::SerialOpTag());
+      Kokkos::parallel_for(
+          "cabana_pair_loop_simd", policy,
+          [&nonbonded_kernel, &aosoa, &counts_view, &neighbors_view,
+           simd_eligible, lx, ly, lz, lxi, lyi, lzi,
+           cutoff_sq](std::size_t const i) {
+            int const n = counts_view(i);
+            if (n == 0)
+              return;
+
+            constexpr int MAX_NJ = 256;
+            if (simd_eligible and n <= MAX_NJ) {
+              alignas(64) double dx_buf[MAX_NJ];
+              alignas(64) double dy_buf[MAX_NJ];
+              alignas(64) double dz_buf[MAX_NJ];
+              alignas(64) double dist2_buf[MAX_NJ];
+              auto const px = aosoa.position_x(i);
+              auto const py = aosoa.position_y(i);
+              auto const pz = aosoa.position_z(i);
+#pragma omp simd
+              for (int k = 0; k < n; ++k) {
+                int const j = neighbors_view(i, k);
+                auto const dx0 = px - aosoa.position_x(j);
+                auto const dy0 = py - aosoa.position_y(j);
+                auto const dz0 = pz - aosoa.position_z(j);
+                auto const dx = dx0 - std::rint(dx0 * lxi) * lx;
+                auto const dy = dy0 - std::rint(dy0 * lyi) * ly;
+                auto const dz = dz0 - std::rint(dz0 * lzi) * lz;
+                dx_buf[k] = dx;
+                dy_buf[k] = dy;
+                dz_buf[k] = dz;
+                dist2_buf[k] = dx * dx + dy * dy + dz * dz;
+              }
+              for (int k = 0; k < n; ++k) {
+                if (dist2_buf[k] <= cutoff_sq) {
+                  int const j = neighbors_view(i, k);
+                  Utils::Vector3d const d{dx_buf[k], dy_buf[k], dz_buf[k]};
+                  nonbonded_kernel(i, static_cast<std::size_t>(j), dist2_buf[k],
+                                   d);
+                }
+              }
+            } else {
+              for (int k = 0; k < n; ++k) {
+                int const j = neighbors_view(i, k);
+                nonbonded_kernel(i, static_cast<std::size_t>(j));
+              }
+            }
+          });
     } else {
       cell_structure.cell_list_loop(
           [&](std::span<Cell *const> cells, BoxGeometry const &box) {

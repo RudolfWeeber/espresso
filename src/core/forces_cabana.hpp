@@ -115,15 +115,26 @@ struct ForcesKernel {
 
   ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION void
   operator()(std::size_t i, std::size_t j) const {
-
     // calc distance (component-wise, avoids constructing pos1/pos2 Vector3d
     // on the hot early-exit path; pos1/pos2 are built lazily below only
     // where kernels actually require them)
     auto const d = box_geo.get_mi_vector(
         aosoa.position(i, 0), aosoa.position(i, 1), aosoa.position(i, 2),
         aosoa.position(j, 0), aosoa.position(j, 1), aosoa.position(j, 2));
-    auto const dist_sq = d.norm2();
+    pair_body(i, j, d.norm2(), d);
+  }
 
+  // Overload accepting precomputed distance — used by SIMD pre-filter path.
+  ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION void
+  operator()(std::size_t i, std::size_t j, double dist_sq,
+             Utils::Vector3d const &d) const {
+    pair_body(i, j, dist_sq, d);
+  }
+
+private:
+  ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION void
+  pair_body(std::size_t i, std::size_t j, double dist_sq,
+            Utils::Vector3d const &d) const {
     // Early exit if distance > maximal global cutoff
     if (dist_sq > system_max_cutoff_sq)
       return;
