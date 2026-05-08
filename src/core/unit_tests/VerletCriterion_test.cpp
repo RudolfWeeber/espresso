@@ -22,7 +22,6 @@
 #include <boost/test/unit_test.hpp>
 
 #include "Particle.hpp"
-#include "cell_system/CellStructure.hpp"
 #include "config/config.hpp"
 #include "nonbonded_interactions/VerletCriterion.hpp"
 #include "system/System.hpp"
@@ -146,8 +145,8 @@ BOOST_AUTO_TEST_CASE(VerletCriterion_pack_test) {
   // Below cutoff → criterion accepts
   {
     auto constexpr cutoff = skin + max_cut;
-    Distance const below{Utils::Vector3d{cutoff - 0.1, 0., 0.}};
-    Distance const above{Utils::Vector3d{cutoff + 0.1, 0., 0.}};
+    auto const below = Utils::sqr(cutoff - 0.1);
+    auto const above = Utils::sqr(cutoff + 0.1);
     BOOST_CHECK(criterion(pack, 0u, 1u, below));
     BOOST_CHECK(!criterion(pack, 0u, 1u, above));
   }
@@ -156,8 +155,8 @@ BOOST_AUTO_TEST_CASE(VerletCriterion_pack_test) {
   {
     VerletCriterion<GetZeroCutoff> crit_lr(system, skin, max_cut, coulomb_cut);
     auto constexpr cutoff = skin + coulomb_cut;
-    Distance const below{Utils::Vector3d{cutoff - 0.1, 0., 0.}};
-    Distance const above{Utils::Vector3d{cutoff + 0.1, 0., 0.}};
+    auto const below = Utils::sqr(cutoff - 0.1);
+    auto const above = Utils::sqr(cutoff + 0.1);
     pack.charges = {0., 0.};
     BOOST_CHECK(!crit_lr(pack, 0u, 1u, below));
     pack.charges = {1., 0.};
@@ -176,8 +175,8 @@ BOOST_AUTO_TEST_CASE(VerletCriterion_pack_test) {
     VerletCriterion<GetZeroCutoff> crit_lr(system, skin, max_cut, 0.,
                                            dipolar_cut);
     auto constexpr cutoff = skin + dipolar_cut;
-    Distance const below{Utils::Vector3d{cutoff - 0.1, 0., 0.}};
-    Distance const above{Utils::Vector3d{cutoff + 0.1, 0., 0.}};
+    auto const below = Utils::sqr(cutoff - 0.1);
+    auto const above = Utils::sqr(cutoff + 0.1);
     pack.dipms = {0., 0.};
     BOOST_CHECK(!crit_lr(pack, 0u, 1u, below));
     pack.dipms = {1., 0.};

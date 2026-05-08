@@ -72,8 +72,7 @@ espresso_unit_test(SRC BoxGeometry_test.cpp DEPENDS espresso::core)
 espresso_unit_test(SRC LocalBox_test.cpp DEPENDS espresso::core)
 espresso_unit_test(SRC Verlet_list_test.cpp DEPENDS espresso::core
                    Kokkos::kokkos Cabana::Core NUM_PROC 4)
-espresso_unit_test(SRC VerletCriterion_test.cpp DEPENDS espresso::core
-                   Kokkos::kokkos Cabana::Core)
+espresso_unit_test(SRC VerletCriterion_test.cpp DEPENDS espresso::core)
 espresso_unit_test(SRC thermostats_test.cpp DEPENDS espresso::core)
 espresso_unit_test(SRC random_test.cpp DEPENDS espresso::utils Random123)
 espresso_unit_test(SRC BondList_test.cpp DEPENDS espresso::core)

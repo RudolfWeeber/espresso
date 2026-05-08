@@ -109,7 +109,7 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
                  CellStructure::AoSoA_pack const &aosoa,
                  auto const &intra_operator, auto const &inter_operator) {
 
-  auto intra_kernel = [&cells, &box_geo, &verlet_criterion, &aosoa,
+  auto intra_kernel = [&cells, box_geo, verlet_criterion, &aosoa,
                        &intra_operator](const int i) {
     auto const base = cells[i]->aosoa_offset();
     auto const n_i = cells[i]->particles().size();
@@ -118,16 +118,16 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
       auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
       for (std::size_t l = k + 1; l < n_i; ++l) {
         auto const jj = base + l;
-        Distance const dist{box_geo.get_mi_vector(
-            pos1, aosoa.get_vector_at(aosoa.position, jj))};
-        if (verlet_criterion(aosoa, ii, jj, dist))
+        auto const dist2 =
+            box_geo.get_mi_dist2(pos1, aosoa.get_vector_at(aosoa.position, jj));
+        if (verlet_criterion(aosoa, ii, jj, dist2))
           intra_operator(static_cast<int>(ii), static_cast<int>(jj));
       }
     }
   };
 
-  auto inter_kernel = [&cells, &box_geo, &verlet_criterion, &aosoa,
-                       &id_to_index, &inter_operator, max_id](const int i) {
+  auto inter_kernel = [&cells, box_geo, verlet_criterion, &aosoa, &id_to_index,
+                       &inter_operator, max_id](const int i) {
     auto const base_i = cells[i]->aosoa_offset();
     auto const n_i = cells[i]->particles().size();
     for (auto *neighbor : cells[i]->neighbors().red()) {
@@ -140,9 +140,9 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
           auto const pos1 = aosoa.get_vector_at(aosoa.position, ii);
           for (std::size_t l = 0; l < n_j; ++l) {
             auto const jj = base_j + l;
-            Distance const dist{box_geo.get_mi_vector(
-                pos1, aosoa.get_vector_at(aosoa.position, jj))};
-            if (verlet_criterion(aosoa, ii, jj, dist))
+            auto const dist2 = box_geo.get_mi_dist2(
+                pos1, aosoa.get_vector_at(aosoa.position, jj));
+            if (verlet_criterion(aosoa, ii, jj, dist2))
               inter_operator(static_cast<int>(ii), static_cast<int>(jj));
           }
         }
@@ -156,9 +156,9 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
                 detail::ghost_particle_index(p2, id_to_index, max_id);
             if (jj < 0)
               continue;
-            Distance const dist{box_geo.get_mi_vector(
-                pos1, aosoa.get_vector_at(aosoa.position, jj))};
-            if (verlet_criterion(aosoa, ii, jj, dist))
+            auto const dist2 = box_geo.get_mi_dist2(
+                pos1, aosoa.get_vector_at(aosoa.position, jj));
+            if (verlet_criterion(aosoa, ii, jj, dist2))
               inter_operator(static_cast<int>(ii), static_cast<int>(jj));
           }
         }
