@@ -105,8 +105,13 @@ void LBWalberla::add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
 }
 
 void LBWalberla::add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
-                                   std::vector<Utils::Vector3d> const &forces) {
+                                                    std::vector<Utils::Vector3d> const &forces) {
   lb_fluid->add_density_weighted_forces_at_pos(pos, forces);
+}
+
+void LBWalberla::add_solvation_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
+                                            std::vector<double> const &delta_mus) {
+  lb_fluid->add_solvation_forces_at_pos(pos, delta_mus);
 }
 
 std::vector<double>

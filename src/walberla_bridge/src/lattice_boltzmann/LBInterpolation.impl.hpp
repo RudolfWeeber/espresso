@@ -27,6 +27,7 @@
 
 #include <utils/Vector.hpp>
 #include <utils/interpolation/bspline_3d.hpp>
+#include <utils/interpolation/bspline_3d_gradient.hpp>
 
 #include <algorithm>
 #include <array>
@@ -159,8 +160,7 @@ auto LBWalberlaImpl<FloatType, Architecture>::make_force_interpolation_kernel()
  * @brief Distribute forces density-weigthed to the two lattices
  * for the two components at given positions.
  * Uses B-spline interpolation to spread each force over the surrounding
- * lattice nodes. On GPU, positions are transformed to block-local
- * coordinates and the operation is performed in a single kernel launch.
+ * lattice nodes. GPU not implemented.
  */
 template <typename FloatType, lbmpy::Arch Architecture>
 void LBWalberlaImpl<FloatType, Architecture>::add_density_weighted_forces_at_pos(
@@ -184,6 +184,110 @@ void LBWalberlaImpl<FloatType, Architecture>::add_density_weighted_forces_at_pos
 #endif
 }
 
+/**
+ * @brief Distribute solvation force on the two lattices
+ * for the two components at given positions.
+ * GPU not implemented.
+ */
+template <typename FloatType, lbmpy::Arch Architecture>
+void LBWalberlaImpl<FloatType, Architecture>::add_solvation_forces_at_pos(
+    std::vector<Utils::Vector3d> const &pos,
+    std::vector<double> const &delta_mus) {
+  assert(pos.size() == delta_mus.size());
+  if (pos.empty()) return;
+  if constexpr (Architecture == lbmpy::Arch::CPU) {
+    auto const kernel = make_solvation_force_interpolation_kernel();
+    for (std::size_t i = 0ul; i < pos.size(); ++i) {
+      kernel(pos[i], delta_mus[i]);
+    }
+  }
+#if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
+  if constexpr (Architecture == lbmpy::Arch::GPU) {
+    throw std::runtime_error(
+        "Solvation force interpolation not implemented on GPU");
+  }
+#endif
+}
+
+
+template <typename FloatType, lbmpy::Arch Architecture>
+auto LBWalberlaImpl<FloatType, Architecture>::make_solvation_force_interpolation_kernel()
+/* Only for two-component LB, adds solvation force to fluid*/
+  const {
+    auto const &lattice = *m_lattice;
+    auto const &blocks = *lattice.get_blocks();
+    assert(lattice.get_ghost_layers() == 1u);
+    return [&](Utils::Vector3d const &pos, double delta_mu){
+      if (not get_block_extended(lattice, pos, 1u)) {
+        return;
+      }
+      auto const grid_spacing = Utils::Vector3d::broadcast(1.);
+      auto const offset = Utils::Vector3d::broadcast(.5);
+      /* Accumulate grad(rho_a) and grad(rho_b) at particle position using bspline_3d_gradient*/
+      Utils::Vector3d grad_rho_a{}, grad_rho_b{};
+      Utils::Interpolation::bspline_3d_gradient<2>(
+        pos,
+        [&](std::array<int,3> const node, Utils::Vector3d const &grad_weight) {
+          auto block = get_block_extended(lattice, node, 1u);
+          if (!block) return;
+          auto cell = to_cell(node);
+          blocks.transformGlobalToBlockLocalCell(cell, *block);
+          auto const cell_rho_a = static_cast<double>(
+              block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[0])->get(cell));
+          auto const cell_rho_b = static_cast<double>(
+              block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[1])->get(cell));
+          grad_rho_a += cell_rho_a * grad_weight;
+          grad_rho_b += cell_rho_b * grad_weight;
+          },
+          grid_spacing, offset);
+
+      /* Accumulate rho_a and rho_b at particle position using bspline_3d*/
+      double rho_a{}, rho_b{};
+      Utils::Interpolation::bspline_3d<2>(
+        pos,
+        [&](std::array<int,3> const node, double weight) {
+          auto block = get_block_extended(lattice, node, 1u);
+          if (!block) return;
+          auto cell = to_cell(node);
+          blocks.transformGlobalToBlockLocalCell(cell, *block);
+          auto const cell_rho_a = static_cast<double>(
+              block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[0])->get(cell));
+          auto const cell_rho_b = static_cast<double>(
+              block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[1])->get(cell));
+          rho_a += cell_rho_a * weight;
+          rho_b += cell_rho_b * weight;
+          },
+          grid_spacing, offset);
+
+      /*spread force back onto fluid using bspline_3d*/
+      interpolate_bspline_at_pos(
+        pos,
+        [&](std::array<int, 3> const node, double weight) {
+          auto block = get_block_extended(lattice, node, 0u);
+          if (!block) block = get_block_extended(lattice, node, 1u);
+          if (!block) return;
+          auto cell = to_cell(node);
+          blocks.transformGlobalToBlockLocalCell(cell, *block);
+          auto const total_rho = rho_a+rho_b;
+          if (total_rho == 0.)
+              /* No fluid to couple to */
+              return;
+          auto const inv_rho_sq = 1. / (total_rho * total_rho);
+          // f^a = +delta_mu * rho_b * inv_rho_sq * grad_rho_a * weight
+          // f^b = -delta_mu * rho_a * inv_rho_sq * grad_rho_b * weight
+          auto const f_a = to_vector3<FloatType>(+delta_mu * rho_b * inv_rho_sq * grad_rho_a * weight);
+          auto const f_b = to_vector3<FloatType>(-delta_mu * rho_a * inv_rho_sq * grad_rho_b * weight);
+          auto field_a = block->template uncheckedFastGetData<VectorField>(m_force_cg_field_id[0]);
+          auto field_b = block->template uncheckedFastGetData<VectorField>(m_force_cg_field_id[1]);
+          lbm::accessor::Vector::add(field_a, f_a, cell);
+          lbm::accessor::Vector::add(field_b, f_b, cell);
+        }
+      );
+      
+  };
+}
+
+
 template <typename FloatType, lbmpy::Arch Architecture>
 auto LBWalberlaImpl<FloatType, Architecture>::make_density_weighted_force_interpolation_kernel()
 /* Only for two-component LB, e.g. friction coupling*/
@@ -195,6 +299,27 @@ auto LBWalberlaImpl<FloatType, Architecture>::make_density_weighted_force_interp
     if (not get_block_extended(lattice, pos, 1u)) {
       return;
     }
+    auto const grid_spacing = Utils::Vector3d::broadcast(1.);
+    auto const offset = Utils::Vector3d::broadcast(.5);
+    /* Accumulate rho_a and rho_b at particle position using bspline_3d*/
+      double rho_a{}, rho_b{};
+      Utils::Interpolation::bspline_3d<2>(
+        pos,
+        [&](std::array<int,3> const node,  double weight) {
+          auto block = get_block_extended(lattice, node, 1u);
+          if (!block) return;
+          auto cell = to_cell(node);
+          blocks.transformGlobalToBlockLocalCell(cell, *block);
+          auto const cell_rho_a = static_cast<double>(
+              block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[0])->get(cell));
+          auto const cell_rho_b = static_cast<double>(
+              block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[1])->get(cell));
+          rho_a += cell_rho_a * weight;
+          rho_b += cell_rho_b * weight;
+          },
+          grid_spacing, offset);
+    
+    /*spread force back onto fluid using bspline_3d*/
     interpolate_bspline_at_pos(
         pos, [&](
                  std::array<int, 3> const node, double weight) {
@@ -205,10 +330,6 @@ auto LBWalberlaImpl<FloatType, Architecture>::make_density_weighted_force_interp
           if (block) {
             auto cell = to_cell(node);
             blocks.transformGlobalToBlockLocalCell(cell, *block);
-            auto rho_a_field = block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[0]);
-            auto rho_b_field = block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[1]);
-            auto const rho_a = static_cast<double>(rho_a_field->get(cell));
-            auto const rho_b = static_cast<double>(rho_b_field->get(cell));
             auto const total_rho = rho_a + rho_b;
             if (total_rho == 0.)
               /* No fluid to couple to */

@@ -111,8 +111,12 @@ public:
                     std::vector<Utils::Vector3d> const &forces) = 0;
 
   virtual void
+  add_solvation_forces_at_pos(std::vector<Utils::Vector3d> const &positions,
+                              std::vector<double> const &delta_mus) = 0;
+
+  virtual void
   add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &positions,
-                    std::vector<Utils::Vector3d> const &forces) = 0;
+                                     std::vector<Utils::Vector3d> const &forces) = 0;
 
 
   /** @brief Get stored force to be applied on node in the next time step. */

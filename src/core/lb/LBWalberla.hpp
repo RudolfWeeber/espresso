@@ -77,7 +77,9 @@ struct LBWalberla : public System::Leaf<LBWalberla> {
   void add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
                          std::vector<Utils::Vector3d> const &forces);
   void add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
-                         std::vector<Utils::Vector3d> const &forces);
+                                          std::vector<Utils::Vector3d> const &forces);
+  void add_solvation_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
+                                   std::vector<double> const &delta_mus);
   std::vector<double>
   get_densities_at_pos(std::vector<Utils::Vector3d> const &pos);
   std::vector<Utils::Vector3d>

@@ -200,7 +200,7 @@ struct Solver : public System::Leaf<Solver> {
    * Special method used only for particle coupling. Uses the LB ghost layer.
    * Achieved by linear interpolation (eq. 11 in @cite ahlrichs99a).
    * @param pos Positions in MD units at which the velocities are calculated.
-   * @retval interpolated fluid velocities in MD units.
+   * @retval Interpolated fluid velocities in MD units.
    */
   std::vector<Utils::Vector3d> get_coupling_interpolated_velocities(
       std::vector<Utils::Vector3d> const &pos) const;
@@ -210,16 +210,36 @@ struct Solver : public System::Leaf<Solver> {
    * Special method used only for particle coupling. Uses the LB ghost layer.
    * Achieved by linear interpolation (eq. 11 in @cite ahlrichs99a).
    * @param pos Positions in MD units at which the color gradients are calculated.
-   * @retval interpolated color gradients.
+   * @retval Interpolated color gradients in MD units.
    */
   std::vector<Utils::Vector3d> get_coupling_interpolated_color_gradients(
       std::vector<Utils::Vector3d> const &pos) const;
 
+  /**
+   * @brief Add a force densities to the fluid at the given positions.
+   * Special method used only for particle coupling.
+   * @param pos            Positions in MD at which the forces are applied.
+   * @param forces  Forces to apply.
+   */
   void add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
                          std::vector<Utils::Vector3d> const &forces);
-
+  /**
+   * @brief Add forces to two component fluid at the given positions.
+   * The force is spreaded density-weighted onto the two components.
+   * Special method used only for particle coupling in two component LB.
+   * @param pos Positions in MD units at which the color gradients are calculated.
+   * @param forces Forces to apply.
+   */
   void add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
                          std::vector<Utils::Vector3d> const &forces);
+  /**
+   * @brief Add solvation force to both fluid components.
+   * Special method used only for particle coupling in two component LB.
+   * @param pos Positions in MD units at which the force is added
+   * @param delta_mus Solvation strength parameter.
+   */
+  void add_solvation_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
+                                   std::vector<double> const &delta_mus);
 
   /**
    * @brief Add a force density to the fluid at the given position.

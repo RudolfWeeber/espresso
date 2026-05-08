@@ -385,9 +385,6 @@ private:
       // Sync color gradient (needed for off-lattice interpolation)
       m_color_gradient_communicator->communicate();
 
-      // TODO: solvation force via B-spline interpolation goes here
-      // (read color_gradient field, compute force, write to force_a/force_b)
-
       // CG collision
       integrate_collide_two_component(blocks);
       // Reset component force fields (consumed by collision)
@@ -848,13 +845,15 @@ private:
 
   /** @brief Return a B-spline interpolation kernel for force distribution. */
   auto make_force_interpolation_kernel() const;
-  /** @brief Return a density_weighted B-spline interpolation kernel for force distribution in two_component LB. */
+  /** @brief Return a density_weighted B-spline interpolation kernel for force distribution in two component LB. */
   auto make_density_weighted_force_interpolation_kernel() const;
   /** @brief Return a B-spline interpolation kernel for velocity readout. */
   auto make_velocity_interpolation_kernel() const;
+  /** @brief Return a B-spline interpolation kernel for solvation force distribution onto fluid in two component LB. */
+  auto make_solvation_force_interpolation_kernel() const;
   /** @brief Return a B-spline interpolation kernel for density readout. */
   auto make_density_interpolation_kernel() const;
-  /** @brief Return a B-spline interpolation kernel for color gradient readout. */
+  /** @brief Return a B-spline interpolation kernel for color gradient readout in two component LB. */
   auto make_color_gradient_interpolation_kernel() const;
 
 public:
@@ -866,6 +865,8 @@ public:
                          std::vector<Utils::Vector3d> const &forces) override;
   void add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
                          std::vector<Utils::Vector3d> const &forces) override;
+  void add_solvation_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
+                                   std::vector<double> const &delta_mus) override;
   std::optional<Utils::Vector3d>
   get_velocity_at_pos(Utils::Vector3d const &pos,
                       bool consider_points_in_halo = false) const override;

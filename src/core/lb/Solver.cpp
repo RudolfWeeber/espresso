@@ -359,6 +359,20 @@ void Solver::add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> con
       *impl->solver);
 }
 
+void Solver::add_solvation_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
+                             std::vector<double> const &delta_mus) {
+  std::visit(
+      [&](auto &ptr) {
+        std::vector<Utils::Vector3d> pos_lb;
+        pos_lb.reserve(pos.size());
+        for (auto const &pos_md : pos) {
+          pos_lb.emplace_back(pos_md * m_conv.pos_to_lb);
+        }
+        ptr->add_solvation_forces_at_pos(pos_lb, delta_mus);
+      },
+      *impl->solver);
+}
+
 void Solver::add_force_density(Utils::Vector3d const &pos,
                                Utils::Vector3d const &force_density) {
   std::visit(

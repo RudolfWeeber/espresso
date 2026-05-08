@@ -225,6 +225,8 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
   std::vector<Utils::Vector3d> positions_velocity_coupling;
   std::vector<Utils::Vector3d> positions_force_coupling;
   std::vector<Utils::Vector3d> force_coupling_forces;
+  std::vector<Utils::Vector3d> solvation_positions;
+  std::vector<double> solvation_delta_mus;
   std::vector<uint8_t> positions_force_coupling_counter;
   std::vector<Particle *> coupled_particles;
   for (auto ptr : particles) {
@@ -312,10 +314,12 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
         auto const drag_force = lb_drag_force(p, m_thermostat.gamma, v_fluid);
         auto const random_force = get_noise_term(p);
         force_on_particle = drag_force + random_force;
-        // Solvation force on particle, not backcoupled to fluid here
+        // Solvation force
         if (m_lb.has_two_components() && p.solvation_delta_mu() != 0.){
           auto const &grad_phi = *it_interpolated_color_gradients;
           solvation_force_on_particle += lb_particle_solvation_force(p, grad_phi);
+          solvation_positions.emplace_back(*it_positions_velocity_coupling);
+          solvation_delta_mus.emplace_back(p.solvation_delta_mu());
         }
       }
       ++it_interpolated_velocities;
@@ -349,6 +353,7 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
   }
   if (m_lb.has_two_components()) {
     m_lb.add_density_weighted_forces_at_pos(positions_force_coupling, force_coupling_forces);
+    m_lb.add_solvation_forces_at_pos(solvation_positions, solvation_delta_mus);
   } else {
     m_lb.add_forces_at_pos(positions_force_coupling, force_coupling_forces);
   }
