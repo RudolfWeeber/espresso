@@ -87,7 +87,10 @@ class HybridDecomposition(ut.TestCase):
         if espressomd.has_features(['LENNARD_JONES']):
             # energy calculation
             new_energy = self.system.analysis.energy()['total']
-            self.assertEqual(new_energy, ref_energy)
+            # Loose tolerance: SIMD-batched pair-distance compute reorders FP
+            # operations vs. the scalar path, so resort is preserved to FP
+            # precision, not bit-exactly.
+            np.testing.assert_allclose(new_energy, ref_energy, rtol=1e-12)
         # force calculation
         self.system.integrator.run(0, recalc_forces=True)
 
