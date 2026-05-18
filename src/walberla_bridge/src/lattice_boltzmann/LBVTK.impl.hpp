@@ -77,6 +77,22 @@ protected:
   }
 };
 
+template <typename FloatType, typename ScalarField, typename OutputType = float>
+class PhasefieldVTKWriter : public VTKWriter<FloatType, ScalarField, 1u, OutputType> {
+public:
+  using Base = VTKWriter<FloatType, ScalarField, 1u, OutputType>;
+  using Base::Base;
+  using Base::evaluate;
+
+protected:
+  OutputType evaluate(cell_idx_t const x, cell_idx_t const y,
+                      cell_idx_t const z, cell_idx_t const) override {
+    WALBERLA_ASSERT_NOT_NULLPTR(this->m_field);
+    auto const phasefield = this->m_field->get(x, y, z);
+    return numeric_cast<OutputType>(phasefield);
+  }
+};
+
 template <typename FloatType, typename VectorField, typename OutputType = float>
 class VelocityVTKWriter
     : public VTKWriter<FloatType, VectorField, 3u, OutputType> {
@@ -152,6 +168,16 @@ void LBWalberlaImpl<FloatType, Architecture>::register_vtk_field_writers(
     vtk_obj.addCellDataWriter(
         std::make_shared<DensityVTKWriter<FloatType, PdfField, float>>(
             m_pdf_field_id[0], "density", unit_conversion));
+  }
+  if (flag_observables & static_cast<int>(CGOutputVTK::phasefield)){
+#if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
+  if constexpr (Architecture == lbmpy::Arch::GPU) {
+    throw std::runtime_error("VTK output 'phasefield' is not yet implemented for GPU.");
+  }
+#endif
+    vtk_obj.addCellDataWriter(
+      std::make_shared<PhasefieldVTKWriter<FloatType, ScalarField, float>>(
+        m_phasefield_id, "phasefield", FloatType{1}));
   }
   if (flag_observables & static_cast<int>(OutputVTK::velocity_vector)) {
     auto const unit_conversion = FloatType_c(units.at("velocity"));
