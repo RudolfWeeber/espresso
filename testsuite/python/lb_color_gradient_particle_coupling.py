@@ -218,6 +218,9 @@ class ColorGradientParticleCouplingTest(ut.TestCase):
         lbf = self._create_lbf()
         self._init_droplet(lbf)
 
+        # Run one step to compute the color gradient field
+        self.system.integrator.run(1)
+
         center = DOMAIN_SIZE / 2.0
         pos_interface = [center + RADIUS, center, center]
 
@@ -227,6 +230,7 @@ class ColorGradientParticleCouplingTest(ut.TestCase):
         self.system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
         self.system.integrator.run(1)
         force_pos = np.copy(p1.f)
+        print(force_pos)
 
         # Reset
         self.system.part.clear()
@@ -236,6 +240,10 @@ class ColorGradientParticleCouplingTest(ut.TestCase):
         # Negative delta_mu at same position
         lbf = self._create_lbf()
         self._init_droplet(lbf)
+
+        # Run one step to compute the color gradient field
+        self.system.integrator.run(1)
+
         p2 = self.system.part.add(pos=pos_interface, v=[0, 0, 0],
                                   solvation_delta_mu=-1.0)
         self.system.thermostat.set_lb(LB_fluid=lbf, gamma=GAMMA, seed=42)
@@ -252,6 +260,9 @@ class ColorGradientParticleCouplingTest(ut.TestCase):
         lbf = self._create_lbf()
         self._init_droplet(lbf)
 
+        # Run one step to compute the color gradient field
+        self.system.integrator.run(1)
+
         center = DOMAIN_SIZE / 2.0
         pos_interface = [center + RADIUS, center, center]
         p = self.system.part.add(pos=pos_interface, v=[0, 0, 0],
@@ -267,6 +278,7 @@ class ColorGradientParticleCouplingTest(ut.TestCase):
         """Total momentum (particle + fluid) should be approximately conserved when solvation force coupling is active."""
         lbf = self._create_lbf()
         self._init_droplet(lbf)
+        
         # Run one step to compute color gradient
         self.system.integrator.run(1)
 
@@ -293,6 +305,7 @@ class ColorGradientParticleCouplingTest(ut.TestCase):
                 np.testing.assert_allclose(
                     total_momentum[-1], total_momentum[0], atol=1e-10,
                     err_msg="Momentum not conserved with solvation force coupling")
+                
 
     def test_run_with_coupling(self):
         """Two-component LB with particle coupling should run
