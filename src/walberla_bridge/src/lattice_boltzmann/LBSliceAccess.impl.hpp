@@ -75,7 +75,8 @@ void LBWalberlaImpl<FloatType, Architecture>::set_slice_velocity(
   if (has_two_components()) {
     throw std::runtime_error(
         "set_slice_velocity is not supported for two-component LB. "
-        "Set densities and populations instead to control the barycentric velocity.");
+        "Set densities and populations instead to control the barycentric "
+        "velocity.");
   }
   m_pending_ghost_comm.set(GhostComm::PDF);
   m_pending_ghost_comm.set(GhostComm::VEL);
@@ -176,7 +177,7 @@ LBWalberlaImpl<FloatType, Architecture>::get_slice_population(
     Utils::Vector3i const &upper_corner) const {
   std::vector<double> out;
   auto const pop_per_node =
-      has_two_components() ? 2u * stencil_size() : stencil_size();
+      has_two_components() ? 2u * this->stencil_size() : this->stencil_size();
   for_each_block_in_slice(
       get_lattice(), lower_corner, upper_corner,
       [&](auto const &block, auto const &bci, auto const &ci,
@@ -186,8 +187,7 @@ LBWalberlaImpl<FloatType, Architecture>::get_slice_population(
 
         auto const pdf_field_a =
             block.template getData<PdfField>(m_pdf_field_id[0]);
-        auto const values_a =
-            lbm::accessor::Population::get(pdf_field_a, bci);
+        auto const values_a = lbm::accessor::Population::get(pdf_field_a, bci);
 
         if (has_two_components()) {
           auto const pdf_field_b =
@@ -195,14 +195,13 @@ LBWalberlaImpl<FloatType, Architecture>::get_slice_population(
           auto const values_b =
               lbm::accessor::Population::get(pdf_field_b, bci);
 
-          auto kernel = [&values_a, &values_b, &out, this](
-                            unsigned const block_index,
-                            unsigned const local_index,
-                            Utils::Vector3i const &) {
-            auto const ss = stencil_size();
+          auto kernel = [&values_a, &values_b, &out,
+                         this](unsigned const block_index,
+                               unsigned const local_index,
+                               Utils::Vector3i const &) {
+            auto const ss = this->stencil_size();
             for (uint_t f = 0u; f < ss; ++f) {
-              out[2u * ss * local_index + f] =
-                  values_a[ss * block_index + f];
+              out[2u * ss * local_index + f] = values_a[ss * block_index + f];
               out[2u * ss * local_index + ss + f] =
                   values_b[ss * block_index + f];
             }
@@ -213,9 +212,9 @@ LBWalberlaImpl<FloatType, Architecture>::get_slice_population(
           auto kernel = [&values_a, &out, this](unsigned const block_index,
                                                 unsigned const local_index,
                                                 Utils::Vector3i const &) {
-            for (uint_t f = 0u; f < stencil_size(); ++f) {
-              out[stencil_size() * local_index + f] =
-                  values_a[stencil_size() * block_index + f];
+            for (uint_t f = 0u; f < this->stencil_size(); ++f) {
+              out[this->stencil_size() * local_index + f] =
+                  values_a[this->stencil_size() * block_index + f];
             }
           };
 
@@ -233,28 +232,29 @@ void LBWalberlaImpl<FloatType, Architecture>::set_slice_population(
       get_lattice(), lower_corner, upper_corner,
       [&](auto &block, auto const &bci, auto const &ci,
           auto const &block_offset) {
-        auto const pop_per_node =
-            has_two_components() ? 2u * stencil_size() : stencil_size();
+        auto const pop_per_node = has_two_components()
+                                      ? 2u * this->stencil_size()
+                                      : this->stencil_size();
         assert(population.size() == pop_per_node * ci.numCells());
         (void)pop_per_node;
-        auto pdf_field_a =
-            block.template getData<PdfField>(m_pdf_field_id[0]);
+        auto pdf_field_a = block.template getData<PdfField>(m_pdf_field_id[0]);
         auto force_field =
             block.template getData<VectorField>(m_last_applied_force_field_id);
         auto vel_field =
             block.template getData<VectorField>(m_velocity_field_id);
-        std::vector<FloatType> values_a(stencil_size() * bci.numCells());
+        std::vector<FloatType> values_a(this->stencil_size() * bci.numCells());
 
         if (has_two_components()) {
           auto pdf_field_b =
               block.template getData<PdfField>(m_pdf_field_id[1]);
-          std::vector<FloatType> values_b(stencil_size() * bci.numCells());
+          std::vector<FloatType> values_b(this->stencil_size() *
+                                          bci.numCells());
 
-          auto kernel = [&values_a, &values_b, &population, this](
-                            unsigned const block_index,
-                            unsigned const local_index,
-                            Utils::Vector3i const &) {
-            auto const ss = stencil_size();
+          auto kernel = [&values_a, &values_b, &population,
+                         this](unsigned const block_index,
+                               unsigned const local_index,
+                               Utils::Vector3i const &) {
+            auto const ss = this->stencil_size();
             for (uint_t f = 0u; f < ss; ++f) {
               values_a[ss * block_index + f] = numeric_cast<FloatType>(
                   population[2u * ss * local_index + f]);
@@ -269,14 +269,14 @@ void LBWalberlaImpl<FloatType, Architecture>::set_slice_population(
           lbm::accessor::Population::set(pdf_field_b, vel_field, force_field,
                                          values_b, bci);
         } else {
-          auto kernel = [&values_a, &population, this](
-                            unsigned const block_index,
-                            unsigned const local_index,
-                            Utils::Vector3i const &) {
-            for (uint_t f = 0u; f < stencil_size(); ++f) {
-              values_a[stencil_size() * block_index + f] =
+          auto kernel = [&values_a, &population,
+                         this](unsigned const block_index,
+                               unsigned const local_index,
+                               Utils::Vector3i const &) {
+            for (uint_t f = 0u; f < this->stencil_size(); ++f) {
+              values_a[this->stencil_size() * block_index + f] =
                   numeric_cast<FloatType>(
-                      population[stencil_size() * local_index + f]);
+                      population[this->stencil_size() * local_index + f]);
             }
           };
 
@@ -319,10 +319,9 @@ std::vector<double> LBWalberlaImpl<FloatType, Architecture>::get_slice_density(
             }
           }
 
-          auto kernel = [&values_a, &values_b, &out](
-                            unsigned const block_index,
-                            unsigned const local_index,
-                            Utils::Vector3i const &) {
+          auto kernel = [&values_a, &values_b, &out](unsigned const block_index,
+                                                     unsigned const local_index,
+                                                     Utils::Vector3i const &) {
             out[2u * local_index + 0u] = values_a[block_index];
             out[2u * local_index + 1u] = values_b[block_index];
           };
@@ -368,10 +367,10 @@ void LBWalberlaImpl<FloatType, Architecture>::set_slice_density(
           std::vector<FloatType> values_a(bci.numCells());
           std::vector<FloatType> values_b(bci.numCells());
 
-          auto kernel = [&values_a, &values_b, &density](
-                            unsigned const block_index,
-                            unsigned const local_index,
-                            Utils::Vector3i const &) {
+          auto kernel = [&values_a, &values_b,
+                         &density](unsigned const block_index,
+                                   unsigned const local_index,
+                                   Utils::Vector3i const &) {
             values_a[block_index] =
                 numeric_cast<FloatType>(density[2u * local_index + 0u]);
             values_b[block_index] =
@@ -392,15 +391,13 @@ void LBWalberlaImpl<FloatType, Architecture>::set_slice_density(
             }
           }
         } else {
-          auto pdf_field =
-              block.template getData<PdfField>(m_pdf_field_id[0]);
+          auto pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
           std::vector<FloatType> values(bci.numCells());
 
           auto kernel = [&values, &density](unsigned const block_index,
                                             unsigned const local_index,
                                             Utils::Vector3i const &) {
-            values[block_index] =
-                numeric_cast<FloatType>(density[local_index]);
+            values[block_index] = numeric_cast<FloatType>(density[local_index]);
           };
 
           copy_block_buffer(bci, ci, block_offset, lower_corner, kernel);
@@ -425,7 +422,8 @@ LBWalberlaImpl<FloatType, Architecture>::get_slice_pressure_tensor(
           auto const &block_offset) {
         if (out.empty())
           out.resize(9u * ci.numCells());
-        auto const pdf_field = block.template getData<PdfField>(m_pdf_field_id[0]);
+        auto const pdf_field =
+            block.template getData<PdfField>(m_pdf_field_id[0]);
         auto values =
             lbm::accessor::PressureTensor::get(pdf_field, m_density, bci);
 

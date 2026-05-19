@@ -22,7 +22,10 @@
 /**
  * @file
  * Out-of-class position-based interpolation definitions for
- * @ref walberla::LBWalberlaImpl.
+ * @ref walberla::LBWalberlaImpl. Read-side helpers and the velocity/density
+ * batch accessors have moved into @ref walberla::LBWalberlaCommon; this
+ * file retains the leaf-local force-deposition paths and the color-gradient
+ * read path (both layout-dependent).
  */
 
 #include <utils/Vector.hpp>
@@ -32,49 +35,15 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
-#include <iostream>
 #include <iterator>
 #include <memory>
 #include <optional>
 #include <stdexcept>
-#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 namespace walberla {
-
-/**
- * @brief Exception for accessing a lattice node outside the local domain
- *  and ghost layers during B-spline interpolation.
- */
-class interpolation_illegal_access : public std::runtime_error {
-public:
-  interpolation_illegal_access(std::string const &field,
-                               Utils::Vector3d const &pos,
-                               std::array<int, 3> const &node, double weight)
-      : std::runtime_error("Access to LB " + field + " field failed") {
-    std::cerr << "pos [" << pos << "], node [" << Utils::Vector3i(node)
-              << "], weight " << weight << "\n";
-  }
-};
-
-void interpolate_bspline_at_pos(Utils::Vector3d const &pos, auto const &&f) {
-  Utils::Interpolation::bspline_3d<2>(
-      pos, f, Utils::Vector3d::broadcast(1.), // grid spacing
-      Utils::Vector3d::broadcast(.5));        // offset
-}
-
-template <typename FloatType, lbmpy::Arch Architecture>
-std::function<bool(Utils::Vector3d const &)>
-LBWalberlaImpl<FloatType, Architecture>::make_lattice_position_checker(
-    bool consider_points_in_halo) const {
-  auto const &lat = *m_lattice;
-  if (consider_points_in_halo) {
-    return [&](Utils::Vector3d const &p) { return lat.pos_in_local_halo(p); };
-  }
-  return [&](Utils::Vector3d const &p) { return lat.pos_in_local_domain(p); };
-}
 
 /**
  * @brief Distribute forces to the lattice at given positions.
@@ -163,9 +132,10 @@ auto LBWalberlaImpl<FloatType, Architecture>::make_force_interpolation_kernel()
  * lattice nodes. GPU not implemented.
  */
 template <typename FloatType, lbmpy::Arch Architecture>
-void LBWalberlaImpl<FloatType, Architecture>::add_density_weighted_forces_at_pos(
-    std::vector<Utils::Vector3d> const &pos,
-    std::vector<Utils::Vector3d> const &forces) {
+void LBWalberlaImpl<FloatType, Architecture>::
+    add_density_weighted_forces_at_pos(
+        std::vector<Utils::Vector3d> const &pos,
+        std::vector<Utils::Vector3d> const &forces) {
   assert(pos.size() == forces.size());
   if (pos.empty()) {
     return;
@@ -194,7 +164,8 @@ void LBWalberlaImpl<FloatType, Architecture>::add_solvation_forces_at_pos(
     std::vector<Utils::Vector3d> const &pos,
     std::vector<double> const &delta_mus) {
   assert(pos.size() == delta_mus.size());
-  if (pos.empty()) return;
+  if (pos.empty())
+    return;
   if constexpr (Architecture == lbmpy::Arch::CPU) {
     auto const kernel = make_solvation_force_interpolation_kernel();
     for (std::size_t i = 0ul; i < pos.size(); ++i) {
@@ -209,88 +180,106 @@ void LBWalberlaImpl<FloatType, Architecture>::add_solvation_forces_at_pos(
 #endif
 }
 
-
 template <typename FloatType, lbmpy::Arch Architecture>
-auto LBWalberlaImpl<FloatType, Architecture>::make_solvation_force_interpolation_kernel()
-/* Only for two-component LB, adds solvation force to fluid*/
-  const {
-    auto const &lattice = *m_lattice;
-    auto const &blocks = *lattice.get_blocks();
-    assert(lattice.get_ghost_layers() == 1u);
-    return [&](Utils::Vector3d const &pos, double delta_mu){
-      if (not get_block_extended(lattice, pos, 1u)) {
-        return;
-      }
-      auto const grid_spacing = Utils::Vector3d::broadcast(1.);
-      auto const offset = Utils::Vector3d::broadcast(.5);
-      /* Accumulate grad(rho_a) and grad(rho_b) at particle position using bspline_3d_gradient*/
-      Utils::Vector3d grad_rho_a{}, grad_rho_b{};
-      Utils::Interpolation::bspline_3d_gradient<2>(
+auto LBWalberlaImpl<FloatType,
+                    Architecture>::make_solvation_force_interpolation_kernel()
+    /* Only for two-component LB, adds solvation force to fluid*/
+    const {
+  auto const &lattice = *m_lattice;
+  auto const &blocks = *lattice.get_blocks();
+  assert(lattice.get_ghost_layers() == 1u);
+  return [&](Utils::Vector3d const &pos, double delta_mu) {
+    if (not get_block_extended(lattice, pos, 1u)) {
+      return;
+    }
+    auto const grid_spacing = Utils::Vector3d::broadcast(1.);
+    auto const offset = Utils::Vector3d::broadcast(.5);
+    /* Accumulate grad(rho_a) and grad(rho_b) at particle position using
+     * bspline_3d_gradient*/
+    Utils::Vector3d grad_rho_a{}, grad_rho_b{};
+    Utils::Interpolation::bspline_3d_gradient<2>(
         pos,
-        [&](std::array<int,3> const node, Utils::Vector3d const &grad_weight) {
+        [&](std::array<int, 3> const node, Utils::Vector3d const &grad_weight) {
           auto block = get_block_extended(lattice, node, 1u);
-          if (!block) return;
+          if (!block)
+            return;
           auto cell = to_cell(node);
           blocks.transformGlobalToBlockLocalCell(cell, *block);
           auto const cell_rho_a = static_cast<double>(
-              block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[0])->get(cell));
+              block
+                  ->template uncheckedFastGetData<ScalarField>(
+                      m_rho_field_id[0])
+                  ->get(cell));
           auto const cell_rho_b = static_cast<double>(
-              block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[1])->get(cell));
+              block
+                  ->template uncheckedFastGetData<ScalarField>(
+                      m_rho_field_id[1])
+                  ->get(cell));
           grad_rho_a += cell_rho_a * grad_weight;
           grad_rho_b += cell_rho_b * grad_weight;
-          },
-          grid_spacing, offset);
+        },
+        grid_spacing, offset);
 
-      /* Accumulate rho_a and rho_b at particle position using bspline_3d*/
-      double rho_a{}, rho_b{};
-      Utils::Interpolation::bspline_3d<2>(
+    /* Accumulate rho_a and rho_b at particle position using bspline_3d*/
+    double rho_a{}, rho_b{};
+    Utils::Interpolation::bspline_3d<2>(
         pos,
-        [&](std::array<int,3> const node, double weight) {
+        [&](std::array<int, 3> const node, double weight) {
           auto block = get_block_extended(lattice, node, 1u);
-          if (!block) return;
+          if (!block)
+            return;
           auto cell = to_cell(node);
           blocks.transformGlobalToBlockLocalCell(cell, *block);
           auto const cell_rho_a = static_cast<double>(
-              block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[0])->get(cell));
+              block
+                  ->template uncheckedFastGetData<ScalarField>(
+                      m_rho_field_id[0])
+                  ->get(cell));
           auto const cell_rho_b = static_cast<double>(
-              block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[1])->get(cell));
+              block
+                  ->template uncheckedFastGetData<ScalarField>(
+                      m_rho_field_id[1])
+                  ->get(cell));
           rho_a += cell_rho_a * weight;
           rho_b += cell_rho_b * weight;
-          },
-          grid_spacing, offset);
+        },
+        grid_spacing, offset);
 
-      /*spread force back onto fluid using bspline_3d*/
-      interpolate_bspline_at_pos(
-        pos,
-        [&](std::array<int, 3> const node, double weight) {
-          auto block = get_block_extended(lattice, node, 0u);
-          if (!block) block = get_block_extended(lattice, node, 1u);
-          if (!block) return;
-          auto cell = to_cell(node);
-          blocks.transformGlobalToBlockLocalCell(cell, *block);
-          auto const total_rho = rho_a+rho_b;
-          if (total_rho == 0.)
-              /* No fluid to couple to */
-              return;
-          auto const inv_rho_sq = 1. / (total_rho * total_rho);
-          // f^a = +delta_mu * rho_b * inv_rho_sq * grad_rho_a * weight
-          // f^b = -delta_mu * rho_a * inv_rho_sq * grad_rho_b * weight
-          auto const f_a = to_vector3<FloatType>(+delta_mu * rho_b * inv_rho_sq * grad_rho_a * weight);
-          auto const f_b = to_vector3<FloatType>(-delta_mu * rho_a * inv_rho_sq * grad_rho_b * weight);
-          auto field_a = block->template uncheckedFastGetData<VectorField>(m_force_cg_field_id[0]);
-          auto field_b = block->template uncheckedFastGetData<VectorField>(m_force_cg_field_id[1]);
-          lbm::accessor::Vector::add(field_a, f_a, cell);
-          lbm::accessor::Vector::add(field_b, f_b, cell);
-        }
-      );
-      
+    /*spread force back onto fluid using bspline_3d*/
+    interpolate_bspline_at_pos(pos, [&](std::array<int, 3> const node,
+                                        double weight) {
+      auto block = get_block_extended(lattice, node, 0u);
+      if (!block)
+        block = get_block_extended(lattice, node, 1u);
+      if (!block)
+        return;
+      auto cell = to_cell(node);
+      blocks.transformGlobalToBlockLocalCell(cell, *block);
+      auto const total_rho = rho_a + rho_b;
+      if (total_rho == 0.)
+        /* No fluid to couple to */
+        return;
+      auto const inv_rho_sq = 1. / (total_rho * total_rho);
+      // f^a = +delta_mu * rho_b * inv_rho_sq * grad_rho_a * weight
+      // f^b = -delta_mu * rho_a * inv_rho_sq * grad_rho_b * weight
+      auto const f_a = to_vector3<FloatType>(+delta_mu * rho_b * inv_rho_sq *
+                                             grad_rho_a * weight);
+      auto const f_b = to_vector3<FloatType>(-delta_mu * rho_a * inv_rho_sq *
+                                             grad_rho_b * weight);
+      auto field_a = block->template uncheckedFastGetData<VectorField>(
+          m_force_cg_field_id[0]);
+      auto field_b = block->template uncheckedFastGetData<VectorField>(
+          m_force_cg_field_id[1]);
+      lbm::accessor::Vector::add(field_a, f_a, cell);
+      lbm::accessor::Vector::add(field_b, f_b, cell);
+    });
   };
 }
 
-
 template <typename FloatType, lbmpy::Arch Architecture>
-auto LBWalberlaImpl<FloatType, Architecture>::make_density_weighted_force_interpolation_kernel()
-/* Only for two-component LB, e.g. friction coupling*/
+auto LBWalberlaImpl<
+    FloatType, Architecture>::make_density_weighted_force_interpolation_kernel()
+    /* Only for two-component LB, e.g. friction coupling*/
     const {
   auto const &lattice = *m_lattice;
   auto const &blocks = *lattice.get_blocks();
@@ -302,28 +291,35 @@ auto LBWalberlaImpl<FloatType, Architecture>::make_density_weighted_force_interp
     auto const grid_spacing = Utils::Vector3d::broadcast(1.);
     auto const offset = Utils::Vector3d::broadcast(.5);
     /* Accumulate rho_a and rho_b at particle position using bspline_3d*/
-      double rho_a{}, rho_b{};
-      Utils::Interpolation::bspline_3d<2>(
+    double rho_a{}, rho_b{};
+    Utils::Interpolation::bspline_3d<2>(
         pos,
-        [&](std::array<int,3> const node,  double weight) {
+        [&](std::array<int, 3> const node, double weight) {
           auto block = get_block_extended(lattice, node, 1u);
-          if (!block) return;
+          if (!block)
+            return;
           auto cell = to_cell(node);
           blocks.transformGlobalToBlockLocalCell(cell, *block);
           auto const cell_rho_a = static_cast<double>(
-              block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[0])->get(cell));
+              block
+                  ->template uncheckedFastGetData<ScalarField>(
+                      m_rho_field_id[0])
+                  ->get(cell));
           auto const cell_rho_b = static_cast<double>(
-              block->template uncheckedFastGetData<ScalarField>(m_rho_field_id[1])->get(cell));
+              block
+                  ->template uncheckedFastGetData<ScalarField>(
+                      m_rho_field_id[1])
+                  ->get(cell));
           rho_a += cell_rho_a * weight;
           rho_b += cell_rho_b * weight;
-          },
-          grid_spacing, offset);
-    
+        },
+        grid_spacing, offset);
+
     /*spread force back onto fluid using bspline_3d*/
     interpolate_bspline_at_pos(
-        pos, [&](
-                 std::array<int, 3> const node, double weight) {
-          /* no conversion factor m_zc_to_lb since densities for two-component lbs are not saved zero_centered*/
+        pos, [&](std::array<int, 3> const node, double weight) {
+          /* no conversion factor m_zc_to_lb since densities for two-component
+           * lbs are not saved zero_centered*/
           auto block = get_block_extended(lattice, node, 0u);
           if (!block)
             block = get_block_extended(lattice, node, 1u);
@@ -335,10 +331,14 @@ auto LBWalberlaImpl<FloatType, Architecture>::make_density_weighted_force_interp
               /* No fluid to couple to */
               return;
             auto const inv_rho = 1. / total_rho;
-            auto const weighted_force_a = to_vector3<FloatType>(weight * (rho_a * inv_rho) * force);
-            auto const weighted_force_b = to_vector3<FloatType>(weight * (rho_b * inv_rho) * force);
-            auto field_a = block->template uncheckedFastGetData<VectorField>(m_force_cg_field_id[0]);
-            auto field_b = block->template uncheckedFastGetData<VectorField>(m_force_cg_field_id[1]);
+            auto const weighted_force_a =
+                to_vector3<FloatType>(weight * (rho_a * inv_rho) * force);
+            auto const weighted_force_b =
+                to_vector3<FloatType>(weight * (rho_b * inv_rho) * force);
+            auto field_a = block->template uncheckedFastGetData<VectorField>(
+                m_force_cg_field_id[0]);
+            auto field_b = block->template uncheckedFastGetData<VectorField>(
+                m_force_cg_field_id[1]);
             lbm::accessor::Vector::add(field_a, weighted_force_a, cell);
             lbm::accessor::Vector::add(field_b, weighted_force_b, cell);
           }
@@ -347,85 +347,23 @@ auto LBWalberlaImpl<FloatType, Architecture>::make_density_weighted_force_interp
 }
 
 template <typename FloatType, lbmpy::Arch Architecture>
-auto LBWalberlaImpl<FloatType,
-                    Architecture>::make_velocity_interpolation_kernel() const {
+auto LBWalberlaImpl<
+    FloatType, Architecture>::make_color_gradient_interpolation_kernel() const {
   auto const &lattice = *m_lattice;
   auto const &blocks = *lattice.get_blocks();
   assert(lattice.get_ghost_layers() == 1u);
   return [&](Utils::Vector3d const &pos) {
     Utils::Vector3d acc{0., 0., 0.};
     interpolate_bspline_at_pos(
-        pos, [&, field_id = m_velocity_field_id](std::array<int, 3> const node,
-                                                 double weight) {
-          // Nodes with zero weight might not be accessible, because they can be
-          // outside ghost layers
-          if (weight != 0.) {
-            auto block = get_block_extended(lattice, node, 1u);
-            if (!block)
-              throw interpolation_illegal_access("velocity", pos, node, weight);
-            Vector3<FloatType> vel;
-            if (m_has_boundaries and m_boundary->node_is_boundary(node)) {
-              vel = m_boundary->get_node_value_at_boundary(node);
-            } else {
-              auto cell = to_cell(node);
-              blocks.transformGlobalToBlockLocalCell(cell, *block);
-              auto field =
-                  block->template uncheckedFastGetData<VectorField>(field_id);
-              vel = lbm::accessor::Vector::get(field, cell);
-            }
-            acc += to_vector3d(vel) * weight;
-          }
-        });
-    return acc;
-  };
-}
-
-template <typename FloatType, lbmpy::Arch Architecture>
-auto LBWalberlaImpl<FloatType,
-                    Architecture>::make_density_interpolation_kernel() const {
-  auto const &lattice = *m_lattice;
-  auto const &blocks = *lattice.get_blocks();
-  assert(lattice.get_ghost_layers() == 1u);
-  return [&](Utils::Vector3d const &pos) {
-    double acc = 0.;
-    interpolate_bspline_at_pos(
-        pos, [&, density = m_density, field_id = m_pdf_field_id[0]](
+        pos, [&, field_id = m_color_gradient_field_id](
                  std::array<int, 3> const node, double weight) {
           // Nodes with zero weight might not be accessible, because they can be
           // outside ghost layers
           if (weight != 0.) {
             auto block = get_block_extended(lattice, node, 1u);
             if (!block)
-              throw interpolation_illegal_access("density", pos, node, weight);
-            auto cell = to_cell(node);
-            blocks.transformGlobalToBlockLocalCell(cell, *block);
-            auto field =
-                block->template uncheckedFastGetData<PdfField>(field_id);
-            auto const rho = lbm::accessor::Density::get(field, density, cell);
-            acc += rho * weight;
-          }
-        });
-    return acc;
-  };
-}
-
-template <typename FloatType, lbmpy::Arch Architecture>
-auto LBWalberlaImpl<FloatType,
-                    Architecture>::make_color_gradient_interpolation_kernel() const {
-  auto const &lattice = *m_lattice;
-  auto const &blocks = *lattice.get_blocks();
-  assert(lattice.get_ghost_layers() == 1u);
-  return [&](Utils::Vector3d const &pos) {
-    Utils::Vector3d acc{0., 0., 0.};
-    interpolate_bspline_at_pos(
-        pos, [&, field_id = m_color_gradient_field_id](std::array<int, 3> const node,
-                                                 double weight) {
-          // Nodes with zero weight might not be accessible, because they can be
-          // outside ghost layers
-          if (weight != 0.) {
-            auto block = get_block_extended(lattice, node, 1u);
-            if (!block)
-              throw interpolation_illegal_access("color gradient", pos, node, weight);
+              throw interpolation_illegal_access("color gradient", pos, node,
+                                                 weight);
             auto cell = to_cell(node);
             blocks.transformGlobalToBlockLocalCell(cell, *block);
             auto field =
@@ -436,105 +374,6 @@ auto LBWalberlaImpl<FloatType,
         });
     return acc;
   };
-}
-
-/**
- * @brief Interpolate velocities at given positions (batch version).
- * On GPU, boundary slip velocities are written into the velocity field
- * before interpolation, since the field has indeterminate values inside
- * boundary regions.
- */
-template <typename FloatType, lbmpy::Arch Architecture>
-std::vector<Utils::Vector3d>
-LBWalberlaImpl<FloatType, Architecture>::get_velocities_at_pos(
-    std::vector<Utils::Vector3d> const &pos) {
-  if (pos.empty()) {
-    return {};
-  }
-  std::vector<Utils::Vector3d> vel{};
-  vel.reserve(pos.size());
-  if constexpr (Architecture == lbmpy::Arch::CPU) {
-    auto const kernel = make_velocity_interpolation_kernel();
-    std::ranges::transform(pos, std::back_inserter(vel), kernel);
-  }
-#if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
-  if constexpr (Architecture == lbmpy::Arch::GPU) {
-    auto const &lattice = get_lattice();
-    auto const &block = *(lattice.get_blocks()->begin());
-    auto const origin = block.getAABB().min();
-    std::vector<FloatType> host_pos;
-    host_pos.reserve(3ul * pos.size());
-    assert(lattice.get_blocks()->getNumberOfBlocks() == 1u);
-    for (auto const &vec : pos) {
-#pragma unroll
-      for (std::size_t i : {0ul, 1ul, 2ul}) {
-        host_pos.emplace_back(static_cast<FloatType>(vec[i] - origin[i]));
-      }
-    }
-    auto const gl = lattice.get_ghost_layers();
-    auto field =
-        block.template uncheckedFastGetData<VectorField>(m_velocity_field_id);
-    // the velocity field has indeterminate values inside boundary regions;
-    // we overwrite them with boundary slip velocities before interpolation
-    auto const [dev_idx, dev_vel] = m_boundary->get_flattened_map_device();
-    if (not dev_idx->empty()) {
-      lbm::accessor::Vector::set_from_list(field, *dev_idx, *dev_vel, gl);
-    }
-    auto const res = lbm::accessor::Interpolation::get_vel(field, host_pos, gl);
-    for (auto it = res.begin(); it != res.end(); it += 3) {
-      vel.emplace_back(Utils::Vector3d{static_cast<double>(*(it + 0)),
-                                       static_cast<double>(*(it + 1)),
-                                       static_cast<double>(*(it + 2))});
-    }
-  }
-#endif
-  return vel;
-}
-
-template <typename FloatType, lbmpy::Arch Architecture>
-std::vector<double>
-LBWalberlaImpl<FloatType, Architecture>::get_densities_at_pos(
-    std::vector<Utils::Vector3d> const &pos) {
-  if (has_two_components())
-    throw std::runtime_error(
-        "get_densities_at_pos is not yet implemented for two-component LB");
-  if (pos.empty()) {
-    return {};
-  }
-  std::vector<double> rho{};
-  rho.reserve(pos.size());
-  if constexpr (Architecture == lbmpy::Arch::CPU) {
-    auto const kernel = make_density_interpolation_kernel();
-    std::ranges::transform(pos, std::back_inserter(rho), kernel);
-  }
-#if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
-  if constexpr (Architecture == lbmpy::Arch::GPU) {
-    auto const &lattice = get_lattice();
-    auto const &block = *(lattice.get_blocks()->begin());
-    auto const origin = block.getAABB().min();
-    std::vector<FloatType> host_pos;
-    host_pos.reserve(3ul * pos.size());
-    assert(lattice.get_blocks()->getNumberOfBlocks() == 1u);
-    for (auto const &vec : pos) {
-#pragma unroll
-      for (std::size_t i : {0ul, 1ul, 2ul}) {
-        host_pos.emplace_back(static_cast<FloatType>(vec[i] - origin[i]));
-      }
-    }
-    auto const gl = lattice.get_ghost_layers();
-    auto field = block.template uncheckedFastGetData<PdfField>(m_pdf_field_id[0]);
-    auto res =
-        lbm::accessor::Interpolation::get_rho(field, host_pos, m_density, gl);
-    if constexpr (std::is_same_v<FloatType, double>) {
-      std::swap(rho, res);
-    } else {
-      for (auto const &v : res) {
-        rho.emplace_back(static_cast<double>(v));
-      }
-    }
-  }
-#endif
-  return rho;
 }
 
 template <typename FloatType, lbmpy::Arch Architecture>
@@ -557,36 +396,6 @@ LBWalberlaImpl<FloatType, Architecture>::get_color_gradients_at_pos(
   }
 #endif
   return color_gradient;
-}
-
-template <typename FloatType, lbmpy::Arch Architecture>
-std::optional<Utils::Vector3d>
-LBWalberlaImpl<FloatType, Architecture>::get_velocity_at_pos(
-    Utils::Vector3d const &pos, bool consider_points_in_halo) const {
-  assert(not m_pending_ghost_comm.test(GhostComm::VEL));
-  assert(not m_pending_ghost_comm.test(GhostComm::UBB));
-  if (!consider_points_in_halo and !m_lattice->pos_in_local_domain(pos))
-    return std::nullopt;
-  if (consider_points_in_halo and !m_lattice->pos_in_local_halo(pos))
-    return std::nullopt;
-  auto const kernel = make_velocity_interpolation_kernel();
-  return {kernel(pos)};
-}
-
-template <typename FloatType, lbmpy::Arch Architecture>
-std::optional<double>
-LBWalberlaImpl<FloatType, Architecture>::get_density_at_pos(
-    Utils::Vector3d const &pos, bool consider_points_in_halo) const {
-  if (has_two_components())
-    throw std::runtime_error(
-        "get_density_at_pos is not yet implemented for two-component LB");
-  assert(not m_pending_ghost_comm.test(GhostComm::PDF));
-  if (!consider_points_in_halo and !m_lattice->pos_in_local_domain(pos))
-    return std::nullopt;
-  if (consider_points_in_halo and !m_lattice->pos_in_local_halo(pos))
-    return std::nullopt;
-  auto const kernel = make_density_interpolation_kernel();
-  return {kernel(pos)};
 }
 
 template <typename FloatType, lbmpy::Arch Architecture>

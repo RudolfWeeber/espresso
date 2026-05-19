@@ -26,6 +26,8 @@
  * (see <tt>maintainer/walberla_kernels</tt>).
  */
 
+#include "LBWalberlaCommon.hpp"
+
 #include <blockforest/Initialization.h>
 #include <blockforest/StructuredBlockForest.h>
 #include <domain_decomposition/BlockDataID.h>
@@ -83,147 +85,115 @@ namespace walberla {
 
 /** @brief Class that runs and controls the LB on waLBerla. */
 template <typename FloatType, lbmpy::Arch Architecture>
-class LBWalberlaImpl : public LBWalberlaBase {
-#if not defined(WALBERLA_BUILD_WITH_CUDA)
-  static_assert(Architecture != lbmpy::Arch::GPU,
-                "waLBerla was compiled without CUDA support");
-#endif
-protected:
-  // ---- Types & Constants ----
+class LBWalberlaImpl
+    : public LBWalberlaCommon<LBWalberlaImpl<FloatType, Architecture>,
+                              FloatType, Architecture> {
+  using Base = LBWalberlaCommon<LBWalberlaImpl<FloatType, Architecture>,
+                                FloatType, Architecture>;
+  friend Base;
 
-  using Kernels = detail::KernelTrait<FloatType, Architecture>;
-  using BoundaryModel = BoundaryHandling<FloatType, Vector3<FloatType>,
-                                         typename Kernels::DynamicUBB>;
+protected:
+  // ---- Types from the mixin (re-export for the .impl.hpp files) ----
+  using typename Base::_PdfField;
+  using typename Base::_VectorField;
+  using typename Base::BlockStorage;
+  using typename Base::BoundaryFullCommunicator;
+  using typename Base::BoundaryModel;
+  using typename Base::GhostComm;
+  using typename Base::Kernels;
+  using typename Base::PDFStreamingCommunicator;
+  using typename Base::RegularFullCommunicator;
+  template <class Field>
+  using PackInfo = typename Base::template PackInfo<Field>;
+
   using CollisionModel =
       std::variant<typename Kernels::StreamCollisionModelThermalized,
                    typename Kernels::StreamCollisionModelLeesEdwards>;
 
-  using CollisionModelTwoComponent = typename Kernels::CollisionModelTwoComponent;
+  using CollisionModelTwoComponent =
+      typename Kernels::CollisionModelTwoComponent;
   using StreamModelTwoComponent = typename Kernels::StreamModelTwoComponent;
   using ColorGradientModel = typename Kernels::ColorGradientModel;
 
 public:
-  /** @brief Stencil for collision and streaming operations. */
-  using Stencil = stencil::D3Q19;
-  /** @brief Stencil for ghost communication (includes domain corners). */
-  using StencilFull = stencil::D3Q27;
-  /** @brief Lattice model (e.g. blockforest). */
-  using BlockStorage = LatticeWalberla::Lattice_T;
-
-protected:
-  // "underlying" field types (`GPUField` has no f-size info at compile time)
-  using _PdfField = FieldTrait<FloatType, Stencil>::PdfField;
-  using _VectorField = FieldTrait<FloatType, Stencil>::VectorField;
-
-public:
-  using ScalarField = field::GhostLayerField<FloatType, 1>;
-  using PdfField = FieldTrait<FloatType, Stencil, Architecture>::PdfField;
-  using VectorField = FieldTrait<FloatType, Stencil, Architecture>::VectorField;
-  using FlagField = BoundaryModel::FlagField;
+  using typename Base::FlagField;
+  using typename Base::PdfField;
+  using typename Base::ScalarField;
+  using typename Base::Stencil;
+  using typename Base::StencilFull;
+  using typename Base::VectorField;
 #if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
-  using GPUField = gpu::GPUField<FloatType>;
-  using PdfFieldCpu =
-      FieldTrait<FloatType, Stencil, lbmpy::Arch::CPU>::PdfField;
-  using VectorFieldCpu =
-      FieldTrait<FloatType, Stencil, lbmpy::Arch::CPU>::VectorField;
+  using typename Base::GPUField;
+  using typename Base::PdfFieldCpu;
+  using typename Base::VectorFieldCpu;
 #endif
 
-  struct GhostComm {
-    /** @brief Ghost communication operations. */
-    enum GhostCommFlags : unsigned {
-      PDF, ///< PDFs communication
-      VEL, ///< velocities communication
-      LAF, ///< last applied forces communication
-      UBB, ///< boundaries communication
-      PHI, ///< phasefield communication (two_component)
-      SIZE
-    };
-  };
+protected:
+  // ---- Pull in inherited members so unqualified names resolve ----
+  using Base::add_to_storage;
+  using Base::derived;
+  using Base::FloatType_c;
+  using Base::get_lattice;
+  using Base::ghost_communication;
+  using Base::make_density_interpolation_kernel;
+  using Base::make_velocity_interpolation_kernel;
+  using Base::zero_centered_to_lb;
+  using Base::zero_centered_to_lb_in_place;
+  using Base::zero_centered_to_md;
+  using Base::zero_centered_to_md_in_place;
+
+  // Data members (from Base)
+  using Base::Boundary_flag;
+  using Base::m_boundary;
+  using Base::m_boundary_communicator;
+  using Base::m_density;
+  using Base::m_flag_field_id;
+  using Base::m_force_to_be_applied_id;
+  using Base::m_full_communicator;
+  using Base::m_has_boundaries;
+  using Base::m_laf_communicator;
+  using Base::m_last_applied_force_field_id;
+  using Base::m_lattice;
+  using Base::m_mpi_cart_comm_observer;
+  using Base::m_pdf_communicator;
+  using Base::m_pdf_streaming_communicator;
+  using Base::m_pending_ghost_comm;
+  using Base::m_vel_communicator;
+  using Base::m_vel_tmp_field_id;
+  using Base::m_velocity_field_id;
+  using Base::m_zc_to_lb;
+  using Base::m_zc_to_md;
 
 protected:
-  /**
-   * @brief Full communicator.
-   * We use the D3Q27 directions to update cells along the diagonals during
-   * a full ghost communication. This is needed to properly update the corners
-   * of the ghost layer when setting cell velocities or populations.
-   */
-  using RegularFullCommunicator =
-      FieldTrait<FloatType, Stencil,
-                 Architecture>::template RegularCommScheme<stencil::D3Q27>;
-  using BoundaryFullCommunicator =
-      FieldTrait<FloatType, Stencil,
-                 Architecture>::template BoundaryCommScheme<stencil::D3Q27>;
-  /**
-   * @brief Regular communicator.
-   * We use the same directions as the stencil during integration.
-   */
-  using PDFStreamingCommunicator =
-      FieldTrait<FloatType, Stencil,
-                 Architecture>::template RegularCommScheme<Stencil>;
-  template <class Field>
-  using PackInfo =
-      FieldTrait<FloatType, Stencil, Architecture>::template PackInfo<Field>;
-
-protected:
-  // ---- Member Variables ----
+  // ---- Member Variables (leaf-specific) ----
 
   // Physical parameters
   std::array<FloatType, 2> m_viscosity; /// kinematic viscosity (per component)
   FloatType m_sigma{}; /// interface tension coefficient (two-component)
-  FloatType m_beta{}; /// interface thickness parameter (two-component)
-  FloatType m_density;
+  FloatType m_beta{};  /// interface thickness parameter (two-component)
   FloatType m_kT;
   unsigned int m_seed;
-  double m_zc_to_md; // zero-centered conversion factor to MD units
-  double m_zc_to_lb; // zero-centered conversion factor to LB units
 
-  // lattice
-  std::shared_ptr<LatticeWalberla> m_lattice;
-
-  // Block data access handles
-  std::array<BlockDataID,2> m_pdf_field_id;
-  std::array<BlockDataID,2> m_pdf_tmp_field_id;
-  BlockDataID m_flag_field_id;
-
-  BlockDataID m_last_applied_force_field_id;
-  BlockDataID m_force_to_be_applied_id;
-
-  BlockDataID m_velocity_field_id;
-  BlockDataID m_vel_tmp_field_id;
+  // Block data access handles (PDF / two-component / temporaries)
+  std::array<BlockDataID, 2> m_pdf_field_id;
+  std::array<BlockDataID, 2> m_pdf_tmp_field_id;
 
   // Color gradient fields
-  std::array<BlockDataID,2> m_rho_field_id;
+  std::array<BlockDataID, 2> m_rho_field_id;
   BlockDataID m_phasefield_id;
   BlockDataID m_color_gradient_field_id;
-  std::array<BlockDataID,2> m_force_cg_field_id;
-
+  std::array<BlockDataID, 2> m_force_cg_field_id;
 
 #if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
   std::optional<BlockDataID> m_pdf_cpu_field_id;
   std::optional<BlockDataID> m_vel_cpu_field_id;
 #endif
 
-  /** Flag for boundary cells. */
-  FlagUID const Boundary_flag{"boundary"};
-  bool m_has_boundaries{false};
-
-  // boundaries
-  std::shared_ptr<BoundaryModel> m_boundary;
-
-  // communicators
-  std::shared_ptr<BoundaryFullCommunicator> m_boundary_communicator;
-  std::shared_ptr<RegularFullCommunicator> m_full_communicator;
-  std::shared_ptr<RegularFullCommunicator> m_pdf_communicator;
-  std::shared_ptr<RegularFullCommunicator> m_vel_communicator;
-  std::shared_ptr<RegularFullCommunicator> m_laf_communicator;
-  std::shared_ptr<PDFStreamingCommunicator> m_pdf_streaming_communicator;
-  // Color gradient communicators
+  // Color gradient communicators (CG-specific)
   std::shared_ptr<RegularFullCommunicator> m_pdf_a_communicator;
   std::shared_ptr<RegularFullCommunicator> m_pdf_b_communicator;
   std::shared_ptr<RegularFullCommunicator> m_phasefield_communicator;
   std::shared_ptr<RegularFullCommunicator> m_color_gradient_communicator;
-  std::bitset<GhostComm::SIZE> m_pending_ghost_comm;
-  ResourceObserver m_mpi_cart_comm_observer;
   bool m_two_components;
 
   // collision sweep
@@ -255,33 +225,14 @@ protected:
 #endif
 
 public:
-  template <typename T> FloatType FloatType_c(T t) const {
-    return numeric_cast<FloatType>(t);
-  }
-
-  [[nodiscard]] std::size_t stencil_size() const noexcept override {
-    return static_cast<std::size_t>(Stencil::Size);
-  }
-
-  [[nodiscard]] bool is_double_precision() const noexcept override {
-    return std::is_same_v<FloatType, double>;
-  }
-
-  [[nodiscard]] bool is_gpu() const noexcept override {
-    return Architecture == lbmpy::Arch::GPU;
-  }
-
-public:
   LBWalberlaImpl(std::shared_ptr<LatticeWalberla> lattice,
                  std::vector<double> viscosity, double density,
                  bool two_component)
-      : m_viscosity{FloatType_c(viscosity.at(0)),
-                    two_component ? FloatType_c(viscosity.at(1)) : FloatType{0}},
-        m_density(FloatType_c(density)),
-        m_kT(FloatType{0}), m_seed(0u), m_zc_to_md(density),
-        m_zc_to_lb(1. / density), m_lattice(std::move(lattice)),
-        m_mpi_cart_comm_observer(get_mpi_cart_comm_observer()),
-        m_two_components(two_component) {
+      : Base(lattice, FloatType_c(density)),
+        m_viscosity{FloatType_c(viscosity.at(0)),
+                    two_component ? FloatType_c(viscosity.at(1))
+                                  : FloatType{0}},
+        m_kT(FloatType{0}), m_seed(0u), m_two_components(two_component) {
 
     auto const &blocks = m_lattice->get_blocks();
     auto const n_ghost_layers = m_lattice->get_ghost_layers();
@@ -289,25 +240,34 @@ public:
       throw std::runtime_error("At least one ghost layer must be used");
 
     // Initialize and register fields (must use the "underlying" types)
-    m_pdf_field_id[0] = add_to_storage<_PdfField>("pdfs_a");
-    m_pdf_tmp_field_id[0] = add_to_storage<_PdfField>("pdfs_a_tmp");
-    m_last_applied_force_field_id = add_to_storage<_VectorField>("force last");
-    m_force_to_be_applied_id = add_to_storage<_VectorField>("force next");
-    m_velocity_field_id = add_to_storage<_VectorField>("velocity");
-    m_vel_tmp_field_id = add_to_storage<_VectorField>("velocity_tmp");
+    m_pdf_field_id[0] = this->template add_to_storage<_PdfField>("pdfs_a");
+    m_pdf_tmp_field_id[0] =
+        this->template add_to_storage<_PdfField>("pdfs_a_tmp");
+    m_last_applied_force_field_id =
+        this->template add_to_storage<_VectorField>("force last");
+    m_force_to_be_applied_id =
+        this->template add_to_storage<_VectorField>("force next");
+    m_velocity_field_id =
+        this->template add_to_storage<_VectorField>("velocity");
+    m_vel_tmp_field_id =
+        this->template add_to_storage<_VectorField>("velocity_tmp");
 
     if (has_two_components()) {
-      m_pdf_field_id[1] = add_to_storage<_PdfField>("pdfs_b");
-      m_pdf_tmp_field_id[1] = add_to_storage<_PdfField>("pdfs_b_tmp");
-      m_rho_field_id[0] = add_to_storage<ScalarField>("rho_a");
-      m_rho_field_id[1] = add_to_storage<ScalarField>("rho_b");
-      m_phasefield_id = add_to_storage<ScalarField>("phasefield");
-      m_color_gradient_field_id = add_to_storage<_VectorField>("color_gradient");
-      m_force_cg_field_id[0] = add_to_storage<_VectorField>("force_a");
-      m_force_cg_field_id[1] = add_to_storage<_VectorField>("force_b");
-
+      m_pdf_field_id[1] = this->template add_to_storage<_PdfField>("pdfs_b");
+      m_pdf_tmp_field_id[1] =
+          this->template add_to_storage<_PdfField>("pdfs_b_tmp");
+      m_rho_field_id[0] = this->template add_to_storage<ScalarField>("rho_a");
+      m_rho_field_id[1] = this->template add_to_storage<ScalarField>("rho_b");
+      m_phasefield_id =
+          this->template add_to_storage<ScalarField>("phasefield");
+      m_color_gradient_field_id =
+          this->template add_to_storage<_VectorField>("color_gradient");
+      m_force_cg_field_id[0] =
+          this->template add_to_storage<_VectorField>("force_a");
+      m_force_cg_field_id[1] =
+          this->template add_to_storage<_VectorField>("force_b");
     }
-     
+
 #if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
     m_host_field_allocator =
         std::make_shared<gpu::HostFieldAllocator<FloatType>>();
@@ -340,7 +300,8 @@ public:
     // Instantiate velocity update sweep
     m_update_velocities_from_pdf =
         std::make_shared<typename Kernels::UpdateVelFromPDF>(
-            m_last_applied_force_field_id, m_pdf_field_id[0], m_velocity_field_id);
+            m_last_applied_force_field_id, m_pdf_field_id[0],
+            m_velocity_field_id);
   }
 
   ~LBWalberlaImpl() override = default;
@@ -354,7 +315,7 @@ public:
 
 protected:
   void integrate_vtk_writers() override {
-    for (auto const &it : m_vtk_auto) {
+    for (auto const &it : this->m_vtk_auto) {
       auto &vtk_handle = it.second;
       if (vtk_handle->enabled) {
         vtk::writeFiles(vtk_handle->ptr)();
@@ -373,7 +334,7 @@ private:
   void integrate_pull_scheme() {
     assert(m_mpi_cart_comm_observer.is_valid());
     auto const &blocks = get_lattice().get_blocks();
-    
+
     if (has_two_components()) {
       // CG stream
       integrate_stream_two_component(blocks);
@@ -417,7 +378,6 @@ private:
       if (has_lees_edwards_bc()) {
         apply_lees_edwards_vel_interpolation_and_shift(blocks);
       }
-
     }
   }
 
@@ -434,9 +394,10 @@ private:
     }
   }
 
-  void integrate_collide_two_component(std::shared_ptr<BlockStorage> const &blocks) {
+  void
+  integrate_collide_two_component(std::shared_ptr<BlockStorage> const &blocks) {
     for (auto &block : *blocks)
-    (*m_collision_model_two_component)(&block);
+      (*m_collision_model_two_component)(&block);
   }
 
   void integrate_color_gradient(std::shared_ptr<BlockStorage> const &blocks) {
@@ -444,9 +405,10 @@ private:
       (*m_color_gradient_model)(&block);
   }
 
-  void integrate_stream_two_component(std::shared_ptr<BlockStorage> const &blocks) {
+  void
+  integrate_stream_two_component(std::shared_ptr<BlockStorage> const &blocks) {
     for (auto &block : *blocks)
-    (*m_stream_model_two_component)(&block);
+      (*m_stream_model_two_component)(&block);
   }
 
   void integrate_reset_force(std::shared_ptr<BlockStorage> const &blocks) {
@@ -454,10 +416,13 @@ private:
       (*m_reset_force)(&block);
   }
 
-  void integrate_reset_force_two_component(std::shared_ptr<BlockStorage> const &blocks) {
+  void integrate_reset_force_two_component(
+      std::shared_ptr<BlockStorage> const &blocks) {
     for (auto &block : *blocks) {
-      auto force_a = block.template getData<VectorField>(m_force_cg_field_id[0]);
-      auto force_b = block.template getData<VectorField>(m_force_cg_field_id[1]);
+      auto force_a =
+          block.template getData<VectorField>(m_force_cg_field_id[0]);
+      auto force_b =
+          block.template getData<VectorField>(m_force_cg_field_id[1]);
       lbm::accessor::Vector::initialize(force_a, Vector3<FloatType>{0});
       lbm::accessor::Vector::initialize(force_b, Vector3<FloatType>{0});
     }
@@ -551,32 +516,27 @@ public:
 
     // Instantiate color gradient kernel
     m_color_gradient_model = std::make_shared<ColorGradientModel>(
-        m_color_gradient_field_id, m_phasefield_id
-    );
+        m_color_gradient_field_id, m_phasefield_id);
 
     // Instantiate collide kernel
-    m_collision_model_two_component = std::make_shared<CollisionModelTwoComponent>(
-        m_color_gradient_field_id,
-        m_force_cg_field_id[0], m_force_cg_field_id[1],
-        m_pdf_field_id[0], m_pdf_field_id[1],
-        m_phasefield_id,
-        m_rho_field_id[0], m_rho_field_id[1],
-        m_velocity_field_id,
-        m_beta,                // beta (interface thickness)
-        omega_a, omega_b,      // omega_even
-        omega_odd_a, omega_odd_b,  // omega_odd
-        omega_a, omega_b,      // omega_shear
-        m_sigma                // sigma (interface tension)
-    );
+    m_collision_model_two_component =
+        std::make_shared<CollisionModelTwoComponent>(
+            m_color_gradient_field_id, m_force_cg_field_id[0],
+            m_force_cg_field_id[1], m_pdf_field_id[0], m_pdf_field_id[1],
+            m_phasefield_id, m_rho_field_id[0], m_rho_field_id[1],
+            m_velocity_field_id,
+            m_beta,                   // beta (interface thickness)
+            omega_a, omega_b,         // omega_even
+            omega_odd_a, omega_odd_b, // omega_odd
+            omega_a, omega_b,         // omega_shear
+            m_sigma                   // sigma (interface tension)
+        );
 
     // Instantiate stream kernel
     m_stream_model_two_component = std::make_shared<StreamModelTwoComponent>(
-        m_force_cg_field_id[0], m_force_cg_field_id[1],
-        m_pdf_field_id[0], m_pdf_field_id[1],
-        m_phasefield_id,
-        m_rho_field_id[0], m_rho_field_id[1],
-        m_velocity_field_id
-    );
+        m_force_cg_field_id[0], m_force_cg_field_id[1], m_pdf_field_id[0],
+        m_pdf_field_id[1], m_phasefield_id, m_rho_field_id[0],
+        m_rho_field_id[1], m_velocity_field_id);
 
     // Set up CG-specific communicators
     setup_communicators_two_component();
@@ -595,30 +555,30 @@ public:
         std::make_shared<PackInfo<PdfField>>(m_pdf_field_id[1]));
 
     // Phasefield communicator (D3Q27 — color gradient reads D3Q27 neighbors)
-    m_phasefield_communicator = std::make_shared<RegularFullCommunicator>(blocks);
+    m_phasefield_communicator =
+        std::make_shared<RegularFullCommunicator>(blocks);
     m_phasefield_communicator->addPackInfo(
         std::make_shared<PackInfo<ScalarField>>(m_phasefield_id));
 
-    // Color gradient communicator (needed for B-spline interpolation of solvation force)
-    m_color_gradient_communicator = std::make_shared<RegularFullCommunicator>(blocks);
+    // Color gradient communicator (needed for B-spline interpolation of
+    // solvation force)
+    m_color_gradient_communicator =
+        std::make_shared<RegularFullCommunicator>(blocks);
     m_color_gradient_communicator->addPackInfo(
         std::make_shared<PackInfo<VectorField>>(m_color_gradient_field_id));
   }
 
-  void init_two_component() {
+  void init_two_component() override {
     auto const &blocks = m_lattice->get_blocks();
     auto init_two_component = typename Kernels::InitialPDFsSetterTwoComponent(
-        m_force_cg_field_id[0], m_force_cg_field_id[1],
-        m_pdf_field_id[0], m_pdf_field_id[1],
-        m_phasefield_id,
-        m_rho_field_id[0], m_rho_field_id[1],
-        m_velocity_field_id
-    );
+        m_force_cg_field_id[0], m_force_cg_field_id[1], m_pdf_field_id[0],
+        m_pdf_field_id[1], m_phasefield_id, m_rho_field_id[0],
+        m_rho_field_id[1], m_velocity_field_id);
     for (auto &block : *blocks) {
-        init_two_component(&block);
+      init_two_component(&block);
     }
     // Communicate phasefield + PDFs after initialization
-    setup_communicators_two_component();  // if not already set up
+    setup_communicators_two_component(); // if not already set up
     m_phasefield_communicator->communicate();
     m_pdf_a_communicator->communicate();
     m_pdf_b_communicator->communicate();
@@ -790,7 +750,6 @@ public:
   void set_slice_velocity(Utils::Vector3i const &lower_corner,
                           Utils::Vector3i const &upper_corner,
                           std::vector<double> const &velocity) override;
-  
 
   // Density
   std::optional<std::vector<double>>
@@ -841,90 +800,46 @@ public:
                             Utils::Vector3i const &upper_corner) const override;
 
 private:
-  // ---- Interpolation (position-based access) ----
+  // ---- Interpolation (position-based access, leaf-specific) ----
 
   /** @brief Return a B-spline interpolation kernel for force distribution. */
   auto make_force_interpolation_kernel() const;
-  /** @brief Return a density_weighted B-spline interpolation kernel for force distribution in two component LB. */
+  /** @brief Return a density_weighted B-spline interpolation kernel for force
+   * distribution in two component LB. */
   auto make_density_weighted_force_interpolation_kernel() const;
-  /** @brief Return a B-spline interpolation kernel for velocity readout. */
-  auto make_velocity_interpolation_kernel() const;
-  /** @brief Return a B-spline interpolation kernel for solvation force distribution onto fluid in two component LB. */
+  /** @brief Return a B-spline interpolation kernel for solvation force
+   * distribution onto fluid in two component LB. */
   auto make_solvation_force_interpolation_kernel() const;
-  /** @brief Return a B-spline interpolation kernel for density readout. */
-  auto make_density_interpolation_kernel() const;
-  /** @brief Return a B-spline interpolation kernel for color gradient readout in two component LB. */
+  /** @brief Return a B-spline interpolation kernel for color gradient readout
+   * in two component LB. */
   auto make_color_gradient_interpolation_kernel() const;
 
 public:
-  std::function<bool(Utils::Vector3d const &)>
-  make_lattice_position_checker(bool consider_points_in_halo) const override;
   bool add_force_at_pos(Utils::Vector3d const &pos,
                         Utils::Vector3d const &force) override;
   void add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
                          std::vector<Utils::Vector3d> const &forces) override;
-  void add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
-                         std::vector<Utils::Vector3d> const &forces) override;
-  void add_solvation_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
-                                   std::vector<double> const &delta_mus) override;
-  std::optional<Utils::Vector3d>
-  get_velocity_at_pos(Utils::Vector3d const &pos,
-                      bool consider_points_in_halo = false) const override;
-  std::vector<Utils::Vector3d>
-  get_velocities_at_pos(std::vector<Utils::Vector3d> const &pos) override;
-  std::optional<double>
-  get_density_at_pos(Utils::Vector3d const &pos,
-                     bool consider_points_in_halo = false) const override;
-  std::vector<double>
-  get_densities_at_pos(std::vector<Utils::Vector3d> const &pos) override;
+  void add_density_weighted_forces_at_pos(
+      std::vector<Utils::Vector3d> const &pos,
+      std::vector<Utils::Vector3d> const &forces) override;
+  void
+  add_solvation_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
+                              std::vector<double> const &delta_mus) override;
 
   std::vector<Utils::Vector3d>
   get_color_gradients_at_pos(std::vector<Utils::Vector3d> const &pos) override;
 
 public:
-  // ---- Boundary Handling ----
+  // ---- Boundary Handling (leaf-specific helpers) ----
 
   void reset_boundary_handling(std::shared_ptr<BlockStorage> const &blocks) {
     auto const [lc, uc] = m_lattice->get_local_grid_range(true);
-    m_boundary =
-        std::make_shared<BoundaryModel>(blocks, m_pdf_field_id[0], m_flag_field_id,
-                                        CellInterval{to_cell(lc), to_cell(uc)});
+    m_boundary = std::make_shared<BoundaryModel>(
+        blocks, m_pdf_field_id[0], m_flag_field_id,
+        CellInterval{to_cell(lc), to_cell(uc)});
   }
 
   void on_boundary_add();
-  void clear_boundaries() override;
-  void reallocate_ubb_field() override;
-  void
-  update_boundary_from_shape(std::vector<int> const &raster_flat,
-                             std::vector<double> const &data_flat) override;
-  std::optional<Utils::Vector3d>
-  get_node_velocity_at_boundary(Utils::Vector3i const &node,
-                                bool consider_ghosts = false) const override;
-  bool set_node_velocity_at_boundary(Utils::Vector3i const &node,
-                                     Utils::Vector3d const &velocity) override;
-  std::vector<std::optional<Utils::Vector3d>> get_slice_velocity_at_boundary(
-      Utils::Vector3i const &lower_corner,
-      Utils::Vector3i const &upper_corner) const override;
-  void set_slice_velocity_at_boundary(
-      Utils::Vector3i const &lower_corner, Utils::Vector3i const &upper_corner,
-      std::vector<std::optional<Utils::Vector3d>> const &velocity) override;
-  std::optional<Utils::Vector3d>
-  get_node_boundary_force(Utils::Vector3i const &node) const override;
-  bool remove_node_from_boundary(Utils::Vector3i const &node) override;
-  std::optional<bool>
-  get_node_is_boundary(Utils::Vector3i const &node,
-                       bool consider_ghosts = false) const override;
-  std::vector<bool>
-  get_slice_is_boundary(Utils::Vector3i const &lower_corner,
-                        Utils::Vector3i const &upper_corner) const override;
-  [[nodiscard]] Utils::Vector3d get_boundary_force_from_shape(
-      std::vector<int> const &raster_flat) const override;
-  [[nodiscard]] Utils::Vector3d get_boundary_force() const override;
-
-private:
-  [[nodiscard]] Utils::Vector3i flat_index_to_node(int index) const;
-  [[nodiscard]] Utils::Vector3i get_neighbor_node(Utils::Vector3i const &node,
-                                                  int dir) const;
 
 public:
   // ---- Global Reductions & Physical Parameters ----
@@ -986,10 +901,6 @@ public:
     return {static_cast<double>(m_viscosity[0])};
   }
 
-  [[nodiscard]] double get_density() const noexcept override {
-    return static_cast<double>(m_density);
-  }
-
   [[nodiscard]] double get_kT() const noexcept override {
     return static_cast<double>(m_kT);
   }
@@ -1018,18 +929,6 @@ public:
     assert(counter <=
            static_cast<uint32_t>(std::numeric_limits<uint_t>::max()));
     cm->setTime_step(static_cast<uint32_t>(counter));
-  }
-
-  [[nodiscard]] LatticeWalberla const &get_lattice() const noexcept override {
-    return *m_lattice;
-  }
-
-  [[nodiscard]] std::size_t get_velocity_field_id() const noexcept override {
-    return m_velocity_field_id;
-  }
-
-  [[nodiscard]] std::size_t get_force_field_id() const noexcept override {
-    return m_force_to_be_applied_id;
   }
 
   [[nodiscard]] auto get_rho_field_id(int component) const noexcept {
@@ -1067,46 +966,6 @@ public:
     }
   }
 
-protected:
-  /**
-   * @brief Scale data by a conversion factor (in-place).
-   * Used for zero-centered density representation: LB internally stores
-   * density fluctuations around zero, while the user interface uses
-   * absolute densities. The conversion factors @ref m_zc_to_md and
-   * @ref m_zc_to_lb translate between these representations.
-   */
-  template <typename T>
-  void zero_centered_transform_impl(T &data, auto const factor) const {
-    if constexpr (std::is_arithmetic_v<T>) {
-      static_assert(std::is_floating_point_v<T>);
-      data *= static_cast<T>(factor);
-    } else {
-      auto const coef = static_cast<typename T::value_type>(factor);
-      std::transform(std::begin(data), std::end(data), std::begin(data),
-                     [coef](auto value) { return value * coef; });
-    }
-  }
-
-  void zero_centered_to_lb_in_place(auto &data) const {
-    zero_centered_transform_impl(data, m_zc_to_lb);
-  }
-
-  void zero_centered_to_md_in_place(auto &data) const {
-    zero_centered_transform_impl(data, m_zc_to_md);
-  }
-
-  auto zero_centered_to_lb(auto const &data) const {
-    auto transformed_data = data;
-    zero_centered_to_lb_in_place(transformed_data);
-    return transformed_data;
-  }
-
-  auto zero_centered_to_md(auto const &data) const {
-    auto transformed_data = data;
-    zero_centered_to_md_in_place(transformed_data);
-    return transformed_data;
-  }
-
 public:
   // ---- File I/O ----
 
@@ -1121,57 +980,7 @@ public:
                                   int flag_observables) override;
 
 protected:
-  // ---- Private Infrastructure Helpers ----
-
-  /**
-   * @brief Convenience function to add a field with a custom allocator.
-   *
-   * When vectorization is off, let waLBerla decide which memory allocator
-   * to use. When vectorization is on, the aligned memory allocator is
-   * required, otherwise <tt>cpu_vectorize_info["assume_aligned"]</tt> will
-   * trigger assertions. That is because for single-precision kernels the
-   * waLBerla heuristic in <tt>src/field/allocation/FieldAllocator.h</tt>
-   * will fall back to @c StdFieldAlloc, yet @c AllocateAligned is needed
-   * for intrinsics to work.
-   */
-  template <typename Field> auto add_to_storage(std::string const tag) {
-    auto const &blocks = m_lattice->get_blocks();
-    auto const n_ghost_layers = m_lattice->get_ghost_layers();
-    if constexpr (Architecture == lbmpy::Arch::CPU) {
-#ifdef ESPRESSO_BUILD_WITH_AVX_KERNELS
-      constexpr auto alignment = field::SIMDAlignment();
-      using value_type = Field::value_type;
-      using Allocator = field::AllocateAligned<value_type, alignment>;
-      auto const allocator = std::make_shared<Allocator>();
-      auto const empty_set = Set<SUID>::emptySet();
-      return field::addToStorage<Field>(
-          blocks, tag, field::internal::defaultSize, FloatType{0}, field::fzyx,
-          n_ghost_layers, false, {}, empty_set, empty_set, allocator);
-#else  // ESPRESSO_BUILD_WITH_AVX_KERNELS
-      return field::addToStorage<Field>(blocks, tag, FloatType{0}, field::fzyx,
-                                        n_ghost_layers);
-#endif // ESPRESSO_BUILD_WITH_AVX_KERNELS
-    }
-#if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
-    else {
-      auto field_id = gpu::addGPUFieldToStorage<GPUField>(
-          blocks, tag, Field::F_SIZE, field::fzyx, n_ghost_layers);
-      if constexpr (std::is_same_v<Field, _VectorField>) {
-        for (auto &block : *blocks) {
-          auto field = block.template getData<GPUField>(field_id);
-          lbm::accessor::Vector::initialize(field, Vector3<FloatType>{0});
-        }
-      } else if constexpr (std::is_same_v<Field, _PdfField>) {
-        for (auto &block : *blocks) {
-          auto field = block.template getData<GPUField>(field_id);
-          lbm::accessor::Population::initialize(
-              field, std::array<FloatType, Stencil::Size>{});
-        }
-      }
-      return field_id;
-    }
-#endif
-  }
+  // ---- Communicator setup (uses leaf-only PDF field IDs) ----
 
   /**
    * @brief Set up D3Q27 communicators for full ghost layer updates.
