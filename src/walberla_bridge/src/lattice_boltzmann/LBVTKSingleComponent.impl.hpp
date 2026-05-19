@@ -22,7 +22,7 @@
 /**
  * @file
  * Out-of-class VTK writer registration definition for
- * @ref walberla::LBWalberlaImpl.
+ * @ref walberla::LBWalberlaImplSingleComponent.
  */
 
 #include "LBVTKHelpers.hpp"
@@ -34,9 +34,10 @@
 namespace walberla {
 
 template <typename FloatType, lbmpy::Arch Architecture>
-void LBWalberlaImpl<FloatType, Architecture>::register_vtk_field_writers(
-    walberla::vtk::VTKOutput &vtk_obj, LatticeModel::units_map const &units,
-    int flag_observables) {
+void LBWalberlaImplSingleComponent<FloatType, Architecture>::
+    register_vtk_field_writers(walberla::vtk::VTKOutput &vtk_obj,
+                               LatticeModel::units_map const &units,
+                               int flag_observables) {
 #if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
   auto const allocate_cpu_field_if_empty =
       [&]<typename Field>(auto const &blocks, std::string name,
@@ -63,17 +64,6 @@ void LBWalberlaImpl<FloatType, Architecture>::register_vtk_field_writers(
     vtk_obj.addCellDataWriter(
         std::make_shared<DensityVTKWriter<FloatType, PdfField, float>>(
             m_pdf_field_id[0], "density", unit_conversion));
-  }
-  if (flag_observables & static_cast<int>(CGOutputVTK::phasefield)) {
-#if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
-    if constexpr (Architecture == lbmpy::Arch::GPU) {
-      throw std::runtime_error(
-          "VTK output 'phasefield' is not yet implemented for GPU.");
-    }
-#endif
-    vtk_obj.addCellDataWriter(
-        std::make_shared<PhasefieldVTKWriter<FloatType, ScalarField, float>>(
-            m_phasefield_id, "phasefield", FloatType{1}));
   }
   if (flag_observables & static_cast<int>(OutputVTK::velocity_vector)) {
     auto const unit_conversion = FloatType_c(units.at("velocity"));

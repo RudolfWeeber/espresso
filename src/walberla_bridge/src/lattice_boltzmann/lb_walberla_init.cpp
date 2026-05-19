@@ -18,6 +18,7 @@
  */
 
 #include "LBWalberlaImpl.hpp"
+#include "LBWalberlaImplSingleComponent.hpp"
 
 #include <walberla_bridge/Architecture.hpp>
 #include <walberla_bridge/LatticeWalberla.hpp>
@@ -31,6 +32,16 @@ new_lb_walberla_cpu(std::shared_ptr<LatticeWalberla> const &lattice,
                     std::vector<double> viscosity, double density,
                     bool single_precision) {
   auto const two_component = (viscosity.size() == 2);
+  if (viscosity.size() == 1u) {
+    if (single_precision) {
+      return std::make_shared<
+          walberla::LBWalberlaImplSingleComponent<float, lbmpy::Arch::CPU>>(
+          lattice, viscosity, density, false);
+    }
+    return std::make_shared<
+        walberla::LBWalberlaImplSingleComponent<double, lbmpy::Arch::CPU>>(
+        lattice, viscosity, density, false);
+  }
   if (single_precision) {
     return std::make_shared<walberla::LBWalberlaImpl<float, lbmpy::Arch::CPU>>(
         lattice, viscosity, density, two_component);
@@ -41,8 +52,7 @@ new_lb_walberla_cpu(std::shared_ptr<LatticeWalberla> const &lattice,
 
 std::shared_ptr<LBWalberlaBase>
 new_lb_walberla_cpu(std::shared_ptr<LatticeWalberla> const &lattice,
-                    double viscosity, double density,
-                    bool single_precision) {
+                    double viscosity, double density, bool single_precision) {
   return new_lb_walberla_cpu(lattice, std::vector<double>{viscosity}, density,
                              single_precision);
 }
