@@ -158,6 +158,7 @@ protected:
   using Base::m_pdf_communicator;
   using Base::m_pdf_streaming_communicator;
   using Base::m_pending_ghost_comm;
+  using Base::m_seed;
   using Base::m_vel_communicator;
   using Base::m_vel_tmp_field_id;
   using Base::m_velocity_field_id;
@@ -172,7 +173,6 @@ protected:
   FloatType m_sigma{}; /// interface tension coefficient (two-component)
   FloatType m_beta{};  /// interface thickness parameter (two-component)
   FloatType m_kT;
-  unsigned int m_seed;
 
   // Block data access handles (PDF / two-component / temporaries)
   std::array<BlockDataID, 2> m_pdf_field_id;
@@ -232,7 +232,7 @@ public:
         m_viscosity{FloatType_c(viscosity.at(0)),
                     two_component ? FloatType_c(viscosity.at(1))
                                   : FloatType{0}},
-        m_kT(FloatType{0}), m_seed(0u), m_two_components(two_component) {
+        m_kT(FloatType{0}), m_two_components(two_component) {
 
     auto const &blocks = m_lattice->get_blocks();
     auto const n_ghost_layers = m_lattice->get_ghost_layers();
@@ -877,15 +877,6 @@ public:
     return to_vector3d(mom);
   }
 
-  // Global external force
-  void set_external_force(Utils::Vector3d const &ext_force) override {
-    m_reset_force->set_ext_force(zero_centered_to_lb(ext_force));
-  }
-
-  [[nodiscard]] Utils::Vector3d get_external_force() const noexcept override {
-    return zero_centered_to_md(m_reset_force->get_ext_force());
-  }
-
   void set_viscosity(std::vector<double> const &viscosity) override {
     m_viscosity[0] = FloatType_c(viscosity.at(0));
     if (has_two_components() && viscosity.size() > 1) {
@@ -903,32 +894,6 @@ public:
 
   [[nodiscard]] double get_kT() const noexcept override {
     return static_cast<double>(m_kT);
-  }
-
-  [[nodiscard]] unsigned int get_seed() const noexcept override {
-    return m_seed;
-  }
-
-  [[nodiscard]] std::optional<uint64_t> get_rng_state() const override {
-    auto const cm =
-        std::get_if<typename Kernels::StreamCollisionModelThermalized>(
-            &*m_collision_model);
-    if (!cm or m_kT == 0.) {
-      return std::nullopt;
-    }
-    return {static_cast<uint64_t>(cm->getTime_step())};
-  }
-
-  void set_rng_state(uint64_t counter) override {
-    auto const cm =
-        std::get_if<typename Kernels::StreamCollisionModelThermalized>(
-            &*m_collision_model);
-    if (!cm or m_kT == 0.) {
-      throw std::runtime_error("This LB instance is unthermalized");
-    }
-    assert(counter <=
-           static_cast<uint32_t>(std::numeric_limits<uint_t>::max()));
-    cm->setTime_step(static_cast<uint32_t>(counter));
   }
 
   [[nodiscard]] auto get_rho_field_id(int component) const noexcept {

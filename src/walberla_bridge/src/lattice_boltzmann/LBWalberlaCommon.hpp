@@ -63,10 +63,13 @@
 #include <algorithm>
 #include <array>
 #include <bitset>
+#include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -194,6 +197,7 @@ protected:
   FloatType m_density;
   double m_zc_to_md; // zero-centered conversion factor to MD units
   double m_zc_to_lb; // zero-centered conversion factor to LB units
+  unsigned int m_seed{0u};
 
   // lattice
   std::shared_ptr<LatticeWalberla> m_lattice;
@@ -260,6 +264,44 @@ public:
 
   [[nodiscard]] double get_density() const noexcept override {
     return static_cast<double>(m_density);
+  }
+
+  // ---- Global external force ----
+
+  void set_external_force(Utils::Vector3d const &ext_force) override {
+    derived().m_reset_force->set_ext_force(zero_centered_to_lb(ext_force));
+  }
+
+  [[nodiscard]] Utils::Vector3d get_external_force() const noexcept override {
+    return zero_centered_to_md(derived().m_reset_force->get_ext_force());
+  }
+
+  // ---- RNG seed / state (thermalized collision model) ----
+
+  [[nodiscard]] unsigned int get_seed() const noexcept override {
+    return m_seed;
+  }
+
+  [[nodiscard]] std::optional<uint64_t> get_rng_state() const override {
+    auto const cm =
+        std::get_if<typename Kernels::StreamCollisionModelThermalized>(
+            &*derived().m_collision_model);
+    if (!cm or derived().m_kT == 0.) {
+      return std::nullopt;
+    }
+    return {static_cast<uint64_t>(cm->getTime_step())};
+  }
+
+  void set_rng_state(uint64_t counter) override {
+    auto const cm =
+        std::get_if<typename Kernels::StreamCollisionModelThermalized>(
+            &*derived().m_collision_model);
+    if (!cm or derived().m_kT == 0.) {
+      throw std::runtime_error("This LB instance is unthermalized");
+    }
+    assert(counter <=
+           static_cast<uint32_t>(std::numeric_limits<uint_t>::max()));
+    cm->setTime_step(static_cast<uint32_t>(counter));
   }
 
   // ---- Lattice position checker ----
