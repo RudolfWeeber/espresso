@@ -12,6 +12,8 @@
 
 **Working tree:** `/tikhome/weeber/es-strategy-a/` (a sibling git worktree of `/tikhome/weeber/es`). All paths below are relative to that worktree root. Branch: `strategy-a`, branched from `color_gradient`.
 
+**Build configuration:** This refactor is built with **CUDA disabled** (`ESPRESSO_BUILD_WITH_CUDA=OFF`). The GPU color-gradient kernel specialization does not exist on `color_gradient` HEAD (`LBWalberlaImpl.hpp:103` references `Kernels::ColorGradientModel` unconditionally, but `KernelTrait<float|double, lbmpy::Arch::GPU>` has no such typedef). Fixing GPU support is a separate follow-up. The leaf classes remain templated on `Architecture` so a future GPU kernel will plug in cleanly. Wherever a task references `lb_walberla_init.cu`, **skip the `.cu` edits** — the file is excluded from this CUDA-off build.
+
 **Verification battery** (run after every commit; defined once here, referenced from each task):
 
 ```bash
@@ -51,15 +53,32 @@ git -C /tikhome/weeber/es worktree list
 
 You should see both `/tikhome/weeber/es` (on `color_gradient`) and `/tikhome/weeber/es-strategy-a` (on `strategy-a`). **All subsequent steps run inside `/tikhome/weeber/es-strategy-a`.**
 
-- [ ] **Step 2: Create a fresh build directory inside the worktree**
+- [ ] **Step 2: Create a fresh build directory inside the worktree with CUDA OFF**
+
+The exact cmake invocation (mirrors `/tikhome/weeber/es/build/CMakeCache.txt` with CUDA forced off):
 
 ```bash
 mkdir -p /tikhome/weeber/es-strategy-a/build
 cd /tikhome/weeber/es-strategy-a/build
-cmake .. <same flags as the main build — copy from /tikhome/weeber/es/build/CMakeCache.txt if unsure>
+cmake .. \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_COMPILER=/usr/bin/gcc-14 \
+  -DCMAKE_CXX_COMPILER=/usr/bin/g++-14 \
+  -DESPRESSO_BUILD_WITH_CUDA=OFF \
+  -DESPRESSO_BUILD_WITH_WALBERLA=ON \
+  -DESPRESSO_BUILD_WITH_WALBERLA_AVX=ON \
+  -DESPRESSO_BUILD_WITH_FFTW=ON \
+  -DESPRESSO_BUILD_WITH_GSL=ON \
+  -DESPRESSO_BUILD_WITH_PYTHON=ON \
+  -DESPRESSO_BUILD_WITH_SHARED_MEMORY_PARALLELISM=on \
+  -DESPRESSO_BUILD_TESTS=ON \
+  -DESPRESSO_BUILD_WITH_CCACHE=ON \
+  -DESPRESSO_TEST_NP=4 \
+  -DESPRESSO_TEST_NT=4 \
+  -DESPRESSO_TEST_TIMEOUT=300
 ```
 
-If you don't know the cmake invocation, look at `/tikhome/weeber/es/build/CMakeCache.txt` and extract the non-default cache variables. **Do not** copy or share build artifacts between worktrees.
+If cmake complains about a missing dependency, fall back to `/tikhome/weeber/es/build/CMakeCache.txt` for additional flags — but **do not** turn CUDA on. **Do not** copy or share build artifacts between worktrees.
 
 - [ ] **Step 3: Run the baseline verification battery**
 
@@ -438,13 +457,29 @@ Copy `LBWalberlaImpl.hpp` → `LBWalberlaImplColorGradient.hpp`. Then:
    - `set_collision_model(std::unique_ptr<LeesEdwardsPack> &&)`: throw `std::runtime_error("Lees-Edwards is not supported on the color-gradient LB model")`.
    - `check_lebc(...)`: throw the same.
    - `set_node_velocity(...)`: keep the existing throw (it already throws in the current CG-arm code).
-5. CG-only public methods (`set_collision_model_two_component`, `init_two_component`, `get_color_gradients_at_pos`, `add_solvation_forces_at_pos`) become first-class methods of this class. **Rename** `set_collision_model_two_component` → `set_collision_model_color_gradient`. **Rename** `init_two_component` → `init_pdfs_from_components`. **Search the codebase** for callers of the old names (script-interface, possibly tests) and rename them too:
+5. CG-only public methods (`set_collision_model_two_component`, `init_two_component`, `get_color_gradients_at_pos`, `add_solvation_forces_at_pos`) become first-class methods of this class. **Rename the C++ bridge methods only**: `set_collision_model_two_component` → `set_collision_model_color_gradient` and `init_two_component` → `init_pdfs_from_components`. Update the few C++ call sites in `src/walberla_bridge/` and the C++ dispatch in `src/script_interface/walberla/LBFluid.cpp` that **invoke** these methods (the `m_instance->init_two_component()` line, for example).
+
+**Do NOT rename** the user-facing strings — Strategy A preserves Python API stability. Specifically:
+- Keep the `if (name == "init_two_component")` dispatch key in `LBFluid.cpp` exactly as it is (the script-interface layer translates the old string to the new bridge method internally).
+- Keep the `if (name == "set_collision_model_two_component")` dispatch key analogously.
+- Keep the Python method `LBFluid.init_two_component(self)` and `self.call_method("init_two_component")` in `src/python/espressomd/lb.py` unchanged.
+
+After the renames, the C++ → Python translation table looks like:
+
+| Bridge method (C++) | Script-interface dispatch key | Python method |
+|---|---|---|
+| `set_collision_model_color_gradient` | `"set_collision_model_two_component"` | (set via constructor `sigma`/`beta`) |
+| `init_pdfs_from_components` | `"init_two_component"` | `init_two_component(self)` |
+
+Search the codebase for the **C++ symbol** names (not the dispatch strings):
 
 ```bash
-git -C /tikhome/weeber/es-strategy-a grep -n "set_collision_model_two_component\|init_two_component" src/
+git -C /tikhome/weeber/es-strategy-a grep -nE "set_collision_model_two_component\(|init_two_component\(" -- 'src/**'
 ```
 
-Update each caller.
+The hits should be: declarations on `LBWalberlaBase.hpp`, definitions on the old `LBWalberlaImpl.hpp` (about to be removed), and the **one** C++ invocation each in `LBFluid.cpp`. Update only those.
+
+Do **not** modify the C++ dispatch string `if (name == "init_two_component")` — keep it as a stable script-interface key.
 
 - [ ] **Step 2: Wire up the color-gradient construction**
 
