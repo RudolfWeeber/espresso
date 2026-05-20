@@ -91,7 +91,8 @@ public:
   virtual std::vector<double>
   get_densities_at_pos(std::vector<Utils::Vector3d> const &pos) = 0;
 
-  /** @brief Get interpolated color gradients at positions, two component LB only. */
+  /** @brief Get interpolated color gradients at positions, two component LB
+   * only. */
   virtual std::vector<Utils::Vector3d>
   get_color_gradients_at_pos(std::vector<Utils::Vector3d> const &pos) = 0;
 
@@ -114,10 +115,9 @@ public:
   add_solvation_forces_at_pos(std::vector<Utils::Vector3d> const &positions,
                               std::vector<double> const &delta_mus) = 0;
 
-  virtual void
-  add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &positions,
-                                     std::vector<Utils::Vector3d> const &forces) = 0;
-
+  virtual void add_density_weighted_forces_at_pos(
+      std::vector<Utils::Vector3d> const &positions,
+      std::vector<Utils::Vector3d> const &forces) = 0;
 
   /** @brief Get stored force to be applied on node in the next time step. */
   virtual std::optional<Utils::Vector3d>
@@ -256,11 +256,12 @@ public:
    *  @param sigma Interface tension coefficient.
    *  @param beta  Interface thickness parameter for recoloring.
    */
-  virtual void set_collision_model_two_component(double sigma,
+  virtual void set_collision_model_color_gradient(double sigma,
                                                   double beta) = 0;
 
-  /** @brief Initialize PDFs from density and velocity fields (two-component). */
-  virtual void init_two_component() = 0;
+  /** @brief Initialize PDFs from density and velocity fields (two-component).
+   */
+  virtual void init_pdfs_from_components() = 0;
 
   /** @brief Check if this is a two-component LB instance. */
   [[nodiscard]] virtual bool has_two_components() const noexcept = 0;

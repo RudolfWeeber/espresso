@@ -414,16 +414,16 @@ public:
     return false;
   }
 
-  void set_collision_model_two_component(double /* sigma */,
-                                         double /* beta */) override {
+  void set_collision_model_color_gradient(double /* sigma */,
+                                          double /* beta */) override {
     throw std::runtime_error(
-        "set_collision_model_two_component is not available for "
+        "set_collision_model_color_gradient is not available for "
         "single-component LB");
   }
 
-  void init_two_component() override {
+  void init_pdfs_from_components() override {
     throw std::runtime_error(
-        "init_two_component is not available for single-component LB");
+        "init_pdfs_from_components is not available for single-component LB");
   }
 
 public:
