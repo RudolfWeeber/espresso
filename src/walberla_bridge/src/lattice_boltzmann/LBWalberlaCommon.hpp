@@ -112,7 +112,7 @@ inline void interpolate_bspline_at_pos(Utils::Vector3d const &pos,
  * non-CG ghost-comm scaffolding.
  */
 template <class Derived, typename FloatType, lbmpy::Arch Architecture>
-class LBWalberlaCommon : public LBWalberlaBase {
+class LBWalberlaCommon : public virtual LBWalberlaBase {
 #if not defined(WALBERLA_BUILD_WITH_CUDA)
   static_assert(Architecture != lbmpy::Arch::GPU,
                 "waLBerla was compiled without CUDA support");

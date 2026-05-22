@@ -141,33 +141,6 @@ void LBWalberlaImplSingleComponent<FloatType, Architecture>::
       "single-component LB");
 }
 
-/**
- * @brief add_solvation_forces_at_pos is not implemented for single-component
- * LB. Throws std::runtime_error.
- */
-template <typename FloatType, lbmpy::Arch Architecture>
-void LBWalberlaImplSingleComponent<FloatType, Architecture>::
-    add_solvation_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
-                                std::vector<double> const &delta_mus) {
-  (void)pos;
-  (void)delta_mus;
-  throw std::runtime_error(
-      "add_solvation_forces_at_pos is not implemented for single-component LB");
-}
-
-/**
- * @brief get_color_gradients_at_pos is not implemented for single-component
- * LB. Throws std::runtime_error.
- */
-template <typename FloatType, lbmpy::Arch Architecture>
-std::vector<Utils::Vector3d>
-LBWalberlaImplSingleComponent<FloatType, Architecture>::
-    get_color_gradients_at_pos(std::vector<Utils::Vector3d> const &pos) {
-  (void)pos;
-  throw std::runtime_error(
-      "get_color_gradients_at_pos is not implemented for single-component LB");
-}
-
 template <typename FloatType, lbmpy::Arch Architecture>
 bool LBWalberlaImplSingleComponent<FloatType, Architecture>::add_force_at_pos(
     Utils::Vector3d const &pos, Utils::Vector3d const &force) {

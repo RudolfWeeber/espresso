@@ -60,6 +60,7 @@
 #include <walberla_bridge/BlockAndCell.hpp>
 #include <walberla_bridge/LatticeWalberla.hpp>
 #include <walberla_bridge/lattice_boltzmann/LBWalberlaBase.hpp>
+#include <walberla_bridge/lattice_boltzmann/LBWalberlaColorGradientBase.hpp>
 #include <walberla_bridge/lattice_boltzmann/LeesEdwardsPack.hpp>
 #include <walberla_bridge/utils/ResourceManager.hpp>
 #include <walberla_bridge/walberla_init.hpp>
@@ -89,7 +90,8 @@ template <typename FloatType, lbmpy::Arch Architecture>
 class LBWalberlaImplColorGradient
     : public LBWalberlaCommon<
           LBWalberlaImplColorGradient<FloatType, Architecture>, FloatType,
-          Architecture> {
+          Architecture>,
+      public virtual LBWalberlaColorGradientBase {
   using Base =
       LBWalberlaCommon<LBWalberlaImplColorGradient<FloatType, Architecture>,
                        FloatType, Architecture>;
@@ -701,6 +703,43 @@ public:
   }
 
   [[nodiscard]] std::vector<double> get_viscosity() const override {
+    return {static_cast<double>(m_viscosity[0]),
+            static_cast<double>(m_viscosity[1])};
+  }
+
+  // ---- LBWalberlaColorGradientBase per-component accessors ----
+  // Thin wrappers around the existing vector<double>-of-2 implementations.
+  // A follow-up task narrows the underlying storage to array<double,2>.
+
+  std::optional<std::array<double, 2>>
+  get_node_component_densities(Utils::Vector3i const &node,
+                               bool consider_ghosts = false) const override {
+    auto const opt = this->get_node_density(node, consider_ghosts);
+    if (!opt) {
+      return std::nullopt;
+    }
+    auto const &vec = *opt;
+    return std::array<double, 2>{vec.at(0), vec.at(1)};
+  }
+
+  bool set_node_component_densities(Utils::Vector3i const &node,
+                                    std::array<double, 2> const &rho) override {
+    return this->set_node_density(node, std::vector<double>{rho[0], rho[1]});
+  }
+
+  std::vector<double>
+  get_slice_component_densities(Utils::Vector3i const &lower,
+                                Utils::Vector3i const &upper) const override {
+    return this->get_slice_density(lower, upper);
+  }
+
+  void set_component_viscosities(std::array<double, 2> const &nu) override {
+    m_viscosity[0] = FloatType_c(nu[0]);
+    m_viscosity[1] = FloatType_c(nu[1]);
+  }
+
+  [[nodiscard]] std::array<double, 2>
+  get_component_viscosities() const override {
     return {static_cast<double>(m_viscosity[0]),
             static_cast<double>(m_viscosity[1])};
   }

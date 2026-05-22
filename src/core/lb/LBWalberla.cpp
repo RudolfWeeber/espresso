@@ -33,6 +33,7 @@
 #include "lees_edwards/lees_edwards.hpp"
 
 #include <walberla_bridge/lattice_boltzmann/LBWalberlaBase.hpp>
+#include <walberla_bridge/lattice_boltzmann/LBWalberlaColorGradientBase.hpp>
 
 #include <utils/Vector.hpp>
 #include <utils/math/int_pow.hpp>
@@ -48,7 +49,9 @@ namespace LB {
 
 bool LBWalberla::is_gpu() const { return lb_fluid->is_gpu(); }
 
-bool LBWalberla::has_two_components() const { return lb_fluid->has_two_components(); }
+bool LBWalberla::has_two_components() const {
+  return lb_fluid->has_two_components();
+}
 
 double LBWalberla::get_kT() const { return lb_fluid->get_kT(); }
 
@@ -104,14 +107,22 @@ void LBWalberla::add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
   lb_fluid->add_forces_at_pos(pos, forces);
 }
 
-void LBWalberla::add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
-                                                    std::vector<Utils::Vector3d> const &forces) {
+void LBWalberla::add_density_weighted_forces_at_pos(
+    std::vector<Utils::Vector3d> const &pos,
+    std::vector<Utils::Vector3d> const &forces) {
   lb_fluid->add_density_weighted_forces_at_pos(pos, forces);
 }
 
-void LBWalberla::add_solvation_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
-                                            std::vector<double> const &delta_mus) {
-  lb_fluid->add_solvation_forces_at_pos(pos, delta_mus);
+void LBWalberla::add_solvation_forces_at_pos(
+    std::vector<Utils::Vector3d> const &pos,
+    std::vector<double> const &delta_mus) {
+  auto *cg = dynamic_cast<LBWalberlaColorGradientBase *>(lb_fluid.get());
+  if (cg == nullptr) {
+    throw std::runtime_error(
+        "add_solvation_forces_at_pos is only valid for two-component "
+        "(color-gradient) LB; this instance is single-component");
+  }
+  cg->add_solvation_forces_at_pos(pos, delta_mus);
 }
 
 std::vector<double>
@@ -124,9 +135,15 @@ LBWalberla::get_velocities_at_pos(std::vector<Utils::Vector3d> const &pos) {
   return lb_fluid->get_velocities_at_pos(pos);
 }
 
-std::vector<Utils::Vector3d>
-LBWalberla::get_color_gradients_at_pos(std::vector<Utils::Vector3d> const &pos) {
-  return lb_fluid->get_color_gradients_at_pos(pos);
+std::vector<Utils::Vector3d> LBWalberla::get_color_gradients_at_pos(
+    std::vector<Utils::Vector3d> const &pos) {
+  auto *cg = dynamic_cast<LBWalberlaColorGradientBase *>(lb_fluid.get());
+  if (cg == nullptr) {
+    throw std::runtime_error(
+        "get_color_gradients_at_pos is only valid for two-component "
+        "(color-gradient) LB; this instance is single-component");
+  }
+  return cg->get_color_gradients_at_pos(pos);
 }
 
 void LBWalberla::veto_time_step(double time_step) const {

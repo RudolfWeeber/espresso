@@ -91,11 +91,6 @@ public:
   virtual std::vector<double>
   get_densities_at_pos(std::vector<Utils::Vector3d> const &pos) = 0;
 
-  /** @brief Get interpolated color gradients at positions, two component LB
-   * only. */
-  virtual std::vector<Utils::Vector3d>
-  get_color_gradients_at_pos(std::vector<Utils::Vector3d> const &pos) = 0;
-
   /**
    * @brief Interpolate a force to the stored forces to be applied on nodes
    * in the next time step.
@@ -110,10 +105,6 @@ public:
   virtual void
   add_forces_at_pos(std::vector<Utils::Vector3d> const &positions,
                     std::vector<Utils::Vector3d> const &forces) = 0;
-
-  virtual void
-  add_solvation_forces_at_pos(std::vector<Utils::Vector3d> const &positions,
-                              std::vector<double> const &delta_mus) = 0;
 
   virtual void add_density_weighted_forces_at_pos(
       std::vector<Utils::Vector3d> const &positions,
@@ -252,19 +243,14 @@ public:
   /** @brief Configure the default collision model. */
   virtual void set_collision_model(double kT, unsigned int seed) = 0;
 
-  /** @brief Configure the two-component color gradient collision model.
-   *  @param sigma Interface tension coefficient.
-   *  @param beta  Interface thickness parameter for recoloring.
+  /**
+   * @brief Whether this LB instance is the two-component color-gradient model.
+   * @deprecated Use dynamic_cast<LBWalberlaColorGradientBase*>(this) != nullptr
+   *             instead. Removed in a follow-up commit.
    */
-  virtual void set_collision_model_color_gradient(double sigma,
-                                                  double beta) = 0;
-
-  /** @brief Initialize PDFs from density and velocity fields (two-component).
-   */
-  virtual void init_pdfs_from_components() = 0;
-
-  /** @brief Check if this is a two-component LB instance. */
-  [[nodiscard]] virtual bool has_two_components() const noexcept = 0;
+  [[nodiscard]] virtual bool has_two_components() const noexcept {
+    return false;
+  }
 
   /** @brief Configure a thermalized collision model for Lees-Edwards. */
   virtual void

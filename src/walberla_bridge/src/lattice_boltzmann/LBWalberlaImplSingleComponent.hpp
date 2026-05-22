@@ -408,24 +408,6 @@ public:
   void check_lebc(unsigned int shear_direction,
                   unsigned int shear_plane_normal) const override;
 
-  // ---- Single-Component Only ----
-
-  [[nodiscard]] bool has_two_components() const noexcept override {
-    return false;
-  }
-
-  void set_collision_model_color_gradient(double /* sigma */,
-                                          double /* beta */) override {
-    throw std::runtime_error(
-        "set_collision_model_color_gradient is not available for "
-        "single-component LB");
-  }
-
-  void init_pdfs_from_components() override {
-    throw std::runtime_error(
-        "init_pdfs_from_components is not available for single-component LB");
-  }
-
 public:
   // ---- Ghost Communication ----
 
@@ -614,12 +596,6 @@ public:
   void add_density_weighted_forces_at_pos(
       std::vector<Utils::Vector3d> const &pos,
       std::vector<Utils::Vector3d> const &forces) override;
-  void
-  add_solvation_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
-                              std::vector<double> const &delta_mus) override;
-
-  std::vector<Utils::Vector3d>
-  get_color_gradients_at_pos(std::vector<Utils::Vector3d> const &pos) override;
 
 public:
   // ---- Boundary Handling (leaf-specific helpers) ----

@@ -34,6 +34,7 @@
 #include <script_interface/communication.hpp>
 
 #include <walberla_bridge/LatticeWalberla.hpp>
+#include <walberla_bridge/lattice_boltzmann/LBWalberlaColorGradientBase.hpp>
 #include <walberla_bridge/lattice_boltzmann/LeesEdwardsPack.hpp>
 #include <walberla_bridge/lattice_boltzmann/lb_walberla_init.hpp>
 #include <walberla_bridge/utils/ResourceManager.hpp>
@@ -138,7 +139,13 @@ Variant LBFluid::do_call_method(std::string const &name,
     return 1. / m_conv_speed;
   }
   if (name == "init_two_component") {
-    m_instance->init_pdfs_from_components();
+    auto *cg = dynamic_cast<LBWalberlaColorGradientBase *>(m_instance.get());
+    if (cg == nullptr) {
+      throw std::runtime_error(
+          "'init_two_component' is only valid for two-component "
+          "(color-gradient) LB; this instance is single-component");
+    }
+    cg->init_pdfs_from_components();
     m_instance->ghost_communication();
     return {};
   }
@@ -226,11 +233,12 @@ void LBFluid::do_construct(VariantMap const &params) {
     }
     make_instance(params);
     m_mpi_cart_comm_observer = ::walberla::get_mpi_cart_comm_observer();
-    if (m_instance->has_two_components()) {
+    if (auto *cg =
+            dynamic_cast<LBWalberlaColorGradientBase *>(m_instance.get())) {
       auto const sigma =
           get_value_or<double>(params, "sigma", 0.) * m_conv_energy;
       auto const beta = get_value_or<double>(params, "beta", 0.7);
-      m_instance->set_collision_model_color_gradient(sigma, beta);
+      cg->set_collision_model_color_gradient(sigma, beta);
     } else {
       m_instance->set_collision_model(lb_kT, seed);
     }
