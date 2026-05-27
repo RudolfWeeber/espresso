@@ -35,6 +35,7 @@
 #include <vector>
 
 class LBWalberlaBase;
+class LBWalberlaColorGradientBase;
 namespace System {
 class System;
 }
@@ -55,8 +56,7 @@ struct LBWalberla : public System::Leaf<LBWalberla> {
   std::shared_ptr<LBWalberlaBase> lb_fluid;
   std::shared_ptr<LBWalberlaParams> lb_params;
   LBWalberla(std::shared_ptr<LBWalberlaBase> lb_fluid_,
-             std::shared_ptr<LBWalberlaParams> lb_params_)
-      : lb_fluid{std::move(lb_fluid_)}, lb_params{std::move(lb_params_)} {}
+             std::shared_ptr<LBWalberlaParams> lb_params_);
   double get_kT() const;
   auto get_tau() const { return lb_params->get_tau(); }
   auto get_agrid() const { return lb_params->get_agrid(); }
@@ -64,6 +64,13 @@ struct LBWalberla : public System::Leaf<LBWalberla> {
   Utils::VectorXd<9> get_pressure_tensor() const;
   bool is_gpu() const;
   bool has_two_components() const;
+  [[nodiscard]] LBWalberlaColorGradientBase *color_gradient() noexcept {
+    return m_color_gradient;
+  }
+  [[nodiscard]] LBWalberlaColorGradientBase const *
+  color_gradient() const noexcept {
+    return m_color_gradient;
+  }
   std::optional<Utils::Vector3d>
   get_velocity_at_pos(Utils::Vector3d const &pos,
                       bool consider_points_in_halo) const;
@@ -76,8 +83,9 @@ struct LBWalberla : public System::Leaf<LBWalberla> {
                         Utils::Vector3d const &force);
   void add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
                          std::vector<Utils::Vector3d> const &forces);
-  void add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
-                                          std::vector<Utils::Vector3d> const &forces);
+  void add_density_weighted_forces_at_pos(
+      std::vector<Utils::Vector3d> const &pos,
+      std::vector<Utils::Vector3d> const &forces);
   void add_solvation_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
                                    std::vector<double> const &delta_mus);
   std::vector<double>
@@ -111,6 +119,11 @@ struct LBWalberla : public System::Leaf<LBWalberla> {
   void update_collision_model(LBWalberlaBase &instance,
                               LBWalberlaParams &params, double kT,
                               unsigned int seed);
+
+private:
+  /// Non-owning pointer to lb_fluid cast as CG base; nullptr iff
+  /// single-component.
+  LBWalberlaColorGradientBase *m_color_gradient = nullptr;
 };
 
 } // namespace LB

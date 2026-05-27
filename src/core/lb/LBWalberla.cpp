@@ -47,6 +47,13 @@
 
 namespace LB {
 
+LBWalberla::LBWalberla(std::shared_ptr<LBWalberlaBase> lb_fluid_,
+                       std::shared_ptr<LBWalberlaParams> lb_params_)
+    : lb_fluid{std::move(lb_fluid_)}, lb_params{std::move(lb_params_)} {
+  m_color_gradient =
+      dynamic_cast<LBWalberlaColorGradientBase *>(lb_fluid.get());
+}
+
 bool LBWalberla::is_gpu() const { return lb_fluid->is_gpu(); }
 
 bool LBWalberla::has_two_components() const {

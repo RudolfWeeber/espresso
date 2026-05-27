@@ -74,7 +74,9 @@ static Utils::Vector3d lb_drag_force(Particle const &p, double lb_gamma,
   return Utils::hadamard_product(gamma, v_drift - p.v());
 }
 
-static Utils::Vector3d lb_particle_solvation_force(Particle const &p, Utils::Vector3d const &grad_phi){
+static Utils::Vector3d
+lb_particle_solvation_force(Particle const &p,
+                            Utils::Vector3d const &grad_phi) {
   return -0.5 * p.solvation_delta_mu() * grad_phi;
 }
 
@@ -281,9 +283,12 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
   auto it_positions_force_coupling_counter =
       positions_force_coupling_counter.begin();
 
+  auto *color_gradient_lb = m_lb.color_gradient();
   std::vector<Utils::Vector3d> interpolated_color_gradients;
-  if (m_lb.has_two_components()) {
-    interpolated_color_gradients = m_lb.get_coupling_interpolated_color_gradients(positions_velocity_coupling);
+  if (color_gradient_lb) {
+    interpolated_color_gradients =
+        m_lb.get_coupling_interpolated_color_gradients(
+            positions_velocity_coupling);
   }
   auto it_interpolated_color_gradients = interpolated_color_gradients.begin();
 
@@ -315,16 +320,17 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
         auto const random_force = get_noise_term(p);
         force_on_particle = drag_force + random_force;
         // Solvation force
-        if (m_lb.has_two_components() && p.solvation_delta_mu() != 0.){
+        if (color_gradient_lb && p.solvation_delta_mu() != 0.) {
           auto const &grad_phi = *it_interpolated_color_gradients;
-          solvation_force_on_particle += lb_particle_solvation_force(p, grad_phi);
+          solvation_force_on_particle +=
+              lb_particle_solvation_force(p, grad_phi);
           solvation_positions.emplace_back(*it_positions_velocity_coupling);
           solvation_delta_mus.emplace_back(p.solvation_delta_mu());
         }
       }
       ++it_interpolated_velocities;
       ++it_positions_velocity_coupling;
-      if (m_lb.has_two_components()){
+      if (color_gradient_lb) {
         ++it_interpolated_color_gradients;
       }
     }
@@ -342,7 +348,7 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
       if (pos >= domain_lower_corner and pos < domain_upper_corner) {
         /* Particle is in our LB volume, so this node
          * is responsible to adding its force */
-        if (m_lb.has_two_components() && p.solvation_delta_mu() != 0.){
+        if (color_gradient_lb && p.solvation_delta_mu() != 0.) {
           p.force() += solvation_force_on_particle;
         }
         p.force() += force_on_particle;
@@ -351,8 +357,9 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
       ++it_positions_force_coupling;
     }
   }
-  if (m_lb.has_two_components()) {
-    m_lb.add_density_weighted_forces_at_pos(positions_force_coupling, force_coupling_forces);
+  if (color_gradient_lb) {
+    m_lb.add_density_weighted_forces_at_pos(positions_force_coupling,
+                                            force_coupling_forces);
     m_lb.add_solvation_forces_at_pos(solvation_positions, solvation_delta_mus);
   } else {
     m_lb.add_forces_at_pos(positions_force_coupling, force_coupling_forces);

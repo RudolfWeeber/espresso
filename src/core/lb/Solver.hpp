@@ -32,6 +32,8 @@
 #include <optional>
 #include <vector>
 
+class LBWalberlaColorGradientBase;
+
 namespace LB {
 
 struct Solver : public System::Leaf<Solver> {
@@ -120,6 +122,14 @@ struct Solver : public System::Leaf<Solver> {
   bool has_two_components() const;
 
   /**
+   * @brief Return color-gradient accessor if active LB is two-component,
+   * nullptr otherwise (including when no LB is active).
+   */
+  [[nodiscard]] LBWalberlaColorGradientBase *color_gradient() noexcept;
+  [[nodiscard]] LBWalberlaColorGradientBase const *
+  color_gradient() const noexcept;
+
+  /**
    * @brief Get the LB time step.
    */
   double get_tau() const;
@@ -182,8 +192,8 @@ struct Solver : public System::Leaf<Solver> {
    * @param pos Positions in MD units at which the velocities are calculated.
    * @retval interpolated color gradients in LB units.
    */
-  std::vector<Utils::Vector3d>
-  get_interpolated_color_gradients(std::vector<Utils::Vector3d> const &pos) const;
+  std::vector<Utils::Vector3d> get_interpolated_color_gradients(
+      std::vector<Utils::Vector3d> const &pos) const;
 
   /**
    * @brief Calculate the interpolated fluid velocity in MD units.
@@ -209,7 +219,8 @@ struct Solver : public System::Leaf<Solver> {
    * @brief Calculate the interpolated fluid color gradients in MD units.
    * Special method used only for particle coupling. Uses the LB ghost layer.
    * Achieved by linear interpolation (eq. 11 in @cite ahlrichs99a).
-   * @param pos Positions in MD units at which the color gradients are calculated.
+   * @param pos Positions in MD units at which the color gradients are
+   * calculated.
    * @retval Interpolated color gradients in MD units.
    */
   std::vector<Utils::Vector3d> get_coupling_interpolated_color_gradients(
@@ -227,11 +238,13 @@ struct Solver : public System::Leaf<Solver> {
    * @brief Add forces to two component fluid at the given positions.
    * The force is spreaded density-weighted onto the two components.
    * Special method used only for particle coupling in two component LB.
-   * @param pos Positions in MD units at which the color gradients are calculated.
+   * @param pos Positions in MD units at which the color gradients are
+   * calculated.
    * @param forces Forces to apply.
    */
-  void add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
-                         std::vector<Utils::Vector3d> const &forces);
+  void add_density_weighted_forces_at_pos(
+      std::vector<Utils::Vector3d> const &pos,
+      std::vector<Utils::Vector3d> const &forces);
   /**
    * @brief Add solvation force to both fluid components.
    * Special method used only for particle coupling in two component LB.

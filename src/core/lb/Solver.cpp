@@ -32,6 +32,7 @@
 
 #ifdef ESPRESSO_WALBERLA
 #include <walberla_bridge/lattice_boltzmann/LBWalberlaBase.hpp>
+#include <walberla_bridge/lattice_boltzmann/LBWalberlaColorGradientBase.hpp>
 #endif
 
 #include <utils/Vector.hpp>
@@ -179,7 +180,40 @@ bool Solver::is_gpu() const {
 
 bool Solver::has_two_components() const {
   check_solver(impl);
-  return std::visit([](auto &ptr) { return ptr->has_two_components(); }, *impl->solver);
+  return std::visit([](auto &ptr) { return ptr->has_two_components(); },
+                    *impl->solver);
+}
+
+LBWalberlaColorGradientBase *Solver::color_gradient() noexcept {
+  if (not LB::is_solver_set(impl)) {
+    return nullptr;
+  }
+  return std::visit(
+      [](auto &ptr) -> LBWalberlaColorGradientBase * {
+        using T = std::decay_t<decltype(*ptr)>;
+        if constexpr (std::is_same_v<T, LBWalberla>) {
+          return ptr->color_gradient();
+        } else {
+          return nullptr;
+        }
+      },
+      *impl->solver);
+}
+
+LBWalberlaColorGradientBase const *Solver::color_gradient() const noexcept {
+  if (not LB::is_solver_set(impl)) {
+    return nullptr;
+  }
+  return std::visit(
+      [](auto const &ptr) -> LBWalberlaColorGradientBase const * {
+        using T = std::decay_t<decltype(*ptr)>;
+        if constexpr (std::is_same_v<T, LBWalberla>) {
+          return ptr->color_gradient();
+        } else {
+          return nullptr;
+        }
+      },
+      *impl->solver);
 }
 
 double Solver::get_agrid() const {
@@ -273,7 +307,6 @@ std::vector<Utils::Vector3d> Solver::get_interpolated_color_gradients(
       *impl->solver);
 }
 
-
 Utils::Vector3d
 Solver::get_coupling_interpolated_velocity(Utils::Vector3d const &pos) const {
   return std::visit(
@@ -340,8 +373,9 @@ void Solver::add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
       *impl->solver);
 }
 
-void Solver::add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
-                               std::vector<Utils::Vector3d> const &forces) {
+void Solver::add_density_weighted_forces_at_pos(
+    std::vector<Utils::Vector3d> const &pos,
+    std::vector<Utils::Vector3d> const &forces) {
   std::visit(
       [&](auto &ptr) {
         std::vector<Utils::Vector3d> pos_lb;
@@ -359,8 +393,9 @@ void Solver::add_density_weighted_forces_at_pos(std::vector<Utils::Vector3d> con
       *impl->solver);
 }
 
-void Solver::add_solvation_forces_at_pos(std::vector<Utils::Vector3d> const &pos,
-                             std::vector<double> const &delta_mus) {
+void Solver::add_solvation_forces_at_pos(
+    std::vector<Utils::Vector3d> const &pos,
+    std::vector<double> const &delta_mus) {
   std::visit(
       [&](auto &ptr) {
         std::vector<Utils::Vector3d> pos_lb;
