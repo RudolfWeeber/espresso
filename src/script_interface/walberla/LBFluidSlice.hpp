@@ -32,6 +32,7 @@
 
 #include <walberla_bridge/LatticeWalberla.hpp>
 #include <walberla_bridge/lattice_boltzmann/LBWalberlaBase.hpp>
+#include <walberla_bridge/lattice_boltzmann/LBWalberlaColorGradientBase.hpp>
 #include <walberla_bridge/utils/ResourceManager.hpp>
 
 #include <utils/Vector.hpp>
@@ -126,11 +127,12 @@ public:
         get_value<Utils::Vector3i>(params, "slice_lower_corner");
     m_slice_upper_corner =
         get_value<Utils::Vector3i>(params, "slice_upper_corner");
-    m_shape_val["density"] = {m_lb_fluid->has_two_components() ? 2 : 1};
-    m_shape_val["population"] = {static_cast<int>(
-        m_lb_fluid->has_two_components()
-            ? 2 * m_lb_fluid->stencil_size()
-            : m_lb_fluid->stencil_size())};
+    auto *color_gradient =
+        dynamic_cast<LBWalberlaColorGradientBase *>(m_lb_fluid.get());
+    m_shape_val["density"] = {color_gradient ? 2 : 1};
+    m_shape_val["population"] = {
+        static_cast<int>(color_gradient ? 2 * m_lb_fluid->stencil_size()
+                                        : m_lb_fluid->stencil_size())};
     m_shape_val["velocity"] = {3};
     m_shape_val["velocity_at_boundary"] = {1};
     m_shape_val["is_boundary"] = {1};

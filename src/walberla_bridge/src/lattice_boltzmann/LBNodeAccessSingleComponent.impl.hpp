@@ -79,7 +79,7 @@ bool LBWalberlaImplSingleComponent<FloatType, Architecture>::set_node_velocity(
 }
 
 template <typename FloatType, lbmpy::Arch Architecture>
-std::optional<std::vector<double>>
+std::optional<double>
 LBWalberlaImplSingleComponent<FloatType, Architecture>::get_node_density(
     Utils::Vector3i const &node, bool consider_ghosts) const {
   assert(not(consider_ghosts and m_pending_ghost_comm.test(GhostComm::PDF)));
@@ -91,19 +91,19 @@ LBWalberlaImplSingleComponent<FloatType, Architecture>::get_node_density(
       bc->block->template uncheckedFastGetData<PdfField>(m_pdf_field_id[0]);
   auto const density =
       lbm::accessor::Density::get(pdf_field, m_density, bc->cell);
-  return std::vector<double>{double_c(density)};
+  return double_c(density);
 }
 
 template <typename FloatType, lbmpy::Arch Architecture>
 bool LBWalberlaImplSingleComponent<FloatType, Architecture>::set_node_density(
-    Utils::Vector3i const &node, std::vector<double> const &density) {
+    Utils::Vector3i const &node, double density) {
   m_pending_ghost_comm.set(GhostComm::PDF);
   auto bc = get_block_and_cell(get_lattice(), node, false);
   if (!bc)
     return false;
 
   auto pdf_field = bc->block->template getData<PdfField>(m_pdf_field_id[0]);
-  lbm::accessor::Density::set(pdf_field, FloatType_c(density.at(0)), m_density,
+  lbm::accessor::Density::set(pdf_field, FloatType_c(density), m_density,
                               bc->cell);
 
   return true;

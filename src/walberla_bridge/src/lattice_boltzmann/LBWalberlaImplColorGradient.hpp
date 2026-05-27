@@ -591,11 +591,10 @@ public:
                           std::vector<double> const &velocity) override;
 
   // Density
-  std::optional<std::vector<double>>
+  std::optional<double>
   get_node_density(Utils::Vector3i const &node,
                    bool consider_ghosts = false) const override;
-  bool set_node_density(Utils::Vector3i const &node,
-                        std::vector<double> const &density) override;
+  bool set_node_density(Utils::Vector3i const &node, double density) override;
   std::vector<double>
   get_slice_density(Utils::Vector3i const &lower_corner,
                     Utils::Vector3i const &upper_corner) const override;
@@ -695,37 +694,26 @@ public:
         "get_momentum is not yet implemented for two-component LB");
   }
 
-  void set_viscosity(std::vector<double> const &viscosity) override {
-    m_viscosity[0] = FloatType_c(viscosity.at(0));
-    if (viscosity.size() > 1) {
-      m_viscosity[1] = FloatType_c(viscosity.at(1));
-    }
+  void set_viscosity(double /* viscosity */) override {
+    throw std::runtime_error(
+        "on color-gradient LB, use set_component_viscosities to set "
+        "per-component viscosities");
   }
 
-  [[nodiscard]] std::vector<double> get_viscosity() const override {
-    return {static_cast<double>(m_viscosity[0]),
-            static_cast<double>(m_viscosity[1])};
+  [[nodiscard]] double get_viscosity() const override {
+    throw std::runtime_error(
+        "on color-gradient LB, use get_component_viscosities to get "
+        "per-component viscosities");
   }
 
   // ---- LBWalberlaColorGradientBase per-component accessors ----
-  // Thin wrappers around the existing vector<double>-of-2 implementations.
-  // A follow-up task narrows the underlying storage to array<double,2>.
 
   std::optional<std::array<double, 2>>
   get_node_component_densities(Utils::Vector3i const &node,
-                               bool consider_ghosts = false) const override {
-    auto const opt = this->get_node_density(node, consider_ghosts);
-    if (!opt) {
-      return std::nullopt;
-    }
-    auto const &vec = *opt;
-    return std::array<double, 2>{vec.at(0), vec.at(1)};
-  }
+                               bool consider_ghosts = false) const override;
 
   bool set_node_component_densities(Utils::Vector3i const &node,
-                                    std::array<double, 2> const &rho) override {
-    return this->set_node_density(node, std::vector<double>{rho[0], rho[1]});
-  }
+                                    std::array<double, 2> const &rho) override;
 
   std::vector<double>
   get_slice_component_densities(Utils::Vector3i const &lower,

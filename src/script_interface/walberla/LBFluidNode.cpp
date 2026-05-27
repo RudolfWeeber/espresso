@@ -23,6 +23,7 @@
 
 #include "LBFluidNode.hpp"
 
+#include <walberla_bridge/lattice_boltzmann/LBWalberlaColorGradientBase.hpp>
 #include <walberla_bridge/utils/ResourceManager.hpp>
 
 #include <utils/Vector.hpp>
@@ -32,7 +33,9 @@
 #include <boost/mpi/collectives/all_reduce.hpp>
 #include <boost/mpi/communicator.hpp>
 
+#include <array>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -73,32 +76,46 @@ Variant LBFluidNode::do_call_method(std::string const &name,
   }
   if (name == "get_density") {
     auto const result = m_lb_fluid->get_node_density(m_index);
-    auto const vec =
-        Utils::Mpi::reduce_optional(context()->get_comm(), result);
-    if (vec.size() == 1u) {
-      return vec[0] / m_conv_dens;
-    }
-    // Two-component mode: return vector of densities
-    std::vector<double> out(vec.size());
-    for (std::size_t i = 0u; i < vec.size(); ++i) {
-      out[i] = vec[i] / m_conv_dens;
-    }
-    return out;
+    auto const rho = Utils::Mpi::reduce_optional(context()->get_comm(), result);
+    return rho / m_conv_dens;
   }
   if (name == "set_density") {
     auto const &v = params.at("value");
-    std::vector<double> dens;
+    double dens;
     if (is_type<double>(v)) {
-      dens = {get_value<double>(v) * m_conv_dens};
-    } else if (is_type<int>(v)) {
-      dens = {static_cast<double>(get_value<int>(v)) * m_conv_dens};
+      dens = get_value<double>(v) * m_conv_dens;
     } else {
-      dens = get_value<std::vector<double>>(v);
-      for (auto &d : dens) {
-        d *= m_conv_dens;
-      }
+      dens = static_cast<double>(get_value<int>(v)) * m_conv_dens;
     }
     m_lb_fluid->set_node_density(m_index, dens);
+    m_lb_fluid->ghost_communication();
+    return {};
+  }
+  if (name == "get_component_densities") {
+    auto *color_gradient =
+        dynamic_cast<LBWalberlaColorGradientBase *>(m_lb_fluid.get());
+    if (color_gradient == nullptr) {
+      throw std::runtime_error(
+          "component_densities is only available on two-component "
+          "(color-gradient) LB");
+    }
+    auto const result = color_gradient->get_node_component_densities(m_index);
+    auto const rho_ab =
+        Utils::Mpi::reduce_optional(context()->get_comm(), result);
+    return std::vector<double>{rho_ab[0] / m_conv_dens,
+                               rho_ab[1] / m_conv_dens};
+  }
+  if (name == "set_component_densities") {
+    auto *color_gradient =
+        dynamic_cast<LBWalberlaColorGradientBase *>(m_lb_fluid.get());
+    if (color_gradient == nullptr) {
+      throw std::runtime_error(
+          "component_densities is only available on two-component "
+          "(color-gradient) LB");
+    }
+    auto const v = get_value<std::vector<double>>(params, "value");
+    std::array<double, 2> rho{v.at(0) * m_conv_dens, v.at(1) * m_conv_dens};
+    color_gradient->set_node_component_densities(m_index, rho);
     m_lb_fluid->ghost_communication();
     return {};
   }

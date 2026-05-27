@@ -18,6 +18,8 @@
 #
 
 import itertools
+import warnings as _warnings
+
 import numpy as np
 
 from . import utils
@@ -26,6 +28,36 @@ from .script_interface import ScriptInterfaceHelper, script_interface_register, 
 import espressomd.detail.walberla
 import espressomd.shapes
 import espressomd.code_features
+
+
+class _LegacyScalarWrapper(float):
+    """Compatibility shim for the single-component LB density accessor.
+
+    Returned in place of a plain float so legacy
+    ``lbf[i, j, k].density[0]`` indexing keeps working with a
+    DeprecationWarning. Removed in a future release.
+    """
+
+    def __getitem__(self, idx):
+        _warnings.warn(
+            "indexing into a scalar single-component LB density is "
+            "deprecated; in a future release this will be a plain float",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if idx == 0 or idx == -1:
+            return float(self)
+        raise IndexError(
+            "scalar single-component LB density has only one element")
+
+    def __len__(self):
+        _warnings.warn(
+            "len() on a scalar single-component LB density is deprecated; "
+            "in a future release this will be a plain float",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return 1
 
 
 @script_interface_register
@@ -392,11 +424,25 @@ class LBFluidNode(ScriptInterfaceHelper):
 
     @property
     def density(self):
-        return self.call_method("get_density")
+        raw = self.call_method("get_density")
+        if isinstance(raw, (int, float)):
+            return _LegacyScalarWrapper(raw)
+        return raw
 
     @density.setter
     def density(self, value):
+        if isinstance(value, _LegacyScalarWrapper):
+            value = float(value)
         self.call_method("set_density", value=value)
+
+    @property
+    def component_densities(self):
+        """Per-component density for color-gradient LB. Returns a length-2 array."""
+        return self.call_method("get_component_densities")
+
+    @component_densities.setter
+    def component_densities(self, value):
+        self.call_method("set_component_densities", value=list(value))
 
     @property
     def _population(self):

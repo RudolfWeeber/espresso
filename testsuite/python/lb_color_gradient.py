@@ -119,16 +119,16 @@ class ColorGradientLBTest(ut.TestCase):
         self.assertAlmostEqual(visc[1], VISCOSITY, places=10)
 
     def test_node_density_two_component(self):
-        """Getting density on a node should return two values in CG mode."""
+        """Getting component_densities on a node should return two values in CG mode."""
         lbf = self._create_lbf()
-        dens = lbf[0, 0, 0].density
+        dens = lbf[0, 0, 0].component_densities
         self.assertEqual(len(dens), 2)
 
     def test_set_density(self):
-        """Setting per-node density with two values should round-trip."""
+        """Setting per-node component_densities with two values should round-trip."""
         lbf = self._create_lbf()
-        lbf[0, 0, 0].density = [0.7, 0.3]
-        dens = lbf[0, 0, 0].density
+        lbf[0, 0, 0].component_densities = [0.7, 0.3]
+        dens = lbf[0, 0, 0].component_densities
         self.assertAlmostEqual(dens[0], 0.7, places=10)
         self.assertAlmostEqual(dens[1], 0.3, places=10)
 
@@ -152,7 +152,7 @@ class ColorGradientLBTest(ut.TestCase):
         for x in range(0, N, N // 3):
             for y in range(0, N, N // 3):
                 for z in range(0, N, N // 3):
-                    d = lbf[x, y, z].density
+                    d = lbf[x, y, z].component_densities
                     self.assertAlmostEqual(d[0], rho_a[x, y, z], places=10)
                     self.assertAlmostEqual(d[1], rho_b[x, y, z], places=10)
 
@@ -279,7 +279,8 @@ class ColorGradientLBTest(ut.TestCase):
         for x in range(N):
             for y in range(N):
                 for z in range(N):
-                    lbf2[x, y, z].density = [rho_a[x, y, z], rho_b[x, y, z]]
+                    lbf2[x, y, z].component_densities = [rho_a[x, y, z],
+                                                         rho_b[x, y, z]]
         lbf2.init_two_component()
         densities_node = np.copy(lbf2[:, :, :].density)
 

@@ -535,11 +535,10 @@ public:
                           std::vector<double> const &velocity) override;
 
   // Density
-  std::optional<std::vector<double>>
+  std::optional<double>
   get_node_density(Utils::Vector3i const &node,
                    bool consider_ghosts = false) const override;
-  bool set_node_density(Utils::Vector3i const &node,
-                        std::vector<double> const &density) override;
+  bool set_node_density(Utils::Vector3i const &node, double density) override;
   std::vector<double>
   get_slice_density(Utils::Vector3i const &lower_corner,
                     Utils::Vector3i const &upper_corner) const override;
@@ -638,12 +637,12 @@ public:
     return to_vector3d(mom);
   }
 
-  void set_viscosity(std::vector<double> const &viscosity) override {
-    m_viscosity = FloatType_c(viscosity.at(0));
+  void set_viscosity(double viscosity) override {
+    m_viscosity = FloatType_c(viscosity);
   }
 
-  [[nodiscard]] std::vector<double> get_viscosity() const override {
-    return {static_cast<double>(m_viscosity)};
+  [[nodiscard]] double get_viscosity() const override {
+    return static_cast<double>(m_viscosity);
   }
 
   [[nodiscard]] double get_kT() const noexcept override {

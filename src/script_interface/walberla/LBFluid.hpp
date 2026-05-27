@@ -35,6 +35,7 @@
 
 #include <walberla_bridge/LatticeModel.hpp>
 #include <walberla_bridge/lattice_boltzmann/LBWalberlaBase.hpp>
+#include <walberla_bridge/lattice_boltzmann/LBWalberlaColorGradientBase.hpp>
 #include <walberla_bridge/utils/ResourceManager.hpp>
 
 #include <utils/Vector.hpp>
@@ -120,28 +121,41 @@ public:
          [this]() { return m_instance->get_density() / m_conv_dens; }},
         {"kinematic_viscosity",
          [this](Variant const &v) {
-           std::vector<double> visc;
-           if (is_type<double>(v)) {
-             visc = {get_value<double>(v)};
-           } else if (is_type<int>(v)) {
-             visc = {static_cast<double>(get_value<int>(v))};
+           auto *color_gradient =
+               dynamic_cast<LBWalberlaColorGradientBase *>(m_instance.get());
+           if (color_gradient) {
+             std::vector<double> visc;
+             if (is_type<double>(v)) {
+               visc = {get_value<double>(v), get_value<double>(v)};
+             } else if (is_type<int>(v)) {
+               auto const vi = static_cast<double>(get_value<int>(v));
+               visc = {vi, vi};
+             } else {
+               visc = get_value<std::vector<double>>(v);
+             }
+             color_gradient->set_component_viscosities(
+                 {visc.at(0) * m_conv_visc, visc.at(1) * m_conv_visc});
            } else {
-             visc = get_value<std::vector<double>>(v);
+             double visc;
+             if (is_type<double>(v)) {
+               visc = get_value<double>(v);
+             } else if (is_type<int>(v)) {
+               visc = static_cast<double>(get_value<int>(v));
+             } else {
+               visc = get_value<std::vector<double>>(v).at(0);
+             }
+             m_instance->set_viscosity(visc * m_conv_visc);
            }
-           for (auto &vi : visc) {
-             vi *= m_conv_visc;
-           }
-           m_instance->set_viscosity(visc);
          },
          [this]() -> Variant {
-           auto visc = m_instance->get_viscosity();
-           for (auto &vi : visc) {
-             vi /= m_conv_visc;
+           auto *color_gradient =
+               dynamic_cast<LBWalberlaColorGradientBase *>(m_instance.get());
+           if (color_gradient) {
+             auto const visc = color_gradient->get_component_viscosities();
+             return std::vector<double>{visc[0] / m_conv_visc,
+                                        visc[1] / m_conv_visc};
            }
-           if (visc.size() == 1u) {
-             return visc[0];
-           }
-           return visc;
+           return m_instance->get_viscosity() / m_conv_visc;
          }},
         {"ext_force_density",
          [this](Variant const &v) {

@@ -287,6 +287,7 @@ python_test(FILE lb_lees_edwards_particle_coupling.py MAX_NUM_PROC 1
 python_test(FILE lb_planar_couette.py MAX_NUM_PROC 2)
 python_test(FILE lb_color_gradient.py MAX_NUM_PROC 1)
 python_test(FILE lb_color_gradient_particle_coupling.py MAX_NUM_PROC 1)
+python_test(FILE lb_density_api_deprecation.py MAX_NUM_PROC 1)
 python_test(FILE nsquare.py MAX_NUM_PROC 4)
 python_test(FILE virtual_sites_relative.py MAX_NUM_PROC 2)
 python_test(FILE virtual_sites_relative_pbc.py MAX_NUM_PROC 2)
