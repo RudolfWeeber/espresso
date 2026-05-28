@@ -30,7 +30,7 @@
 #include <boost/test/data/test_case.hpp>
 #include <boost/test/unit_test.hpp>
 
-#include "../src/lattice_boltzmann/LBWalberlaImpl.hpp"
+#include "../src/lattice_boltzmann/LBWalberlaImplSingleComponent.hpp"
 #if defined(__CUDACC__)
 #include "../src/lattice_boltzmann/generated_kernels/FieldAccessorsDoublePrecisionCUDA.cuh"
 #include "../src/lattice_boltzmann/generated_kernels/FieldAccessorsSinglePrecisionCUDA.cuh"
@@ -147,9 +147,10 @@ boost::test_tools::predicate_result almost_equal(T a, T b, T atol) {
 }
 
 template <typename FT, lbmpy::Arch Architecture>
-class LBWalberlaImplTest : public walberla::LBWalberlaImpl<FT, Architecture> {
+class LBWalberlaImplTest
+    : public walberla::LBWalberlaImplSingleComponent<FT, Architecture> {
 public:
-  using Base = walberla::LBWalberlaImpl<FT, Architecture>;
+  using Base = walberla::LBWalberlaImplSingleComponent<FT, Architecture>;
   using Base::Base;
   using Base::m_density;
   using Base::m_last_applied_force_field_id;
@@ -168,7 +169,8 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
     lattice =
         std::make_shared<::LatticeWalberla>(grid_dim, mpi_shape, mpi_shape, 1u);
     lbfluid = std::make_shared<LBWalberlaImplTest<FT, Architecture>>(
-        lattice, viscosity, density);
+        lattice, std::vector<double>{static_cast<double>(viscosity)},
+        static_cast<double>(density), false);
   }
 
   void runTest() {
@@ -219,7 +221,8 @@ template <typename FT, lbmpy::Arch Architecture> struct Fixture {
     };
 
     auto const density = lbfluid->m_density;
-    auto pdf_field = block.template getData<PdfField>(lbfluid->m_pdf_field_id);
+    auto pdf_field =
+        block.template getData<PdfField>(lbfluid->m_pdf_field_id[0]);
     auto velocity_field =
         block.template getData<VectorField>(lbfluid->m_velocity_field_id);
     auto force_field = block.template getData<VectorField>(

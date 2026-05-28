@@ -263,9 +263,9 @@ auto LBWalberlaImplColorGradient<
       auto const f_b = to_vector3<FloatType>(-delta_mu * rho_a * inv_rho_sq *
                                              grad_rho_b * weight);
       auto field_a = block->template uncheckedFastGetData<VectorField>(
-          m_force_cg_field_id[0]);
+          m_force_color_gradient_field_id[0]);
       auto field_b = block->template uncheckedFastGetData<VectorField>(
-          m_force_cg_field_id[1]);
+          m_force_color_gradient_field_id[1]);
       lbm::accessor::Vector::add(field_a, f_a, cell);
       lbm::accessor::Vector::add(field_b, f_b, cell);
     });
@@ -332,9 +332,9 @@ auto LBWalberlaImplColorGradient<
             auto const weighted_force_b =
                 to_vector3<FloatType>(weight * (rho_b * inv_rho) * force);
             auto field_a = block->template uncheckedFastGetData<VectorField>(
-                m_force_cg_field_id[0]);
+                m_force_color_gradient_field_id[0]);
             auto field_b = block->template uncheckedFastGetData<VectorField>(
-                m_force_cg_field_id[1]);
+                m_force_color_gradient_field_id[1]);
             lbm::accessor::Vector::add(field_a, weighted_force_a, cell);
             lbm::accessor::Vector::add(field_b, weighted_force_b, cell);
           }

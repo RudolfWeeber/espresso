@@ -136,13 +136,13 @@ public:
   using typename Base::PdfFieldCpu;
   using typename Base::VectorFieldCpu;
 #endif
+  using Base::get_lattice;
 
 protected:
   // ---- Pull in inherited members so unqualified names resolve ----
   using Base::add_to_storage;
   using Base::derived;
   using Base::FloatType_c;
-  using Base::get_lattice;
   using Base::ghost_communication;
   using Base::make_density_interpolation_kernel;
   using Base::make_velocity_interpolation_kernel;
@@ -191,7 +191,7 @@ protected:
   std::array<BlockDataID, 2> m_rho_field_id;
   BlockDataID m_phasefield_id;
   BlockDataID m_color_gradient_field_id;
-  std::array<BlockDataID, 2> m_force_cg_field_id;
+  std::array<BlockDataID, 2> m_force_color_gradient_field_id;
 
 #if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
   std::optional<BlockDataID> m_pdf_cpu_field_id;
@@ -253,9 +253,9 @@ public:
     m_phasefield_id = this->template add_to_storage<ScalarField>("phasefield");
     m_color_gradient_field_id =
         this->template add_to_storage<_VectorField>("color_gradient");
-    m_force_cg_field_id[0] =
+    m_force_color_gradient_field_id[0] =
         this->template add_to_storage<_VectorField>("force_a");
-    m_force_cg_field_id[1] =
+    m_force_color_gradient_field_id[1] =
         this->template add_to_storage<_VectorField>("force_b");
 
 #if defined(__CUDACC__) and defined(WALBERLA_BUILD_WITH_CUDA)
@@ -354,10 +354,10 @@ private:
   void integrate_reset_force_two_component(
       std::shared_ptr<BlockStorage> const &blocks) {
     for (auto &block : *blocks) {
-      auto force_a =
-          block.template getData<VectorField>(m_force_cg_field_id[0]);
-      auto force_b =
-          block.template getData<VectorField>(m_force_cg_field_id[1]);
+      auto force_a = block.template getData<VectorField>(
+          m_force_color_gradient_field_id[0]);
+      auto force_b = block.template getData<VectorField>(
+          m_force_color_gradient_field_id[1]);
       lbm::accessor::Vector::initialize(force_a, Vector3<FloatType>{0});
       lbm::accessor::Vector::initialize(force_b, Vector3<FloatType>{0});
     }
@@ -417,10 +417,10 @@ public:
     // Instantiate collide kernel
     m_collision_model_two_component =
         std::make_shared<CollisionModelTwoComponent>(
-            m_color_gradient_field_id, m_force_cg_field_id[0],
-            m_force_cg_field_id[1], m_pdf_field_id[0], m_pdf_field_id[1],
-            m_phasefield_id, m_rho_field_id[0], m_rho_field_id[1],
-            m_velocity_field_id,
+            m_color_gradient_field_id, m_force_color_gradient_field_id[0],
+            m_force_color_gradient_field_id[1], m_pdf_field_id[0],
+            m_pdf_field_id[1], m_phasefield_id, m_rho_field_id[0],
+            m_rho_field_id[1], m_velocity_field_id,
             m_beta,                   // beta (interface thickness)
             omega_a, omega_b,         // omega_even
             omega_odd_a, omega_odd_b, // omega_odd
@@ -430,9 +430,9 @@ public:
 
     // Instantiate stream kernel
     m_stream_model_two_component = std::make_shared<StreamModelTwoComponent>(
-        m_force_cg_field_id[0], m_force_cg_field_id[1], m_pdf_field_id[0],
-        m_pdf_field_id[1], m_phasefield_id, m_rho_field_id[0],
-        m_rho_field_id[1], m_velocity_field_id);
+        m_force_color_gradient_field_id[0], m_force_color_gradient_field_id[1],
+        m_pdf_field_id[0], m_pdf_field_id[1], m_phasefield_id,
+        m_rho_field_id[0], m_rho_field_id[1], m_velocity_field_id);
 
     // Set up CG-specific communicators
     setup_communicators_two_component();
@@ -467,9 +467,9 @@ public:
   void init_pdfs_from_components() override {
     auto const &blocks = m_lattice->get_blocks();
     auto init_two_component = typename Kernels::InitialPDFsSetterTwoComponent(
-        m_force_cg_field_id[0], m_force_cg_field_id[1], m_pdf_field_id[0],
-        m_pdf_field_id[1], m_phasefield_id, m_rho_field_id[0],
-        m_rho_field_id[1], m_velocity_field_id);
+        m_force_color_gradient_field_id[0], m_force_color_gradient_field_id[1],
+        m_pdf_field_id[0], m_pdf_field_id[1], m_phasefield_id,
+        m_rho_field_id[0], m_rho_field_id[1], m_velocity_field_id);
     for (auto &block : *blocks) {
       init_two_component(&block);
     }
@@ -747,7 +747,7 @@ public:
   }
 
   // ---- External force: silently accepted but has no effect in CG ----
-  // (CG forces are component-specific via m_force_cg_field_id)
+  // (CG forces are component-specific via m_force_color_gradient_field_id)
 
   void set_external_force(Utils::Vector3d const & /* ext_force */) override {
     // No-op: color-gradient LB does not use a global external force field.
@@ -775,8 +775,9 @@ public:
     return m_phasefield_id;
   }
 
-  [[nodiscard]] auto get_force_cg_field_id(int component) const noexcept {
-    return m_force_cg_field_id[component];
+  [[nodiscard]] auto
+  get_force_color_gradient_field_id(int component) const noexcept {
+    return m_force_color_gradient_field_id[component];
   }
 
   /**

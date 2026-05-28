@@ -610,10 +610,12 @@ BOOST_DATA_TEST_CASE(vtk_exceptions,
 }
 
 BOOST_AUTO_TEST_CASE(lb_exceptions) {
-  using LB = walberla::LBWalberlaImpl<double, lbmpy::Arch::CPU>;
+  using LB = walberla::LBWalberlaImplSingleComponent<double, lbmpy::Arch::CPU>;
   auto lb_lattice_without_ghosts = std::make_shared<LatticeWalberla>(
       params.grid_dimensions, mpi_shape, mpi_shape, 0u);
-  BOOST_CHECK_THROW(LB(lb_lattice_without_ghosts, 1., 1.), std::runtime_error);
+  BOOST_CHECK_THROW(
+      LB(lb_lattice_without_ghosts, std::vector<double>{1.}, 1., false),
+      std::runtime_error);
 }
 
 BOOST_AUTO_TEST_CASE(le_sweep) {
@@ -622,7 +624,8 @@ BOOST_AUTO_TEST_CASE(le_sweep) {
   auto const make_kernel = [&](unsigned int n_ghost_layers,
                                unsigned int shear_direction,
                                unsigned int shear_plane_normal) {
-    using LB = walberla::LBWalberlaImpl<double, lbmpy::Arch::CPU>;
+    using LB =
+        walberla::LBWalberlaImplSingleComponent<double, lbmpy::Arch::CPU>;
     using VectorField = typename LB::VectorField;
     using Sweep = walberla::InterpolateAndShiftAtBoundary<VectorField, double>;
     auto const sweep = std::make_shared<Sweep>(

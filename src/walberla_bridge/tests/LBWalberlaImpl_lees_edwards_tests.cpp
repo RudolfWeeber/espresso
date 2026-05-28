@@ -26,7 +26,7 @@
 
 #include "tests_common_lb.hpp"
 
-#include "../src/lattice_boltzmann/LBWalberlaImpl.hpp"
+#include "../src/lattice_boltzmann/LBWalberlaImplSingleComponent.hpp"
 
 #include <walberla_bridge/lattice_boltzmann/LBWalberlaBase.hpp>
 #include <walberla_bridge/lattice_boltzmann/lb_walberla_init.hpp>
@@ -63,12 +63,14 @@ static double u_expected(double x, double t, double nu, double v_0, double h,
 }
 
 BOOST_AUTO_TEST_CASE(test_transient_shear) {
-  using LBImplementation = walberla::LBWalberlaImpl<double, lbmpy::Arch::CPU>;
+  using LBImplementation =
+      walberla::LBWalberlaImplSingleComponent<double, lbmpy::Arch::CPU>;
   double density = 1;
   double viscosity = 1. / 7.;
   auto lattice = std::make_shared<LatticeWalberla>(Vector3i{8, 64, 8},
                                                    mpi_shape, mpi_shape, 1);
-  auto lb = LBImplementation(lattice, viscosity, density);
+  auto lb =
+      LBImplementation(lattice, std::vector<double>{viscosity}, density, false);
   auto le_pack = std::make_unique<LeesEdwardsPack>(
       0u, 1u, []() { return 0.0; }, [=]() { return v0; });
   lb.set_collision_model(std::move(le_pack));
@@ -89,12 +91,14 @@ BOOST_AUTO_TEST_CASE(test_transient_shear) {
 }
 
 static auto setup_lb_with_offset(double offset) {
-  using LBImplementation = walberla::LBWalberlaImpl<double, lbmpy::Arch::CPU>;
+  using LBImplementation =
+      walberla::LBWalberlaImplSingleComponent<double, lbmpy::Arch::CPU>;
   auto density = 1.;
   auto viscosity = 1. / 7.;
   auto lattice = std::make_shared<LatticeWalberla>(Vector3i{10, 10, 10},
                                                    mpi_shape, mpi_shape, 1);
-  auto lb = std::make_shared<LBImplementation>(lattice, viscosity, density);
+  auto lb = std::make_shared<LBImplementation>(
+      lattice, std::vector<double>{viscosity}, density, false);
   auto le_pack = std::make_unique<LeesEdwardsPack>(
       0u, 1u, [=]() { return offset; }, []() { return 0.0; });
   lb->set_collision_model(std::move(le_pack));

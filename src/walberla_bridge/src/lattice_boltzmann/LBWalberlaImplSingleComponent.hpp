@@ -124,13 +124,13 @@ public:
   using typename Base::PdfFieldCpu;
   using typename Base::VectorFieldCpu;
 #endif
+  using Base::get_lattice;
 
 protected:
   // ---- Pull in inherited members so unqualified names resolve ----
   using Base::add_to_storage;
   using Base::derived;
   using Base::FloatType_c;
-  using Base::get_lattice;
   using Base::ghost_communication;
   using Base::make_density_interpolation_kernel;
   using Base::make_velocity_interpolation_kernel;
