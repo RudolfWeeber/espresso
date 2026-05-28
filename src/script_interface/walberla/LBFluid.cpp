@@ -139,13 +139,12 @@ Variant LBFluid::do_call_method(std::string const &name,
     return 1. / m_conv_speed;
   }
   if (name == "init_two_component") {
-    auto *cg = dynamic_cast<LBWalberlaColorGradientBase *>(m_instance.get());
-    if (cg == nullptr) {
+    if (m_color_gradient == nullptr) {
       throw std::runtime_error(
-          "'init_two_component' is only valid for two-component "
-          "(color-gradient) LB; this instance is single-component");
+          "this LB instance is single-component; 'init_two_component' is only "
+          "valid for two-component (color-gradient) LB");
     }
-    cg->init_pdfs_from_components();
+    m_color_gradient->init_pdfs_from_components();
     m_instance->ghost_communication();
     return {};
   }
@@ -182,6 +181,8 @@ void LBFluid::make_instance(VariantMap const &params) {
 #endif
   }
   m_instance = make_new_instance(lb_lattice, lb_visc, lb_dens, precision);
+  m_color_gradient =
+      dynamic_cast<LBWalberlaColorGradientBase *>(m_instance.get());
 }
 
 void LBFluid::do_construct(VariantMap const &params) {
@@ -233,12 +234,11 @@ void LBFluid::do_construct(VariantMap const &params) {
     }
     make_instance(params);
     m_mpi_cart_comm_observer = ::walberla::get_mpi_cart_comm_observer();
-    if (auto *cg =
-            dynamic_cast<LBWalberlaColorGradientBase *>(m_instance.get())) {
+    if (m_color_gradient) {
       auto const sigma =
           get_value_or<double>(params, "sigma", 0.) * m_conv_energy;
       auto const beta = get_value_or<double>(params, "beta", 0.7);
-      cg->set_collision_model_color_gradient(sigma, beta);
+      m_color_gradient->set_collision_model_color_gradient(sigma, beta);
     } else {
       m_instance->set_collision_model(lb_kT, seed);
     }

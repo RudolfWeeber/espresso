@@ -56,10 +56,6 @@ LBWalberla::LBWalberla(std::shared_ptr<LBWalberlaBase> lb_fluid_,
 
 bool LBWalberla::is_gpu() const { return lb_fluid->is_gpu(); }
 
-bool LBWalberla::has_two_components() const {
-  return lb_fluid->has_two_components();
-}
-
 double LBWalberla::get_kT() const { return lb_fluid->get_kT(); }
 
 Utils::VectorXd<9> LBWalberla::get_pressure_tensor() const {

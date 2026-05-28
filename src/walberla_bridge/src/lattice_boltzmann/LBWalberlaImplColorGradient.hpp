@@ -400,10 +400,6 @@ public:
 
   // ---- Two Component Model ----
 
-  [[nodiscard]] bool has_two_components() const noexcept override {
-    return true;
-  }
-
   void set_collision_model_color_gradient(double sigma, double beta) override {
     m_sigma = FloatType_c(sigma);
     m_beta = FloatType_c(beta);
@@ -692,6 +688,20 @@ public:
   [[nodiscard]] Utils::Vector3d get_momentum() const override {
     throw std::runtime_error(
         "get_momentum is not yet implemented for two-component LB");
+  }
+
+  // Density interpolation (always throws for CG — use get_component_densities)
+  std::optional<double> get_density_at_pos(
+      Utils::Vector3d const & /* pos */,
+      bool /* consider_points_in_halo */ = false) const override {
+    throw std::runtime_error(
+        "get_density_at_pos is not yet implemented for two-component LB");
+  }
+
+  std::vector<double> get_densities_at_pos(
+      std::vector<Utils::Vector3d> const & /* pos */) override {
+    throw std::runtime_error(
+        "get_densities_at_pos is not yet implemented for two-component LB");
   }
 
   void set_viscosity(double /* viscosity */) override {

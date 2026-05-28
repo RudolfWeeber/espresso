@@ -178,12 +178,6 @@ bool Solver::is_gpu() const {
   return std::visit([](auto &ptr) { return ptr->is_gpu(); }, *impl->solver);
 }
 
-bool Solver::has_two_components() const {
-  check_solver(impl);
-  return std::visit([](auto &ptr) { return ptr->has_two_components(); },
-                    *impl->solver);
-}
-
 LBWalberlaColorGradientBase *Solver::color_gradient() noexcept {
   if (not LB::is_solver_set(impl)) {
     return nullptr;
@@ -293,18 +287,21 @@ std::vector<double> Solver::get_interpolated_densities(
 
 std::vector<Utils::Vector3d> Solver::get_interpolated_color_gradients(
     std::vector<Utils::Vector3d> const &pos) const {
-  return std::visit(
-      [&](auto &ptr) {
-        auto const &box_geo = *System::get_system().box_geo;
-        std::vector<Utils::Vector3d> pos_lb;
-        pos_lb.reserve(pos.size());
-        for (auto const &pos_md : pos) {
-          pos_lb.emplace_back(box_geo.folded_position(pos_md) *
-                              m_conv.pos_to_lb);
-        }
-        return ptr->get_color_gradients_at_pos(pos_lb);
-      },
-      *impl->solver);
+  // color_gradient() returns const* here; cast away const because
+  // get_color_gradients_at_pos is non-const but semantically read-only.
+  auto *cg = const_cast<LBWalberlaColorGradientBase *>(color_gradient());
+  if (cg == nullptr) {
+    throw std::runtime_error(
+        "get_interpolated_color_gradients requires a two-component "
+        "(color-gradient) LB solver");
+  }
+  auto const &box_geo = *System::get_system().box_geo;
+  std::vector<Utils::Vector3d> pos_lb;
+  pos_lb.reserve(pos.size());
+  for (auto const &pos_md : pos) {
+    pos_lb.emplace_back(box_geo.folded_position(pos_md) * m_conv.pos_to_lb);
+  }
+  return cg->get_color_gradients_at_pos(pos_lb);
 }
 
 Utils::Vector3d
@@ -338,20 +335,24 @@ std::vector<Utils::Vector3d> Solver::get_coupling_interpolated_velocities(
 
 std::vector<Utils::Vector3d> Solver::get_coupling_interpolated_color_gradients(
     std::vector<Utils::Vector3d> const &pos) const {
-  return std::visit(
-      [&](auto &ptr) {
-        std::vector<Utils::Vector3d> pos_lb;
-        pos_lb.reserve(pos.size());
-        for (auto const &pos_md : pos) {
-          pos_lb.emplace_back(pos_md * m_conv.pos_to_lb);
-        }
-        auto res = ptr->get_color_gradients_at_pos(pos_lb);
-        for (auto &cg : res) {
-          cg *= m_conv.pos_to_lb; // 1/agrid: LB gradient to MD gradient
-        }
-        return res;
-      },
-      *impl->solver);
+  // color_gradient() returns const* here; cast away const because
+  // get_color_gradients_at_pos is non-const but semantically read-only.
+  auto *cg = const_cast<LBWalberlaColorGradientBase *>(color_gradient());
+  if (cg == nullptr) {
+    throw std::runtime_error(
+        "get_coupling_interpolated_color_gradients requires a two-component "
+        "(color-gradient) LB solver");
+  }
+  std::vector<Utils::Vector3d> pos_lb;
+  pos_lb.reserve(pos.size());
+  for (auto const &pos_md : pos) {
+    pos_lb.emplace_back(pos_md * m_conv.pos_to_lb);
+  }
+  auto res = cg->get_color_gradients_at_pos(pos_lb);
+  for (auto &grad : res) {
+    grad *= m_conv.pos_to_lb; // 1/agrid: LB gradient to MD gradient
+  }
+  return res;
 }
 
 void Solver::add_forces_at_pos(std::vector<Utils::Vector3d> const &pos,

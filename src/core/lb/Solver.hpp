@@ -117,11 +117,6 @@ struct Solver : public System::Leaf<Solver> {
   bool is_gpu() const;
 
   /**
-   * @brief Is two-component LB
-   */
-  bool has_two_components() const;
-
-  /**
    * @brief Return color-gradient accessor if active LB is two-component,
    * nullptr otherwise (including when no LB is active).
    */

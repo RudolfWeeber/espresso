@@ -121,9 +121,7 @@ public:
          [this]() { return m_instance->get_density() / m_conv_dens; }},
         {"kinematic_viscosity",
          [this](Variant const &v) {
-           auto *color_gradient =
-               dynamic_cast<LBWalberlaColorGradientBase *>(m_instance.get());
-           if (color_gradient) {
+           if (m_color_gradient) {
              std::vector<double> visc;
              if (is_type<double>(v)) {
                visc = {get_value<double>(v), get_value<double>(v)};
@@ -133,7 +131,7 @@ public:
              } else {
                visc = get_value<std::vector<double>>(v);
              }
-             color_gradient->set_component_viscosities(
+             m_color_gradient->set_component_viscosities(
                  {visc.at(0) * m_conv_visc, visc.at(1) * m_conv_visc});
            } else {
              double visc;
@@ -148,10 +146,8 @@ public:
            }
          },
          [this]() -> Variant {
-           auto *color_gradient =
-               dynamic_cast<LBWalberlaColorGradientBase *>(m_instance.get());
-           if (color_gradient) {
-             auto const visc = color_gradient->get_component_viscosities();
+           if (m_color_gradient) {
+             auto const visc = m_color_gradient->get_component_viscosities();
              return std::vector<double>{visc[0] / m_conv_visc,
                                         visc[1] / m_conv_visc};
            }
@@ -194,6 +190,10 @@ protected:
   void make_instance(VariantMap const &params) override;
 
 private:
+  /** Non-owning pointer to the CG interface, or nullptr for single-component.
+   *  Set once in make_instance; avoids repeated dynamic_cast at each call. */
+  LBWalberlaColorGradientBase *m_color_gradient = nullptr;
+
   void load_checkpoint(std::filesystem::path const &path, int mode);
   void save_checkpoint(std::filesystem::path const &path, int mode);
   std::vector<Variant> get_average_pressure_tensor() const;

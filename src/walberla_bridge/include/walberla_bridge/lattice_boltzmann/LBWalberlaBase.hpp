@@ -243,15 +243,6 @@ public:
   /** @brief Configure the default collision model. */
   virtual void set_collision_model(double kT, unsigned int seed) = 0;
 
-  /**
-   * @brief Whether this LB instance is the two-component color-gradient model.
-   * @deprecated Use dynamic_cast<LBWalberlaColorGradientBase*>(this) != nullptr
-   *             instead. Removed in a follow-up commit.
-   */
-  [[nodiscard]] virtual bool has_two_components() const noexcept {
-    return false;
-  }
-
   /** @brief Configure a thermalized collision model for Lees-Edwards. */
   virtual void
   set_collision_model(std::unique_ptr<LeesEdwardsPack> &&lees_edwards_pack) = 0;

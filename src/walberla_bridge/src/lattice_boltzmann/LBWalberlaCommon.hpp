@@ -625,9 +625,6 @@ public:
   std::optional<double>
   get_density_at_pos(Utils::Vector3d const &pos,
                      bool consider_points_in_halo = false) const override {
-    if (this->has_two_components())
-      throw std::runtime_error(
-          "get_density_at_pos is not yet implemented for two-component LB");
     assert(not m_pending_ghost_comm.test(GhostComm::PDF));
     if (!consider_points_in_halo and !m_lattice->pos_in_local_domain(pos))
       return std::nullopt;
@@ -685,9 +682,6 @@ public:
 
   std::vector<double>
   get_densities_at_pos(std::vector<Utils::Vector3d> const &pos) override {
-    if (this->has_two_components())
-      throw std::runtime_error(
-          "get_densities_at_pos is not yet implemented for two-component LB");
     if (pos.empty()) {
       return {};
     }

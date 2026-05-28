@@ -63,7 +63,6 @@ struct LBWalberla : public System::Leaf<LBWalberla> {
   auto get_lattice_speed() const { return get_agrid() / get_tau(); }
   Utils::VectorXd<9> get_pressure_tensor() const;
   bool is_gpu() const;
-  bool has_two_components() const;
   [[nodiscard]] LBWalberlaColorGradientBase *color_gradient() noexcept {
     return m_color_gradient;
   }
