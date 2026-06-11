@@ -176,25 +176,27 @@ struct PressureKernel {
                              : layout.nb_inter_idx(t1, t2);
         for (std::size_t k = 0; k < 9; ++k)
           local_pressure(tid, layout.tensor_offset(bin, k)) += stress[k];
+      }
 
 #ifdef ESPRESSO_DPD
-        if (dpd_active(ia_params, thermo_switch)) {
-          auto const vel1 = aosoa.get_vector_at(aosoa.velocity, i);
-          auto const vel2 = aosoa.get_vector_at(aosoa.velocity, j);
-          auto const v21 = box_geo.velocity_difference(pos1, pos2, vel1, vel2);
-          auto const dist2 = d.norm2();
-          // f_r/f_t: dissipative force from radial/transverse DPD channel
-          auto const f_r = dpd_pair_force(ia_params.dpd.radial, v21, dist, {});
-          auto const f_t = dpd_pair_force(ia_params.dpd.trans, v21, dist, {});
-          auto const P = Utils::tensor_product(d / dist2, d);
-          auto const f_d = P * (f_r - f_t) + f_t;
-          auto const s = Utils::flatten(Utils::tensor_product(d, f_d));
-          for (std::size_t k = 0; k < 9; ++k)
-            local_pressure(tid, layout.tensor_offset(layout.dpd_idx(), k)) -=
-                s[k];
-        }
-#endif
+      // DPD virial is computed for all pairs within cutoff, including excluded
+      // pairs, mirroring how DPD forces are applied in forces_cabana.hpp.
+      if (dpd_active(ia_params, thermo_switch)) {
+        auto const vel1 = aosoa.get_vector_at(aosoa.velocity, i);
+        auto const vel2 = aosoa.get_vector_at(aosoa.velocity, j);
+        auto const v21 = box_geo.velocity_difference(pos1, pos2, vel1, vel2);
+        auto const dist2 = d.norm2();
+        // f_r/f_t: dissipative force from radial/transverse DPD channel
+        auto const f_r = dpd_pair_force(ia_params.dpd.radial, v21, dist, {});
+        auto const f_t = dpd_pair_force(ia_params.dpd.trans, v21, dist, {});
+        auto const P = Utils::tensor_product(d / dist2, d);
+        auto const f_d = P * (f_r - f_t) + f_t;
+        auto const s = Utils::flatten(Utils::tensor_product(d, f_d));
+        for (std::size_t k = 0; k < 9; ++k)
+          local_pressure(tid, layout.tensor_offset(layout.dpd_idx(), k)) -=
+              s[k];
       }
+#endif
     }
 
 #ifdef ESPRESSO_ELECTROSTATICS
