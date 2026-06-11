@@ -33,7 +33,12 @@ void Torus::calculate_dist(const Utils::Vector3d &pos, double &dist,
   auto const r = r_vec.norm();
 
   dist = (std::sqrt(Utils::sqr(r - m_rad) + z * z) - m_tube_rad) * m_direction;
-  Utils::Vector3d const dir_vec = c_dist - r_vec * m_rad / r;
+
+  /* If exactly on the symmetry axis (r == 0), r_vec / r is undefined (0/0).
+     Use the precomputed e_r_axis as a fallback, matching the convention in
+     Cylinder::calculate_dist. */
+  auto const e_r = (r == 0) ? e_r_axis : r_vec / r;
+  Utils::Vector3d const dir_vec = c_dist - e_r * m_rad;
   auto const dir_vec_norm = dir_vec / dir_vec.norm();
   vec = dir_vec_norm * std::abs(dist);
 }

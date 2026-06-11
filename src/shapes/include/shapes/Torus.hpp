@@ -40,8 +40,25 @@ public:
   /** Unit vector in z direction */
   Utils::Vector3d e_z;
 
+  /** Alternative e_r for the on-axis corner case */
+  Utils::Vector3d e_r_axis;
+
   /** @brief Calculate derived parameters. */
-  void precalc() { e_z = m_normal / m_normal.norm(); }
+  void precalc() {
+    e_z = m_normal / m_normal.norm();
+
+    /* Find a vector orthogonal to e_z via Gram-Schmidt.
+       Since {1,0,0} and {0,1,0} are independent, e_z cannot be
+       parallel to both of them. */
+    if ((Utils::Vector3d{1., 0., 0.} * e_z) < 1.)
+      e_r_axis = Utils::Vector3d{1., 0., 0.} -
+                 (e_z * Utils::Vector3d{1., 0., 0.}) * e_z;
+    else
+      e_r_axis = Utils::Vector3d{0., 1., 0.} -
+                 (e_z * Utils::Vector3d{0., 1., 0.}) * e_z;
+
+    e_r_axis.normalize();
+  }
 
 public:
   Torus()
