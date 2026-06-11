@@ -16,12 +16,52 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
+import os
+import pathlib
+import subprocess
+import textwrap
 import unittest as ut
 import unittest_decorators as utx
 import espressomd
 import numpy as np
 import espressomd.observables
 import espressomd.propagation
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
+PYPRESSO = REPO_ROOT / "pypresso"
+
+# Importing espressomd above initializes MPI in *this* process (Open MPI
+# singleton). The resulting OMPI_/PMIX_/PRTE_ environment variables make a
+# nested ``mpiexec`` abort immediately with exit code 1, so they must be
+# scrubbed from the child's environment.
+CHILD_ENV = {k: v for k, v in os.environ.items()
+             if not k.startswith(("OMPI_", "PMIX_", "PRTE_", "PMI_"))}
+
+# Child script executed under ``mpiexec -n 2``. The 50^3 box is split
+# between the two ranks; the particle at (45, 45, 45) lives in the
+# subdomain owned by rank 1 and (with no interactions and a small skin)
+# is *not* present in rank 0's ghost layer. PairwiseDistances::evaluate()
+# previously ran only on rank 0 and called
+# ``cell_structure.get_local_particle(pid)->pos()`` without a null check,
+# so the lookup for the rank-1 particle returned nullptr and segfaulted.
+CHILD_SCRIPT = textwrap.dedent("""
+    import espressomd
+    import espressomd.observables
+
+    system = espressomd.System(box_l=[50., 50., 50.])
+    system.time_step = 0.01
+    system.cell_system.skin = 0.4
+
+    # One particle near the lower corner (owned by rank 0), one near the
+    # upper corner (owned by rank 1, outside rank 0's ghost shell).
+    system.part.add(id=0, pos=[1., 1., 1.])
+    system.part.add(id=1, pos=[45., 45., 45.])
+
+    obs = espressomd.observables.PairwiseDistances(ids=[0, 1],
+                                                   target_ids=[0, 1])
+    res = obs.calculate()  # SIGSEGV on buggy HEAD with >= 2 ranks
+    print("CHILD_OK", res)
+""")
 
 
 def calc_com_x(system, attr, id_list):
@@ -240,6 +280,41 @@ class Observables(ut.TestCase):
         np.testing.assert_allclose(
             np.sum(particles.f, axis=0),
             espressomd.observables.TotalForce(ids=id_list).calculate())
+
+
+class PairwiseDistancesMultiRankTest(ut.TestCase):
+    """
+    Regression test for bug #21: ``Observables::PairwiseDistances``
+    dereferences a null pointer for particles not local to MPI rank 0.
+
+    ``evaluate()`` (src/core/observables/PairwiseDistances.hpp) previously
+    ran the pair loop only on rank 0 and called
+    ``cell_structure.get_local_particle(pid)->pos()`` for every pair.
+    ``get_local_particle()`` returns ``nullptr`` for ids resident on another
+    rank, so any multi-rank run where the observable's particles are not all
+    owned (or ghosted) by rank 0 crashed with SIGSEGV.
+
+    Because the crash would kill this test process, the risky
+    ``calculate()`` call is executed in a subprocess under
+    ``mpiexec -n 2``; the test asserts that the child exits cleanly.
+    """
+
+    def test_pairwise_distances_multi_rank(self):
+        self.assertTrue(PYPRESSO.exists(),
+                        f"pypresso launcher not found at {PYPRESSO}")
+        result = subprocess.run(
+            ["mpiexec", "-n", "2", str(PYPRESSO), "-c", CHILD_SCRIPT],
+            capture_output=True, text=True, timeout=60, env=CHILD_ENV)
+        if result.returncode != 0:
+            stderr_tail = "\n".join(result.stderr.splitlines()[-15:])
+            self.fail(
+                "PairwiseDistances SIGSEGV on multi-rank: child process "
+                f"exited with returncode={result.returncode} "
+                "(139 = 128 + SIGSEGV reported by mpiexec, negative = "
+                "subprocess itself killed by a signal).\n"
+                f"--- child stderr (tail) ---\n{stderr_tail}")
+        # Sanity check: the child actually reached the calculate() call.
+        self.assertIn("CHILD_OK", result.stdout)
 
 
 if __name__ == "__main__":
