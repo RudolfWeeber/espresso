@@ -221,7 +221,7 @@ static std::vector<std::size_t> create_dims(hsize_t rank, hsize_t data_dim) {
     return {0ul, data_dim};
   }
   assert(rank == 1ul);
-  return {data_dim};
+  return {0ul};
 }
 
 static std::vector<std::size_t> create_maxdims(hsize_t rank, hsize_t data_dim,
