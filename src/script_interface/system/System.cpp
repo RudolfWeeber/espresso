@@ -454,33 +454,48 @@ Variant System::do_call_method(std::string const &name,
     auto const coord = get_value<int>(parameters, "coord");
     auto const length = get_value<double>(parameters, "length");
     assert(coord >= 0);
-    assert(coord != 3 or ((box_geo.length()[0] == box_geo.length()[1]) and
-                          (box_geo.length()[1] == box_geo.length()[2])));
-    auto const scale = (coord == 3) ? length * box_geo.length_inv()[0]
-                                    : length * box_geo.length_inv()[coord];
     context()->parallel_try_catch([&]() {
       if (length <= 0.) {
         throw std::domain_error("Parameter 'd_new' must be > 0");
       }
       m_instance->veto_boxl_change(true);
     });
-    auto new_value = Utils::Vector3d{};
     if (coord == 3) {
-      new_value = Utils::Vector3d::broadcast(length);
+      auto const old_lengths = box_geo.length();
+      auto const new_value = Utils::Vector3d::broadcast(length);
+      // shrink: apply axes where scale <= 1 first (before box resize)
+      for (int axis = 0; axis < 3; axis++) {
+        auto const ax_scale = length * box_geo.length_inv()[axis];
+        if (ax_scale <= 1.) {
+          rescale_particles(*m_instance->cell_structure, axis, ax_scale);
+        }
+      }
+      m_instance->on_particle_change();
+      m_instance->box_geo->set_length(new_value);
+      m_instance->on_boxl_change();
+      // grow: apply axes where scale > 1 after box resize
+      for (int axis = 0; axis < 3; axis++) {
+        auto const ax_scale = length / old_lengths[axis];
+        if (ax_scale > 1.) {
+          rescale_particles(*m_instance->cell_structure, axis, ax_scale);
+        }
+      }
+      m_instance->on_particle_change();
     } else {
-      new_value = box_geo.length();
+      auto const scale = length * box_geo.length_inv()[coord];
+      auto new_value = box_geo.length();
       new_value[static_cast<unsigned>(coord)] = length;
-    }
-    // when shrinking, rescale the particles first
-    if (scale <= 1.) {
-      rescale_particles(*m_instance->cell_structure, coord, scale);
-      m_instance->on_particle_change();
-    }
-    m_instance->box_geo->set_length(new_value);
-    m_instance->on_boxl_change();
-    if (scale > 1.) {
-      rescale_particles(*m_instance->cell_structure, coord, scale);
-      m_instance->on_particle_change();
+      // when shrinking, rescale the particles first
+      if (scale <= 1.) {
+        rescale_particles(*m_instance->cell_structure, coord, scale);
+        m_instance->on_particle_change();
+      }
+      m_instance->box_geo->set_length(new_value);
+      m_instance->on_boxl_change();
+      if (scale > 1.) {
+        rescale_particles(*m_instance->cell_structure, coord, scale);
+        m_instance->on_particle_change();
+      }
     }
     return {};
   }
