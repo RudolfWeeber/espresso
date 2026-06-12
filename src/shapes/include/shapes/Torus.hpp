@@ -50,13 +50,13 @@ public:
     /* Find a vector orthogonal to e_z via Gram-Schmidt.
        Since {1,0,0} and {0,1,0} are independent, e_z cannot be
        parallel to both of them. */
-    if ((Utils::Vector3d{1., 0., 0.} * e_z) < 1.)
-      e_r_axis = Utils::Vector3d{1., 0., 0.} -
-                 (e_z * Utils::Vector3d{1., 0., 0.}) * e_z;
-    else
-      e_r_axis = Utils::Vector3d{0., 1., 0.} -
-                 (e_z * Utils::Vector3d{0., 1., 0.}) * e_z;
-
+    if (e_z[0] < 1.) {
+      Utils::Vector3d constexpr u_x{{1., 0., 0.}};
+      e_r_axis = u_x - (e_z * u_x) * e_z;
+    } else {
+      Utils::Vector3d constexpr u_y{{0., 1., 0.}};
+      e_r_axis = u_y - (e_z * u_y) * e_z;
+    }
     e_r_axis.normalize();
   }
 
