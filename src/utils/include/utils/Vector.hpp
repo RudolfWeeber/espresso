@@ -174,7 +174,17 @@ public:
     return *this;
   }
 
-  Vector normalized() const { return (*this) / (*this).norm(); }
+  /*
+   * @brief Return a normalized copy of the vector.
+   *
+   * Divide the vector by its length, if not zero, otherwise return the
+   * vector unchanged. The zero-length guard mirrors @ref normalize() and
+   * avoids a 0/0 division that would produce NaN components.
+   */
+  Vector normalized() const {
+    auto const l = norm();
+    return (l != T(0)) ? (*this) / l : *this;
+  }
 };
 
 template <class T> using Vector3 = Vector<T, 3>;
