@@ -93,6 +93,20 @@ class PairCriteria(ut.TestCase):
         self.assertTrue(not ec.decide(self.p1, self.p2))
         self.assertTrue(not ec.decide(self.p1.id, self.p2.id))
 
+    def test_energy_crit_requires_cut_off(self):
+        # Regression test for bug-sweep #29: constructing an EnergyCriterion
+        # without the mandatory ``cut_off`` parameter must be rejected. On the
+        # unfixed code the omitted ``cut_off`` was silently accepted, leaving
+        # the core member ``m_cut_off`` uninitialized (the core object is
+        # direct-initialized via make_shared<EnergyCriterion>(system), so it is
+        # not value-initialized), and a subsequent get_params()/decide() read
+        # indeterminate memory. ``cut_off`` is THE parameter that defines the
+        # criterion, so it must be required, like the ``distance`` of
+        # DistanceCriterion.
+        with self.assertRaisesRegex(
+                RuntimeError, "Parameter 'cut_off' is missing."):
+            espressomd.pair_criteria.EnergyCriterion()
+
     def test_bond_crit(self):
         bt = 0
         bc = espressomd.pair_criteria.BondCriterion(bond_type=bt)

@@ -46,6 +46,15 @@ public:
           [this]() { return m_c->get_cut_off(); }}});
   }
 
+  void do_construct(VariantMap const &params) override {
+    // cut_off is the parameter that defines the criterion and has no
+    // meaningful default; enforce it as a required construction parameter.
+    // get_value throws "Parameter 'cut_off' is missing." when it is omitted,
+    // which prevents the core m_cut_off threshold from being left
+    // uninitialized (bug-sweep #29).
+    m_c->set_cut_off(get_value<double>(params, "cut_off"));
+  }
+
   std::shared_ptr<::PairCriteria::PairCriterion>
   pair_criterion() const override {
     return m_c;
