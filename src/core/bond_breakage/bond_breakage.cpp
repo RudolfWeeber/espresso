@@ -79,6 +79,15 @@ static ActionSet actions_for_breakage(CellStructure const &cell_structure,
     return bond_partners[1];
   }; // optional for second partner engaged
 
+  // ActionType::NONE means "do nothing". This is a documented, valid spec
+  // (and the value of a default-constructed BreakageSpec), so return no
+  // actions. Without this early return, a NONE pair-bond entry would fall
+  // through to the REVERT/angle-bond branch below and dereference the empty
+  // optional bond_partners[1] (undefined behaviour).
+  if (spec.action_type == ActionType::NONE) {
+    return {};
+  }
+
   // Handle different action types
   if (spec.action_type == ActionType::DELETE_BOND) {
     if (is_angle_bond(e.bond_partners)) {
