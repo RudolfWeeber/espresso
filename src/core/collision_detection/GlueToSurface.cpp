@@ -58,6 +58,20 @@ void GlueToSurface::initialize(System::System &system) {
   // Cache square of cutoff
   distance_sq = Utils::sqr(distance);
 
+  // Check that the bonds have the right number of partners. Both bonds are
+  // stored with a single-partner list in handle_collisions(), so they must
+  // be strict pair bonds (existence is already guaranteed at the seam).
+  assert(system.bonded_ias->contains(bond_centers));
+  if (number_of_partners(*system.bonded_ias->at(bond_centers)) != 1) {
+    throw std::runtime_error("The bond type to be used for binding particle "
+                             "centers needs to be a pair bond");
+  }
+  assert(system.bonded_ias->contains(bond_vs));
+  if (number_of_partners(*system.bonded_ias->at(bond_vs)) != 1) {
+    throw std::runtime_error("The bond type to be used for binding virtual "
+                             "sites needs to be a pair bond");
+  }
+
   if (part_type_vs < 0) {
     throw std::domain_error("Collision detection particle type for virtual "
                             "sites needs to be >=0");
