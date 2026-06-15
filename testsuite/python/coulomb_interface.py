@@ -17,6 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+import re
 import unittest as ut
 import unittest_decorators as utx
 import tests_common
@@ -167,6 +168,30 @@ class Test(ut.TestCase):
         self.system.electrostatics.solver = actor
         self.assertTrue(actor.is_tuned)
         self.assertAlmostEqual(actor.far_switch_radius**2, 0.8 * h_z**2)
+
+    @utx.skipIfMissingFeatures(["P3M"])
+    def test_elc_docstring_parameter_names(self):
+        # every parameter documented in the ELC docstring must be an accepted
+        # parameter, i.e. a key of default_params() or a member of
+        # required_keys(); otherwise a user following the documentation hits
+        # "Parameter '<name>' is not a valid parameter" (bug-sweep #54).
+        ELC = espressomd.electrostatics.ELC
+        # default_params() and required_keys() do not touch system state, so
+        # they can be queried on a bare instance without running __init__.
+        instance = ELC.__new__(ELC)
+        accepted = set(instance.default_params().keys()) | set(
+            instance.required_keys())
+        # extract the "Parameters" block from the docstring
+        doc = ELC.__doc__
+        params_block = doc.split("Parameters\n", 1)[1]
+        # collect each documented field name (lines like "name : :obj:`...`")
+        documented = re.findall(r"^\s*(\w+)\s*:\s*:obj:", params_block, re.M)
+        self.assertIn("delta_mid_bot", documented + list(accepted))
+        for name in documented:
+            self.assertIn(
+                name, accepted,
+                f"ELC docstring documents '{name}' but it is not an accepted "
+                f"parameter (accepted: {sorted(accepted)})")
 
     @utx.skipIfMissingFeatures(["P3M"])
     def test_elc_p3m_exceptions(self):
