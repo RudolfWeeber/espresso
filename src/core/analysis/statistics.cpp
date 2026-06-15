@@ -38,6 +38,7 @@
 #include <utils/math/sqr.hpp>
 #include <utils/mpi/gather_buffer.hpp>
 
+#include <boost/mpi/collectives/all_reduce.hpp>
 #include <boost/mpi/collectives/broadcast.hpp>
 #include <boost/mpi/collectives/reduce.hpp>
 
@@ -47,6 +48,7 @@
 #include <functional>
 #include <limits>
 #include <numbers>
+#include <stdexcept>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -170,9 +172,17 @@ Utils::Vector3d center_of_mass(System::System const &system, int p_type) {
     }
   }
   Utils::Vector3d com{};
-  double mass = 1.; // placeholder value to avoid division by zero
   boost::mpi::reduce(::comm_cart, local_com, com, std::plus<>(), 0);
-  boost::mpi::reduce(::comm_cart, local_mass, mass, std::plus<>(), 0);
+  // The total mass is needed on every rank: it guards the division below and
+  // the throw must be collective (all ranks throw together) so the calling
+  // script interface code does not deadlock on a subsequent MPI collective.
+  auto const mass =
+      boost::mpi::all_reduce(::comm_cart, local_mass, std::plus<>());
+  if (mass == 0.) {
+    throw std::runtime_error(
+        "Cannot calculate the center of mass: no particle with non-zero mass "
+        "of the given type(s) was found");
+  }
   return com / mass;
 }
 
@@ -200,7 +210,11 @@ Utils::Vector9d gyration_tensor(System::System const &system,
 
   Utils::Vector9d mat{};
   if (::comm_cart.rank() == 0) {
-    assert(not buf_pos.empty());
+    if (buf_pos.empty()) {
+      throw std::runtime_error(
+          "Cannot calculate the gyration tensor: no particle of the given "
+          "type(s) was found");
+    }
     auto const center =
         std::accumulate(buf_pos.begin(), buf_pos.end(), Utils::Vector3d{}) /
         static_cast<double>(buf_pos.size());

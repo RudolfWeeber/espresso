@@ -148,6 +148,33 @@ class AnalyzeMassRelated(ut.TestCase):
                 self.system.analysis.calc_rg(chain_start=0, number_of_chains=1,
                                              chain_length=len(self.system.part))
 
+    def test_empty_but_seen_type(self):
+        """A particle type that was seen (so it passes the type-range check)
+        but currently has no particles must not silently produce NaN (a
+        division by zero) in the mass-related analysis routines. The routines
+        must raise instead.
+
+        See bug-sweep #47: ``check_particle_type`` only verifies that
+        ``0 <= p_type <= max_seen_particle_type`` and ``max_seen`` is never
+        decremented when particles are removed, so a seen-then-deleted type
+        passes validation while contributing an empty buffer / zero total mass.
+        """
+        # Pick a brand new type, make it "seen", then empty it again.
+        empty_type = max(self.system.part.all().type) + 17
+        p = self.system.part.add(pos=[1., 1., 1.], type=empty_type)
+        p.remove()
+
+        # ``center_of_mass`` has no assert, so on the unfixed code it returns a
+        # vector of NaN (0/0) instead of raising. Check it first so the test
+        # fails cleanly on the unfixed code without triggering the (RelWith-
+        # Assert) abort inside ``gyration_tensor``.
+        with self.assertRaises(Exception):
+            self.system.analysis.center_of_mass(p_type=empty_type)
+        with self.assertRaises(Exception):
+            self.system.analysis.gyration_tensor(p_type=empty_type)
+        with self.assertRaises(Exception):
+            self.system.analysis.moment_of_inertia_matrix(p_type=empty_type)
+
 
 if __name__ == "__main__":
     ut.main()
