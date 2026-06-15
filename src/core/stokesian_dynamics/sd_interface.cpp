@@ -28,6 +28,7 @@
 #include "BoxGeometry.hpp"
 #include "Particle.hpp"
 #include "communication.hpp"
+#include "errorhandling.hpp"
 #include "system/System.hpp"
 #include "thermostat.hpp"
 
@@ -134,6 +135,14 @@ void StokesianDynamics::propagate_vel_pos(
     f_host.resize(6 * n_part);
     a_host.resize(n_part);
 
+    // Make sure every present particle type has a registered radius. We must
+    // NOT throw here: this branch runs only on rank 0 and sits between the
+    // collective gather_buffer (above) and the collective scatter_buffer
+    // (below). An asymmetric throw would leave the other ranks blocked
+    // forever in MPI_Scatterv. Instead, register a runtime error (turned
+    // into a coordinated cross-rank error by check_runtime_errors() in the
+    // integration loop) and still fall through to the collective scatter.
+    bool missing_radius = false;
     std::size_t i = 0;
     for (auto const &p : parts_buffer) {
       x_host[6 * i + 0] = p.pos[0];
@@ -152,15 +161,29 @@ void StokesianDynamics::propagate_vel_pos(
       f_host[6 * i + 4] = p.ext_force.torque[1];
       f_host[6 * i + 5] = p.ext_force.torque[2];
 
-      a_host[i] = radii.at(p.type);
+      auto const radius_it = radii.find(p.type);
+      if (radius_it == radii.end()) {
+        runtimeErrorMsg() << "Stokesian Dynamics: no radius defined for "
+                             "particle type "
+                          << p.type;
+        missing_radius = true;
+        break;
+      }
+      a_host[i] = radius_it->second;
 
       ++i;
     }
 
-    v_sd = sd_cpu(x_host, f_host, a_host, n_part, viscosity,
-                  std::sqrt(kT / time_step),
-                  static_cast<std::size_t>(stokesian.rng_counter()),
-                  static_cast<std::size_t>(stokesian.rng_seed()), flags);
+    if (missing_radius) {
+      // Skip the solver and ship zeroed velocities; the registered runtime
+      // error aborts the run cleanly after the collective scatter below.
+      v_sd.assign(6 * n_part, 0.);
+    } else {
+      v_sd = sd_cpu(x_host, f_host, a_host, n_part, viscosity,
+                    std::sqrt(kT / time_step),
+                    static_cast<std::size_t>(stokesian.rng_counter()),
+                    static_cast<std::size_t>(stokesian.rng_seed()), flags);
+    }
   } else { // if (this_node == 0)
     v_sd.resize(particles.size() * 6);
   } // if (this_node == 0) {...} else
