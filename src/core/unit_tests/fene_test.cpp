@@ -28,10 +28,10 @@
 #include <cmath>
 #include <optional>
 
-/** Reference: a stretched bond inside the allowed range returns the analytic
- *  FENE energy and a non-empty force. This guards the common case and makes
- *  sure the compression fix below does not break ordinary evaluation. */
-BOOST_AUTO_TEST_CASE(fene_energy_matches_analytic_within_range) {
+/* A stretched FENE bond inside the allowed range returns the analytic
+ * energy and a non-empty force. This guards the common case and makes
+ * sure the compression fix below does not break ordinary evaluation. */
+BOOST_AUTO_TEST_CASE(fene_matches_analytic) {
   auto const k = 2.0;
   auto const drmax = 1.5;
   auto const r0 = 2.0;
@@ -48,8 +48,7 @@ BOOST_AUTO_TEST_CASE(fene_energy_matches_analytic_within_range) {
   BOOST_CHECK_CLOSE(*energy_stretch, expected_stretch, 1e-10);
   BOOST_CHECK(fene.force(dx_stretch).has_value());
 
-  // compressed bond still inside the range: len = 1.0 -> dr = -1.0, |dr| <
-  // drmax
+  // compressed bond still within range: len = 1.0 -> dr = -1.0, |dr| < drmax
   auto const dx_compress = Utils::Vector3d{{1.0, 0.0, 0.0}};
   auto const dr_compress = dx_compress.norm() - r0;
   auto const expected_compress =
@@ -61,33 +60,29 @@ BOOST_AUTO_TEST_CASE(fene_energy_matches_analytic_within_range) {
   BOOST_CHECK(fene.force(dx_compress).has_value());
 }
 
-/** Bug-sweep #9: FENE energy must be symmetric with the force under
- *  compression. r_0 > d_r_max is a supported configuration. For a bond
- *  compressed below r_0 - d_r_max we have dr <= -drmax, so the bond is broken
- *  and both force() and energy() must return an empty optional. Before the fix,
- *  energy()'s one-sided guard `dr >= drmax` was not taken and the energy
- *  evaluated log(1 - dr^2/drmax^2) = log(negative) = NaN inside a non-empty
- *  optional that was then silently summed into the total energy. */
-BOOST_AUTO_TEST_CASE(fene_energy_symmetric_under_compression) {
+/* FENE energy must be symmetric with the force under compression.
+ * r_0 > d_r_max is a supported configuration. For a bond compressed
+ * below r_0 - d_r_max we have dr <= -drmax, so the bond is broken
+ * and both force() and energy() must return an empty optional. */
+BOOST_AUTO_TEST_CASE(fene_symmetric_break) {
   auto const k = 1.0;
   auto const drmax = 1.0;
   auto const r0 = 2.0;
   FeneBond const fene{k, drmax, r0};
 
+  // len = 3.5 -> dr = 1.5, |dr| = 1.5 >= drmax (stretched beyond the range)
+  auto const dx_stretch = Utils::Vector3d{{3.5, 0.0, 0.0}};
+
+  auto const force_stretch = fene.force(dx_stretch);
+  auto const energy_stretch = fene.energy(dx_stretch);
+  BOOST_REQUIRE(!force_stretch.has_value());
+  BOOST_REQUIRE(!energy_stretch.has_value());
+
   // len = 0.5 -> dr = -1.5, |dr| = 1.5 >= drmax (compressed beyond the range)
-  auto const dx = Utils::Vector3d{{0.5, 0.0, 0.0}};
+  auto const dx_compress = Utils::Vector3d{{0.5, 0.0, 0.0}};
 
-  auto const force = fene.force(dx);
-  auto const energy = fene.energy(dx);
-
-  // force() already returns {} for |dr| >= drmax (bond broken).
-  BOOST_CHECK(!force.has_value());
-
-  // energy() must mirror force(): empty optional, not a non-empty NaN.
-  BOOST_CHECK(!energy.has_value());
-
-  // Defensive: if energy ever returns a value it must be finite (never NaN).
-  if (energy.has_value()) {
-    BOOST_CHECK(std::isfinite(*energy));
-  }
+  auto const force_compress = fene.force(dx_compress);
+  auto const energy_compress = fene.energy(dx_compress);
+  BOOST_REQUIRE(!force_compress.has_value());
+  BOOST_REQUIRE(!energy_compress.has_value());
 }
