@@ -361,6 +361,65 @@ class ReactionMethods(ut.TestCase):
             method.exclusion_radius_per_type = {2: -0.1}
         self.assertEqual(list(method.exclusion_radius_per_type.keys()), [1])
 
+    @staticmethod
+    def documented_method_parameters(method_name):
+        """
+        Extract the parameter names documented in the numpydoc
+        ``Parameters`` block of ``method_name`` from the class docstring
+        of :class:`~espressomd.reaction_methods.ReactionAlgorithm`.
+        """
+        docstring = espressomd.reaction_methods.ReactionAlgorithm.__doc__
+        lines = docstring.splitlines()
+        # locate the block introduced by "<method_name>()"
+        start = None
+        for index, line in enumerate(lines):
+            if line.strip() == f"{method_name}()":
+                start = index
+                break
+        assert start is not None, \
+            f"method '{method_name}' is not documented"
+        method_indent = len(lines[start]) - len(lines[start].lstrip())
+        # collect the parameter names listed after the "Parameters" header
+        parameters = []
+        inside_parameters = False
+        for line in lines[start + 1:]:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            indent = len(line) - len(line.lstrip())
+            # a sibling method block (same indent) ends this block
+            if indent <= method_indent and stripped.endswith("()"):
+                break
+            if stripped == "Parameters":
+                inside_parameters = True
+                continue
+            if stripped == "----------":
+                continue
+            if inside_parameters and " : " in stripped:
+                parameters.append(stripped.split(" : ", 1)[0].strip())
+        return parameters
+
+    def test_cylindrical_constraint_documented_parameters(self):
+        """
+        Contract test: the parameter names advertised in the docstring of
+        ``set_cylindrical_constraint_in_z_direction`` must be the names the
+        script interface actually accepts. Following the documentation must
+        not trigger a missing-parameter error (bug-sweep #53).
+        """
+        method = espressomd.reaction_methods.ReactionEnsemble(
+            kT=1.5, exclusion_range=0.8, seed=12)
+        documented = self.documented_method_parameters(
+            "set_cylindrical_constraint_in_z_direction")
+        # sanity check: the docstring must list a radius and two centers
+        self.assertEqual(len(documented), 3)
+        self.assertIn("center_x", documented)
+        self.assertIn("center_y", documented)
+        # build the call from the documented names, using valid values
+        valid_values = {"center_x": 5., "center_y": 5.}
+        kwargs = {name: valid_values.get(name, 2.) for name in documented}
+        # following the documented names must be accepted by the SI
+        method.set_cylindrical_constraint_in_z_direction(**kwargs)
+
 
 if __name__ == "__main__":
     ut.main()
