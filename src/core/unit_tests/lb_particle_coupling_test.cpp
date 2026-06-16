@@ -521,6 +521,81 @@ BOOST_DATA_TEST_CASE_F(CleanupActorLB, coupling_particle_lattice_ia,
   }
 }
 
+/**
+ * Regression test for the core wrapper @ref
+ * LB::LBWalberla::ghost_communication_pdf.
+ *
+ * The wrapper used to forward to @c lb_fluid->ghost_communication_vel() (a
+ * copy-paste typo), so a PDF-pending state produced by a density setter was
+ * never flushed: @ref LBWalberlaImpl::set_node_density sets ONLY
+ * @c GhostComm::PDF, while the mis-wired vel communicator only clears
+ * @c GhostComm::VEL (which is not pending) and no-ops. Reading the ghost layer
+ * afterwards therefore returns the stale initial density on the neighbouring
+ * rank, and the @c consider_ghosts PDF-pending assertion in
+ * @c get_node_density fires in an assert build.
+ *
+ * The test exercises the CORE wrapper via @c espresso::system->lb (NOT the
+ * walberla_bridge LBWalberlaImpl directly, whose ghost_communication_pdf is
+ * correct). It only surfaces with a genuine inter-rank ghost layer, hence
+ * NUM_PROC 2.
+ */
+BOOST_FIXTURE_TEST_CASE(ghost_communication_pdf_flushes_density,
+                        CleanupActorLB) {
+  auto &lb = espresso::system->lb;
+  auto const &lattice = espresso::lb_fluid->get_lattice();
+  auto const &grid = params.grid_dimensions;
+  auto const gl = static_cast<int>(lattice.get_ghost_layers());
+
+  // distinct, node-dependent density (differs from the initial params.density)
+  auto fold = [&grid](Utils::Vector3i n) {
+    for (auto i = 0u; i < 3u; ++i) {
+      if (n[i] < 0)
+        n[i] += grid[i];
+      else if (n[i] >= grid[i])
+        n[i] -= grid[i];
+    }
+    return n;
+  };
+  auto node_density = [&fold](Utils::Vector3i const &node) {
+    auto const f = fold(node);
+    return 2. + 1e-3 * static_cast<double>(f[0] + 17 * f[1] + 311 * f[2]);
+  };
+
+  // Write a distinct density on every locally-owned node. This sets ONLY the
+  // GhostComm::PDF pending flag; GhostComm::VEL stays clear.
+  for (auto x = -gl; x < grid[0] + gl; ++x) {
+    for (auto y = -gl; y < grid[1] + gl; ++y) {
+      for (auto z = -gl; z < grid[2] + gl; ++z) {
+        auto const node = Utils::Vector3i{x, y, z};
+        if (lattice.node_in_local_domain(node)) {
+          BOOST_REQUIRE(
+              espresso::lb_fluid->set_node_density(node, node_density(node)));
+        }
+      }
+    }
+  }
+
+  // Flush the PDF ghost layer through the CORE wrapper (the mis-wired method).
+  lb.ghost_communication_pdf();
+
+  // On the unfixed branch the PDF ghost layer was never communicated, so the
+  // ghost cells still hold the stale initial density. Read them back with
+  // consider_ghosts=true (this also asserts PDF is not pending).
+  for (auto x = -gl; x < grid[0] + gl; ++x) {
+    for (auto y = -gl; y < grid[1] + gl; ++y) {
+      for (auto z = -gl; z < grid[2] + gl; ++z) {
+        auto const node = Utils::Vector3i{x, y, z};
+        if (lattice.node_in_local_halo(node) and
+            not lattice.node_in_local_domain(node)) {
+          auto const res = espresso::lb_fluid->get_node_density(node, true);
+          BOOST_REQUIRE(res);
+          BOOST_CHECK_CLOSE(*res, node_density(node), 1e-9);
+        }
+      }
+    }
+  }
+}
+
 BOOST_FIXTURE_TEST_CASE(runtime_exceptions, CleanupActorLB) {
   boost::mpi::communicator world;
   auto &lb = espresso::system->lb;
