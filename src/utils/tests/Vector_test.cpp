@@ -128,29 +128,12 @@ BOOST_AUTO_TEST_CASE(normalize) {
   v.normalize();
 
   BOOST_CHECK_CLOSE(v.norm2(), 1.0, tol);
-}
 
-BOOST_AUTO_TEST_CASE(normalized_zero_vector) {
-  // normalized() of a zero vector must stay finite, consistent with the
-  // zero-length guard of the in-place normalize(). A 0/0 division here would
-  // yield NaN and poison every consumer (e.g. the degenerate double cross
-  // product in the Stoner-Wohlfarth update when the field is parallel to the
-  // easy axis). See bug-sweep #10.
   auto const zero = Utils::Vector3d{0., 0., 0.};
   auto const n = zero.normalized();
   for (auto const &component : n) {
-    BOOST_CHECK(std::isfinite(component));
-  }
-
-  // exact reproduction of the defective expression in
-  // stoner_wohlfarth_thermal.cpp: with the field parallel to the easy axis
-  // both cross products vanish and the result must remain finite.
-  auto const e_h = Utils::Vector3d{0., 0., 1.};
-  auto const e_k = Utils::Vector3d{0., 0., 1.};
-  auto const rot_axis =
-      vector_product(vector_product(e_h, e_k), e_h).normalized();
-  for (auto const &component : rot_axis) {
-    BOOST_CHECK(std::isfinite(component));
+    BOOST_REQUIRE(std::isfinite(component));
+    BOOST_CHECK_EQUAL(component, 0.);
   }
 }
 

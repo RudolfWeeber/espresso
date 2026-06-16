@@ -167,8 +167,7 @@ public:
   Vector &normalize() {
     auto const l = norm();
     if (l != T(0)) {
-      for (std::size_t i = 0u; i < N; ++i)
-        (*this)[i] /= l;
+      *this /= l;
     }
 
     return *this;
@@ -177,9 +176,8 @@ public:
   /*
    * @brief Return a normalized copy of the vector.
    *
-   * Divide the vector by its length, if not zero, otherwise return the
-   * vector unchanged. The zero-length guard mirrors @ref normalize() and
-   * avoids a 0/0 division that would produce NaN components.
+   * Normalize the vector by its length,
+   * if not zero, otherwise the vector is unchanged.
    */
   Vector normalized() const {
     auto const l = norm();
