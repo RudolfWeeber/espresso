@@ -386,7 +386,8 @@ class H5mdTests(ut.TestCase):
         for _ in range(n_steps):
             self.system.integrator.run(1)
             time_at_write.append(self.system.time)
-            step_at_write.append(round(self.system.time/self.system.integrator.time_step))
+            step_at_write.append(
+                round(self.system.time / self.system.integrator.time_step))
             h5.write()
         h5.flush()
         h5.close()
@@ -406,6 +407,7 @@ class H5mdTests(ut.TestCase):
         np.testing.assert_array_equal(
             step_array, step_at_write,
             err_msg="step values must match simulation step count at each write")
+
 
 if __name__ == "__main__":
     ut.main()
