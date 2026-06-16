@@ -333,6 +333,22 @@ class EKTest:
             ek_solver_incompatible)
         self.assertEqual(len(self.system.ekcontainer), 1)
 
+    def test_ek_tau_mismatch_exception(self):
+        # the species derives all of its MD<->lattice conversion factors from
+        # its own tau, while the integrator and the MD-tau veto use the
+        # container tau; a mismatch silently produces wrong physics, so adding
+        # a species whose tau differs from the container tau must be rejected
+        self.assertAlmostEqual(
+            self.system.ekcontainer.tau, self.params["tau"], delta=self.atol)
+        ek_species_mismatch = self.make_default_ek_species(
+            tau=2. * self.params["tau"])
+        with self.assertRaisesRegex(RuntimeError, "same tau"):
+            self.system.ekcontainer.add(ek_species_mismatch)
+        self.assertEqual(len(self.system.ekcontainer), 0)
+        # a species with the matching tau can still be added
+        self.system.ekcontainer.add(self.make_default_ek_species())
+        self.assertEqual(len(self.system.ekcontainer), 1)
+
     def test_ek_solver_exceptions(self):
         ek_solver = self.system.ekcontainer.solver
         ek_species = self.make_default_ek_species()
