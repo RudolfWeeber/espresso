@@ -533,12 +533,8 @@ class DPDThermostat(ut.TestCase):
             np.testing.assert_allclose(np.copy(p1.f), -np.copy(p2.f))
 
     @utx.skipIfMissingFeatures(["DPD", "EXCLUSIONS"])
-    def test_dpd_pressure_includes_excluded_pairs(self):
-        """Excluded pairs must still contribute to the DPD virial pressure.
-
-        In forces_cabana.hpp the DPD force is applied regardless of exclusion
-        status.  The pressure kernel must mirror this behaviour; otherwise the
-        two observables are thermodynamically inconsistent.
+    def test_dpd_pressure_excludes_excluded_pairs(self):
+        """Excluded pairs must not contribute to the DPD virial pressure.
         """
         system = self.system
 
@@ -557,7 +553,6 @@ class DPDThermostat(ut.TestCase):
         p1 = system.part.add(pos=[5.0 + 1.0, 5.0, 5.0], type=0,
                              v=[-0.5, 0.0, 0.0])
 
-        # Mark the pair as excluded — this is the pair that triggers the bug.
         p0.add_exclusion(p1.id)
 
         system.integrator.run(5)
@@ -565,13 +560,9 @@ class DPDThermostat(ut.TestCase):
         pressure_tensor = system.analysis.pressure_tensor()
         dpd_pressure = pressure_tensor["dpd"]
 
-        # The DPD pressure tensor must be non-zero: excluded pairs contribute
-        # a DPD force, so they must also contribute a DPD virial.
-        self.assertGreater(
-            np.linalg.norm(dpd_pressure), 0.0,
-            "DPD pressure tensor is zero even though an excluded pair has a "
-            "non-zero DPD force — the virial is not being accumulated for "
-            "excluded pairs.")
+        # The DPD pressure tensor must be zero: excluded pairs contribute
+        # no DPD force, so they must also contribute no DPD virial.
+        self.assertEqual(np.linalg.norm(dpd_pressure), 0.0)
 
 
 if __name__ == "__main__":
