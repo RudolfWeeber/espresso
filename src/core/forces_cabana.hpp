@@ -184,10 +184,9 @@ struct ForcesKernel {
           auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
           auto const vel1 = aosoa.get_vector_at(aosoa.velocity, i);
           auto const vel2 = aosoa.get_vector_at(aosoa.velocity, j);
-          auto const force =
-              dpd_pair_force(pos1, vel1, aosoa.id(i), pos2, vel2, aosoa.id(j),
-                             *thermostat.dpd, box_geo, ia_params, d, dist,
-                             dist_sq);
+          auto const force = dpd_pair_force(
+              pos1, vel1, aosoa.id(i), pos2, vel2, aosoa.id(j), *thermostat.dpd,
+              box_geo, ia_params, d, dist, dist_sq);
           pf += force;
         }
 #endif // ESPRESSO_DPD
