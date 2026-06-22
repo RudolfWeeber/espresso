@@ -29,7 +29,7 @@ namespace ErrorHandling {
 RuntimeErrorStream::RuntimeErrorStream(const RuntimeErrorStream &rhs)
     : m_ec(rhs.m_ec), m_level(rhs.m_level), m_line(rhs.m_line),
       m_file(rhs.m_file), m_function(rhs.m_function) {
-  m_buff << rhs.m_buff.rdbuf();
+  m_buff << rhs.m_buff.str();
 }
 
 RuntimeErrorStream::RuntimeErrorStream(RuntimeErrorCollector &ec,

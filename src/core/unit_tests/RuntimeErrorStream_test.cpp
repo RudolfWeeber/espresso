@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2026 The ESPResSo project
+ * Copyright (C) 2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -42,44 +42,28 @@ using ErrorHandling::RuntimeErrorStream;
 using ErrorLevel = ErrorHandling::RuntimeError::ErrorLevel;
 
 /*
- * Regression test for the RuntimeErrorStream copy constructor (bug-sweep #58).
+ * Regression test for the RuntimeErrorStream copy constructor.
  *
- * The user-defined copy constructor must copy every member, including the
- * severity m_level. It used to omit m_level from its member initializer list,
- * so the copy's level was left whatever happened to be in the storage; the
- * destructor reads m_level and forwards it to RuntimeErrorCollector::message().
+ * The user-defined copy constructor must copy every data member.
  *
  * Test mechanics:
  *  - The copy is placement-new constructed into a raw stack buffer. Before
  *    construction we deterministically write a *valid but non-ERROR* byte
- *    pattern (WARNING == 0) over the whole buffer. The copy constructor does
- *    not touch m_level on the unfixed branch, so on unfixed code the copy's
- *    m_level reads back as WARNING, while on fixed code it is overwritten with
- *    the source's ERROR. The written-then-read byte is fully defined (no
- *    reliance on indeterminate-value semantics).
- *  - The copy constructor copies the stream content via
- *    `m_buff << rhs.m_buff.rdbuf()`. Because the source is an *output*
- *    stringstream, its get area is empty, so this copies nothing and the
- *    copy's message text is always empty. We therefore identify the copy's
- *    record not by its (empty) text but by a unique file name that the copy
- *    constructor *does* propagate (m_file is copied). The source's record
- *    carries the same unique file plus a non-empty marker text, so the copy
- *    is the record whose file matches and whose text is empty.
- *
- * On unfixed code the copy's record level is WARNING (mismatch -> failure);
- * on fixed code it is ERROR (match -> pass).
+ *    pattern (WARNING == 0) over the whole buffer.
+ *  - The copy constructor copies all data members, and thus the error
+ *    collector must contain two exact copies of the error message
  */
 BOOST_AUTO_TEST_CASE(copy_ctor_preserves_level) {
   boost::mpi::communicator world;
 
   RuntimeErrorCollector rec(world);
 
-  std::string const unique_file = "bug58_unique_file_marker";
-  std::string const source_text = "bug58_source_text";
+  std::string const unique_file = "unique_file_marker";
+  std::string const source_text = "source_text";
 
-  {
+  if (world.rank() == world.size() - 1) {
     // Raw aligned storage, deterministically pre-filled with bytes that
-    // encode the valid ErrorLevel WARNING (== 0). On the unfixed copy
+    // encode the valid ErrorLevel WARNING (== 0). On a broken copy
     // constructor m_level is never written, so it reads back as WARNING.
     alignas(
         RuntimeErrorStream) unsigned char storage[sizeof(RuntimeErrorStream)];
@@ -93,38 +77,29 @@ BOOST_AUTO_TEST_CASE(copy_ctor_preserves_level) {
     source << source_text;
 
     // Copy-construct into the pre-filled storage. This invokes the copy
-    // constructor on a genuine lvalue (never elided), exercising exactly
-    // the code path that dropped m_level on the unfixed branch.
+    // constructor on a genuine lvalue (never elided).
     auto *copy = new (storage) RuntimeErrorStream(source);
 
-    // Manually invoke the destructor: it reads m_level and records a
-    // message (empty text, unique file). On the unfixed branch m_level is
-    // still WARNING; on the fixed branch it is the source's ERROR.
+    // Manually invoke the destructor: it reads m_level and records a message
     copy->~RuntimeErrorStream();
+    // The `source` destructor is invoked at end of scope and records a message
   }
 
   world.barrier();
 
   if (world.rank() == 0) {
     auto const results = rec.gather();
-
-    // The copy's record is the one with the unique file and empty text
-    // (the copy constructor copies m_file but, due to the output-stream
-    // rdbuf, never carries over the message text).
-    int copy_count = 0;
-    ErrorLevel copy_level{};
+    BOOST_REQUIRE_EQUAL(results.size(), 2ul);
     for (auto const &err : results) {
-      if (err.file() == unique_file && err.what().empty()) {
-        ++copy_count;
-        copy_level = err.level();
-      }
+      BOOST_CHECK_EQUAL(static_cast<int>(err.level()),
+                        static_cast<int>(ErrorLevel::ERROR));
+      BOOST_CHECK_EQUAL(err.what(), source_text);
+      BOOST_CHECK_EQUAL(err.who(), world.size() - 1);
+      BOOST_CHECK_EQUAL(err.function(), "Test_function");
+      BOOST_CHECK_EQUAL(err.file(), unique_file);
+      BOOST_CHECK_EQUAL(err.line(), 42);
+      BOOST_CHECK_EQUAL(err.format(), "ERROR: " + source_text);
     }
-
-    BOOST_REQUIRE_EQUAL(copy_count, 1);
-    // The copy must preserve the source's ERROR level. On the unfixed copy
-    // constructor m_level keeps the pre-filled WARNING value, so this fails.
-    BOOST_CHECK_EQUAL(static_cast<int>(copy_level),
-                      static_cast<int>(ErrorLevel::ERROR));
   } else {
     rec.gather_local();
   }
