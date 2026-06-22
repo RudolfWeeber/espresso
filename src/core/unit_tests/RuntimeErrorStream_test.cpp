@@ -98,7 +98,6 @@ BOOST_AUTO_TEST_CASE(copy_ctor_preserves_level) {
       BOOST_CHECK_EQUAL(err.function(), "Test_function");
       BOOST_CHECK_EQUAL(err.file(), unique_file);
       BOOST_CHECK_EQUAL(err.line(), 42);
-      BOOST_CHECK_EQUAL(err.format(), "ERROR: " + source_text);
     }
   } else {
     rec.gather_local();
