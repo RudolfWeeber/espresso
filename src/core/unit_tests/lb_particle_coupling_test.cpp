@@ -521,24 +521,6 @@ BOOST_DATA_TEST_CASE_F(CleanupActorLB, coupling_particle_lattice_ia,
   }
 }
 
-/**
- * Regression test for the core wrapper @ref
- * LB::LBWalberla::ghost_communication_pdf.
- *
- * The wrapper used to forward to @c lb_fluid->ghost_communication_vel() (a
- * copy-paste typo), so a PDF-pending state produced by a density setter was
- * never flushed: @ref LBWalberlaImpl::set_node_density sets ONLY
- * @c GhostComm::PDF, while the mis-wired vel communicator only clears
- * @c GhostComm::VEL (which is not pending) and no-ops. Reading the ghost layer
- * afterwards therefore returns the stale initial density on the neighbouring
- * rank, and the @c consider_ghosts PDF-pending assertion in
- * @c get_node_density fires in an assert build.
- *
- * The test exercises the CORE wrapper via @c espresso::system->lb (NOT the
- * walberla_bridge LBWalberlaImpl directly, whose ghost_communication_pdf is
- * correct). It only surfaces with a genuine inter-rank ghost layer, hence
- * NUM_PROC 2.
- */
 BOOST_FIXTURE_TEST_CASE(ghost_communication_pdf_flushes_density,
                         CleanupActorLB) {
   auto &lb = espresso::system->lb;
@@ -575,12 +557,10 @@ BOOST_FIXTURE_TEST_CASE(ghost_communication_pdf_flushes_density,
     }
   }
 
-  // Flush the PDF ghost layer through the CORE wrapper (the mis-wired method).
+  // synchronize the PDF ghost layer through the core wrapper
   lb.ghost_communication_pdf();
 
-  // On the unfixed branch the PDF ghost layer was never communicated, so the
-  // ghost cells still hold the stale initial density. Read them back with
-  // consider_ghosts=true (this also asserts PDF is not pending).
+  // read local halo and check the PDF ghost layer was correctly updated
   for (auto x = -gl; x < grid[0] + gl; ++x) {
     for (auto y = -gl; y < grid[1] + gl; ++y) {
       for (auto z = -gl; z < grid[2] + gl; ++z) {
