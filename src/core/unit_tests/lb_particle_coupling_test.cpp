@@ -529,7 +529,7 @@ BOOST_FIXTURE_TEST_CASE(ghost_communication_pdf_flushes_density,
   auto const gl = static_cast<int>(lattice.get_ghost_layers());
 
   // distinct, node-dependent density (differs from the initial params.density)
-  auto fold = [&grid](Utils::Vector3i n) {
+  auto fold = [](Utils::Vector3i n) {
     for (auto i = 0u; i < 3u; ++i) {
       if (n[i] < 0)
         n[i] += grid[i];
