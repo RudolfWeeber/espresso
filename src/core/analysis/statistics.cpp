@@ -38,7 +38,6 @@
 #include <utils/math/sqr.hpp>
 #include <utils/mpi/gather_buffer.hpp>
 
-#include <boost/mpi/collectives/all_reduce.hpp>
 #include <boost/mpi/collectives/broadcast.hpp>
 #include <boost/mpi/collectives/reduce.hpp>
 
@@ -172,13 +171,12 @@ Utils::Vector3d center_of_mass(System::System const &system, int p_type) {
     }
   }
   Utils::Vector3d com{};
+  double mass = 1.; // placeholder value to avoid division by zero
   boost::mpi::reduce(::comm_cart, local_com, com, std::plus<>(), 0);
-  // The total mass is needed on every rank: it guards the division below and
-  // the throw must be collective (all ranks throw together) so the calling
-  // script interface code does not deadlock on a subsequent MPI collective.
-  auto const mass =
-      boost::mpi::all_reduce(::comm_cart, local_mass, std::plus<>());
-  if (mass == 0.) {
+  boost::mpi::reduce(::comm_cart, local_mass, mass, std::plus<>(), 0);
+  auto invalid_mass = (mass == 0.);
+  boost::mpi::broadcast(::comm_cart, invalid_mass, 0);
+  if (invalid_mass) {
     throw std::runtime_error(
         "Cannot calculate the center of mass: no particle with non-zero mass "
         "of the given type(s) was found");
