@@ -18,7 +18,7 @@
 - Preserve the exact reaction-torque relation: `fji.torque += vector_product(pf.f, rn) - pf.torque` (do **not** simplify to a recomputed pair). Preserve self-interaction exclusion (primary image of the self pair only).
 - Preserve method signatures in `dipolar_direct_sum.hpp:81-88` verbatim; only bodies change.
 - Build with `make -j8` (never `-j$(nproc)`). Use `git -C <path>` rather than `cd <path> && git`.
-- SIMD load flag: `Kokkos::Experimental::simd_flag_default` (element-aligned; confirm spelling in Task 1). SIMD alias: `Kokkos::Experimental::native_simd<double>` (confirm in Task 1).
+- SIMD load flag: `Kokkos::Experimental::simd_flag_default` (element-aligned). SIMD alias: `Kokkos::Experimental::simd<double>` (native ABI). NOTE: `native_simd` is deprecated and gated behind `KOKKOS_ENABLE_DEPRECATED_CODE_4`, which this build turns OFF — it will not compile; use `simd<double>`. Horizontal reduce: `Kokkos::Experimental::reduce(v, std::plus<>{})` returns the scalar `T`.
 
 ## File Structure
 
@@ -44,7 +44,7 @@ Work happens on branch `dds-kokkos` (already created). Commit after each task.
 **Interfaces:**
 - Consumes: `Utils::Vector<T,3>`, `Utils::vector_product` (`src/utils/include/utils/Vector.hpp`); kokkos-simd.
 - Produces (used by Tasks 3-5):
-  - `using simd_double = Kokkos::Experimental::native_simd<double>;`
+  - `using simd_double = Kokkos::Experimental::simd<double>;`
   - `template <class T> struct PairForce { Utils::Vector<T,3> f; Utils::Vector<T,3> torque; PairForce &operator+=(PairForce const &o); };`
   - `template <class T> PairForce<T> pair_force(Utils::Vector<T,3> const &d, Utils::Vector<T,3> const &m1, Utils::Vector<T,3> const &m2);`
   - `template <class T> T pair_potential(Utils::Vector<T,3> const &d, Utils::Vector<T,3> const &m1, Utils::Vector<T,3> const &m2);`
@@ -243,7 +243,7 @@ Create `src/core/magnetostatics/dipolar_direct_sum_kernels.hpp` (math copied ver
 #include <cmath>
 #include <cstddef>
 
-using simd_double = Kokkos::Experimental::native_simd<double>;
+using simd_double = Kokkos::Experimental::simd<double>;
 
 namespace Utils {
 /** simd-scalar * Vector<simd> — the arithmetic-constrained scalar overload in
