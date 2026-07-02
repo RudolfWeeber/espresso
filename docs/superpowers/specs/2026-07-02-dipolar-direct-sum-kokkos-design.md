@@ -18,8 +18,11 @@ into `template <class T>` kernels shared between the scalar tail path
 `Utils::Vector<T, 3>`. Both existing optimizations of the forces kernel are
 preserved: the MPI latency-hiding two-phase structure, and the Newton's-third-law
 "visit local pairs once" trick (which under a parallel `i`-loop requires a
-`Kokkos::Experimental::ScatterView` for the partner-`j` writes). The GPU
-(`ESPRESSO_CUDA`) path is untouched. Verification is via the existing test suite.
+`Kokkos::Experimental::ScatterView` for the partner-`j` writes). The energy kernel,
+which is serial-in-MPI today, additionally **gains** the same two-phase MPI
+latency-hiding (compute the local triangular sum while the remote data is in
+flight) as part of this change. The GPU (`ESPRESSO_CUDA`) path is untouched.
+Verification is via the existing test suite.
 
 ## 2. Background: current implementation
 
@@ -472,29 +475,42 @@ Preserves the two-phase MPI overlap **ordering exactly**:
 
 #### 3.6.2 Energy (`long_range_energy_cpu`, replaces lines 387-416)
 
-No MPI overlap today — **keep it that way**: `gather_particle_data` →
-`wait_all` immediately (line 400) → fill the full SoA views → single
-`Kokkos::parallel_reduce`:
+The current code waits for MPI **before** any computation (line 400, no overlap).
+This design **adds** the same two-phase MPI latency-hiding as the forces kernel
+(user decision): the energy triangular sum for local particle `gi` runs over
+`j ∈ [gi, n_total)`, which splits cleanly into a **local-upper** part
+`[gi, offset + n_local)` — readable immediately from the local SoA slice — and a
+**remote-black** part `[offset + n_local, n_total)` that needs the gathered data.
+(The "red" range `[0, offset)` is *never* summed by the energy kernel — the primed
+triangular sum only counts each global pair on the rank owning its lower index —
+so the remote fill for energy is the black slice only.)
 
-```c++
-double u = 0.;
-Kokkos::parallel_reduce("dds_energy",
-    RangePolicy<Kokkos::DefaultExecutionSpace>(0, n_local),
-    KOKKOS_LAMBDA-equivalent host lambda (std::size_t i, double &u_local) {
-      // (a) self-images: scalar loop over shifts[1..] with pair_potential<double>
-      // (b) j in (gi, n_total): simd_double acc{0.} accumulated over the SIMD
-      //     body (chunk loop: primary distance per §3.5, scalar shift loop,
-      //     acc += pair_potential<simd_double>(rn, m_i, m_j));
-      //     then u_local += Kokkos::Experimental::reduce(acc, std::plus<>{});
-      // (c) scalar tail with pair_potential<double>
-    }, u);
-return prefactor * u;
-```
+Sequence:
 
-This reproduces the triangular primed sum `image_sum(it, all_posmom.end(), it, ...)`
-of lines 408-413: `j` starts at `i` itself (self-image term, primary excluded) and
-runs over local-upper *and* all remote particles. The per-rank partial times
-`prefactor` is returned; MPI reduction stays with the caller, as now.
+1. `gather_particle_data` (async `iall_gatherv` in flight).
+2. Fill the **local** SoA slice `[offset, offset + n_local)` only.
+3. **Phase A** — `Kokkos::parallel_reduce("dds_energy_local", 0, n_local, ..., uA)`
+   over `j ∈ [gi, offset + n_local)`:
+   ```c++
+   // (a) self-images: scalar loop over shifts[1..] with pair_potential<double>
+   // (b) local-upper j in (gi, offset + n_local): simd_double acc{0.} over the
+   //     SIMD body (chunk loop: primary distance per §3.5, scalar shift loop,
+   //     acc += pair_potential<simd_double>(rn, m_i, m_j));
+   //     then uA_local += Kokkos::Experimental::reduce(acc, std::plus<>{});
+   // (c) scalar tail with pair_potential<double>
+   ```
+4. `boost::mpi::wait_all(reqs.begin(), reqs.end());`
+5. Fill the **black** SoA slice `[offset + n_local, n_total)`.
+6. **Phase B** — `Kokkos::parallel_reduce("dds_energy_remote", 0, n_local, ..., uB)`
+   over `j ∈ [offset + n_local, n_total)` (SIMD body + scalar tail; no self-image
+   term, no primary exclusion — the range is entirely remote).
+7. `return prefactor * (uA + uB);`
+
+Together Phase A + Phase B reproduce the triangular primed sum
+`image_sum(it, all_posmom.end(), it, ...)` of lines 408-413 exactly (same `j`-range
+`[gi, n_total)`, same self-image handling), now with the local block computed while
+the remote data transfers. The per-rank partial times `prefactor` is returned; MPI
+reduction over ranks stays with the caller, as now.
 
 #### 3.6.3 Field (`dipole_field_at_part_cpu`, replaces lines 428-457, `#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING`)
 
@@ -563,8 +579,9 @@ No other file changes. GPU sources (`dipolar_direct_sum_gpu*`) untouched.
    SoA fill → Phase A → `wait_all` → remote SoA fill → Phase B → contribute/apply.
    Reading `all_posmom` outside `[offset, offset + n_local)` before `wait_all` is
    undefined (the `iall_gatherv` buffer is being filled); the two-step
-   `fill_posmom_views` (§3.3) is what enforces this. Energy and field wait first,
-   as today (lines 400, 440).
+   `fill_posmom_views` (§3.3) is what enforces this. The energy kernel now uses the
+   same discipline (§3.6.2): local slice → Phase A reduce → `wait_all` → black
+   slice → Phase B reduce. The field kernel waits first, as today (line 440).
 6. **`with_replicas` semantics.** `with_replicas == true` ⇒ raw distance
    `pos_i - pos_j` plus image shifts; `false` ⇒ `box_geo.get_mi_vector` minimum
    image (including its Lees-Edwards handling) with only the zero shift. The
@@ -677,8 +694,10 @@ No other file changes. GPU sources (`dipolar_direct_sum_gpu*`) untouched.
    written by exactly one iteration, and `Particle` accessors are plain data — no
    hidden shared state. `Kokkos::fence()` after each launch (repo convention,
    `forces.cpp:253`) before touching results serially.
-8. **Open question for the maintainer:** should the energy kernel gain the same
-   MPI latency-hiding as forces (compute local triangle before `wait_all`)? The
-   current code does not overlap (line 400) and this design deliberately preserves
-   that (fixed decision); noting it as an obvious follow-up, not part of this
-   change.
+8. **Energy MPI latency-hiding (now in scope).** Per the user's decision, the
+   energy kernel gains the same two-phase MPI overlap as forces (§3.6.2): the local
+   triangular sum `[gi, offset + n_local)` is computed before `wait_all`, the
+   remote-black sum `[offset + n_local, n_total)` after. This is a behavior change
+   relative to the current serial-in-MPI energy path (line 400), but the summed
+   result is identical up to floating-point reassociation (same caveat as §7.1 for
+   the energy reference in `test_dds_cpu`). No red-range fill is needed for energy.
