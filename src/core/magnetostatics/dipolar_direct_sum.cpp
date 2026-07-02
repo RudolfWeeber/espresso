@@ -31,6 +31,12 @@
 #include "errorhandling.hpp"
 #include "system/System.hpp"
 
+#include "magnetostatics/dipolar_direct_sum_kernels.hpp"
+
+#include <Kokkos_Core.hpp>
+#include <Kokkos_SIMD.hpp>
+#include <Kokkos_ScatterView.hpp>
+
 #include <utils/Vector.hpp>
 #include <utils/cartesian_product.hpp>
 #include <utils/mpi/iall_gatherv.hpp>
@@ -264,6 +270,45 @@ static auto get_n_cut(BoxGeometry const &box_geo, int n_replicas) {
   return n_replicas * Utils::Vector3i{static_cast<int>(box_geo.periodic(0)),
                                       static_cast<int>(box_geo.periodic(1)),
                                       static_cast<int>(box_geo.periodic(2))};
+}
+
+struct PosMomViews {
+  Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace> pos;
+  Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace> m;
+};
+
+static PosMomViews make_posmom_views(std::size_t n_total) {
+  return {decltype(PosMomViews::pos)("dds_pos", n_total),
+          decltype(PosMomViews::m)("dds_m", n_total)};
+}
+
+static void fill_posmom_views(PosMomViews &views,
+                              std::vector<PosMom> const &all_posmom,
+                              std::size_t begin, std::size_t end) {
+  for (auto i = begin; i < end; ++i) {
+    for (int c = 0; c < 3; ++c) {
+      views.pos(i, c) = all_posmom[i].pos[c];
+      views.m(i, c) = all_posmom[i].m[c];
+    }
+  }
+}
+
+/** Real-space image shifts n .* box_l inside the |ncut| sphere; index 0 is the
+ *  primary (zero) shift so self-interaction loops start at index 1. */
+static std::vector<Utils::Vector3d>
+make_image_shifts(Utils::Vector3i const &ncut, Utils::Vector3d const &box_l) {
+  auto const ncut2 = ncut.norm2();
+  std::vector<Utils::Vector3d> shifts;
+  shifts.push_back({0., 0., 0.});
+  for (int nx = -ncut[0]; nx <= ncut[0]; ++nx)
+    for (int ny = -ncut[1]; ny <= ncut[1]; ++ny)
+      for (int nz = -ncut[2]; nz <= ncut[2]; ++nz) {
+        if (nx == 0 && ny == 0 && nz == 0)
+          continue;
+        if (nx * nx + ny * ny + nz * nz <= ncut2)
+          shifts.push_back({nx * box_l[0], ny * box_l[1], nz * box_l[2]});
+      }
+  return shifts;
 }
 
 /**
