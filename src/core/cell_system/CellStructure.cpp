@@ -384,7 +384,7 @@ void CellStructure::remove_particle(int id) {
     auto &parts = cell->particles();
     for (auto it = parts.begin(); it != parts.end();) {
       if (it->id() == id) {
-        it = parts.erase(it);
+        it = CellParticleStorage::erase_particle(parts, it);
         update_particle_index(id, nullptr);
         update_particle_index(parts);
       } else {
@@ -450,7 +450,7 @@ void CellStructure::rebuild_bond_list() { m_bond_state->rebuild(); }
 
 void CellStructure::remove_all_particles() {
   for (auto cell : decomposition().local_cells()) {
-    cell->particles().clear();
+    CellParticleStorage::clear_particles(cell->particles());
   }
 
   m_particle_index.clear();

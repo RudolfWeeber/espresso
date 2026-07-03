@@ -22,6 +22,7 @@
 #pragma once
 
 #include "cell_system/ParticleDecomposition.hpp"
+#include "cell_system/ParticleListOperations.hpp"
 
 #include "BoxGeometry.hpp"
 #include "LocalBox.hpp"
@@ -275,7 +276,7 @@ private:
      * entries for all particles in this cell have to be
      * updated. */
     auto const may_reallocate = pl.size() >= pl.capacity();
-    auto &new_part = pl.insert(std::move(p));
+    auto &new_part = CellParticleStorage::insert_particle(pl, std::move(p));
 
     if (may_reallocate)
       update_particle_index(pl);
