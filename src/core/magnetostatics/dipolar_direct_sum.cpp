@@ -606,31 +606,132 @@ double DipolarDirectSum::long_range_energy_cpu() const {
   assert(not m_is_gpu);
   auto const &system = get_system();
   auto const &box_geo = *system.box_geo;
+  auto const &box_l = box_geo.length();
   auto const particles = system.cell_structure->local_particles();
-  auto [local_particles, all_posmom, reqs, offset] =
+  auto [local_particles, all_posmom, reqs, offset_signed] =
       gather_particle_data(box_geo, particles);
 
   /* Number of image boxes considered */
   auto const ncut = get_n_cut(box_geo, n_replicas);
   auto const with_replicas = (ncut.norm2() > 0);
+  auto const shifts = make_image_shifts(ncut, box_l);
 
-  /* Wait for the rest of the data to arrive */
+  auto const offset = static_cast<std::size_t>(offset_signed);
+  auto const n_local = local_particles.size();
+  auto const n_total = all_posmom.size();
+  constexpr std::size_t w = simd_double::size();
+
+  /* SoA views; fill the local slice only so the remote gather can overlap. */
+  auto views = make_posmom_views(n_total);
+  fill_posmom_views(views, all_posmom, offset, offset + n_local);
+
+  using execution_space = Kokkos::DefaultExecutionSpace;
+
+  /* Raw pointers so the Kokkos lambdas do not capture std::vector by value. */
+  auto const *shifts_ptr = shifts.data();
+  auto const n_shifts = shifts.size();
+
+  /* Phase A: local-upper triangular sum over j in [gi, offset + n_local),
+   * i.e. the self-image energy (shifts[1..], primary excluded) plus the pairs
+   * with j in (gi, offset + n_local). Computed from the local SoA slice while
+   * the remote data is still in flight. */
+  double uA = 0.;
+  Kokkos::parallel_reduce(
+      "dds_energy_local",
+      Kokkos::RangePolicy<execution_space>(std::size_t{0}, n_local),
+      [=](std::size_t const i, double &u_local) {
+        auto const gi = offset + i;
+        Utils::Vector3d const pos_i{views.pos(gi, 0), views.pos(gi, 1),
+                                    views.pos(gi, 2)};
+        Utils::Vector3d const m_i{views.m(gi, 0), views.m(gi, 1),
+                                  views.m(gi, 2)};
+
+        /* (a) self-images (shifts[1..], primary excluded) */
+        for (std::size_t s = 1; s < n_shifts; ++s)
+          u_local += pair_potential<double>(shifts_ptr[s], m_i, m_i);
+
+        auto const m_i_s = broadcast_simd(m_i);
+
+        /* (b) SIMD body over j in (gi, offset + n_local) */
+        auto j = gi + 1;
+        for (; j + w <= offset + n_local; j += w) {
+          auto const m_j = load_simd_moment(views, j);
+          auto const d0 =
+              primary_distance_simd(pos_i, views, j, with_replicas, box_geo);
+          simd_double acc{0.};
+          for (std::size_t s = 0; s < n_shifts; ++s) {
+            auto const &shift = shifts_ptr[s];
+            Utils::Vector<simd_double, 3> const rn{
+                d0[0] + shift[0], d0[1] + shift[1], d0[2] + shift[2]};
+            acc += pair_potential<simd_double>(rn, m_i_s, m_j);
+          }
+          u_local += Kokkos::Experimental::reduce(acc, std::plus<>{});
+        }
+        /* (c) scalar tail over remaining j in (.., offset + n_local) */
+        for (; j < offset + n_local; ++j) {
+          Utils::Vector3d const pos_j{views.pos(j, 0), views.pos(j, 1),
+                                      views.pos(j, 2)};
+          Utils::Vector3d const m_j{views.m(j, 0), views.m(j, 1),
+                                    views.m(j, 2)};
+          auto const d0 = with_replicas ? (pos_i - pos_j)
+                                        : box_geo.get_mi_vector(pos_i, pos_j);
+          for (std::size_t s = 0; s < n_shifts; ++s)
+            u_local += pair_potential<double>(d0 + shifts_ptr[s], m_i, m_j);
+        }
+      },
+      uA);
+
+  /* Wait for remote data, fill the black slice. The red range [0, offset) is
+   * never summed by the energy kernel (each pair is counted once on the rank
+   * owning its lower index). */
   boost::mpi::wait_all(reqs.begin(), reqs.end());
+  fill_posmom_views(views, all_posmom, offset + n_local, n_total);
 
-  /* Range of particles we calculate the ia for on this node */
-  auto const local_posmom_begin = all_posmom.begin() + offset;
-  auto const local_posmom_end =
-      local_posmom_begin + static_cast<long>(local_particles.size());
+  /* Phase B: remote-black sum over j in [offset + n_local, n_total). No self
+   * term and no primary exclusion — the range is entirely remote. */
+  double uB = 0.;
+  Kokkos::parallel_reduce(
+      "dds_energy_remote",
+      Kokkos::RangePolicy<execution_space>(std::size_t{0}, n_local),
+      [=](std::size_t const i, double &u_local) {
+        auto const gi = offset + i;
+        Utils::Vector3d const pos_i{views.pos(gi, 0), views.pos(gi, 1),
+                                    views.pos(gi, 2)};
+        Utils::Vector3d const m_i{views.m(gi, 0), views.m(gi, 1),
+                                  views.m(gi, 2)};
+        auto const m_i_s = broadcast_simd(m_i);
 
-  auto u = 0.;
-  for (auto it = local_posmom_begin; it != local_posmom_end; ++it) {
-    u = image_sum(it, all_posmom.end(), it, with_replicas, ncut, box_geo, u,
-                  [it](Utils::Vector3d const &rn, Utils::Vector3d const &mj) {
-                    return pair_potential(rn, it->m, mj);
-                  });
-  }
+        /* SIMD body over j in [offset + n_local, n_total) */
+        auto j = offset + n_local;
+        for (; j + w <= n_total; j += w) {
+          auto const m_j = load_simd_moment(views, j);
+          auto const d0 =
+              primary_distance_simd(pos_i, views, j, with_replicas, box_geo);
+          simd_double acc{0.};
+          for (std::size_t s = 0; s < n_shifts; ++s) {
+            auto const &shift = shifts_ptr[s];
+            Utils::Vector<simd_double, 3> const rn{
+                d0[0] + shift[0], d0[1] + shift[1], d0[2] + shift[2]};
+            acc += pair_potential<simd_double>(rn, m_i_s, m_j);
+          }
+          u_local += Kokkos::Experimental::reduce(acc, std::plus<>{});
+        }
+        /* scalar tail */
+        for (; j < n_total; ++j) {
+          Utils::Vector3d const pos_j{views.pos(j, 0), views.pos(j, 1),
+                                      views.pos(j, 2)};
+          Utils::Vector3d const m_j{views.m(j, 0), views.m(j, 1),
+                                    views.m(j, 2)};
+          auto const d0 = with_replicas ? (pos_i - pos_j)
+                                        : box_geo.get_mi_vector(pos_i, pos_j);
+          for (std::size_t s = 0; s < n_shifts; ++s)
+            u_local += pair_potential<double>(d0 + shifts_ptr[s], m_i, m_j);
+        }
+      },
+      uB);
+  Kokkos::fence();
 
-  return prefactor * u;
+  return prefactor * (uA + uB);
 }
 
 /**
