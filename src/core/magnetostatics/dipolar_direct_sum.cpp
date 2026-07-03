@@ -34,7 +34,6 @@
 #include "magnetostatics/dipolar_direct_sum_kernels.hpp"
 
 #include <Kokkos_Core.hpp>
-#include <Kokkos_SIMD.hpp>
 #include <Kokkos_ScatterView.hpp>
 
 #include <utils/Vector.hpp>
@@ -134,78 +133,6 @@ static void fill_posmom_views(PosMomViews &views,
   }
 }
 
-/** Broadcast a scalar 3-vector into a 3-vector of simd registers. */
-static Utils::Vector<simd_double, 3> broadcast_simd(Utils::Vector3d const &v) {
-  return {simd_double(v[0]), simd_double(v[1]), simd_double(v[2])};
-}
-
-/** Load the dipole moments of lanes j..j+width-1 into a simd 3-vector.
- *  LayoutLeft makes component @c c contiguous across particles, so a simd
- *  register can be constructed directly from @c &views.m(j, c). */
-static Utils::Vector<simd_double, 3> load_simd_moment(PosMomViews const &views,
-                                                      std::size_t j) {
-  Utils::Vector<simd_double, 3> m;
-  for (int c = 0; c < 3; ++c)
-    m[c] = simd_double(&views.m(j, c), Kokkos::Experimental::simd_flag_default);
-  return m;
-}
-
-/** Load the primary distance vectors of lanes j..j+width-1 relative to
- *  @c pos_i. With replicas: full SIMD (broadcast pos_i, load pos_j, subtract).
- *  Without replicas: per-lane minimum image (preserves Lees-Edwards
- *  semantics), scalarizing only the distance computation. */
-static Utils::Vector<simd_double, 3>
-primary_distance_simd(Utils::Vector3d const &pos_i, PosMomViews const &views,
-                      std::size_t j, bool with_replicas,
-                      BoxGeometry const &box_geo) {
-  constexpr std::size_t w = simd_double::size();
-  Utils::Vector<simd_double, 3> d;
-  if (with_replicas) {
-    for (int c = 0; c < 3; ++c) {
-      simd_double const pj(&views.pos(j, c),
-                           Kokkos::Experimental::simd_flag_default);
-      d[c] = simd_double(pos_i[c]) - pj;
-    }
-  } else if (box_geo.type() == BoxType::CUBOID) {
-    /* Vectorized, branchless minimum image, bit-exact with
-     * detail::get_mi_coord: wrap = dx - round(dx * box_l_inv) * box_l is
-     * selected per lane only where |dx| > box_l_half (strictly greater, as in
-     * the scalar reference), leaving dx untouched otherwise. Only applied to
-     * periodic dimensions. */
-    auto const &box_l = box_geo.length();
-    auto const &box_l_inv = box_geo.length_inv();
-    auto const &box_l_half = box_geo.length_half();
-    for (int c = 0; c < 3; ++c) {
-      simd_double const pj(&views.pos(j, c),
-                           Kokkos::Experimental::simd_flag_default);
-      simd_double dx = simd_double(pos_i[c]) - pj;
-      if (box_geo.periodic(static_cast<unsigned>(c))) {
-        simd_double const wrapped =
-            dx - Kokkos::round(dx * simd_double(box_l_inv[c])) *
-                     simd_double(box_l[c]);
-        auto const m = Kokkos::abs(dx) > simd_double(box_l_half[c]);
-        /* select per lane: wrapped where |dx| > box_l_half, else dx */
-        dx = Kokkos::Experimental::condition(m, wrapped, dx);
-      }
-      d[c] = dx;
-    }
-  } else {
-    /* Lees-Edwards (or any non-cuboid): per-lane scalar fallback preserves the
-     * shear min-image semantics of box_geo.get_mi_vector. */
-    double buf[3][w];
-    for (std::size_t l = 0; l < w; ++l) {
-      Utils::Vector3d const pos_j{views.pos(j + l, 0), views.pos(j + l, 1),
-                                  views.pos(j + l, 2)};
-      auto const mi = box_geo.get_mi_vector(pos_i, pos_j);
-      for (int c = 0; c < 3; ++c)
-        buf[c][l] = mi[c];
-    }
-    for (int c = 0; c < 3; ++c)
-      d[c] = simd_double(&buf[c][0], Kokkos::Experimental::simd_flag_default);
-  }
-  return d;
-}
-
 /** Real-space image shifts n .* box_l inside the |ncut| sphere; index 0 is the
  *  primary (zero) shift so self-interaction loops start at index 1. */
 static std::vector<Utils::Vector3d>
@@ -263,7 +190,6 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
   auto const offset = static_cast<std::size_t>(offset_signed);
   auto const n_local = local_particles.size();
   auto const n_total = all_posmom.size();
-  constexpr std::size_t w = simd_double::size();
 
   auto const prefactor_local = prefactor;
 
@@ -301,51 +227,17 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
                                     views.pos(gi, 2)};
         Utils::Vector3d const m_i{views.m(gi, 0), views.m(gi, 1),
                                   views.m(gi, 2)};
-        PairForce<double> fi{};
+        PairForce fi{};
 
         /* (a) self-images (shifts[1..], primary excluded) */
         for (std::size_t s = 1; s < n_shifts; ++s)
-          fi += pair_force<double>(shifts_ptr[s], m_i, m_i);
+          fi += pair_force(shifts_ptr[s], m_i, m_i);
 
         auto force_access = scatter_force.access();
         auto torque_access = scatter_torque.access();
-        auto const m_i_s = broadcast_simd(m_i);
 
-        /* (b) SIMD body over j in (gi, offset + n_local) */
-        auto j = gi + 1;
-        for (; j + w <= offset + n_local; j += w) {
-          auto const m_j = load_simd_moment(views, j);
-          auto const d0 =
-              primary_distance_simd(pos_i, views, j, with_replicas, box_geo);
-          PairForce<simd_double> fij{}, fji{};
-          for (std::size_t s = 0; s < n_shifts; ++s) {
-            auto const &shift = shifts_ptr[s];
-            Utils::Vector<simd_double, 3> const rn{
-                d0[0] + shift[0], d0[1] + shift[1], d0[2] + shift[2]};
-            auto const pf = pair_force<simd_double>(rn, m_i_s, m_j);
-            fij += pf;
-            fji.f -= pf.f;
-            /* Conservation of angular momentum mandates that
-             * 0 = t_i + r_ij x F_ij + t_j */
-            fji.torque += vector_product(pf.f, rn) - pf.torque;
-          }
-          /* i-side: horizontal reduce into fi */
-          for (int c = 0; c < 3; ++c) {
-            fi.f[c] += Kokkos::Experimental::reduce(fij.f[c], std::plus<>{});
-            fi.torque[c] +=
-                Kokkos::Experimental::reduce(fij.torque[c], std::plus<>{});
-          }
-          /* j-side: per-lane scatter */
-          for (std::size_t l = 0; l < w; ++l) {
-            auto const jl = (j + l) - offset;
-            for (int c = 0; c < 3; ++c) {
-              force_access(jl, c) += fji.f[c][l];
-              torque_access(jl, c) += fji.torque[c][l];
-            }
-          }
-        }
-        /* (c) scalar tail over remaining j in (.., offset + n_local) */
-        for (; j < offset + n_local; ++j) {
+        /* (b) pairs with j in (gi, offset + n_local) */
+        for (auto j = gi + 1; j < offset + n_local; ++j) {
           Utils::Vector3d const pos_j{views.pos(j, 0), views.pos(j, 1),
                                       views.pos(j, 2)};
           Utils::Vector3d const m_j{views.m(j, 0), views.m(j, 1),
@@ -355,7 +247,7 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
           auto const jl = j - offset;
           for (std::size_t s = 0; s < n_shifts; ++s) {
             auto const rn = d0 + shifts_ptr[s];
-            auto const pf = pair_force<double>(rn, m_i, m_j);
+            auto const pf = pair_force(rn, m_i, m_j);
             fi.f += pf.f;
             fi.torque += pf.torque;
             for (int c = 0; c < 3; ++c) {
@@ -386,39 +278,17 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
                                     views.pos(gi, 2)};
         Utils::Vector3d const m_i{views.m(gi, 0), views.m(gi, 1),
                                   views.m(gi, 2)};
-        auto const m_i_s = broadcast_simd(m_i);
-        PairForce<double> fi{};
+        PairForce fi{};
 
         /* Two remote ranges: red [0, offset) and black [offset + n_local,
-         * n_total). Mirror the (b) SIMD body + (c) scalar tail of Phase A,
-         * but without any scatter (each remote pair is visited twice, once
-         * per owning rank, so only i accumulates). */
+         * n_total). Visit-twice (each remote pair is visited once per owning
+         * rank), so only i accumulates — no scatter. */
         std::size_t const ranges[2][2] = {{std::size_t{0}, offset},
                                           {offset + n_local, n_total}};
         for (auto const &range : ranges) {
           auto const range_begin = range[0];
           auto const range_end = range[1];
-          auto j = range_begin;
-          /* SIMD body */
-          for (; j + w <= range_end; j += w) {
-            auto const m_j = load_simd_moment(views, j);
-            auto const d0 =
-                primary_distance_simd(pos_i, views, j, with_replicas, box_geo);
-            PairForce<simd_double> fij{};
-            for (std::size_t s = 0; s < n_shifts; ++s) {
-              auto const &shift = shifts_ptr[s];
-              Utils::Vector<simd_double, 3> const rn{
-                  d0[0] + shift[0], d0[1] + shift[1], d0[2] + shift[2]};
-              fij += pair_force<simd_double>(rn, m_i_s, m_j);
-            }
-            for (int c = 0; c < 3; ++c) {
-              fi.f[c] += Kokkos::Experimental::reduce(fij.f[c], std::plus<>{});
-              fi.torque[c] +=
-                  Kokkos::Experimental::reduce(fij.torque[c], std::plus<>{});
-            }
-          }
-          /* scalar tail */
-          for (; j < range_end; ++j) {
+          for (auto j = range_begin; j < range_end; ++j) {
             Utils::Vector3d const pos_j{views.pos(j, 0), views.pos(j, 1),
                                         views.pos(j, 2)};
             Utils::Vector3d const m_j{views.m(j, 0), views.m(j, 1),
@@ -427,7 +297,7 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
                                           : box_geo.get_mi_vector(pos_i, pos_j);
             for (std::size_t s = 0; s < n_shifts; ++s) {
               auto const rn = d0 + shifts_ptr[s];
-              auto const pf = pair_force<double>(rn, m_i, m_j);
+              auto const pf = pair_force(rn, m_i, m_j);
               fi.f += pf.f;
               fi.torque += pf.torque;
             }
@@ -485,7 +355,6 @@ double DipolarDirectSum::long_range_energy_cpu() const {
   auto const offset = static_cast<std::size_t>(offset_signed);
   auto const n_local = local_particles.size();
   auto const n_total = all_posmom.size();
-  constexpr std::size_t w = simd_double::size();
 
   /* SoA views; fill the local slice only so the remote gather can overlap. */
   auto views = make_posmom_views(n_total);
@@ -516,27 +385,10 @@ double DipolarDirectSum::long_range_energy_cpu() const {
 
         /* (a) self-images (shifts[1..], primary excluded) */
         for (std::size_t s = 1; s < n_shifts; ++s)
-          u_local += pair_potential<double>(shifts_ptr[s], m_i, m_i);
+          u_local += pair_potential(shifts_ptr[s], m_i, m_i);
 
-        auto const m_i_s = broadcast_simd(m_i);
-
-        /* (b) SIMD body over j in (gi, offset + n_local) */
-        auto j = gi + 1;
-        for (; j + w <= offset + n_local; j += w) {
-          auto const m_j = load_simd_moment(views, j);
-          auto const d0 =
-              primary_distance_simd(pos_i, views, j, with_replicas, box_geo);
-          simd_double acc{0.};
-          for (std::size_t s = 0; s < n_shifts; ++s) {
-            auto const &shift = shifts_ptr[s];
-            Utils::Vector<simd_double, 3> const rn{
-                d0[0] + shift[0], d0[1] + shift[1], d0[2] + shift[2]};
-            acc += pair_potential<simd_double>(rn, m_i_s, m_j);
-          }
-          u_local += Kokkos::Experimental::reduce(acc, std::plus<>{});
-        }
-        /* (c) scalar tail over remaining j in (.., offset + n_local) */
-        for (; j < offset + n_local; ++j) {
+        /* (b) pairs with j in (gi, offset + n_local) */
+        for (auto j = gi + 1; j < offset + n_local; ++j) {
           Utils::Vector3d const pos_j{views.pos(j, 0), views.pos(j, 1),
                                       views.pos(j, 2)};
           Utils::Vector3d const m_j{views.m(j, 0), views.m(j, 1),
@@ -544,7 +396,7 @@ double DipolarDirectSum::long_range_energy_cpu() const {
           auto const d0 = with_replicas ? (pos_i - pos_j)
                                         : box_geo.get_mi_vector(pos_i, pos_j);
           for (std::size_t s = 0; s < n_shifts; ++s)
-            u_local += pair_potential<double>(d0 + shifts_ptr[s], m_i, m_j);
+            u_local += pair_potential(d0 + shifts_ptr[s], m_i, m_j);
         }
       },
       uA);
@@ -567,25 +419,8 @@ double DipolarDirectSum::long_range_energy_cpu() const {
                                     views.pos(gi, 2)};
         Utils::Vector3d const m_i{views.m(gi, 0), views.m(gi, 1),
                                   views.m(gi, 2)};
-        auto const m_i_s = broadcast_simd(m_i);
-
-        /* SIMD body over j in [offset + n_local, n_total) */
-        auto j = offset + n_local;
-        for (; j + w <= n_total; j += w) {
-          auto const m_j = load_simd_moment(views, j);
-          auto const d0 =
-              primary_distance_simd(pos_i, views, j, with_replicas, box_geo);
-          simd_double acc{0.};
-          for (std::size_t s = 0; s < n_shifts; ++s) {
-            auto const &shift = shifts_ptr[s];
-            Utils::Vector<simd_double, 3> const rn{
-                d0[0] + shift[0], d0[1] + shift[1], d0[2] + shift[2]};
-            acc += pair_potential<simd_double>(rn, m_i_s, m_j);
-          }
-          u_local += Kokkos::Experimental::reduce(acc, std::plus<>{});
-        }
-        /* scalar tail */
-        for (; j < n_total; ++j) {
+        /* sum over j in [offset + n_local, n_total) */
+        for (auto j = offset + n_local; j < n_total; ++j) {
           Utils::Vector3d const pos_j{views.pos(j, 0), views.pos(j, 1),
                                       views.pos(j, 2)};
           Utils::Vector3d const m_j{views.m(j, 0), views.m(j, 1),
@@ -593,7 +428,7 @@ double DipolarDirectSum::long_range_energy_cpu() const {
           auto const d0 = with_replicas ? (pos_i - pos_j)
                                         : box_geo.get_mi_vector(pos_i, pos_j);
           for (std::size_t s = 0; s < n_shifts; ++s)
-            u_local += pair_potential<double>(d0 + shifts_ptr[s], m_i, m_j);
+            u_local += pair_potential(d0 + shifts_ptr[s], m_i, m_j);
         }
       },
       uB);
@@ -628,7 +463,6 @@ void DipolarDirectSum::dipole_field_at_part_cpu() const {
   auto const offset = static_cast<std::size_t>(offset_signed);
   auto const n_local = local_particles.size();
   auto const n_total = all_posmom.size();
-  constexpr std::size_t w = simd_double::size();
 
   auto const prefactor_local = prefactor;
 
@@ -659,34 +493,16 @@ void DipolarDirectSum::dipole_field_at_part_cpu() const {
 
         /* (a) self-image term over shifts[1..] (primary excluded) */
         for (std::size_t s = 1; s < n_shifts; ++s)
-          u += dipole_field<double>(shifts_ptr[s], m_i);
+          u += dipole_field(shifts_ptr[s], m_i);
 
         /* Sweep over all j in [0, n_total), self-primary excluded by splitting
-         * the range into [0, gi) and [gi + 1, n_total). Each sub-range is a
-         * SIMD body plus a scalar tail. */
+         * the range into [0, gi) and [gi + 1, n_total). */
         std::size_t const ranges[2][2] = {{std::size_t{0}, gi},
                                           {gi + 1, n_total}};
         for (auto const &range : ranges) {
           auto const range_begin = range[0];
           auto const range_end = range[1];
-          auto j = range_begin;
-          /* SIMD body */
-          for (; j + w <= range_end; j += w) {
-            auto const m_j = load_simd_moment(views, j);
-            auto const d0 =
-                primary_distance_simd(pos_i, views, j, with_replicas, box_geo);
-            Utils::Vector<simd_double, 3> acc{};
-            for (std::size_t s = 0; s < n_shifts; ++s) {
-              auto const &shift = shifts_ptr[s];
-              Utils::Vector<simd_double, 3> const rn{
-                  d0[0] + shift[0], d0[1] + shift[1], d0[2] + shift[2]};
-              acc += dipole_field<simd_double>(rn, m_j);
-            }
-            for (int c = 0; c < 3; ++c)
-              u[c] += Kokkos::Experimental::reduce(acc[c], std::plus<>{});
-          }
-          /* scalar tail */
-          for (; j < range_end; ++j) {
+          for (auto j = range_begin; j < range_end; ++j) {
             Utils::Vector3d const pos_j{views.pos(j, 0), views.pos(j, 1),
                                         views.pos(j, 2)};
             Utils::Vector3d const m_j{views.m(j, 0), views.m(j, 1),
@@ -694,7 +510,7 @@ void DipolarDirectSum::dipole_field_at_part_cpu() const {
             auto const d0 = with_replicas ? (pos_i - pos_j)
                                           : box_geo.get_mi_vector(pos_i, pos_j);
             for (std::size_t s = 0; s < n_shifts; ++s)
-              u += dipole_field<double>(d0 + shifts_ptr[s], m_j);
+              u += dipole_field(d0 + shifts_ptr[s], m_j);
           }
         }
         local_particles_ptr[i]->dip_fld() = prefactor_local * u;
