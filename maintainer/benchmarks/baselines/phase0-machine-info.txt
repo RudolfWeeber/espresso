@@ -1,0 +1,7 @@
+date: 2026-07-03T18:06:47+02:00
+host: gerenuk
+commit: 8942a1ad8487a45b42e9542f6e690f538b7812be
+cpu: 12th Gen Intel(R) Core(TM) i7-12700K
+cores: 20
+compiler: CMAKE_CXX_COMPILER:FILEPATH=/usr/bin/c++
+build_type: CMAKE_BUILD_TYPE:STRING=Release
