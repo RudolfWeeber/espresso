@@ -24,14 +24,24 @@ Runs the agreed LJ/P3M benchmark configurations, records timings to CSV
 (same format as maintainer/benchmarks/benchmarks.py:write_report), and
 compares against a committed baseline with a regression threshold.
 
-The machine is shared: 'check-load' refuses to measure while other jobs
-are running. See docs/superpowers/specs/
+The machine is shared: 'check-load' refuses to measure while other users'
+jobs are running. See docs/superpowers/specs/
 2026-07-03-array-based-particle-storage-design.md, section 5.
+
+The busy check measures 'foreign' CPU usage: the CPU time consumed over a
+short sampling interval by processes owned by users other than the current
+one, expressed as a percentage of a single core. This is a two-sample
+measurement of utime+stime from /proc/<pid>/stat, summed over all pids whose
+owner uid differs from os.getuid(). We abandoned the previous 1-minute load
+average because it self-trips: our own multi-rank (4-way MPI) benchmark
+configurations drive the load average to ~4 and it decays over minutes, so
+the gate would abort its own run after the first multi-rank configuration.
+Foreign-CPU usage ignores our own load and only reacts to other users.
 
 Exit codes:
   0 — success (check-load: quiet; run: all benchmarks completed; compare: no regression)
   1 — regression detected (compare subcommand only)
-  2 — machine busy (check-load or run subcommand: load average exceeded threshold)
+  2 — machine busy (check-load or run subcommand: foreign CPU usage exceeded threshold)
   3 — benchmark subprocess failed (run subcommand: mpirun returned non-zero)
 """
 
@@ -42,6 +52,7 @@ import os
 import pathlib
 import subprocess
 import sys
+import time
 
 BENCHMARK_DIRECTORY = pathlib.Path(__file__).resolve().parent
 
@@ -57,31 +68,63 @@ CONFIGURATIONS = [
 ]
 
 
-def machine_load():
-    with open("/proc/loadavg") as f:
-        return float(f.read().split()[0])
+def _foreign_ticks():
+    """Sum utime+stime ticks over processes not owned by the current user."""
+    own_uid = os.getuid()
+    total = 0
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            if os.stat(f"/proc/{entry}").st_uid == own_uid:
+                continue
+            with open(f"/proc/{entry}/stat") as f:
+                line = f.read()
+            # The comm field (2) may contain spaces and parentheses, so parse
+            # the remaining fields from the last ')' in the line.
+            fields = line[line.rindex(")") + 1:].split()
+            # After comm, fields start at index 0 == field 3 (state); utime is
+            # field 14 (index 11), stime is field 15 (index 12).
+            total += int(fields[11]) + int(fields[12])
+        except (FileNotFoundError, ProcessLookupError, PermissionError,
+                ValueError, IndexError):
+            # Process may vanish between listing and reading, or be
+            # inaccessible; a pid present in only one sample contributes 0.
+            continue
+    return total
 
 
-def check_load(max_load):
-    load = machine_load()
-    if load > max_load:
-        print(f"REFUSING to benchmark: 1-minute load average {load:.2f} "
-              f"exceeds threshold {max_load:.2f} (shared machine).")
+def foreign_cpu_percent(sample_seconds=1.0):
+    """Foreign CPU usage as a percentage of one core over sample_seconds."""
+    first = _foreign_ticks()
+    time.sleep(sample_seconds)
+    second = _foreign_ticks()
+    delta = max(0, second - first)
+    ticks_per_second = os.sysconf("SC_CLK_TCK")
+    return (delta / ticks_per_second) / sample_seconds * 100.0
+
+
+def check_load(max_foreign_cpu):
+    foreign = foreign_cpu_percent()
+    if foreign >= max_foreign_cpu:
+        print(f"REFUSING to benchmark: foreign CPU usage {foreign:.1f}% "
+              f">= threshold {max_foreign_cpu:.1f}% (shared machine).")
         print("Top CPU consumers:")
         subprocess.run(["ps", "-eo", "user,pcpu,pmem,comm", "--sort=-pcpu"],
                        check=False, stdout=sys.stdout)
         return False
-    print(f"Machine quiet: load average {load:.2f} <= {max_load:.2f}.")
+    print(f"Machine quiet: foreign CPU usage {foreign:.1f}% < "
+          f"{max_foreign_cpu:.1f}%.")
     return True
 
 
-def run_benchmarks(pypresso, output, repetitions, max_load):
+def run_benchmarks(pypresso, output, repetitions, max_foreign_cpu):
     pypresso = pathlib.Path(pypresso).resolve()
     output = pathlib.Path(output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     for script, arguments, n_ranks, n_threads in CONFIGURATIONS:
         for repetition in range(repetitions):
-            if not check_load(max_load):
+            if not check_load(max_foreign_cpu):
                 return 2
             command = ["mpirun", "-n", str(n_ranks), str(pypresso),
                        str(BENCHMARK_DIRECTORY / script)] + arguments + \
@@ -155,13 +198,13 @@ def main():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     parser_load = subparsers.add_parser("check-load")
-    parser_load.add_argument("--max-load", type=float, default=2.0)
+    parser_load.add_argument("--max-foreign-cpu", type=float, default=50.0)
 
     parser_run = subparsers.add_parser("run")
     parser_run.add_argument("--pypresso", required=True)
     parser_run.add_argument("--output", required=True)
     parser_run.add_argument("--repetitions", type=int, default=3)
-    parser_run.add_argument("--max-load", type=float, default=2.0)
+    parser_run.add_argument("--max-foreign-cpu", type=float, default=50.0)
 
     parser_compare = subparsers.add_parser("compare")
     parser_compare.add_argument("--baseline", required=True)
@@ -170,10 +213,10 @@ def main():
 
     args = parser.parse_args()
     if args.command == "check-load":
-        return 0 if check_load(args.max_load) else 2
+        return 0 if check_load(args.max_foreign_cpu) else 2
     if args.command == "run":
         return run_benchmarks(args.pypresso, args.output, args.repetitions,
-                              args.max_load)
+                              args.max_foreign_cpu)
     if args.command == "compare":
         return compare(args.baseline, args.current, args.max_regression)
     return 1
