@@ -140,3 +140,10 @@ int get_maximal_particle_id();
  * @brief Get number of particles.
  */
 int get_n_part();
+
+/** @brief Get the force on a particle, fetched from the owning rank. */
+Utils::Vector3d get_particle_force(int p_id);
+#ifdef ESPRESSO_ROTATION
+/** @brief Get a particle's torque in the lab frame, from the owning rank. */
+Utils::Vector3d get_particle_torque_lab(int p_id);
+#endif

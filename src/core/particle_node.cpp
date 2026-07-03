@@ -27,6 +27,7 @@
 #include "cells.hpp"
 #include "communication.hpp"
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
+#include "rotation.hpp"
 #include "system/System.hpp"
 
 #include <utils/Cache.hpp>
@@ -191,6 +192,48 @@ const Particle &get_particle_data(int p_id) {
   ::comm_cart.recv(boost::mpi::any_source, boost::mpi::any_tag, result);
   return *(particle_fetch_cache.put(p_id, std::move(result)));
 }
+
+static auto
+get_local_particle_property(int p_id,
+                            Utils::Vector3d (*getter)(Particle const &)) {
+  auto const p = get_cell_structure().get_local_particle(p_id);
+  auto const found = (p != nullptr) and not p->is_ghost();
+  assert(1 == boost::mpi::all_reduce(::comm_cart, static_cast<int>(found),
+                                     std::plus<>()) &&
+         "particle not found exactly once");
+  auto const local_value = found ? getter(*p) : Utils::Vector3d{};
+  return boost::mpi::all_reduce(::comm_cart, local_value, std::plus<>());
+}
+
+static void mpi_get_particle_force_local(int p_id) {
+  get_local_particle_property(
+      p_id, [](Particle const &p) { return Utils::Vector3d(p.force()); });
+}
+
+REGISTER_CALLBACK(mpi_get_particle_force_local)
+
+Utils::Vector3d get_particle_force(int p_id) {
+  Communication::mpiCallbacks().call(mpi_get_particle_force_local, p_id);
+  return get_local_particle_property(
+      p_id, [](Particle const &p) { return Utils::Vector3d(p.force()); });
+}
+
+#ifdef ESPRESSO_ROTATION
+static void mpi_get_particle_torque_lab_local(int p_id) {
+  get_local_particle_property(p_id, [](Particle const &p) {
+    return convert_vector_body_to_space(p, Utils::Vector3d(p.torque()));
+  });
+}
+
+REGISTER_CALLBACK(mpi_get_particle_torque_lab_local)
+
+Utils::Vector3d get_particle_torque_lab(int p_id) {
+  Communication::mpiCallbacks().call(mpi_get_particle_torque_lab_local, p_id);
+  return get_local_particle_property(p_id, [](Particle const &p) {
+    return convert_vector_body_to_space(p, Utils::Vector3d(p.torque()));
+  });
+}
+#endif // ESPRESSO_ROTATION
 
 static void mpi_get_particles_local() {
   std::vector<int> local_ids;

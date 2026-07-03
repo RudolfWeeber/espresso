@@ -250,7 +250,7 @@ ParticleHandle::ParticleHandle() {
        [this](Variant const &value) {
          set_particle_property(&Particle::force, value);
        },
-       [this]() { return get_particle_data(m_pid).force(); }},
+       [this]() { return get_particle_force(m_pid); }},
       {"mass",
 #ifdef ESPRESSO_MASS
        [this](Variant const &value) {
@@ -399,10 +399,7 @@ ParticleHandle::ParticleHandle() {
            p.torque() = convert_vector_space_to_body(p, torque);
          });
        },
-       [this]() {
-         auto &p = get_particle_data(m_pid);
-         return convert_vector_body_to_space(p, p.torque());
-       }},
+       [this]() { return get_particle_torque_lab(m_pid); }},
 #endif // ESPRESSO_ROTATION
 #ifdef ESPRESSO_ROTATIONAL_INERTIA
       {"rinertia",
