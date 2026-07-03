@@ -195,21 +195,27 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
 #endif
   }
   if (data_parts & GHOSTTRANS_FORCE) {
-    if (policy == ReductionPolicy::UPDATE and
-        direction == SerializationDirection::LOAD) {
+    if (direction == SerializationDirection::LOAD) {
       Utils::Vector3d force;
       ar & force;
-      p.force() += force;
+      if (policy == ReductionPolicy::UPDATE) {
+        p.force() += force;
+      } else {
+        p.force() = force;
+      }
     } else {
       Utils::Vector3d force = p.force();
       ar & force;
     }
 #ifdef ESPRESSO_ROTATION
-    if (policy == ReductionPolicy::UPDATE and
-        direction == SerializationDirection::LOAD) {
+    if (direction == SerializationDirection::LOAD) {
       Utils::Vector3d torque;
       ar & torque;
-      p.torque() += torque;
+      if (policy == ReductionPolicy::UPDATE) {
+        p.torque() += torque;
+      } else {
+        p.torque() = torque;
+      }
     } else {
       Utils::Vector3d torque = p.torque();
       ar & torque;
@@ -232,20 +238,23 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
 
 static auto calc_transmit_size(BoxGeometry const &box_geo,
                                unsigned data_parts) {
+  std::size_t force_size = 0ul;
   if (data_parts & GHOSTTRANS_FORCE) {
-    // Forces are always communicated alone (collect_ghost_force_comm).
-    assert(data_parts == GHOSTTRANS_FORCE);
 #ifdef ESPRESSO_ROTATION
-    return 6ul * sizeof(double);
+    force_size = 6ul * sizeof(double);
 #else
-    return 3ul * sizeof(double);
+    force_size = 3ul * sizeof(double);
 #endif
+    data_parts &= ~static_cast<unsigned>(GHOSTTRANS_FORCE);
+    if (data_parts == 0u) {
+      return force_size;
+    }
   }
   SerializationSizeCalculator sizeof_archive;
   Particle p{};
   serialize_and_reduce(sizeof_archive, p, data_parts, ReductionPolicy::MOVE,
                        SerializationDirection::SAVE, box_geo, nullptr);
-  return sizeof_archive.size();
+  return sizeof_archive.size() + force_size;
 }
 
 static auto calc_transmit_size(GhostCommunication const &ghost_comm,
