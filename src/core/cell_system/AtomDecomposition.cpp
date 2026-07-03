@@ -22,6 +22,7 @@
 #include "cell_system/AtomDecomposition.hpp"
 
 #include "cell_system/Cell.hpp"
+#include "cell_system/ParticleListOperations.hpp"
 
 #include <utils/Vector.hpp>
 
@@ -123,8 +124,10 @@ void AtomDecomposition::resort(bool global_flag,
     auto const target_node = id_to_rank(it->id());
     if (target_node != m_comm.rank()) {
       diff.emplace_back(RemovedParticle{it->id()});
-      send_buf.at(target_node).emplace_back(std::move(*it));
-      it = local().particles().erase(it);
+      auto [extracted, next] =
+          CellParticleStorage::extract_particle(local().particles(), it);
+      send_buf.at(target_node).emplace_back(std::move(extracted));
+      it = next;
     } else {
       ++it;
     }
@@ -139,7 +142,7 @@ void AtomDecomposition::resort(bool global_flag,
   /* Add new particles belonging to this node */
   for (auto &parts : recv_buf) {
     for (auto &p : parts) {
-      local().particles().insert(std::move(p));
+      CellParticleStorage::insert_particle(local().particles(), std::move(p));
     }
   }
 }

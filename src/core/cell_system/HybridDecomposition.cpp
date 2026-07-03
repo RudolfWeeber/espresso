@@ -23,6 +23,7 @@
 
 #include "cell_system/Cell.hpp"
 #include "cell_system/CellStructure.hpp"
+#include "cell_system/ParticleListOperations.hpp"
 
 #include "BoxGeometry.hpp"
 #include "LocalBox.hpp"
@@ -107,14 +108,16 @@ void HybridDecomposition::resort(bool global,
       }
 
       /* else remove from current cell ... */
-      auto p = std::move(*it);
-      it = cell_rd->particles().erase(it);
+      auto [p, next] =
+          CellParticleStorage::extract_particle(cell_rd->particles(), it);
+      it = next;
       diff.emplace_back(ModifiedList{cell_rd->particles()});
       diff.emplace_back(RemovedParticle{p.id()});
 
       /* ... and insert into a n_square cell */
       auto const first_local_cell = m_n_square.get_local_cells()[0];
-      first_local_cell->particles().insert(std::move(p));
+      CellParticleStorage::insert_particle(first_local_cell->particles(),
+                                           std::move(p));
       diff.emplace_back(ModifiedList{first_local_cell->particles()});
     }
 
@@ -129,8 +132,9 @@ void HybridDecomposition::resort(bool global,
         }
 
         /* else remove from current cell ... */
-        auto p = std::move(*it);
-        it = cell_ns->particles().erase(it);
+        auto [p, next] =
+            CellParticleStorage::extract_particle(cell_ns->particles(), it);
+        it = next;
         diff.emplace_back(ModifiedList{cell_ns->particles()});
         diff.emplace_back(RemovedParticle{p.id()});
 
@@ -138,13 +142,15 @@ void HybridDecomposition::resort(bool global,
         auto const target_cell = particle_to_cell(p);
         /* if particle belongs to this node insert it into correct cell */
         if (target_cell != nullptr) {
-          target_cell->particles().insert(std::move(p));
+          CellParticleStorage::insert_particle(target_cell->particles(),
+                                               std::move(p));
           diff.emplace_back(ModifiedList{target_cell->particles()});
         }
         /* otherwise just put into regular decomposition */
         else {
           auto first_local_cell = m_regular_decomposition.get_local_cells()[0];
-          first_local_cell->particles().insert(std::move(p));
+          CellParticleStorage::insert_particle(first_local_cell->particles(),
+                                               std::move(p));
           diff.emplace_back(ModifiedList{first_local_cell->particles()});
         }
       }
