@@ -33,6 +33,7 @@ add_library(
   integrate.cpp
   npt.cpp
   particle_node.cpp
+  particle_store/ParticleStore.cpp
   polymer.cpp
   pressure.cpp
   propagation.cpp

@@ -324,7 +324,30 @@ void CellStructure::set_index_map() {
 }
 
 CellStructure::CellStructure(BoxGeometry const &box)
-    : m_decomposition{std::make_unique<AtomDecomposition>(box)} {}
+    : m_decomposition{std::make_unique<AtomDecomposition>(box)} {
+  mark_particle_store_dirty();
+}
+
+void CellStructure::ensure_particle_store_synchronized() {
+  if (not m_particle_store.is_dirty()) {
+    return;
+  }
+  auto const n_local = count_local_particles();
+  std::size_t n_ghost = 0u;
+  for (auto const &p : ghost_particles()) {
+    static_cast<void>(p);
+    ++n_ghost;
+  }
+  m_particle_store.begin_rebuild(n_local, n_ghost);
+  int row = 0;
+  for (auto &p : local_particles()) {
+    m_particle_store.assign_row(p, row++);
+  }
+  for (auto &p : ghost_particles()) {
+    m_particle_store.assign_row(p, row++);
+  }
+  m_particle_store.finish_rebuild();
+}
 
 void CellStructure::check_particle_index() const {
   auto const max_id = get_max_local_particle_id();
@@ -394,11 +417,13 @@ void CellStructure::remove_particle(int id) {
       }
     }
   }
+  mark_particle_store_dirty();
 }
 
 Particle *CellStructure::add_local_particle(Particle &&p) {
   auto const sort_cell = particle_to_cell(p);
   if (sort_cell) {
+    mark_particle_store_dirty();
     return std::addressof(
         append_indexed_particle(sort_cell->particles(), std::move(p)));
   }
@@ -416,6 +441,7 @@ Particle *CellStructure::add_particle(Particle &&p) {
    * needed, otherwise a local resort if sufficient. */
   set_resort_particles(sort_cell ? Cells::RESORT_LOCAL : Cells::RESORT_GLOBAL);
 
+  mark_particle_store_dirty();
   return std::addressof(
       append_indexed_particle(cell->particles(), std::move(p)));
 }
@@ -456,6 +482,7 @@ void CellStructure::remove_all_particles() {
 
   m_particle_index.clear();
   clear_bond_properties();
+  mark_particle_store_dirty();
 }
 
 /* Map the data parts flags from cells to those used internally
@@ -479,6 +506,7 @@ unsigned map_data_parts(unsigned data_parts) {
 void CellStructure::ghosts_count() {
   ghost_communicator(decomposition().exchange_ghosts_comm(),
                      *get_system().box_geo, GHOSTTRANS_PARTNUM);
+  mark_particle_store_dirty();
 }
 void CellStructure::ghosts_update(unsigned data_parts) {
   ghost_communicator(decomposition().exchange_ghosts_comm(),
@@ -515,6 +543,7 @@ void CellStructure::resort_particles(bool global_flag) {
   std::vector<ParticleChange> diff;
 
   m_decomposition->resort(global_flag, diff);
+  mark_particle_store_dirty();
 
   for (auto d : diff) {
     std::visit(UpdateParticleIndexVisitor{this}, d);

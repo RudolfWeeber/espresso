@@ -36,6 +36,7 @@
 #include "config/config.hpp"
 #include "custom_verlet_list.hpp"
 #include "ghosts.hpp"
+#include "particle_store/ParticleStore.hpp"
 #include "system/Leaf.hpp"
 
 #include <utils/Vector.hpp>
@@ -209,6 +210,8 @@ private:
   /** The local id-to-index for aosoa data */
   std::vector<Particle *> m_unique_particles;
   std::shared_ptr<KokkosHandle> m_kokkos_handle;
+  /** Array-based particle storage (migration phase 2). */
+  ParticleStore m_particle_store;
 
 public:
   CellStructure(BoxGeometry const &box);
@@ -660,6 +663,8 @@ private:
     for (auto &p : Cells::particles(decomposition->local_cells())) {
       add_particle(std::move(p));
     }
+
+    mark_particle_store_dirty();
   }
 
 public:
@@ -745,6 +750,12 @@ public:
   auto const &bond_state() const { return *m_bond_state; }
   void clear_local_properties();
   void clear_bond_properties();
+
+  auto &particle_store() { return m_particle_store; }
+  void mark_particle_store_dirty() { m_particle_store.mark_dirty(); }
+  /** @brief Rebuild the store row assignment if topology changed.
+   *  Purely rank-local; O(1) when the store is clean. */
+  void ensure_particle_store_synchronized();
 
   [[nodiscard]] auto is_verlet_list_cabana_rebuild_needed() const {
     return m_rebuild_verlet_list_cabana;

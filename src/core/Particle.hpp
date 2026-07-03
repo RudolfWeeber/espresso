@@ -431,6 +431,8 @@ struct ParticleRattle {
 };
 #endif
 
+class ParticleStore; // transitional (migration phase 2)
+
 /** Struct holding all information for one particle. */
 struct Particle { // NOLINT(bugprone-exception-escape)
 private:
@@ -450,7 +452,19 @@ private:
   Utils::compact_vector<int> el;
 #endif
 
+  /** Transitional (migration phase 2): row of this particle in the
+   *  ParticleStore, -1 while detached. Rank-local; never serialized. */
+  ParticleStore *m_particle_store = nullptr;
+  int m_store_row = -1;
+
 public:
+  void attach_to_store(ParticleStore &store, int const row) {
+    m_particle_store = &store;
+    m_store_row = row;
+  }
+  auto store() const { return m_particle_store; }
+  auto store_row() const { return m_store_row; }
+
   auto const &id() const { return p.identity; }
   auto &id() { return p.identity; }
   auto const &mol_id() const { return p.mol_id; }
