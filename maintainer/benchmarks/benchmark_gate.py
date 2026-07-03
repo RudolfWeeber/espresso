@@ -27,6 +27,12 @@ compares against a committed baseline with a regression threshold.
 The machine is shared: 'check-load' refuses to measure while other jobs
 are running. See docs/superpowers/specs/
 2026-07-03-array-based-particle-storage-design.md, section 5.
+
+Exit codes:
+  0 — success (check-load: quiet; run: all benchmarks completed; compare: no regression)
+  1 — regression detected (compare subcommand only)
+  2 — machine busy (check-load or run subcommand: load average exceeded threshold)
+  3 — benchmark subprocess failed (run subcommand: mpirun returned non-zero)
 """
 
 import argparse
@@ -86,7 +92,14 @@ def run_benchmarks(pypresso, output, repetitions, max_load):
             print(f"[{script} {' '.join(arguments)} ranks={n_ranks} "
                   f"threads={n_threads}] repetition {repetition + 1}"
                   f"/{repetitions}")
-            subprocess.run(command, check=True, env=environment)
+            try:
+                subprocess.run(command, check=True, env=environment)
+            except subprocess.CalledProcessError as exc:
+                config_name = (f"{script} {' '.join(arguments)} "
+                               f"ranks={n_ranks} threads={n_threads}")
+                print(f"ERROR: benchmark failed for configuration "
+                      f"{config_name!r} (exit code {exc.returncode}).")
+                return 3
     print(f"Wrote timings to {output}")
     return 0
 
@@ -123,7 +136,10 @@ def compare(baseline_path, current_path, max_regression):
         if ratio > 1.0 + max_regression:
             marker = "  <-- REGRESSION"
             failed = True
+        label = key[4]
         name = f"{key[0]} {key[1]} ranks={key[2]} threads={key[3]}"
+        if label:
+            name += f" label={label}"
         print(f"{name:70s} {baseline_mean:12.3e} {current_mean:12.3e} "
               f"{ratio:8.3f}{marker}")
     if failed:
