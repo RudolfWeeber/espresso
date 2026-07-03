@@ -201,7 +201,8 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
       ar & force;
       p.force() += force;
     } else {
-      ar & p.force();
+      Utils::Vector3d force = p.force();
+      ar & force;
     }
 #ifdef ESPRESSO_ROTATION
     if (policy == ReductionPolicy::UPDATE and
@@ -210,7 +211,8 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
       ar & torque;
       p.torque() += torque;
     } else {
-      ar & p.torque();
+      Utils::Vector3d torque = p.torque();
+      ar & torque;
     }
 #endif
   }
@@ -230,6 +232,15 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
 
 static auto calc_transmit_size(BoxGeometry const &box_geo,
                                unsigned data_parts) {
+  if (data_parts & GHOSTTRANS_FORCE) {
+    // Forces are always communicated alone (collect_ghost_force_comm).
+    assert(data_parts == GHOSTTRANS_FORCE);
+#ifdef ESPRESSO_ROTATION
+    return 6ul * sizeof(double);
+#else
+    return 3ul * sizeof(double);
+#endif
+  }
   SerializationSizeCalculator sizeof_archive;
   Particle p{};
   serialize_and_reduce(sizeof_archive, p, data_parts, ReductionPolicy::MOVE,
@@ -359,9 +370,14 @@ static void add_forces_from_recv_buffer(CommBuf &recv_buffer,
   auto archiver = Utils::MemcpyIArchive{recv_buffer.make_span()};
   for (auto &part_list : ghost_comm.part_lists) {
     for (Particle &part : *part_list) {
-      ParticleForce pf;
-      archiver >> pf;
-      part.force_and_torque() += pf;
+      Utils::Vector3d force;
+      archiver >> force;
+      part.force() += force;
+#ifdef ESPRESSO_ROTATION
+      Utils::Vector3d torque;
+      archiver >> torque;
+      part.torque() += torque;
+#endif
     }
   }
 }
