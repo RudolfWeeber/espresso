@@ -40,9 +40,14 @@ Foreign-CPU usage ignores our own load and only reacts to other users.
 
 Exit codes:
   0 — success (check-load: quiet; run: all benchmarks completed; compare: no regression)
-  1 — regression detected (compare subcommand only)
+  1 — comparison failed (compare subcommand only): either a regression beyond
+      the budget, or a configuration present in the baseline is missing from
+      the current CSV
   2 — machine busy (check-load or run subcommand: foreign CPU usage exceeded threshold)
   3 — benchmark subprocess failed (run subcommand: mpirun returned non-zero)
+  4 — output file already exists (run subcommand): refusing to append, because
+      mixing rows from separate runs lets the min-of-means comparison pick up
+      stale timings; delete or rename the file, or point --output elsewhere
 """
 
 import argparse
@@ -121,6 +126,12 @@ def check_load(max_foreign_cpu):
 def run_benchmarks(pypresso, output, repetitions, max_foreign_cpu):
     pypresso = pathlib.Path(pypresso).resolve()
     output = pathlib.Path(output).resolve()
+    if output.exists():
+        print(f"ERROR: output file {output} already exists. Appending would "
+              f"mix rows from separate runs and let the min-of-means "
+              f"comparison pick up stale timings. Delete or rename it, or "
+              f"choose a different --output.")
+        return 4
     output.parent.mkdir(parents=True, exist_ok=True)
     for script, arguments, n_ranks, n_threads in CONFIGURATIONS:
         for repetition in range(repetitions):

@@ -35,8 +35,12 @@
  */
 class ParticleStore {
 public:
-  auto number_of_local_particles() const { return m_number_of_local_particles; }
-  auto number_of_ghost_particles() const { return m_number_of_ghost_particles; }
+  std::size_t number_of_local_particles() const {
+    return m_number_of_local_particles;
+  }
+  std::size_t number_of_ghost_particles() const {
+    return m_number_of_ghost_particles;
+  }
 
 private:
   std::size_t m_number_of_local_particles = 0u;

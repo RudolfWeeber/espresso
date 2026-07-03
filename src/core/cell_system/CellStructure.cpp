@@ -24,6 +24,7 @@
 #include "cell_system/AtomDecomposition.hpp"
 #include "cell_system/HybridDecomposition.hpp"
 #include "cell_system/ParticleDecomposition.hpp"
+#include "cell_system/ParticleListOperations.hpp"
 #include "cell_system/RegularDecomposition.hpp"
 
 #include "BoxGeometry.hpp"

@@ -55,6 +55,18 @@ BOOST_AUTO_TEST_CASE(extract_particle_moves_out_with_swap_with_back) {
   BOOST_CHECK_EQUAL(next->id(), 3);
 }
 
+BOOST_AUTO_TEST_CASE(extract_particle_on_single_element_returns_end) {
+  ParticleList storage;
+  CellParticleStorage::insert_particle(storage, make_particle(42));
+
+  auto [extracted, next] =
+      CellParticleStorage::extract_particle(storage, storage.begin());
+  // erase-last path of the underlying Bag: nothing to swap in
+  BOOST_CHECK_EQUAL(extracted.id(), 42);
+  BOOST_CHECK_EQUAL(storage.size(), 0ul);
+  BOOST_CHECK(next == storage.end());
+}
+
 BOOST_AUTO_TEST_CASE(erase_particle_destroys_element) {
   ParticleList storage;
   CellParticleStorage::insert_particle(storage, make_particle(1));
@@ -76,6 +88,19 @@ BOOST_AUTO_TEST_CASE(resize_ghost_storage_marks_all_particles_as_ghosts) {
   CellParticleStorage::insert_particle(storage, make_particle(1));
   CellParticleStorage::resize_ghost_storage(storage, 3ul);
   BOOST_CHECK_EQUAL(storage.size(), 3ul);
+  for (auto const &p : storage) {
+    BOOST_CHECK(p.is_ghost());
+  }
+}
+
+BOOST_AUTO_TEST_CASE(resize_ghost_storage_shrinks_and_marks_remaining_ghost) {
+  ParticleList storage;
+  CellParticleStorage::insert_particle(storage, make_particle(1));
+  CellParticleStorage::insert_particle(storage, make_particle(2));
+  CellParticleStorage::insert_particle(storage, make_particle(3));
+
+  CellParticleStorage::resize_ghost_storage(storage, 1ul);
+  BOOST_CHECK_EQUAL(storage.size(), 1ul);
   for (auto const &p : storage) {
     BOOST_CHECK(p.is_ghost());
   }

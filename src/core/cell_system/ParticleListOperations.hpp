@@ -39,6 +39,15 @@
  * that do not belong to a cell) are exempt and use the @ref Utils::Bag
  * API directly.
  *
+ * Exception (decomposition swap/teardown): @ref
+ * CellStructure::set_particle_decomposition re-inserts particles into the
+ * new decomposition through the routed @ref CellStructure::add_particle,
+ * then destroys the old @ref ParticleDecomposition wholesale. The old
+ * cells' particle lists are torn down by their destructors, which never
+ * touch these primitives. This bulk teardown is deliberately outside the
+ * hook: migration phase 2 handles it by rebuilding the whole ParticleStore
+ * (mark-dirty), not by per-row hooks.
+ *
  * maintainer/CI/check_cell_storage_mutations.sh enforces this rule.
  */
 namespace CellParticleStorage {
