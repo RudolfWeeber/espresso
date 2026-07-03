@@ -58,6 +58,7 @@ espresso_unit_test(SRC Particle_test.cpp DEPENDS espresso::utils
 espresso_unit_test(SRC Particle_serialization_test.cpp DEPENDS espresso::utils
                    Boost::serialization)
 espresso_unit_test(SRC ParticleStore_test.cpp DEPENDS espresso::core)
+espresso_unit_test(SRC VectorReference_test.cpp DEPENDS espresso::utils)
 espresso_unit_test(SRC ParticleListOperations_test.cpp DEPENDS espresso::core)
 espresso_unit_test(SRC rotation_test.cpp DEPENDS espresso::utils espresso::core)
 espresso_unit_test(SRC field_coupling_couplings_test.cpp DEPENDS
