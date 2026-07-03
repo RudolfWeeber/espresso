@@ -32,6 +32,7 @@
 
 #include "BoxGeometry.hpp"
 #include "Particle.hpp"
+#include "cell_system/ParticleListOperations.hpp"
 #include "system/System.hpp"
 
 #include <utils/serialization/memcpy_archive.hpp>
@@ -287,16 +288,6 @@ static void prepare_send_buffer(CommBuf &send_buffer,
   assert(archiver.bytes_written() == send_buffer.size());
 }
 
-static void prepare_ghost_cell(ParticleList *cell, std::size_t size) {
-  /* Adapt size */
-  cell->resize(size);
-
-  /* Mark particles as ghosts */
-  for (auto &p : *cell) {
-    p.set_ghost(true);
-  }
-}
-
 static void prepare_recv_buffer(CommBuf &recv_buffer,
                                 GhostCommunication const &ghost_comm,
                                 BoxGeometry const &box_geo,
@@ -318,7 +309,7 @@ static void put_recv_buffer(CommBuf &recv_buffer,
     for (auto part_list : ghost_comm.part_lists) {
       unsigned int np;
       archiver >> np;
-      prepare_ghost_cell(part_list, np);
+      CellParticleStorage::resize_ghost_storage(*part_list, np);
     }
   } else {
     for (auto part_list : ghost_comm.part_lists) {
@@ -389,7 +380,7 @@ static void cell_cell_transfer(GhostCommunication const &ghost_comm,
     auto *dst_list = ghost_comm.part_lists[pl + offset];
 
     if (data_parts & GHOSTTRANS_PARTNUM) {
-      prepare_ghost_cell(dst_list, src_list->size());
+      CellParticleStorage::resize_ghost_storage(*dst_list, src_list->size());
     } else {
       auto &src_part = *src_list;
       auto &dst_part = *dst_list;
