@@ -22,6 +22,7 @@
 #include "cell_system/RegularDecomposition.hpp"
 
 #include "cell_system/Cell.hpp"
+#include "cell_system/ParticleListOperations.hpp"
 
 #include "communication.hpp"
 #include "error_handling/RuntimeErrorStream.hpp"
@@ -88,7 +89,8 @@ void RegularDecomposition::move_if_local(
     auto target_cell = position_to_cell(part.pos());
 
     if (target_cell) {
-      target_cell->particles().insert(std::move(part));
+      CellParticleStorage::insert_particle(target_cell->particles(),
+                                           std::move(part));
       modified_cells.emplace_back(ModifiedList{target_cell->particles()});
     } else {
       rest.insert(std::move(part));
@@ -189,8 +191,9 @@ void RegularDecomposition::resort(bool global,
         continue;
       }
 
-      auto p = std::move(*it);
-      it = c->particles().erase(it);
+      auto [p, next] =
+          CellParticleStorage::extract_particle(c->particles(), it);
+      it = next;
       diff.emplace_back(ModifiedList{c->particles()});
 
       /* Particle is not local */
@@ -200,7 +203,8 @@ void RegularDecomposition::resort(bool global,
       }
       /* Particle belongs on this node but is in the wrong cell. */
       else if (target_cell != c) {
-        target_cell->particles().insert(std::move(p));
+        CellParticleStorage::insert_particle(target_cell->particles(),
+                                             std::move(p));
         diff.emplace_back(ModifiedList{target_cell->particles()});
       }
     }
@@ -232,7 +236,8 @@ void RegularDecomposition::resort(bool global,
     for (auto &part : displaced_parts) {
       runtimeErrorMsg() << "Particle " << part.id() << " moved more "
                         << "than one local box length in one timestep";
-      sort_cell->particles().insert(std::move(part));
+      CellParticleStorage::insert_particle(sort_cell->particles(),
+                                           std::move(part));
 
       diff.emplace_back(ModifiedList{sort_cell->particles()});
     }
