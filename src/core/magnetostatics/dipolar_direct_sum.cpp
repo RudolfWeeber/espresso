@@ -112,27 +112,6 @@ static auto get_n_cut(BoxGeometry const &box_geo, int n_replicas) {
                                       static_cast<int>(box_geo.periodic(2))};
 }
 
-struct PosMomViews {
-  Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace> pos;
-  Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace> m;
-};
-
-static PosMomViews make_posmom_views(std::size_t n_total) {
-  return {decltype(PosMomViews::pos)("dds_pos", n_total),
-          decltype(PosMomViews::m)("dds_m", n_total)};
-}
-
-static void fill_posmom_views(PosMomViews &views,
-                              std::vector<PosMom> const &all_posmom,
-                              std::size_t begin, std::size_t end) {
-  for (auto i = begin; i < end; ++i) {
-    for (int c = 0; c < 3; ++c) {
-      views.pos(i, c) = all_posmom[i].pos[c];
-      views.m(i, c) = all_posmom[i].m[c];
-    }
-  }
-}
-
 /** Real-space image shifts n .* box_l inside the |ncut| sphere; index 0 is the
  *  primary (zero) shift so self-interaction loops start at index 1. */
 static std::vector<Utils::Vector3d>
@@ -193,9 +172,10 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
 
   auto const prefactor_local = prefactor;
 
-  /* SoA views; fill the local slice only so the remote gather can overlap. */
-  auto views = make_posmom_views(n_total);
-  fill_posmom_views(views, all_posmom, offset, offset + n_local);
+  /* Raw pointer to the gathered AoS data; the local slice is populated before
+   * wait_all, so Phase A may read it, and it outlives all fences. Safe to
+   * capture by value in the Kokkos [=] lambdas. */
+  auto const *pm = all_posmom.data();
 
   using execution_space = Kokkos::DefaultExecutionSpace;
   using ForceView =
@@ -223,10 +203,8 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
           .set_chunk_size(64),
       [=](std::size_t const i) {
         auto const gi = offset + i;
-        Utils::Vector3d const pos_i{views.pos(gi, 0), views.pos(gi, 1),
-                                    views.pos(gi, 2)};
-        Utils::Vector3d const m_i{views.m(gi, 0), views.m(gi, 1),
-                                  views.m(gi, 2)};
+        Utils::Vector3d const pos_i = pm[gi].pos;
+        Utils::Vector3d const m_i = pm[gi].m;
         PairForce fi{};
 
         /* (a) self-images (shifts[1..], primary excluded) */
@@ -238,10 +216,8 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
 
         /* (b) pairs with j in (gi, offset + n_local) */
         for (auto j = gi + 1; j < offset + n_local; ++j) {
-          Utils::Vector3d const pos_j{views.pos(j, 0), views.pos(j, 1),
-                                      views.pos(j, 2)};
-          Utils::Vector3d const m_j{views.m(j, 0), views.m(j, 1),
-                                    views.m(j, 2)};
+          Utils::Vector3d const pos_j = pm[j].pos;
+          Utils::Vector3d const m_j = pm[j].m;
           auto const d0 = with_replicas ? (pos_i - pos_j)
                                         : box_geo.get_mi_vector(pos_i, pos_j);
           auto const jl = j - offset;
@@ -262,10 +238,8 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
       });
   Kokkos::fence();
 
-  /* Wait for remote data, fill remote slices. */
+  /* Wait for remote data; the remote slices of all_posmom are now populated. */
   boost::mpi::wait_all(reqs.begin(), reqs.end());
-  fill_posmom_views(views, all_posmom, 0, offset);
-  fill_posmom_views(views, all_posmom, offset + n_local, n_total);
 
   /* Phase B: remote pairs (red [0, offset) + black [offset + n_local,
    * n_total)), visit-twice, no scatter — accumulate only i. */
@@ -274,10 +248,8 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
       Kokkos::RangePolicy<execution_space>(std::size_t{0}, n_local),
       [=](std::size_t const i) {
         auto const gi = offset + i;
-        Utils::Vector3d const pos_i{views.pos(gi, 0), views.pos(gi, 1),
-                                    views.pos(gi, 2)};
-        Utils::Vector3d const m_i{views.m(gi, 0), views.m(gi, 1),
-                                  views.m(gi, 2)};
+        Utils::Vector3d const pos_i = pm[gi].pos;
+        Utils::Vector3d const m_i = pm[gi].m;
         PairForce fi{};
 
         /* Two remote ranges: red [0, offset) and black [offset + n_local,
@@ -289,10 +261,8 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
           auto const range_begin = range[0];
           auto const range_end = range[1];
           for (auto j = range_begin; j < range_end; ++j) {
-            Utils::Vector3d const pos_j{views.pos(j, 0), views.pos(j, 1),
-                                        views.pos(j, 2)};
-            Utils::Vector3d const m_j{views.m(j, 0), views.m(j, 1),
-                                      views.m(j, 2)};
+            Utils::Vector3d const pos_j = pm[j].pos;
+            Utils::Vector3d const m_j = pm[j].m;
             auto const d0 = with_replicas ? (pos_i - pos_j)
                                           : box_geo.get_mi_vector(pos_i, pos_j);
             for (std::size_t s = 0; s < n_shifts; ++s) {
@@ -356,9 +326,10 @@ double DipolarDirectSum::long_range_energy_cpu() const {
   auto const n_local = local_particles.size();
   auto const n_total = all_posmom.size();
 
-  /* SoA views; fill the local slice only so the remote gather can overlap. */
-  auto views = make_posmom_views(n_total);
-  fill_posmom_views(views, all_posmom, offset, offset + n_local);
+  /* Raw pointer to the gathered AoS data; the local slice is populated before
+   * wait_all, so Phase A may read it, and it outlives all fences. Safe to
+   * capture by value in the Kokkos [=] lambdas. */
+  auto const *pm = all_posmom.data();
 
   using execution_space = Kokkos::DefaultExecutionSpace;
 
@@ -378,10 +349,8 @@ double DipolarDirectSum::long_range_energy_cpu() const {
           .set_chunk_size(64),
       [=](std::size_t const i, double &u_local) {
         auto const gi = offset + i;
-        Utils::Vector3d const pos_i{views.pos(gi, 0), views.pos(gi, 1),
-                                    views.pos(gi, 2)};
-        Utils::Vector3d const m_i{views.m(gi, 0), views.m(gi, 1),
-                                  views.m(gi, 2)};
+        Utils::Vector3d const pos_i = pm[gi].pos;
+        Utils::Vector3d const m_i = pm[gi].m;
 
         /* (a) self-images (shifts[1..], primary excluded) */
         for (std::size_t s = 1; s < n_shifts; ++s)
@@ -389,10 +358,8 @@ double DipolarDirectSum::long_range_energy_cpu() const {
 
         /* (b) pairs with j in (gi, offset + n_local) */
         for (auto j = gi + 1; j < offset + n_local; ++j) {
-          Utils::Vector3d const pos_j{views.pos(j, 0), views.pos(j, 1),
-                                      views.pos(j, 2)};
-          Utils::Vector3d const m_j{views.m(j, 0), views.m(j, 1),
-                                    views.m(j, 2)};
+          Utils::Vector3d const pos_j = pm[j].pos;
+          Utils::Vector3d const m_j = pm[j].m;
           auto const d0 = with_replicas ? (pos_i - pos_j)
                                         : box_geo.get_mi_vector(pos_i, pos_j);
           for (std::size_t s = 0; s < n_shifts; ++s)
@@ -405,7 +372,6 @@ double DipolarDirectSum::long_range_energy_cpu() const {
    * never summed by the energy kernel (each pair is counted once on the rank
    * owning its lower index). */
   boost::mpi::wait_all(reqs.begin(), reqs.end());
-  fill_posmom_views(views, all_posmom, offset + n_local, n_total);
 
   /* Phase B: remote-black sum over j in [offset + n_local, n_total). No self
    * term and no primary exclusion — the range is entirely remote. */
@@ -415,16 +381,12 @@ double DipolarDirectSum::long_range_energy_cpu() const {
       Kokkos::RangePolicy<execution_space>(std::size_t{0}, n_local),
       [=](std::size_t const i, double &u_local) {
         auto const gi = offset + i;
-        Utils::Vector3d const pos_i{views.pos(gi, 0), views.pos(gi, 1),
-                                    views.pos(gi, 2)};
-        Utils::Vector3d const m_i{views.m(gi, 0), views.m(gi, 1),
-                                  views.m(gi, 2)};
+        Utils::Vector3d const pos_i = pm[gi].pos;
+        Utils::Vector3d const m_i = pm[gi].m;
         /* sum over j in [offset + n_local, n_total) */
         for (auto j = offset + n_local; j < n_total; ++j) {
-          Utils::Vector3d const pos_j{views.pos(j, 0), views.pos(j, 1),
-                                      views.pos(j, 2)};
-          Utils::Vector3d const m_j{views.m(j, 0), views.m(j, 1),
-                                    views.m(j, 2)};
+          Utils::Vector3d const pos_j = pm[j].pos;
+          Utils::Vector3d const m_j = pm[j].m;
           auto const d0 = with_replicas ? (pos_i - pos_j)
                                         : box_geo.get_mi_vector(pos_i, pos_j);
           for (std::size_t s = 0; s < n_shifts; ++s)
@@ -470,8 +432,10 @@ void DipolarDirectSum::dipole_field_at_part_cpu() const {
    * force/energy kernels there is no local-only computation to overlap with,
    * so wait for the remote data first, then fill all slices. */
   boost::mpi::wait_all(reqs.begin(), reqs.end());
-  auto views = make_posmom_views(n_total);
-  fill_posmom_views(views, all_posmom, 0, n_total);
+
+  /* Raw pointer to the gathered AoS data; all slices are now populated, and it
+   * outlives the fence. Safe to capture by value in the Kokkos [=] lambda. */
+  auto const *pm = all_posmom.data();
 
   using execution_space = Kokkos::DefaultExecutionSpace;
 
@@ -485,10 +449,8 @@ void DipolarDirectSum::dipole_field_at_part_cpu() const {
       Kokkos::RangePolicy<execution_space>(std::size_t{0}, n_local),
       [=](std::size_t const i) {
         auto const gi = offset + i;
-        Utils::Vector3d const pos_i{views.pos(gi, 0), views.pos(gi, 1),
-                                    views.pos(gi, 2)};
-        Utils::Vector3d const m_i{views.m(gi, 0), views.m(gi, 1),
-                                  views.m(gi, 2)};
+        Utils::Vector3d const pos_i = pm[gi].pos;
+        Utils::Vector3d const m_i = pm[gi].m;
         Utils::Vector3d u{};
 
         /* (a) self-image term over shifts[1..] (primary excluded) */
@@ -503,10 +465,8 @@ void DipolarDirectSum::dipole_field_at_part_cpu() const {
           auto const range_begin = range[0];
           auto const range_end = range[1];
           for (auto j = range_begin; j < range_end; ++j) {
-            Utils::Vector3d const pos_j{views.pos(j, 0), views.pos(j, 1),
-                                        views.pos(j, 2)};
-            Utils::Vector3d const m_j{views.m(j, 0), views.m(j, 1),
-                                      views.m(j, 2)};
+            Utils::Vector3d const pos_j = pm[j].pos;
+            Utils::Vector3d const m_j = pm[j].m;
             auto const d0 = with_replicas ? (pos_i - pos_j)
                                           : box_geo.get_mi_vector(pos_i, pos_j);
             for (std::size_t s = 0; s < n_shifts; ++s)
