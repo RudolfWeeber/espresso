@@ -166,7 +166,32 @@ primary_distance_simd(Utils::Vector3d const &pos_i, PosMomViews const &views,
                            Kokkos::Experimental::simd_flag_default);
       d[c] = simd_double(pos_i[c]) - pj;
     }
+  } else if (box_geo.type() == BoxType::CUBOID) {
+    /* Vectorized, branchless minimum image, bit-exact with
+     * detail::get_mi_coord: wrap = dx - round(dx * box_l_inv) * box_l is
+     * selected per lane only where |dx| > box_l_half (strictly greater, as in
+     * the scalar reference), leaving dx untouched otherwise. Only applied to
+     * periodic dimensions. */
+    auto const &box_l = box_geo.length();
+    auto const &box_l_inv = box_geo.length_inv();
+    auto const &box_l_half = box_geo.length_half();
+    for (int c = 0; c < 3; ++c) {
+      simd_double const pj(&views.pos(j, c),
+                           Kokkos::Experimental::simd_flag_default);
+      simd_double dx = simd_double(pos_i[c]) - pj;
+      if (box_geo.periodic(static_cast<unsigned>(c))) {
+        simd_double const wrapped =
+            dx - Kokkos::round(dx * simd_double(box_l_inv[c])) *
+                     simd_double(box_l[c]);
+        auto const m = Kokkos::abs(dx) > simd_double(box_l_half[c]);
+        /* select per lane: wrapped where |dx| > box_l_half, else dx */
+        dx = Kokkos::Experimental::condition(m, wrapped, dx);
+      }
+      d[c] = dx;
+    }
   } else {
+    /* Lees-Edwards (or any non-cuboid): per-lane scalar fallback preserves the
+     * shear min-image semantics of box_geo.get_mi_vector. */
     double buf[3][w];
     for (std::size_t l = 0; l < w; ++l) {
       Utils::Vector3d const pos_j{views.pos(j + l, 0), views.pos(j + l, 1),
@@ -267,7 +292,9 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
    * scatter. */
   Kokkos::parallel_for(
       "dds_local_pairs",
-      Kokkos::RangePolicy<execution_space>(std::size_t{0}, n_local),
+      Kokkos::RangePolicy<execution_space, Kokkos::Schedule<Kokkos::Dynamic>>(
+          std::size_t{0}, n_local)
+          .set_chunk_size(64),
       [=](std::size_t const i) {
         auto const gi = offset + i;
         Utils::Vector3d const pos_i{views.pos(gi, 0), views.pos(gi, 1),
@@ -477,7 +504,9 @@ double DipolarDirectSum::long_range_energy_cpu() const {
   double uA = 0.;
   Kokkos::parallel_reduce(
       "dds_energy_local",
-      Kokkos::RangePolicy<execution_space>(std::size_t{0}, n_local),
+      Kokkos::RangePolicy<execution_space, Kokkos::Schedule<Kokkos::Dynamic>>(
+          std::size_t{0}, n_local)
+          .set_chunk_size(64),
       [=](std::size_t const i, double &u_local) {
         auto const gi = offset + i;
         Utils::Vector3d const pos_i{views.pos(gi, 0), views.pos(gi, 1),
