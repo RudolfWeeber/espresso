@@ -38,7 +38,6 @@
 #include <Kokkos_ScatterView.hpp>
 
 #include <utils/Vector.hpp>
-#include <utils/cartesian_product.hpp>
 #include <utils/mpi/iall_gatherv.hpp>
 
 #include <boost/mpi/collectives.hpp>
@@ -52,119 +51,10 @@
 #include <cstddef>
 #include <functional>
 #include <iterator>
-#include <ranges>
 #include <stdexcept>
 #include <tuple>
 #include <utility>
 #include <vector>
-
-/**
- * @brief Pair force of two interacting dipoles.
- *
- * @param d Distance vector.
- * @param m1 Dipole moment of one particle.
- * @param m2 Dipole moment of the other particle.
- *
- * @return Resulting force.
- */
-static auto pair_force(Utils::Vector3d const &d, Utils::Vector3d const &m1,
-                       Utils::Vector3d const &m2) {
-  auto const pe2 = m1 * d;
-  auto const pe3 = m2 * d;
-
-  auto const r2 = d.norm2();
-  auto const r = std::sqrt(r2);
-  auto const r5 = r2 * r2 * r;
-  auto const r7 = r5 * r2;
-
-  auto const a = 3.0 * (m1 * m2) / r5;
-  auto const b = -15.0 * pe2 * pe3 / r7;
-
-  auto const f = (a + b) * d + 3.0 * (pe3 * m1 + pe2 * m2) / r5;
-  auto const r3 = r2 * r;
-  auto const t =
-      -vector_product(m1, m2) / r3 + 3.0 * pe3 * vector_product(m1, d) / r5;
-
-  return ParticleForce{f, t};
-}
-
-/**
- * @brief Pair potential for two interacting dipoles.
- *
- * @param d Distance vector.
- * @param m1 Dipole moment of one particle.
- * @param m2 Dipole moment of the other particle.
- *
- * @return Interaction energy.
- */
-static auto pair_potential(Utils::Vector3d const &d, Utils::Vector3d const &m1,
-                           Utils::Vector3d const &m2) {
-  auto const r2 = d * d;
-  auto const r = sqrt(r2);
-  auto const r3 = r2 * r;
-  auto const r5 = r3 * r2;
-
-  auto const pe1 = m1 * m2;
-  auto const pe2 = m1 * d;
-  auto const pe3 = m2 * d;
-
-  return pe1 / r3 - 3.0 * pe2 * pe3 / r5;
-}
-
-#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
-/**
- * @brief Dipole field contribution from a particle with dipole moment @c m1
- * at a distance @c d.
- *
- * @param d Distance vector.
- * @param m1 Dipole moment of one particle.
- *
- * @return Utils::Vector3d containing dipole field components.
- */
-static auto dipole_field(Utils::Vector3d const &d, Utils::Vector3d const &m1) {
-  auto const r2 = d * d;
-  auto const r = sqrt(r2);
-  auto const r3 = r2 * r;
-  auto const r5 = r3 * r2;
-  auto const pe2 = m1 * d;
-
-  return 3.0 * pe2 * d / r5 - m1 / r3;
-}
-#endif
-
-/**
- * @brief Call kernel for every 3d index in a sphere around the origin.
- *
- * This calls a callable for all index-triples
- * that are within ball around the origin with
- * radius |ncut|.
- *
- * @tparam F Callable
- * @param ncut Limits in the three directions,
- *             all non-zero elements have to be
- *             the same number.
- * @param f will be called for each index triple
- *        within the limits of @p ncut.
- */
-template <typename F> void for_each_image(Utils::Vector3i const &ncut, F f) {
-  auto const ncut2 = ncut.norm2();
-
-  /* This runs over the index "cube"
-   * [-ncut[0], ncut[0]] x ... x [-ncut[2], ncut[2]]
-   * (inclusive on both sides), and calls f with
-   * all the elements as argument. Counting range
-   * is a range that just enumerates a range.
-   */
-  Utils::cartesian_product(
-      [&](int nx, int ny, int nz) {
-        if (nx * nx + ny * ny + nz * nz <= ncut2) {
-          f(nx, ny, nz);
-        }
-      },
-      std::views::iota(-ncut[0], ncut[0] + 1),
-      std::views::iota(-ncut[1], ncut[1] + 1),
-      std::views::iota(-ncut[2], ncut[2] + 1));
-}
 
 /**
  * @brief Position and dipole moment of one particle.
@@ -177,56 +67,6 @@ struct PosMom {
     ar & pos & m;
   }
 };
-
-/**
- * @brief Sum over all pairs with periodic images.
- *
- * This implements the "primed" pair sum, the sum over all
- * pairs between one particles and all other particles,
- * including @p ncut periodic replicas in each direction.
- * Primed means that in the primary replica the self-interaction
- * is excluded, but not with the other periodic replicas. E.g.
- * a particle does not interact with its self, but does with
- * its periodically shifted versions.
- *
- * @param begin Iterator pointing to begin of particle range
- * @param end Iterator pointing past the end of particle range
- * @param it Pointer to particle that is considered
- * @param with_replicas If periodic replicas are to be considered
- *        at all. If false, distances are calculated as Euclidean
- *        distances, and not using minimum image convention.
- * @param ncut Number of replicas in each direction.
- * @param box_geo Box geometry.
- * @param init Initial value of the sum.
- * @param f Binary operation mapping distance and moment of the
- *          interaction partner to the value to be summed up for this pair.
- *
- * @return The total sum.
- */
-template <class InputIterator, class T, class F>
-T image_sum(InputIterator begin, InputIterator end, InputIterator it,
-            bool with_replicas, Utils::Vector3i const &ncut,
-            BoxGeometry const &box_geo, T init, F f) {
-
-  auto const &box_l = box_geo.length();
-  for (auto jt = begin; jt != end; ++jt) {
-    auto const exclude_primary = (it == jt);
-    auto const primary_distance = (with_replicas)
-                                      ? (it->pos - jt->pos)
-                                      : box_geo.get_mi_vector(it->pos, jt->pos);
-
-    for_each_image(ncut, [&](int nx, int ny, int nz) {
-      if (!(exclude_primary && nx == 0 && ny == 0 && nz == 0)) {
-        auto const rn =
-            primary_distance +
-            Utils::Vector3d{nx * box_l[0], ny * box_l[1], nz * box_l[2]};
-        init += f(rn, jt->m);
-      }
-    });
-  }
-
-  return init;
-}
 
 static auto gather_particle_data(BoxGeometry const &box_geo,
                                  ParticleRange const &particles) {
@@ -748,30 +588,91 @@ void DipolarDirectSum::dipole_field_at_part_cpu() const {
   assert(not m_is_gpu);
   auto const &system = get_system();
   auto const &box_geo = *system.box_geo;
+  auto const &box_l = box_geo.length();
   auto const particles = system.cell_structure->local_particles();
   /* collect particle data */
-  auto [local_particles, all_posmom, reqs, offset] =
+  auto [local_particles, all_posmom, reqs, offset_signed] =
       gather_particle_data(box_geo, particles);
 
   auto const ncut = get_n_cut(box_geo, n_replicas);
   auto const with_replicas = (ncut.norm2() > 0);
+  auto const shifts = make_image_shifts(ncut, box_l);
 
+  auto const offset = static_cast<std::size_t>(offset_signed);
+  auto const n_local = local_particles.size();
+  auto const n_total = all_posmom.size();
+  constexpr std::size_t w = simd_double::size();
+
+  auto const prefactor_local = prefactor;
+
+  /* The field sweeps over all j, so every view slice is needed. Unlike the
+   * force/energy kernels there is no local-only computation to overlap with,
+   * so wait for the remote data first, then fill all slices. */
   boost::mpi::wait_all(reqs.begin(), reqs.end());
+  auto views = make_posmom_views(n_total);
+  fill_posmom_views(views, all_posmom, 0, n_total);
 
-  auto const local_posmom_begin = all_posmom.begin() + offset;
-  auto const local_posmom_end =
-      local_posmom_begin + static_cast<long>(local_particles.size());
+  using execution_space = Kokkos::DefaultExecutionSpace;
 
-  Utils::Vector3d u_init = {0., 0., 0.};
-  auto p = local_particles.begin();
-  for (auto pi = local_posmom_begin; pi != local_posmom_end; ++pi, ++p) {
-    auto const u = image_sum(
-        all_posmom.begin(), all_posmom.end(), pi, with_replicas, ncut, box_geo,
-        u_init, [](Utils::Vector3d const &rn, Utils::Vector3d const &mj) {
-          return dipole_field(rn, mj);
-        });
-    (*p)->dip_fld() = prefactor * u;
-  }
+  /* Raw pointers so the Kokkos lambdas do not capture std::vector by value. */
+  auto *local_particles_ptr = local_particles.data();
+  auto const *shifts_ptr = shifts.data();
+  auto const n_shifts = shifts.size();
+
+  Kokkos::parallel_for(
+      "dds_dipole_field",
+      Kokkos::RangePolicy<execution_space>(std::size_t{0}, n_local),
+      [=](std::size_t const i) {
+        auto const gi = offset + i;
+        Utils::Vector3d const pos_i{views.pos(gi, 0), views.pos(gi, 1),
+                                    views.pos(gi, 2)};
+        Utils::Vector3d const m_i{views.m(gi, 0), views.m(gi, 1),
+                                  views.m(gi, 2)};
+        Utils::Vector3d u{};
+
+        /* (a) self-image term over shifts[1..] (primary excluded) */
+        for (std::size_t s = 1; s < n_shifts; ++s)
+          u += dipole_field<double>(shifts_ptr[s], m_i);
+
+        /* Sweep over all j in [0, n_total), self-primary excluded by splitting
+         * the range into [0, gi) and [gi + 1, n_total). Each sub-range is a
+         * SIMD body plus a scalar tail. */
+        std::size_t const ranges[2][2] = {{std::size_t{0}, gi},
+                                          {gi + 1, n_total}};
+        for (auto const &range : ranges) {
+          auto const range_begin = range[0];
+          auto const range_end = range[1];
+          auto j = range_begin;
+          /* SIMD body */
+          for (; j + w <= range_end; j += w) {
+            auto const m_j = load_simd_moment(views, j);
+            auto const d0 =
+                primary_distance_simd(pos_i, views, j, with_replicas, box_geo);
+            Utils::Vector<simd_double, 3> acc{};
+            for (std::size_t s = 0; s < n_shifts; ++s) {
+              auto const &shift = shifts_ptr[s];
+              Utils::Vector<simd_double, 3> const rn{
+                  d0[0] + shift[0], d0[1] + shift[1], d0[2] + shift[2]};
+              acc += dipole_field<simd_double>(rn, m_j);
+            }
+            for (int c = 0; c < 3; ++c)
+              u[c] += Kokkos::Experimental::reduce(acc[c], std::plus<>{});
+          }
+          /* scalar tail */
+          for (; j < range_end; ++j) {
+            Utils::Vector3d const pos_j{views.pos(j, 0), views.pos(j, 1),
+                                        views.pos(j, 2)};
+            Utils::Vector3d const m_j{views.m(j, 0), views.m(j, 1),
+                                      views.m(j, 2)};
+            auto const d0 = with_replicas ? (pos_i - pos_j)
+                                          : box_geo.get_mi_vector(pos_i, pos_j);
+            for (std::size_t s = 0; s < n_shifts; ++s)
+              u += dipole_field<double>(d0 + shifts_ptr[s], m_j);
+          }
+        }
+        local_particles_ptr[i]->dip_fld() = prefactor_local * u;
+      });
+  Kokkos::fence();
 }
 #endif
 
