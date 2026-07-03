@@ -49,6 +49,8 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstddef>
+#include <functional>
 #include <iterator>
 #include <ranges>
 #include <stdexcept>
@@ -293,6 +295,53 @@ static void fill_posmom_views(PosMomViews &views,
   }
 }
 
+/** Broadcast a scalar 3-vector into a 3-vector of simd registers. */
+static Utils::Vector<simd_double, 3> broadcast_simd(Utils::Vector3d const &v) {
+  return {simd_double(v[0]), simd_double(v[1]), simd_double(v[2])};
+}
+
+/** Load the dipole moments of lanes j..j+width-1 into a simd 3-vector.
+ *  LayoutLeft makes component @c c contiguous across particles, so a simd
+ *  register can be constructed directly from @c &views.m(j, c). */
+static Utils::Vector<simd_double, 3> load_simd_moment(PosMomViews const &views,
+                                                      std::size_t j) {
+  Utils::Vector<simd_double, 3> m;
+  for (int c = 0; c < 3; ++c)
+    m[c] = simd_double(&views.m(j, c), Kokkos::Experimental::simd_flag_default);
+  return m;
+}
+
+/** Load the primary distance vectors of lanes j..j+width-1 relative to
+ *  @c pos_i. With replicas: full SIMD (broadcast pos_i, load pos_j, subtract).
+ *  Without replicas: per-lane minimum image (preserves Lees-Edwards
+ *  semantics), scalarizing only the distance computation. */
+static Utils::Vector<simd_double, 3>
+primary_distance_simd(Utils::Vector3d const &pos_i, PosMomViews const &views,
+                      std::size_t j, bool with_replicas,
+                      BoxGeometry const &box_geo) {
+  constexpr std::size_t w = simd_double::size();
+  Utils::Vector<simd_double, 3> d;
+  if (with_replicas) {
+    for (int c = 0; c < 3; ++c) {
+      simd_double const pj(&views.pos(j, c),
+                           Kokkos::Experimental::simd_flag_default);
+      d[c] = simd_double(pos_i[c]) - pj;
+    }
+  } else {
+    double buf[3][w];
+    for (std::size_t l = 0; l < w; ++l) {
+      Utils::Vector3d const pos_j{views.pos(j + l, 0), views.pos(j + l, 1),
+                                  views.pos(j + l, 2)};
+      auto const mi = box_geo.get_mi_vector(pos_i, pos_j);
+      for (int c = 0; c < 3; ++c)
+        buf[c][l] = mi[c];
+    }
+    for (int c = 0; c < 3; ++c)
+      d[c] = simd_double(&buf[c][0], Kokkos::Experimental::simd_flag_default);
+  }
+  return d;
+}
+
 /** Real-space image shifts n .* box_l inside the |ncut| sphere; index 0 is the
  *  primary (zero) shift so self-interaction loops start at index 1. */
 static std::vector<Utils::Vector3d>
@@ -339,84 +388,208 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
   auto const &box_geo = *system.box_geo;
   auto const &box_l = box_geo.length();
   auto const particles = system.cell_structure->local_particles();
-  auto [local_particles, all_posmom, reqs, offset] =
+  auto [local_particles, all_posmom, reqs, offset_signed] =
       gather_particle_data(box_geo, particles);
 
   /* Number of image boxes considered */
   auto const ncut = get_n_cut(box_geo, n_replicas);
   auto const with_replicas = (ncut.norm2() > 0);
+  auto const shifts = make_image_shifts(ncut, box_l);
 
-  /* Range of particles we calculate the ia for on this node */
-  auto const local_posmom_begin = all_posmom.begin() + offset;
-  auto const local_posmom_end =
-      local_posmom_begin + static_cast<long>(local_particles.size());
+  auto const offset = static_cast<std::size_t>(offset_signed);
+  auto const n_local = local_particles.size();
+  auto const n_total = all_posmom.size();
+  constexpr std::size_t w = simd_double::size();
 
-  /* Output iterator for the force */
-  auto p = local_particles.begin();
+  auto const prefactor_local = prefactor;
 
-  /* IA with local particles */
-  for (auto it = local_posmom_begin; it != local_posmom_end; ++it, ++p) {
-    /* IA with own images */
-    auto fi = image_sum(
-        it, std::next(it), it, with_replicas, ncut, box_geo, ParticleForce{},
-        [it](Utils::Vector3d const &rn, Utils::Vector3d const &mj) {
-          return pair_force(rn, it->m, mj);
-        });
+  /* SoA views; fill the local slice only so the remote gather can overlap. */
+  auto views = make_posmom_views(n_total);
+  fill_posmom_views(views, all_posmom, offset, offset + n_local);
 
-    /* IA with other local particles */
-    auto q = std::next(p);
-    for (auto jt = std::next(it); jt != local_posmom_end; ++jt, ++q) {
-      auto const d = (with_replicas) ? (it->pos - jt->pos)
-                                     : box_geo.get_mi_vector(it->pos, jt->pos);
+  using execution_space = Kokkos::DefaultExecutionSpace;
+  using ForceView =
+      Kokkos::View<double *[3], Kokkos::LayoutRight, Kokkos::HostSpace>;
+  using ScatterForce =
+      Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight>;
+  ForceView local_force("dds_force", n_local);
+  ForceView local_torque("dds_torque", n_local);
+  ScatterForce scatter_force(local_force);
+  ScatterForce scatter_torque(local_torque);
 
-      ParticleForce fij{};
-      ParticleForce fji{};
-      for_each_image(ncut, [&](int nx, int ny, int nz) {
-        auto const rn =
-            d + Utils::Vector3d{nx * box_l[0], ny * box_l[1], nz * box_l[2]};
-        auto const pf = pair_force(rn, it->m, jt->m);
-        fij += pf;
-        fji.f -= pf.f;
-        /* Conservation of angular momentum mandates that
-         * 0 = t_i + r_ij x F_ij + t_j */
-        fji.torque += vector_product(pf.f, rn) - pf.torque;
+  /* Raw pointers so the Kokkos lambdas do not capture std::vector by value. */
+  auto *local_particles_ptr = local_particles.data();
+  auto const *shifts_ptr = shifts.data();
+  auto const n_shifts = shifts.size();
+
+  /* Phase A: local pairs. Each i owns its own force/torque accumulation
+   * (written directly, unique owner, no race); the Newton's-third-law
+   * partner-j contributions go through the ScatterView with a per-lane
+   * scatter. */
+  Kokkos::parallel_for(
+      "dds_local_pairs",
+      Kokkos::RangePolicy<execution_space>(std::size_t{0}, n_local),
+      [=](std::size_t const i) {
+        auto const gi = offset + i;
+        Utils::Vector3d const pos_i{views.pos(gi, 0), views.pos(gi, 1),
+                                    views.pos(gi, 2)};
+        Utils::Vector3d const m_i{views.m(gi, 0), views.m(gi, 1),
+                                  views.m(gi, 2)};
+        PairForce<double> fi{};
+
+        /* (a) self-images (shifts[1..], primary excluded) */
+        for (std::size_t s = 1; s < n_shifts; ++s)
+          fi += pair_force<double>(shifts_ptr[s], m_i, m_i);
+
+        auto force_access = scatter_force.access();
+        auto torque_access = scatter_torque.access();
+        auto const m_i_s = broadcast_simd(m_i);
+
+        /* (b) SIMD body over j in (gi, offset + n_local) */
+        auto j = gi + 1;
+        for (; j + w <= offset + n_local; j += w) {
+          auto const m_j = load_simd_moment(views, j);
+          auto const d0 =
+              primary_distance_simd(pos_i, views, j, with_replicas, box_geo);
+          PairForce<simd_double> fij{}, fji{};
+          for (std::size_t s = 0; s < n_shifts; ++s) {
+            auto const &shift = shifts_ptr[s];
+            Utils::Vector<simd_double, 3> const rn{
+                d0[0] + shift[0], d0[1] + shift[1], d0[2] + shift[2]};
+            auto const pf = pair_force<simd_double>(rn, m_i_s, m_j);
+            fij += pf;
+            fji.f -= pf.f;
+            /* Conservation of angular momentum mandates that
+             * 0 = t_i + r_ij x F_ij + t_j */
+            fji.torque += vector_product(pf.f, rn) - pf.torque;
+          }
+          /* i-side: horizontal reduce into fi */
+          for (int c = 0; c < 3; ++c) {
+            fi.f[c] += Kokkos::Experimental::reduce(fij.f[c], std::plus<>{});
+            fi.torque[c] +=
+                Kokkos::Experimental::reduce(fij.torque[c], std::plus<>{});
+          }
+          /* j-side: per-lane scatter */
+          for (std::size_t l = 0; l < w; ++l) {
+            auto const jl = (j + l) - offset;
+            for (int c = 0; c < 3; ++c) {
+              force_access(jl, c) += fji.f[c][l];
+              torque_access(jl, c) += fji.torque[c][l];
+            }
+          }
+        }
+        /* (c) scalar tail over remaining j in (.., offset + n_local) */
+        for (; j < offset + n_local; ++j) {
+          Utils::Vector3d const pos_j{views.pos(j, 0), views.pos(j, 1),
+                                      views.pos(j, 2)};
+          Utils::Vector3d const m_j{views.m(j, 0), views.m(j, 1),
+                                    views.m(j, 2)};
+          auto const d0 = with_replicas ? (pos_i - pos_j)
+                                        : box_geo.get_mi_vector(pos_i, pos_j);
+          auto const jl = j - offset;
+          for (std::size_t s = 0; s < n_shifts; ++s) {
+            auto const rn = d0 + shifts_ptr[s];
+            auto const pf = pair_force<double>(rn, m_i, m_j);
+            fi.f += pf.f;
+            fi.torque += pf.torque;
+            for (int c = 0; c < 3; ++c) {
+              force_access(jl, c) -= pf.f[c];
+              torque_access(jl, c) += (vector_product(pf.f, rn) - pf.torque)[c];
+            }
+          }
+        }
+        /* (d) write i's own total directly (unique owner, no race) */
+        local_particles_ptr[i]->force() += prefactor_local * fi.f;
+        local_particles_ptr[i]->torque() += prefactor_local * fi.torque;
       });
+  Kokkos::fence();
 
-      fi += fij;
-      (*q)->force() += prefactor * fji.f;
-      (*q)->torque() += prefactor * fji.torque;
-    }
-
-    (*p)->force() += prefactor * fi.f;
-    (*p)->torque() += prefactor * fi.torque;
-  }
-
-  /* Wait for the rest of the data to arrive */
+  /* Wait for remote data, fill remote slices. */
   boost::mpi::wait_all(reqs.begin(), reqs.end());
+  fill_posmom_views(views, all_posmom, 0, offset);
+  fill_posmom_views(views, all_posmom, offset + n_local, n_total);
 
-  /* Output iterator for the force */
-  p = local_particles.begin();
+  /* Phase B: remote pairs (red [0, offset) + black [offset + n_local,
+   * n_total)), visit-twice, no scatter — accumulate only i. */
+  Kokkos::parallel_for(
+      "dds_remote_pairs",
+      Kokkos::RangePolicy<execution_space>(std::size_t{0}, n_local),
+      [=](std::size_t const i) {
+        auto const gi = offset + i;
+        Utils::Vector3d const pos_i{views.pos(gi, 0), views.pos(gi, 1),
+                                    views.pos(gi, 2)};
+        Utils::Vector3d const m_i{views.m(gi, 0), views.m(gi, 1),
+                                  views.m(gi, 2)};
+        auto const m_i_s = broadcast_simd(m_i);
+        PairForce<double> fi{};
 
-  /* Interaction with all the other particles */
-  for (auto it = local_posmom_begin; it != local_posmom_end; ++it, ++p) {
-    // red particles
-    auto fi =
-        image_sum(all_posmom.begin(), local_posmom_begin, it, with_replicas,
-                  ncut, box_geo, ParticleForce{},
-                  [it](Utils::Vector3d const &rn, Utils::Vector3d const &mj) {
-                    return pair_force(rn, it->m, mj);
-                  });
+        /* Two remote ranges: red [0, offset) and black [offset + n_local,
+         * n_total). Mirror the (b) SIMD body + (c) scalar tail of Phase A,
+         * but without any scatter (each remote pair is visited twice, once
+         * per owning rank, so only i accumulates). */
+        std::size_t const ranges[2][2] = {{std::size_t{0}, offset},
+                                          {offset + n_local, n_total}};
+        for (auto const &range : ranges) {
+          auto const range_begin = range[0];
+          auto const range_end = range[1];
+          auto j = range_begin;
+          /* SIMD body */
+          for (; j + w <= range_end; j += w) {
+            auto const m_j = load_simd_moment(views, j);
+            auto const d0 =
+                primary_distance_simd(pos_i, views, j, with_replicas, box_geo);
+            PairForce<simd_double> fij{};
+            for (std::size_t s = 0; s < n_shifts; ++s) {
+              auto const &shift = shifts_ptr[s];
+              Utils::Vector<simd_double, 3> const rn{
+                  d0[0] + shift[0], d0[1] + shift[1], d0[2] + shift[2]};
+              fij += pair_force<simd_double>(rn, m_i_s, m_j);
+            }
+            for (int c = 0; c < 3; ++c) {
+              fi.f[c] += Kokkos::Experimental::reduce(fij.f[c], std::plus<>{});
+              fi.torque[c] +=
+                  Kokkos::Experimental::reduce(fij.torque[c], std::plus<>{});
+            }
+          }
+          /* scalar tail */
+          for (; j < range_end; ++j) {
+            Utils::Vector3d const pos_j{views.pos(j, 0), views.pos(j, 1),
+                                        views.pos(j, 2)};
+            Utils::Vector3d const m_j{views.m(j, 0), views.m(j, 1),
+                                      views.m(j, 2)};
+            auto const d0 = with_replicas ? (pos_i - pos_j)
+                                          : box_geo.get_mi_vector(pos_i, pos_j);
+            for (std::size_t s = 0; s < n_shifts; ++s) {
+              auto const rn = d0 + shifts_ptr[s];
+              auto const pf = pair_force<double>(rn, m_i, m_j);
+              fi.f += pf.f;
+              fi.torque += pf.torque;
+            }
+          }
+        }
+        local_particles_ptr[i]->force() += prefactor_local * fi.f;
+        local_particles_ptr[i]->torque() += prefactor_local * fi.torque;
+      });
+  Kokkos::fence();
 
-    // black particles
-    fi += image_sum(local_posmom_end, all_posmom.end(), it, with_replicas, ncut,
-                    box_geo, ParticleForce{},
-                    [it](Utils::Vector3d const &rn, Utils::Vector3d const &mj) {
-                      return pair_force(rn, it->m, mj);
-                    });
+  /* Reduce the Newton's-third-law contributions and add to particles. */
+  Kokkos::Experimental::contribute(local_force, scatter_force);
+  Kokkos::Experimental::contribute(local_torque, scatter_torque);
+  Kokkos::parallel_for(
+      "dds_reduction",
+      Kokkos::RangePolicy<execution_space>(std::size_t{0}, n_local),
+      [=](std::size_t const i) {
+        local_particles_ptr[i]->force() +=
+            prefactor_local * Utils::Vector3d{local_force(i, 0),
+                                              local_force(i, 1),
+                                              local_force(i, 2)};
+        local_particles_ptr[i]->torque() +=
+            prefactor_local * Utils::Vector3d{local_torque(i, 0),
+                                              local_torque(i, 1),
+                                              local_torque(i, 2)};
+      });
+  Kokkos::fence();
 
-    (*p)->force() += prefactor * fi.f;
-    (*p)->torque() += prefactor * fi.torque;
-  }
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
   if (not m_is_gpu) {
     dipole_field_at_part_cpu();

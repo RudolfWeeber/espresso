@@ -29,10 +29,24 @@
 
 #include <Kokkos_SIMD.hpp>
 
+#include <boost/qvm/is_scalar.hpp>
+
 #include <cmath>
 #include <cstddef>
 
 using simd_double = Kokkos::Experimental::simd<double>;
+
+namespace boost::qvm {
+/** Teach boost::qvm that @c simd_double is a scalar. Utils::Vector pulls in the
+ *  qvm @c vec_traits specialization, which makes qvm's ADL-visible
+ *  scalar*vector @c operator* a candidate for @c double *
+ *  Utils::Vector<simd_double,3>. Without this, @c is_vec<Vector<simd_double,3>>
+ *  is false (its scalar isn't a qvm scalar) and qvm's return-type deduction
+ *  hard-errors during overload resolution. */
+template <> struct is_scalar<simd_double> {
+  static bool const value = true;
+};
+} // namespace boost::qvm
 
 namespace Utils {
 /** simd-scalar * Vector<simd> — the arithmetic-constrained scalar overload in
