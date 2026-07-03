@@ -22,27 +22,130 @@
 #include "Particle.hpp"
 #include "cell_system/CellStructure.hpp"
 #include "cells.hpp"
+#include "particle_store/ParticleStore.hpp"
 #include "system/System.hpp"
+
+#include <utils/Vector.hpp>
 
 #include <boost/mpi/communicator.hpp>
 
 #include <optional>
+#include <utility>
 
-inline auto copy_particle_to_head_node(boost::mpi::communicator const &comm,
-                                       System::System &system, int p_id) {
-  std::optional<Particle> result{};
-  auto p = system.cell_structure->get_local_particle(p_id);
-  if (p and not p->is_ghost()) {
-    if (comm.rank() == 0) {
-      result = *p;
-    } else {
-      comm.send(0, p_id, *p);
+/**
+ * @brief An optional particle that owns the standalone ParticleStore backing
+ * its force/torque columns.
+ *
+ * Migration phase 2: force/torque live in the ParticleStore and are not part
+ * of the Particle struct. A particle copied to the head node needs a store so
+ * its accessors work; bundling the store here ties its lifetime to the copy,
+ * which matters because the store holds Kokkos Views that must be destroyed
+ * before Kokkos::finalize(). Mimics the subset of the std::optional<Particle>
+ * interface used by the tests (bool, has_value, operator*).
+ */
+class ParticleWithStore {
+  std::optional<Particle> m_particle{};
+  ParticleStore m_store{};
+
+  void reattach() {
+    if (m_particle) {
+      m_store.assign_row(*m_particle, 0);
     }
   }
-  if (comm.rank() == 0 and not result) {
-    Particle p{};
-    comm.recv(boost::mpi::any_source, p_id, p);
-    result = p;
+
+public:
+  ParticleWithStore() = default;
+  ParticleWithStore(ParticleWithStore &&other) noexcept
+      : m_particle(std::move(other.m_particle)),
+        m_store(std::move(other.m_store)) {
+    // the moved store keeps its Kokkos Views; re-point the particle at it
+    reattach();
+  }
+  ParticleWithStore &operator=(ParticleWithStore &&other) noexcept {
+    m_particle = std::move(other.m_particle);
+    m_store = std::move(other.m_store);
+    reattach();
+    return *this;
+  }
+  ParticleWithStore(ParticleWithStore const &) = delete;
+  ParticleWithStore &operator=(ParticleWithStore const &) = delete;
+
+  /** Take ownership of @p p, giving it a single-row store, and restore its
+   *  force (and torque). */
+  void assign(Particle const &p, Utils::Vector3d const &force
+#ifdef ESPRESSO_ROTATION
+              ,
+              Utils::Vector3d const &torque
+#endif
+  ) {
+    m_particle = p;
+    m_store.begin_rebuild(1u, 0u);
+    m_store.finish_rebuild();
+    m_store.assign_row(*m_particle, 0);
+    m_particle->force() = force;
+#ifdef ESPRESSO_ROTATION
+    m_particle->torque() = torque;
+#endif
+  }
+
+  explicit operator bool() const { return m_particle.has_value(); }
+  bool has_value() const { return m_particle.has_value(); }
+  Particle &operator*() { return *m_particle; }
+  Particle const &operator*() const { return *m_particle; }
+  Particle *operator->() { return &*m_particle; }
+  Particle const *operator->() const { return &*m_particle; }
+};
+
+/**
+ * @brief Copy a particle (including its force/torque) to the head node.
+ *
+ * Migration phase 2: force/torque live in the ParticleStore columns and are
+ * neither part of the Particle struct nor serialized. To keep them observable
+ * on the head node, they are transmitted explicitly and the returned copy owns
+ * a standalone store so its accessors work.
+ */
+inline ParticleWithStore
+copy_particle_to_head_node(boost::mpi::communicator const &comm,
+                           System::System &system, int p_id) {
+  std::optional<Particle> received{};
+  Utils::Vector3d force{};
+#ifdef ESPRESSO_ROTATION
+  Utils::Vector3d torque{};
+#endif
+  auto p = system.cell_structure->get_local_particle(p_id);
+  if (p and not p->is_ghost()) {
+    system.cell_structure->ensure_particle_store_synchronized();
+    force = Utils::Vector3d(p->force());
+#ifdef ESPRESSO_ROTATION
+    torque = Utils::Vector3d(p->torque());
+#endif
+    if (comm.rank() == 0) {
+      received = *p;
+    } else {
+      comm.send(0, p_id, *p);
+      comm.send(0, p_id, force);
+#ifdef ESPRESSO_ROTATION
+      comm.send(0, p_id, torque);
+#endif
+    }
+  }
+  if (comm.rank() == 0 and not received) {
+    Particle q{};
+    comm.recv(boost::mpi::any_source, p_id, q);
+    comm.recv(boost::mpi::any_source, p_id, force);
+#ifdef ESPRESSO_ROTATION
+    comm.recv(boost::mpi::any_source, p_id, torque);
+#endif
+    received = q;
+  }
+  ParticleWithStore result{};
+  if (comm.rank() == 0 and received) {
+    result.assign(*received, force
+#ifdef ESPRESSO_ROTATION
+                  ,
+                  torque
+#endif
+    );
   }
   return result;
 }

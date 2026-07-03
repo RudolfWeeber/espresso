@@ -61,9 +61,9 @@ inline auto charge_range(ParticleRange const &particles) {
 }
 
 inline auto force_range(ParticleRange const &particles) {
-  auto return_force = [](Particle &p) -> Utils::Vector3d & {
-    return p.force();
-  };
+  // p.force() returns a write-through VectorReference proxy by value
+  // (migration phase 2); the transform range yields these proxies.
+  auto return_force = [](Particle &p) { return p.force(); };
   return detail::create_transform_range(particles, return_force);
 }
 

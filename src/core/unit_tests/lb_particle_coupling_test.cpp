@@ -30,6 +30,7 @@ namespace utf = boost::unit_test;
 #ifdef ESPRESSO_WALBERLA
 
 #include "ParticleFactory.hpp"
+#include "ParticleStoreTestFixture.hpp"
 #include "particle_management.hpp"
 
 #include "BoxGeometry.hpp"
@@ -237,7 +238,9 @@ BOOST_DATA_TEST_CASE_F(CleanupActorLB, drag_force, bdata::make(kTs), kT) {
   espresso::set_lb_kT(kT);
   auto &lb = espresso::system->lb;
   auto &thermostat = *espresso::system->thermostat->lb;
+  ParticleStoreTestFixture fixture{};
   Particle p{};
+  fixture.attach(p);
   p.v() = {-2.5, 1.5, 2.};
   p.pos() = espresso::lb_fluid->get_lattice().get_local_domain().first;
   thermostat.gamma = 0.2;
@@ -265,7 +268,9 @@ BOOST_DATA_TEST_CASE_F(CleanupActorLB, swimmer_force, bdata::make(kTs), kT) {
   auto const &local_box = *espresso::system->local_geo;
   auto const first_lb_node =
       espresso::lb_fluid->get_lattice().get_local_domain().first;
+  ParticleStoreTestFixture fixture{};
   Particle p{};
+  fixture.attach(p);
   p.swimming().swimming = true;
   p.swimming().f_swim = 2.;
   p.swimming().is_engine_force_on_fluid = true;
@@ -327,7 +332,9 @@ BOOST_DATA_TEST_CASE_F(CleanupActorLB, particle_coupling, bdata::make(kTs),
   auto const first_lb_node =
       espresso::lb_fluid->get_lattice().get_local_domain().first;
   thermostat.gamma = 0.2;
+  ParticleStoreTestFixture fixture{};
   Particle p{};
+  fixture.attach(p);
   LB::ParticleCoupling coupling{thermostat, lb, box_geo, local_box};
   auto expected = coupling.get_noise_term(p);
 #ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS

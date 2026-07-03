@@ -22,6 +22,7 @@
 #include "BondList.hpp"
 #include "cell_system/CellStructure.hpp"
 #include "particle_node.hpp"
+#include "particle_store/VectorReference.hpp"
 #include "system/System.hpp"
 
 #include <utils/Vector.hpp>
@@ -71,6 +72,18 @@ struct ParticleFactory {
     }
   }
 
+  /** Overload for accessors returning a write-through proxy by value
+   *  (migration phase 2: force/torque live in the ParticleStore columns). */
+  void set_particle_property(int p_id, VectorReference (Particle::*getter)(),
+                             Utils::Vector3d const &value) const {
+    auto &system = System::get_system();
+    system.cell_structure->ensure_particle_store_synchronized();
+    auto p = system.cell_structure->get_local_particle(p_id);
+    if (p != nullptr) {
+      (p->*getter)() = value;
+    }
+  }
+
   template <typename T>
   auto get_particle_property(int p_id, T &(Particle::*getter)()) const {
     auto &system = System::get_system();
@@ -78,6 +91,22 @@ struct ParticleFactory {
     std::optional<T> opt = std::nullopt;
     if (p != nullptr) {
       opt = (p->*getter)();
+    }
+    return opt;
+  }
+
+  /** Overload for accessors returning a write-through proxy by value
+   *  (migration phase 2: force/torque live in the ParticleStore columns).
+   *  Ensures the store is synchronized so the returned proxy references a
+   *  valid row, and converts to a plain @ref Utils::Vector3d. */
+  auto get_particle_property(int p_id,
+                             VectorReference (Particle::*getter)()) const {
+    auto &system = System::get_system();
+    system.cell_structure->ensure_particle_store_synchronized();
+    auto p = system.cell_structure->get_local_particle(p_id);
+    std::optional<Utils::Vector3d> opt = std::nullopt;
+    if (p != nullptr) {
+      opt = Utils::Vector3d((p->*getter)());
     }
     return opt;
   }

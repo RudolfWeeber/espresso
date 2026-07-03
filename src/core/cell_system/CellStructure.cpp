@@ -74,6 +74,10 @@
 
 CellStructure::~CellStructure() {
   clear_local_properties();
+  // Release the ParticleStore columns while Kokkos is still alive; the handle
+  // reset below may finalize Kokkos, and leaving the store's Views to
+  // member-destruction would free them after Kokkos::finalize.
+  m_particle_store.release_columns();
   // Kokkos handle can only be freed after all Cabana containers have been freed
   m_kokkos_handle.reset();
 }

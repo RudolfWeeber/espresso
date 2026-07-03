@@ -23,6 +23,7 @@
 
 #include "BondList.hpp"
 #include "PropagationMode.hpp"
+#include "particle_store/ParticleStore.hpp"
 
 #include <utils/Vector.hpp>
 #include <utils/compact_vector.hpp>
@@ -431,15 +432,12 @@ struct ParticleRattle {
 };
 #endif
 
-class ParticleStore; // transitional (migration phase 2)
-
 /** Struct holding all information for one particle. */
 struct Particle { // NOLINT(bugprone-exception-escape)
 private:
   ParticleProperties p;
   ParticlePosition r;
   ParticleMomentum m;
-  ParticleForce f;
   ParticleLocal l;
 #ifdef ESPRESSO_BOND_CONSTRAINT
   ParticleRattle rattle;
@@ -486,10 +484,14 @@ public:
   auto &pos() { return r.p; }
   auto const &v() const { return m.v; }
   auto &v() { return m.v; }
-  auto const &force() const { return f.f; }
-  auto &force() { return f.f; }
-  auto const &force_and_torque() const { return f; }
-  auto &force_and_torque() { return f; }
+  auto force() {
+    assert(m_particle_store != nullptr);
+    return m_particle_store->force_reference(m_store_row);
+  }
+  Utils::Vector3d force() const {
+    assert(m_particle_store != nullptr);
+    return m_particle_store->force_value(m_store_row);
+  }
 
   bool is_ghost() const { return l.ghost; }
   void set_ghost(bool const ghost_flag) { l.ghost = ghost_flag; }
@@ -530,8 +532,14 @@ public:
   }
   auto const &quat() const { return r.quat; }
   auto &quat() { return r.quat; }
-  auto const &torque() const { return f.torque; }
-  auto &torque() { return f.torque; }
+  auto torque() {
+    assert(m_particle_store != nullptr);
+    return m_particle_store->torque_reference(m_store_row);
+  }
+  Utils::Vector3d torque() const {
+    assert(m_particle_store != nullptr);
+    return m_particle_store->torque_value(m_store_row);
+  }
   auto const &omega() const { return m.omega; }
   auto &omega() { return m.omega; }
 #ifdef ESPRESSO_EXTERNAL_FORCES
@@ -670,7 +678,6 @@ private:
     ar & p;
     ar & r;
     ar & m;
-    ar & f;
     ar & l;
     ar & bl;
 #ifdef ESPRESSO_EXCLUSIONS

@@ -248,7 +248,11 @@ ParticleHandle::ParticleHandle() {
        [this]() { return get_particle_data(m_pid).v(); }},
       {"f",
        [this](Variant const &value) {
-         set_particle_property(&Particle::force, value);
+         // force() returns a write-through proxy (not an lvalue reference),
+         // so assign through it explicitly instead of via a member setter.
+         set_particle_property([&value](Particle &p) {
+           p.force() = get_value<Utils::Vector3d>(value);
+         });
        },
        [this]() { return get_particle_force(m_pid); }},
       {"mass",

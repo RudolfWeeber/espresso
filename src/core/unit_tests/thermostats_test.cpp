@@ -24,6 +24,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "Particle.hpp"
+#include "ParticleStoreTestFixture.hpp"
 #include "config/config.hpp"
 #include "random.hpp"
 #include "random_test.hpp"
@@ -45,7 +46,13 @@
 auto constexpr tol = 8. * 100. * std::numeric_limits<double>::epsilon();
 
 Particle particle_factory() {
+  // Migration phase 2: force/torque live in the ParticleStore. Attach every
+  // created particle to its own row of a persistent standalone store (large
+  // enough capacity) so several returned copies can be alive at once without
+  // their rows interfering.
+  static ParticleStoreTestFixture fixture{1024u};
   Particle p{};
+  fixture.attach(p);
   p.id() = 0;
   p.force() = {1.0, 2.0, 3.0};
 #ifdef ESPRESSO_ROTATION
@@ -73,8 +80,8 @@ BOOST_AUTO_TEST_CASE(test_brownian_dynamics) {
   constexpr double time_step = 0.1;
   constexpr double kT = 3.0;
   auto const brownian = thermostat_factory<BrownianThermostat>(kT);
-  auto const dispersion =
-      hadamard_division(particle_factory().force(), brownian.gamma);
+  auto const dispersion = hadamard_division(
+      Utils::Vector3d(particle_factory().force()), brownian.gamma);
 
   /* check translation */
   {
@@ -121,8 +128,8 @@ BOOST_AUTO_TEST_CASE(test_brownian_dynamics) {
   }
 
 #ifdef ESPRESSO_ROTATION
-  auto const dispersion_rotation =
-      hadamard_division(particle_factory().torque(), brownian.gamma_rotation);
+  auto const dispersion_rotation = hadamard_division(
+      Utils::Vector3d(particle_factory().torque()), brownian.gamma_rotation);
 
   /* check rotation */
   {

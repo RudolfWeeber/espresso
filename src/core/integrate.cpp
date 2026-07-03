@@ -635,6 +635,13 @@ int System::System::integrate(int n_steps, int reuse_forces) {
     CALI_CXX_MARK_LOOP_ITERATION(integration_loop, step);
 #endif
 
+    // Ensure every local/ghost particle has a valid ParticleStore row before
+    // integrator_step_1 reads previous-step forces. Mid-step particle creation
+    // (collision handling, bond breakage) at the end of the previous iteration
+    // would otherwise leave new particles rowless. O(1) when the store is
+    // clean; rank-local.
+    cell_structure->ensure_particle_store_synchronized();
+
 #ifdef ESPRESSO_BOND_CONSTRAINT
     if (n_rigid_bonds)
       save_old_position(cell_structure->local_particles(),

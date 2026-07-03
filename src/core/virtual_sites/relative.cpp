@@ -177,9 +177,10 @@ void vs_relative_back_transfer_forces_and_torques(
 
         auto &p_ref = *p_ref_ptr;
         if (is_vs_relative_trans(p)) {
-          p_ref.force() += p.force();
+          auto const p_force = Utils::Vector3d(p.force());
+          p_ref.force() += p_force;
           p_ref.torque() +=
-              vector_product(connection_vector(p_ref, p), p.force());
+              vector_product(connection_vector(p_ref, p), p_force);
         }
 
         if (is_vs_rot(p)) {

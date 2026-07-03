@@ -27,6 +27,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "Particle.hpp"
+#include "ParticleStoreTestFixture.hpp"
 #include "rotation.hpp"
 
 #include <utils/Vector.hpp>
@@ -72,7 +73,9 @@ BOOST_AUTO_TEST_CASE(convert_torque_to_body_frame_apply_fix_test) {
   {
     // test particle torque conversion
     for (unsigned int i : {0u, 1u, 2u, 3u}) {
+      ParticleStoreTestFixture fixture{};
       auto p = Particle();
+      fixture.attach(p);
       p.set_can_rotate_all_axes();
       Utils::Vector3d t_ref;
       std::tie(p.quat(), t_ref) = Testing::setup_trivial_quat(i, t_in);
@@ -87,7 +90,9 @@ BOOST_AUTO_TEST_CASE(convert_torque_to_body_frame_apply_fix_test) {
   {
     // torque is set to zero for axes without rotation
     for (unsigned int j : {0u, 1u, 2u}) {
+      ParticleStoreTestFixture fixture{};
       auto p = Particle();
+      fixture.attach(p);
       p.set_can_rotate_all_axes();
       p.set_can_rotate_around(j, false);
       p.quat() = Utils::Quaternion<double>::identity();
@@ -95,18 +100,22 @@ BOOST_AUTO_TEST_CASE(convert_torque_to_body_frame_apply_fix_test) {
       auto t_ref = t_in;
       t_ref[j] = 0.;
       convert_torque_to_body_frame_apply_fix(p);
-      BOOST_TEST(p.torque() == t_ref, boost::test_tools::per_element());
+      BOOST_TEST(Utils::Vector3d(p.torque()) == t_ref,
+                 boost::test_tools::per_element());
     }
   }
   {
     // torque is always zero for non-rotatable particles
+    ParticleStoreTestFixture fixture{};
     auto p = Particle();
+    fixture.attach(p);
     p.set_cannot_rotate_all_axes();
     p.quat() = Utils::Quaternion<double>::identity();
     p.torque() = t_in;
     convert_torque_to_body_frame_apply_fix(p);
     auto const t_ref = Utils::Vector3d{};
-    BOOST_TEST(p.torque() == t_ref, boost::test_tools::per_element());
+    BOOST_TEST(Utils::Vector3d(p.torque()) == t_ref,
+               boost::test_tools::per_element());
   }
 }
 
@@ -157,7 +166,9 @@ BOOST_AUTO_TEST_CASE(rotate_particle_body_test) {
 }
 
 BOOST_AUTO_TEST_CASE(propagate_omega_quat_particle_test) {
+  ParticleStoreTestFixture fixture{};
   auto p = Particle();
+  fixture.attach(p);
   p.set_can_rotate_all_axes();
   {
     // test edge case: null quaternion and no rotation

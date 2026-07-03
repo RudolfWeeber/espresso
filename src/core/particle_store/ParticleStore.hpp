@@ -69,6 +69,24 @@ public:
   void assign_row(Particle &particle, int row);
   void finish_rebuild();
 
+  /** Release all Kokkos-backed columns. Must be called while the Kokkos
+   *  runtime is still alive (e.g. before Kokkos::finalize); afterwards the
+   *  store is empty and dirty. */
+  void release_columns() {
+    m_force = Column{};
+#ifdef ESPRESSO_ROTATION
+    m_torque = Column{};
+#endif
+    m_old_force = Column{};
+#ifdef ESPRESSO_ROTATION
+    m_old_torque = Column{};
+#endif
+    m_number_of_local_particles = 0u;
+    m_number_of_ghost_particles = 0u;
+    m_old_number_of_particles = 0u;
+    m_dirty = true;
+  }
+
   VectorReference force_reference(int const row) {
     return column_reference(m_force, row);
   }

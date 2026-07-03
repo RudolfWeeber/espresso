@@ -196,6 +196,9 @@ const Particle &get_particle_data(int p_id) {
 static auto
 get_local_particle_property(int p_id,
                             Utils::Vector3d (*getter)(Particle const &)) {
+  // Ensure the owning rank's particle has a valid ParticleStore row before the
+  // getter reads force/torque. O(1) when the store is clean; rank-local.
+  get_cell_structure().ensure_particle_store_synchronized();
   auto const p = get_cell_structure().get_local_particle(p_id);
   auto const found = (p != nullptr) and not p->is_ghost();
   assert(1 == boost::mpi::all_reduce(::comm_cart, static_cast<int>(found),

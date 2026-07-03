@@ -25,6 +25,7 @@
 #include "Particle.hpp"
 #include "ParticleRange.hpp"
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
+#include "particle_store/ParticleStore.hpp"
 
 #include <shapes/NoWhere.hpp>
 #include <shapes/Shape.hpp>
@@ -46,6 +47,12 @@ public:
       : part_rep{}, m_shape{std::make_shared<Shapes::NoWhere>()},
         m_penetrable{false}, m_only_positive{false}, m_local_force{},
         m_outer_normal_force{}, m_system{} {}
+
+  ~ShapeBasedConstraint() override {
+    // Release part_rep's ParticleStore columns while Kokkos is still alive
+    // (see the equivalent handling in ~CellStructure). No-op if never attached.
+    m_part_rep_store.release_columns();
+  }
 
   void add_energy(const Particle &p, const Utils::Vector3d &folded_pos,
                   double time, Observable_stat &energy) const override;
@@ -91,6 +98,13 @@ public:
 
 private:
   Particle part_rep;
+  /** Standalone store backing @ref part_rep's force/torque columns (migration
+   *  phase 2). @ref part_rep is a representative wall particle owned by the
+   *  constraint, not by any cell structure, so it needs its own single-row
+   *  store for the force/torque accessors to work. Attached lazily in
+   *  @ref force() because Kokkos may not be initialized at construction time.
+   */
+  ParticleStore m_part_rep_store;
   std::shared_ptr<Shapes::Shape> m_shape;
   bool m_penetrable;
   bool m_only_positive;

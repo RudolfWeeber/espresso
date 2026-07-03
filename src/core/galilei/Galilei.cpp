@@ -54,6 +54,8 @@ void Galilei::kill_particle_forces(System::System &system, bool torque) const {
 #ifndef ESPRESSO_ROTATION
   std::ignore = torque;
 #endif
+  // Ensure every particle has a valid ParticleStore row before writing forces.
+  system.cell_structure->ensure_particle_store_synchronized();
   for (auto &p : system.cell_structure->local_particles()) {
     p.force() = {};
 #ifdef ESPRESSO_ROTATION

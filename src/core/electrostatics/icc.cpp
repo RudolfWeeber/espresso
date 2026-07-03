@@ -95,7 +95,14 @@ static void force_calc_icc(
           p2.force() -= force;
 #ifdef ESPRESSO_P3M
           if (elc_kernel_ptr) {
-            (*elc_kernel_ptr)(p1.pos(), p2.pos(), p1.force(), p2.force(), q1q2);
+            // elc_kernel takes non-const Vector3d& force parameters; the
+            // force accessors return write-through proxies, so operate on
+            // local copies and write them back in the same iteration.
+            Utils::Vector3d f1 = p1.force();
+            Utils::Vector3d f2 = p2.force();
+            (*elc_kernel_ptr)(p1.pos(), p2.pos(), f1, f2, q1q2);
+            p1.force() = f1;
+            p2.force() = f2;
           }
 #endif // ESPRESSO_P3M
         }
@@ -112,6 +119,10 @@ void ICCStar::iteration() {
 
   auto &system = get_system();
   auto &cell_structure = *system.cell_structure;
+  // ICC reads and accumulates particle forces; ensure every particle has a
+  // valid ParticleStore row (the caller may have resorted particles just
+  // before). O(1) when the store is clean; rank-local.
+  cell_structure.ensure_particle_store_synchronized();
   auto const &coulomb = system.coulomb;
   auto const particles = cell_structure.local_particles();
   auto const prefactor = std::visit(

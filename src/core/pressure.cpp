@@ -145,6 +145,10 @@ std::shared_ptr<Observable_stat> System::calculate_pressure() {
 
 #ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
   if (!obs_pressure.virtual_sites.empty()) {
+    // vs_relative_pressure_tensor reads virtual-site particle forces; ensure
+    // every particle has a valid ParticleStore row (on_observable_calc above
+    // may have resorted). O(1) when clean; rank-local.
+    cell_structure->ensure_particle_store_synchronized();
     auto const vs_pressure = vs_relative_pressure_tensor(*cell_structure);
     std::ranges::copy(Utils::flatten(vs_pressure),
                       obs_pressure.virtual_sites.begin());

@@ -55,6 +55,9 @@ inline auto get_real_particle(boost::mpi::communicator const &comm, int p_id,
   if (p_id < 0) {
     throw std::domain_error("Invalid particle id: " + std::to_string(p_id));
   }
+  // Ensure the fetched particle has a valid ParticleStore row before any
+  // getter/setter touches force/torque. O(1) when the store is clean.
+  cell_structure.ensure_particle_store_synchronized();
   auto ptr = cell_structure.get_local_particle(p_id);
   if (ptr != nullptr and ptr->is_ghost()) {
     ptr = nullptr;

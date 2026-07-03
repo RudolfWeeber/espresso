@@ -24,6 +24,7 @@
 #include <config/config.hpp>
 
 #include "Particle.hpp"
+#include "ParticleStoreTestFixture.hpp"
 #include "PropagationMode.hpp"
 
 #include <utils/compact_vector.hpp>
@@ -69,7 +70,12 @@ BOOST_AUTO_TEST_CASE(comparison) {
 }
 
 BOOST_AUTO_TEST_CASE(serialization) {
+  // Migration phase 2: force/torque live in the ParticleStore columns and are
+  // no longer part of Particle serialization. Attach the hand-made particles
+  // to a standalone store so the accessors work.
+  ParticleStoreTestFixture fixture{};
   auto p = Particle();
+  fixture.attach(p);
 
   auto const bond_id = 5;
   auto const bond_partners = std::array<const int, 3>{{12, 13, 14}};
@@ -91,27 +97,19 @@ BOOST_AUTO_TEST_CASE(serialization) {
 
   boost::archive::text_iarchive in_ar(stream);
   auto q = Particle();
+  fixture.attach(q);
   in_ar >> q;
 
-  ParticleForce const pf{p.force()
-#ifdef ESPRESSO_ROTATION
-                             ,
-                         p.torque()
-#endif
-  };
   BOOST_CHECK(q.id() == p.id());
   BOOST_CHECK((*q.bonds().begin() == BondView{bond_id, bond_partners}));
-  BOOST_TEST(q.force() == pf.f, boost::test_tools::per_element());
+  // Force/torque are NOT serialized (they belong to the ParticleStore); the
+  // freshly attached q therefore keeps the store's zero-initialized values.
+  BOOST_TEST(Utils::Vector3d(q.force()) == (Utils::Vector3d{0., 0., 0.}),
+             boost::test_tools::per_element());
 #ifdef ESPRESSO_ROTATION
-  BOOST_TEST(q.torque() == pf.torque, boost::test_tools::per_element());
+  BOOST_TEST(Utils::Vector3d(q.torque()) == (Utils::Vector3d{0., 0., 0.}),
+             boost::test_tools::per_element());
 #endif
-  ParticleForce const qf{q.force()
-#ifdef ESPRESSO_ROTATION
-                             ,
-                         q.torque()
-#endif
-  };
-  check_particle_force(qf, pf);
 }
 
 namespace Utils {

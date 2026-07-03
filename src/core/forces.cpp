@@ -269,6 +269,9 @@ void System::System::calculate_forces() {
 #ifdef ESPRESSO_CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif
+  // Ensure every local/ghost particle has a valid ParticleStore row before any
+  // force/torque access below. O(1) when the store is clean; rank-local.
+  cell_structure->ensure_particle_store_synchronized();
 #ifdef ESPRESSO_CUDA
   {
 #ifdef ESPRESSO_CALIPER
