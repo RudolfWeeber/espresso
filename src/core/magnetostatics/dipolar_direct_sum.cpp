@@ -47,7 +47,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cmath>
 #include <cstddef>
 #include <functional>
 #include <iterator>
@@ -569,7 +568,6 @@ double DipolarDirectSum::long_range_energy_cpu() const {
         }
       },
       uB);
-  Kokkos::fence();
 
   return prefactor * (uA + uB);
 }

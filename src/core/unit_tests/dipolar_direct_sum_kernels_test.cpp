@@ -29,6 +29,7 @@
 #include <Kokkos_SIMD.hpp>
 
 #include <cstddef>
+#include <vector>
 
 // Kokkos must be initialized before any simd/view use.
 struct GlobalConfig {
@@ -41,9 +42,6 @@ namespace {
 // Build a simd_double whose lane l holds vals[l].
 simd_double make_simd(double const *vals) {
   return simd_double(vals, Kokkos::Experimental::simd_flag_default);
-}
-Utils::Vector<simd_double, 3> broadcast(Utils::Vector3d const &v) {
-  return {simd_double(v[0]), simd_double(v[1]), simd_double(v[2])};
 }
 } // namespace
 

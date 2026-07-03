@@ -31,7 +31,6 @@
 
 #include <boost/qvm/is_scalar.hpp>
 
-#include <cmath>
 #include <cstddef>
 
 using simd_double = Kokkos::Experimental::simd<double>;
