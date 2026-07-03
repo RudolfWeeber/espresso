@@ -165,7 +165,8 @@ void convert_torque_propagate_omega(Particle &p, double time_step) {
   convert_torque_to_body_frame_apply_fix(p);
 
   // Propagation of angular velocities
-  p.omega() += hadamard_division(0.5 * time_step * p.torque(), p.rinertia());
+  p.omega() += hadamard_division(0.5 * time_step * Utils::Vector3d(p.torque()),
+                                 p.rinertia());
 
   // zeroth estimate of omega
   Utils::Vector3d omega_0 = p.omega();

@@ -93,14 +93,25 @@ BOOST_AUTO_TEST_CASE(serialization) {
   auto q = Particle();
   in_ar >> q;
 
-  auto const &pf = std::as_const(p).force_and_torque();
+  ParticleForce const pf{p.force()
+#ifdef ESPRESSO_ROTATION
+                             ,
+                         p.torque()
+#endif
+  };
   BOOST_CHECK(q.id() == p.id());
   BOOST_CHECK((*q.bonds().begin() == BondView{bond_id, bond_partners}));
   BOOST_TEST(q.force() == pf.f, boost::test_tools::per_element());
 #ifdef ESPRESSO_ROTATION
   BOOST_TEST(q.torque() == pf.torque, boost::test_tools::per_element());
 #endif
-  check_particle_force(q.force_and_torque(), pf);
+  ParticleForce const qf{q.force()
+#ifdef ESPRESSO_ROTATION
+                             ,
+                         q.torque()
+#endif
+  };
+  check_particle_force(qf, pf);
 }
 
 namespace Utils {

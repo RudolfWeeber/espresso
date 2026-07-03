@@ -272,7 +272,8 @@ BOOST_DATA_TEST_CASE_F(ParticleFactory, verlet_list_update,
         BOOST_CHECK_CLOSE(p1.force()[1], 0., tol);
         BOOST_CHECK_CLOSE(p1.force()[2], 0., tol);
 #ifdef ESPRESSO_EXTERNAL_FORCES
-        BOOST_TEST(p1.force() - p1.ext_force() == -p2.force(),
+        BOOST_TEST(Utils::Vector3d(p1.force()) - p1.ext_force() ==
+                       -Utils::Vector3d(p2.force()),
                    boost::test_tools::per_element());
 #endif // ESPRESSO_EXTERNAL_FORCES
         BOOST_CHECK_LT(get_dist_from_last_verlet_update(p1), skin / 2.);

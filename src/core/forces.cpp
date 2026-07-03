@@ -110,7 +110,11 @@ static void init_forces_and_thermostat(System::System const &system) {
   // Single pass over all local particles
   cell_structure.for_each_local_particle([&](Particle &p) {
     // Initialize force with external forces
-    p.force_and_torque() = external_force(p);
+    auto const external = external_force(p);
+    p.force() = external.f;
+#ifdef ESPRESSO_ROTATION
+    p.torque() = external.torque;
+#endif
 
     // Apply Langevin noise if thermostat is active
     if (langevin_active) {

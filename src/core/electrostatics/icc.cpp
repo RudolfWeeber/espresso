@@ -73,7 +73,12 @@ static void force_calc_icc(
     Coulomb::ShortRangeForceKernel::result_type const &coulomb_kernel,
     Coulomb::ShortRangeForceCorrectionsKernel::result_type const &elc_kernel) {
   // reset forces
-  auto const reset_kernel = [](Particle &p) { p.force_and_torque() = {}; };
+  auto const reset_kernel = [](Particle &p) {
+    p.force() = {};
+#ifdef ESPRESSO_ROTATION
+    p.torque() = {};
+#endif
+  };
   cell_structure.for_each_local_particle(reset_kernel);
   cell_structure.for_each_ghost_particle(reset_kernel);
   cell_structure.reset_local_force_and_torque();
@@ -90,8 +95,7 @@ static void force_calc_icc(
           p2.force() -= force;
 #ifdef ESPRESSO_P3M
           if (elc_kernel_ptr) {
-            (*elc_kernel_ptr)(p1.pos(), p2.pos(), p1.force_and_torque().f,
-                              p2.force_and_torque().f, q1q2);
+            (*elc_kernel_ptr)(p1.pos(), p2.pos(), p1.force(), p2.force(), q1q2);
           }
 #endif // ESPRESSO_P3M
         }
@@ -136,10 +140,11 @@ void ICCStar::iteration() {
     kokkos_parallel_range_for<Kokkos::RangePolicy<execution_space>>(
         "reduction", std::size_t{0}, unique_particles.size(),
         [&local_force, &unique_particles](std::size_t const i) {
-          auto &force = unique_particles.at(i)->force();
+          Utils::Vector3d force = unique_particles.at(i)->force();
           force[0] += local_force(i, 0);
           force[1] += local_force(i, 1);
           force[2] += local_force(i, 2);
+          unique_particles.at(i)->force() = force;
         });
     Kokkos::fence();
 
@@ -160,7 +165,8 @@ void ICCStar::iteration() {
         auto const eps_out = icc_cfg.eps_out;
         auto const del_eps = (eps_in - eps_out) / (eps_in + eps_out);
         /* calculate the electric field at the certain position */
-        auto const local_e_field = p.force() / p.q() + icc_cfg.ext_field;
+        auto const local_e_field =
+            Utils::Vector3d(p.force()) / p.q() + icc_cfg.ext_field;
 
         if (local_e_field.norm2() == 0.) {
           runtimeErrorMsg()

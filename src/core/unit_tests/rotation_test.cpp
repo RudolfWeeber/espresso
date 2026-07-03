@@ -78,7 +78,7 @@ BOOST_AUTO_TEST_CASE(convert_torque_to_body_frame_apply_fix_test) {
       std::tie(p.quat(), t_ref) = Testing::setup_trivial_quat(i, t_in);
       p.torque() = t_in;
       convert_torque_to_body_frame_apply_fix(p);
-      auto const t_out = p.torque();
+      Utils::Vector3d const t_out = p.torque();
       for (unsigned int j : {0u, 1u, 2u}) {
         BOOST_CHECK_CLOSE(t_out[j], t_ref[j], tol);
       }

@@ -340,7 +340,7 @@ BOOST_DATA_TEST_CASE_F(CleanupActorLB, particle_coupling, bdata::make(kTs),
   {
     if (in_local_halo(local_box, p.pos(), params.agrid)) {
       coupling.kernel({&p});
-      BOOST_CHECK_SMALL((p.force() - expected).norm(), eps);
+      BOOST_CHECK_SMALL((Utils::Vector3d(p.force()) - expected).norm(), eps);
 
       auto const interpolated = -LB::get_force_to_be_applied(p.pos());
       BOOST_CHECK_SMALL((interpolated - params.force_md_to_lb(expected)).norm(),
@@ -493,7 +493,8 @@ BOOST_DATA_TEST_CASE_F(CleanupActorLB, coupling_particle_lattice_ia,
         if (rank == 0) {
           auto const &p = *p_opt;
           // check particle force
-          BOOST_CHECK_SMALL((p.force() - expected).norm(), eps);
+          BOOST_CHECK_SMALL((Utils::Vector3d(p.force()) - expected).norm(),
+                            eps);
           // check LB force
           auto const lb_after = -LB::get_force_to_be_applied(p.pos());
           auto const lb_expected = params.force_md_to_lb(expected) + lb_before;

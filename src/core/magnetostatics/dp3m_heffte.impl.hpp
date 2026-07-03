@@ -893,10 +893,11 @@ double DipolarP3MHeffte<FloatType, Architecture, FFTConfig>::calc_surface_term(
 
     ip = 0u;
     for (auto &p : particles) {
-      auto &torque = p.torque();
+      Utils::Vector3d torque = p.torque();
       torque[0u] -= pref * sumix[ip];
       torque[1u] -= pref * sumiy[ip];
       torque[2u] -= pref * sumiz[ip];
+      p.torque() = torque;
       ip++;
     }
   }

@@ -614,7 +614,7 @@ template <PoQ axis> void add_PoQ_force(ParticleRange const &particles) {
 
   std::size_t ic = 0;
   for (auto &p : particles) {
-    auto &force = p.force();
+    Utils::Vector3d force = p.force();
     force[i] += partblk[size * ic + POQESM] * gblcblk[POQECP] -
                 partblk[size * ic + POQECM] * gblcblk[POQESP] +
                 partblk[size * ic + POQESP] * gblcblk[POQECM] -
@@ -623,6 +623,7 @@ template <PoQ axis> void add_PoQ_force(ParticleRange const &particles) {
                 partblk[size * ic + POQESM] * gblcblk[POQESP] -
                 partblk[size * ic + POQECP] * gblcblk[POQECM] -
                 partblk[size * ic + POQESP] * gblcblk[POQESM];
+    p.force() = force;
     ++ic;
   }
 }
@@ -790,7 +791,7 @@ static void add_PQ_force(std::size_t index_p, std::size_t index_q, double omega,
 
   std::size_t ic = 0;
   for (auto &p : particles) {
-    auto &force = p.force();
+    Utils::Vector3d force = p.force();
     force[0] += pref_x * (partblk[size * ic + PQESCM] * gblcblk[PQECCP] +
                           partblk[size * ic + PQESSM] * gblcblk[PQECSP] -
                           partblk[size * ic + PQECCM] * gblcblk[PQESCP] -
@@ -815,6 +816,7 @@ static void add_PQ_force(std::size_t index_p, std::size_t index_q, double omega,
                  partblk[size * ic + PQECSP] * gblcblk[PQECSM] -
                  partblk[size * ic + PQESCP] * gblcblk[PQESCM] -
                  partblk[size * ic + PQESSP] * gblcblk[PQESSM]);
+    p.force() = force;
     ic++;
   }
 }

@@ -550,7 +550,12 @@ public:
 
   /** Set forces and torques on all ghosts to zero. */
   void ghosts_reset_forces() {
-    for_each_ghost_particle([](Particle &p) { p.force_and_torque() = {}; });
+    for_each_ghost_particle([](Particle &p) {
+      p.force() = {};
+#ifdef ESPRESSO_ROTATION
+      p.torque() = {};
+#endif
+    });
   }
 
 #ifdef ESPRESSO_BOND_CONSTRAINT

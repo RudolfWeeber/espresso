@@ -65,7 +65,8 @@ bool SteepestDescent::propagate(CellStructure &cell_structure) const {
 #ifdef ESPRESSO_ROTATION
     {
       // Rotational increment
-      auto const dq = gamma * p.torque(); // Vector parallel to torque
+      auto const dq =
+          gamma * Utils::Vector3d(p.torque()); // Vector parallel to torque
       auto const t = p.torque().norm2();
 
       // Normalize rotation axis and compute amount of rotation

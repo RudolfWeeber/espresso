@@ -292,13 +292,15 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
       if (n_nodes != 3) {
         system.integrate(0, INTEG_REUSE_FORCES_NEVER);
         if (rank == 0) {
-          auto pf = get_particle_property(pid1, &Particle::force_and_torque);
+          auto pf = get_particle_property(pid1, &Particle::force);
           BOOST_REQUIRE(pf.has_value());
-          BOOST_CHECK_CLOSE(pf->f[0u], -energy_ref / r, 0.04);
-          BOOST_CHECK_LE(std::abs(pf->f[1u]), 1e-12);
-          BOOST_CHECK_LE(std::abs(pf->f[2u]), 1e-12);
+          BOOST_CHECK_CLOSE((*pf)[0u], -energy_ref / r, 0.04);
+          BOOST_CHECK_LE(std::abs((*pf)[1u]), 1e-12);
+          BOOST_CHECK_LE(std::abs((*pf)[2u]), 1e-12);
 #ifdef ESPRESSO_ROTATION
-          BOOST_CHECK_EQUAL(pf->torque.norm(), 0.);
+          auto tf = get_particle_property(pid1, &Particle::torque);
+          BOOST_REQUIRE(tf.has_value());
+          BOOST_CHECK_EQUAL(tf->norm(), 0.);
 #endif // ESPRESSO_ROTATION
         }
       }
@@ -361,12 +363,16 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
       if (n_nodes != 3) {
         system.integrate(0, INTEG_REUSE_FORCES_NEVER);
         if (rank == 0) {
-          auto pf = get_particle_property(pid1, &Particle::force_and_torque);
+          auto pf = get_particle_property(pid1, &Particle::force);
           BOOST_REQUIRE(pf.has_value());
-          BOOST_CHECK_CLOSE(pf->f[0u], -3. * energy_ref / r, 0.002);
-          BOOST_CHECK_LE(std::abs(pf->f[1u]), 1e-12);
-          BOOST_CHECK_LE(std::abs(pf->f[2u]), 1e-12);
-          BOOST_CHECK_LE(pf->torque.norm(), 1e-12);
+          BOOST_CHECK_CLOSE((*pf)[0u], -3. * energy_ref / r, 0.002);
+          BOOST_CHECK_LE(std::abs((*pf)[1u]), 1e-12);
+          BOOST_CHECK_LE(std::abs((*pf)[2u]), 1e-12);
+#ifdef ESPRESSO_ROTATION
+          auto tf = get_particle_property(pid1, &Particle::torque);
+          BOOST_REQUIRE(tf.has_value());
+          BOOST_CHECK_LE(tf->norm(), 1e-12);
+#endif // ESPRESSO_ROTATION
         }
       }
     }
@@ -513,7 +519,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
         auto p_opt = copy_particle_to_head_node(comm, system, pid);
         if (rank == 0) {
           auto &p = *p_opt;
-          p.v() += 0.5 * time_step * p.force() / p.mass();
+          p.v() += 0.5 * time_step * Utils::Vector3d(p.force()) / p.mass();
           p.pos() += time_step * p.v();
           expected[pid] = p.pos();
         }

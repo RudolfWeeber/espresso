@@ -49,7 +49,7 @@ Particle particle_factory() {
   p.id() = 0;
   p.force() = {1.0, 2.0, 3.0};
 #ifdef ESPRESSO_ROTATION
-  p.torque() = 4.0 * p.force();
+  p.torque() = 4.0 * Utils::Vector3d(p.force());
 #endif
   return p;
 }
