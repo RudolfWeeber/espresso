@@ -28,7 +28,6 @@
 #include <omp.h>
 
 #include <cstdint>
-#include <span>
 
 #if defined(__GNUG__) or defined(__clang__)
 #define ESPRESSO_ATTR_ALWAYS_INLINE [[gnu::always_inline]]
@@ -37,14 +36,16 @@
 #endif
 
 struct CellStructure::AoSoA_pack {
+  // Component-major (LayoutLeft) to match the ParticleStore columns these
+  // views will alias once the struct is no longer authoritative (phase 3).
   using PositionViewType =
-      Kokkos::View<double *[3], Kokkos::LayoutRight, Kokkos::HostSpace>;
+      Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>;
   using VelocityViewType =
-      Kokkos::View<double *[3], Kokkos::LayoutRight, Kokkos::HostSpace>;
+      Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>;
   using DirectorViewType =
-      Kokkos::View<double *[3], Kokkos::LayoutRight, Kokkos::HostSpace>;
+      Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>;
   using ImageViewType =
-      Kokkos::View<int *[3], Kokkos::LayoutRight, Kokkos::HostSpace>;
+      Kokkos::View<int *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>;
   using ChargeViewType = Kokkos::View<double *, Kokkos::HostSpace>;
   using DipmViewType = Kokkos::View<double *, Kokkos::HostSpace>;
   using IdViewType = Kokkos::View<int *, Kokkos::HostSpace>;
@@ -81,7 +82,7 @@ struct CellStructure::AoSoA_pack {
       mass = MassViewType("mass", num_particles);
 #endif
       flags = FlagsViewType("flags", num_particles);
-      velocity = PositionViewType("velocity", num_particles);
+      velocity = VelocityViewType("velocity", num_particles);
 #if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
       director = DirectorViewType("director", num_particles);
 #endif
@@ -109,13 +110,6 @@ struct CellStructure::AoSoA_pack {
       Kokkos::realloc(dipm, num_particles);
 #endif
     }
-  }
-
-  template <typename array_layout, typename T, std::size_t N>
-  std::span<T, N>
-  get_span_at(Kokkos::View<T *[N], array_layout, Kokkos::HostSpace> const &view,
-              std::size_t i) const {
-    return std::span<T, N>(const_cast<T *>(&view(i, 0)), N);
   }
 
   template <typename array_layout, typename T, std::size_t N>

@@ -376,11 +376,11 @@ template <int cao> struct AssignCharge {
     kokkos_parallel_range_for(
         "InterpolateCharges", std::size_t{0u}, n_part, [&](auto p_index) {
           auto const tid = omp_get_thread_num();
-          auto const pos = aosoa.get_span_at(aosoa.position, p_index);
+          auto const pos = aosoa.get_vector_at(aosoa.position, p_index);
           auto const q = aosoa.charge(p_index);
           auto const weights =
               p3m_calculate_interpolation_weights<cao, memory_order>(
-                  pos, p3m.params.ai, p3m.local_mesh);
+                  pos.as_span(), p3m.params.ai, p3m.local_mesh);
           p3m.inter_weights.store_at(p_index, weights);
           p3m_interpolate(
               p3m.local_mesh, weights, [&, tid, q](int ind, double w) {
