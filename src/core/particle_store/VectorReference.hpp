@@ -19,6 +19,7 @@
 #pragma once
 
 #include <utils/Vector.hpp>
+#include <utils/quaternion.hpp>
 
 #include <cassert>
 #include <cmath>
@@ -30,28 +31,28 @@
  *
  * Component @c j of the referenced vector lives at <tt>base[j * stride]</tt>.
  * The proxy is a cheap value type (pointer + stride); copying it copies the
- * reference, not the data. Reads convert to @ref Utils::Vector3d by value.
+ * reference, not the data. Reads convert to @ref Utils::Vector<T,3> by value.
  *
  * Note: because @ref Utils::Vector arithmetic operators are function
- * templates, a VectorReference does not participate in template argument
+ * templates, a BasicVectorReference does not participate in template argument
  * deduction — expressions like <tt>proxy - vector</tt> require an explicit
- * conversion: <tt>Utils::Vector3d(proxy) - vector</tt>.
+ * conversion: <tt>Utils::Vector<T,3>(proxy) - vector</tt>.
  */
-class VectorReference {
-  double *m_base;
+template <class T> class BasicVectorReference {
+  T *m_base;
   std::size_t m_stride;
 
 public:
-  VectorReference(double *base, std::size_t stride)
+  BasicVectorReference(T *base, std::size_t stride)
       : m_base(base), m_stride(stride) {
     assert(base != nullptr);
   }
 
-  operator Utils::Vector3d() const {
+  operator Utils::Vector<T, 3>() const {
     return {m_base[0u], m_base[m_stride], m_base[2u * m_stride]};
   }
 
-  VectorReference &operator=(Utils::Vector3d const &value) {
+  BasicVectorReference &operator=(Utils::Vector<T, 3> const &value) {
     m_base[0u] = value[0u];
     m_base[m_stride] = value[1u];
     m_base[2u * m_stride] = value[2u];
@@ -60,45 +61,125 @@ public:
 
   // Copy-assignment writes VALUES through (like std::vector<bool>::reference),
   // not the pointer/stride. The copy CONSTRUCTOR remains implicit and rebinds.
-  VectorReference &operator=(VectorReference const &other) {
-    return *this = Utils::Vector3d(other);
+  BasicVectorReference &operator=(BasicVectorReference const &other) {
+    return *this = Utils::Vector<T, 3>(other);
   }
 
-  VectorReference &operator+=(Utils::Vector3d const &value) {
+  BasicVectorReference &operator+=(Utils::Vector<T, 3> const &value) {
     m_base[0u] += value[0u];
     m_base[m_stride] += value[1u];
     m_base[2u * m_stride] += value[2u];
     return *this;
   }
 
-  VectorReference &operator-=(Utils::Vector3d const &value) {
+  BasicVectorReference &operator-=(Utils::Vector<T, 3> const &value) {
     m_base[0u] -= value[0u];
     m_base[m_stride] -= value[1u];
     m_base[2u * m_stride] -= value[2u];
     return *this;
   }
 
-  VectorReference &operator*=(double const factor) {
+  BasicVectorReference &operator*=(T const factor) {
     m_base[0u] *= factor;
     m_base[m_stride] *= factor;
     m_base[2u * m_stride] *= factor;
     return *this;
   }
 
-  double &operator[](std::size_t const j) {
+  T &operator[](std::size_t const j) {
     assert(j < 3u);
     return m_base[j * m_stride];
   }
-  double const &operator[](std::size_t const j) const {
+  T const &operator[](std::size_t const j) const {
     assert(j < 3u);
     return m_base[j * m_stride];
   }
 
-  double norm2() const {
+  T norm2() const {
     auto const x = m_base[0u];
     auto const y = m_base[m_stride];
     auto const z = m_base[2u * m_stride];
     return x * x + y * y + z * z;
+  }
+  T norm() const { return std::sqrt(norm2()); }
+};
+
+using VectorReference = BasicVectorReference<double>;
+using IntegerVectorReference = BasicVectorReference<int>;
+
+/**
+ * @brief Write-through reference to one particle's quaternion stored in a
+ * component-major (LayoutLeft) column.
+ *
+ * Component @c j of the referenced quaternion lives at
+ * <tt>base[j * stride]</tt>. The proxy is a cheap value type (pointer +
+ * stride); copying it copies the reference, not the data. Reads convert to
+ * @ref Utils::Quaternion<double> by value.
+ */
+class QuaternionReference {
+  double *m_base;
+  std::size_t m_stride;
+
+public:
+  QuaternionReference(double *base, std::size_t stride)
+      : m_base(base), m_stride(stride) {
+    assert(base != nullptr);
+  }
+
+  operator Utils::Quaternion<double>() const {
+    Utils::Quaternion<double> q;
+    q[0] = m_base[0u];
+    q[1] = m_base[m_stride];
+    q[2] = m_base[2u * m_stride];
+    q[3] = m_base[3u * m_stride];
+    return q;
+  }
+
+  QuaternionReference &operator=(Utils::Quaternion<double> const &value) {
+    m_base[0u] = value[0u];
+    m_base[m_stride] = value[1u];
+    m_base[2u * m_stride] = value[2u];
+    m_base[3u * m_stride] = value[3u];
+    return *this;
+  }
+
+  // Copy-assignment writes VALUES through (like std::vector<bool>::reference),
+  // not the pointer/stride. The copy CONSTRUCTOR remains implicit and rebinds.
+  QuaternionReference &operator=(QuaternionReference const &other) {
+    return *this = Utils::Quaternion<double>(other);
+  }
+
+  QuaternionReference &operator+=(Utils::Quaternion<double> const &value) {
+    m_base[0u] += value[0u];
+    m_base[m_stride] += value[1u];
+    m_base[2u * m_stride] += value[2u];
+    m_base[3u * m_stride] += value[3u];
+    return *this;
+  }
+
+  QuaternionReference &operator/=(double const divisor) {
+    m_base[0u] /= divisor;
+    m_base[m_stride] /= divisor;
+    m_base[2u * m_stride] /= divisor;
+    m_base[3u * m_stride] /= divisor;
+    return *this;
+  }
+
+  double &operator[](std::size_t const j) {
+    assert(j < 4u);
+    return m_base[j * m_stride];
+  }
+  double const &operator[](std::size_t const j) const {
+    assert(j < 4u);
+    return m_base[j * m_stride];
+  }
+
+  double norm2() const {
+    auto const w = m_base[0u];
+    auto const x = m_base[m_stride];
+    auto const y = m_base[2u * m_stride];
+    auto const z = m_base[3u * m_stride];
+    return w * w + x * x + y * y + z * z;
   }
   double norm() const { return std::sqrt(norm2()); }
 };
