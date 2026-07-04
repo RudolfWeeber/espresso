@@ -469,6 +469,30 @@ private:
   Utils::Vector3d m_detached_torque = {0., 0., 0.};
 #endif
 
+  /** Transitional (migration phase 3): STATE migration carriers, DORMANT until
+   *  phase 8. Mirroring the force/torque carriers above, these members ferry
+   *  the state fields (position, image box, quaternion, position-at-last-
+   *  verlet-update, position-at-last-time-step, Lees-Edwards offset and flag)
+   *  across the boost-serialized inter-rank exchange so @ref
+   *  ParticleStore::assign_row can seed a migrated particle's new row. Until
+   *  the phase-8 flip the corresponding sub-struct members remain authoritative
+   *  and the migration_*() getters read them directly (see below); these
+   *  members are NOT yet added to @ref Particle::serialize (phase 8 adds the
+   *  @c ar & lines when the sub-structs leave, so the serialization format
+   *  changes exactly once). Defaults match the sub-struct member defaults. */
+  Utils::Vector3d m_migration_position = {0., 0., 0.};
+  Utils::Vector3i m_migration_image_box = {0, 0, 0};
+#ifdef ESPRESSO_ROTATION
+  Utils::Quaternion<double> m_migration_quaternion =
+      Utils::Quaternion<double>::identity();
+#endif
+  Utils::Vector3d m_migration_position_at_last_verlet_update = {0., 0., 0.};
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  Utils::Vector3d m_migration_position_last_time_step = {0., 0., 0.};
+#endif
+  double m_migration_lees_edwards_offset = 0.;
+  short int m_migration_lees_edwards_flag = 0;
+
 public:
   void attach_to_store(ParticleStore &store, int const row) {
     m_particle_store = &store;
@@ -494,6 +518,47 @@ public:
 #ifdef ESPRESSO_ROTATION
   Utils::Vector3d const &migration_torque() const { return m_detached_torque; }
 #endif
+
+  /** @brief Phase-3 STATE migration carriers, DORMANT until phase 8.
+   *
+   *  Mirrors the phase-2 force carriers. The @c detached_*() getters return the
+   *  current value whether the particle is attached to a store or not; the
+   *  @c migration_*() getters return the raw carrier that @ref
+   *  ParticleStore::assign_row seeds from. Until the phase-8 flip BOTH read the
+   *  authoritative sub-struct members directly (the @c m_migration_* members
+   *  are unused reservations); phase 8 rewires them to the columns/carriers.
+   *  @{ */
+  Utils::Vector3d const &detached_position() const { return r.p; }
+  Utils::Vector3d const &migration_position() const { return r.p; }
+  Utils::Vector3i const &detached_image_box() const { return r.i; }
+  Utils::Vector3i const &migration_image_box() const { return r.i; }
+#ifdef ESPRESSO_ROTATION
+  Utils::Quaternion<double> const &detached_quaternion() const {
+    return r.quat;
+  }
+  Utils::Quaternion<double> const &migration_quaternion() const {
+    return r.quat;
+  }
+#endif
+  Utils::Vector3d const &detached_position_at_last_verlet_update() const {
+    return l.p_old;
+  }
+  Utils::Vector3d const &migration_position_at_last_verlet_update() const {
+    return l.p_old;
+  }
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  Utils::Vector3d const &detached_position_last_time_step() const {
+    return r.p_last_timestep;
+  }
+  Utils::Vector3d const &migration_position_last_time_step() const {
+    return r.p_last_timestep;
+  }
+#endif
+  double detached_lees_edwards_offset() const { return l.lees_edwards_offset; }
+  double migration_lees_edwards_offset() const { return l.lees_edwards_offset; }
+  short int detached_lees_edwards_flag() const { return l.lees_edwards_flag; }
+  short int migration_lees_edwards_flag() const { return l.lees_edwards_flag; }
+  /** @} */
 
   auto const &id() const { return p.identity; }
   auto &id() { return p.identity; }
