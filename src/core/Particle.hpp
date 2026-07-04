@@ -455,6 +455,20 @@ private:
   ParticleStore *m_particle_store = nullptr;
   int m_store_row = -1;
 
+  /** Transitional (migration phase 2): force/torque carrier used only while the
+   *  particle is detached from a store (freshly constructed or just
+   *  deserialized after a cross-rank migration). The @ref ParticleStore columns
+   *  are the source of truth once attached; these members ferry the observable
+   *  values across the boost-serialized inter-rank particle exchange (which
+   * does not carry Kokkos columns) so that @ref ParticleStore::assign_row can
+   * seed the new row. This preserves the pre-migration behavior where the force
+   *  travelled with the migrating particle. Removed in phase 7, when the
+   *  inter-rank exchange switches to per-field column packing. */
+  Utils::Vector3d m_detached_force = {0., 0., 0.};
+#ifdef ESPRESSO_ROTATION
+  Utils::Vector3d m_detached_torque = {0., 0., 0.};
+#endif
+
 public:
   void attach_to_store(ParticleStore &store, int const row) {
     m_particle_store = &store;
@@ -462,6 +476,24 @@ public:
   }
   auto store() const { return m_particle_store; }
   auto store_row() const { return m_store_row; }
+
+  /** @brief Observable force as a plain value, valid whether the particle is
+   *  attached to a store (reads the column) or detached (reads the migration
+   *  carrier). Used by Particle serialization to capture the value to ferry. */
+  Utils::Vector3d detached_force() const {
+    return (m_particle_store != nullptr) ? force() : m_detached_force;
+  }
+#ifdef ESPRESSO_ROTATION
+  Utils::Vector3d detached_torque() const {
+    return (m_particle_store != nullptr) ? torque() : m_detached_torque;
+  }
+#endif
+  /** @brief Raw migration carrier (never touches columns). Used by
+   *  ParticleStore::assign_row to seed a migrated/new particle's row. */
+  Utils::Vector3d const &migration_force() const { return m_detached_force; }
+#ifdef ESPRESSO_ROTATION
+  Utils::Vector3d const &migration_torque() const { return m_detached_torque; }
+#endif
 
   auto const &id() const { return p.identity; }
   auto &id() { return p.identity; }
@@ -682,6 +714,23 @@ private:
     ar & bl;
 #ifdef ESPRESSO_EXCLUSIONS
     ar & el;
+#endif
+    // Migration phase 2: force/torque live in ParticleStore columns, which are
+    // not carried by this (boost) serializer used for cross-rank particle
+    // exchange. Ferry the observable values so they survive a global resort
+    // that moves the particle to another rank (matching pre-migration
+    // behavior). SAVE reads the current value (column if attached, carrier
+    // otherwise); LOAD lands in the detached carrier, from which
+    // ParticleStore::assign_row seeds the rebuilt row.
+    if (Archive::is_saving::value) {
+      m_detached_force = detached_force();
+#ifdef ESPRESSO_ROTATION
+      m_detached_torque = detached_torque();
+#endif
+    }
+    ar & m_detached_force;
+#ifdef ESPRESSO_ROTATION
+    ar & m_detached_torque;
 #endif
   }
 };

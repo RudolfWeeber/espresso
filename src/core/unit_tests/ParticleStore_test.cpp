@@ -29,6 +29,11 @@
 
 #include <Kokkos_Core.hpp>
 
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
+
+#include <sstream>
+
 // ParticleStore allocates Kokkos Views, which requires an initialized runtime.
 struct GlobalConfig {
   GlobalConfig() { Kokkos::initialize(); }
@@ -96,4 +101,60 @@ BOOST_AUTO_TEST_CASE(ghost_rows_follow_locals) {
   store.finish_rebuild();
   BOOST_CHECK_EQUAL(store.number_of_local_particles(), 1ul);
   BOOST_CHECK_EQUAL(store.number_of_ghost_particles(), 1ul);
+}
+
+// Regression guard (phase-2 hybrid/n_square 4-rank force bug): force/torque
+// live only in the store columns, which are not carried by the boost
+// serialization used for cross-rank particle migration. A particle that
+// migrates to another rank arrives detached from this store; its force must be
+// ferried through the Particle serialization carrier and seeded into the new
+// row by assign_row. Otherwise a global resort followed by a force-reusing
+// integrator step would report a zeroed force (the original bug).
+BOOST_AUTO_TEST_CASE(rebuild_seeds_migrated_particle_force_from_carrier) {
+  // 1) A particle attached to a source store with a known force (models the
+  //    sending rank right before a global resort).
+  ParticleStore source{};
+  Particle p{};
+  p.id() = 7;
+  source.begin_rebuild(1u, 0u);
+  source.assign_row(p, 0);
+  source.finish_rebuild();
+  auto const f_ref = Utils::Vector3d{-1.5, 2.25, -3.75};
+  source.force_reference(p.store_row()) = f_ref;
+#ifdef ESPRESSO_ROTATION
+  auto const t_ref = Utils::Vector3d{4.5, -5.5, 6.5};
+  source.torque_reference(p.store_row()) = t_ref;
+#endif
+
+  // 2) Serialize and deserialize the particle, exactly as the cross-rank
+  //    migration does. The receiving particle is detached (no store).
+  std::stringstream stream;
+  {
+    boost::archive::text_oarchive oa{stream};
+    oa << p;
+  }
+  Particle received{};
+  {
+    boost::archive::text_iarchive ia{stream};
+    ia >> received;
+  }
+  BOOST_REQUIRE(received.store() == nullptr);
+  BOOST_CHECK_EQUAL(received.migration_force()[0], f_ref[0]);
+  BOOST_CHECK_EQUAL(received.migration_force()[2], f_ref[2]);
+
+  // 3) The receiving rank's store rebuild must seed the new row from the
+  //    carrier so the force survives the migration.
+  ParticleStore target{};
+  target.begin_rebuild(1u, 0u);
+  target.assign_row(received, 0);
+  target.finish_rebuild();
+  auto const f_new = target.force_value(received.store_row());
+  BOOST_CHECK_EQUAL(f_new[0], f_ref[0]);
+  BOOST_CHECK_EQUAL(f_new[1], f_ref[1]);
+  BOOST_CHECK_EQUAL(f_new[2], f_ref[2]);
+#ifdef ESPRESSO_ROTATION
+  auto const t_new = target.torque_value(received.store_row());
+  BOOST_CHECK_EQUAL(t_new[0], t_ref[0]);
+  BOOST_CHECK_EQUAL(t_new[2], t_ref[2]);
+#endif
 }
