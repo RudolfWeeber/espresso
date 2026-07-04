@@ -259,24 +259,46 @@ BOOST_AUTO_TEST_CASE(new_row_state_defaults) {
 
 // A detached particle with its migration carriers populated must have all its
 // state columns seeded from those carriers on assign_row (models a particle
-// that just migrated in from another rank). Pre-flip the carrier getters read
-// the struct fields, so we set the struct via the public setters.
+// that just migrated in from another rank). Post-flip (phase 3) the state
+// fields live only in the store columns, so a detached particle's carriers are
+// populated the way a real migration does: set the values on an attached
+// source particle, serialize it out (SAVE fills the carriers from the columns),
+// and deserialize into a detached receiver (LOAD lands them in its carriers).
 BOOST_AUTO_TEST_CASE(rebuild_seeds_migrated_particle_state_from_carrier) {
-  Particle p{};
-  p.id() = 11;
-  p.pos() = Utils::Vector3d{1.5, -2.5, 3.5};
-  p.image_box() = Utils::Vector3i{4, -5, 6};
-  p.pos_at_last_verlet_update() = Utils::Vector3d{7.5, 8.5, 9.5};
-  p.lees_edwards_offset() = 12.75;
-  p.lees_edwards_flag() = static_cast<short>(2);
+  ParticleStore source{};
+  Particle src{};
+  src.id() = 11;
+  source.begin_rebuild(1u, 0u);
+  source.assign_row(src, 0);
+  source.finish_rebuild();
+  source.position_reference(src.store_row()) = Utils::Vector3d{1.5, -2.5, 3.5};
+  source.image_box_reference(src.store_row()) = Utils::Vector3i{4, -5, 6};
+  source.position_at_last_verlet_update_reference(src.store_row()) =
+      Utils::Vector3d{7.5, 8.5, 9.5};
+  source.lees_edwards_offset(src.store_row()) = 12.75;
+  source.lees_edwards_flag(src.store_row()) = static_cast<short>(2);
 #ifdef ESPRESSO_ROTATION
-  auto const q = Utils::Quaternion<double>{{0., 0., 1., 0.}};
-  p.quat() = q;
+  source.quaternion_reference(src.store_row()) =
+      Utils::Quaternion<double>{{0., 0., 1., 0.}};
 #endif
 #ifdef ESPRESSO_BOND_CONSTRAINT
-  p.pos_last_time_step() = Utils::Vector3d{-1., -2., -3.};
+  source.position_last_time_step_reference(src.store_row()) =
+      Utils::Vector3d{-1., -2., -3.};
 #endif
+
+  std::stringstream stream;
+  {
+    boost::archive::text_oarchive oa{stream};
+    oa << src;
+  }
+  Particle p{};
+  {
+    boost::archive::text_iarchive ia{stream};
+    ia >> p;
+  }
   BOOST_REQUIRE(p.store() == nullptr);
+  BOOST_CHECK_EQUAL(p.migration_position()[0], 1.5);
+  BOOST_CHECK_EQUAL(p.migration_image_box()[2], 6);
 
   ParticleStore target{};
   target.begin_rebuild(1u, 0u);
@@ -323,13 +345,41 @@ BOOST_AUTO_TEST_CASE(snapshot_store_attaches_batch_of_detached_particles) {
   store.begin_rebuild(capacity, 0u);
   store.finish_rebuild();
 
+  // Each detached particle's carriers are populated the way a real fetch does:
+  // an attached source particle is serialized out (SAVE fills the carriers from
+  // its columns) and deserialized into a detached receiver (LOAD lands them in
+  // its carriers).
+  auto const make_detached = [](int id, Utils::Vector3d const &pos,
+                                Utils::Vector3i const &image_box) {
+    ParticleStore src_store{};
+    Particle src{};
+    src.id() = id;
+    src_store.begin_rebuild(1u, 0u);
+    src_store.assign_row(src, 0);
+    src_store.finish_rebuild();
+    src_store.position_reference(src.store_row()) = pos;
+    src_store.image_box_reference(src.store_row()) = image_box;
+    std::stringstream stream;
+    {
+      boost::archive::text_oarchive oa{stream};
+      oa << src;
+    }
+    Particle received{};
+    {
+      boost::archive::text_iarchive ia{stream};
+      ia >> received;
+    }
+    return received;
+  };
+
   std::vector<Particle> parts(capacity);
   int next_row = 0;
   for (std::size_t i = 0u; i < capacity; ++i) {
+    parts[i] = make_detached(
+        static_cast<int>(i),
+        Utils::Vector3d{double(i), double(i) + 0.5, double(i) + 0.25},
+        Utils::Vector3i{int(i), -int(i), 2 * int(i)});
     auto &p = parts[i];
-    p.id() = static_cast<int>(i);
-    p.pos() = Utils::Vector3d{double(i), double(i) + 0.5, double(i) + 0.25};
-    p.image_box() = Utils::Vector3i{int(i), -int(i), 2 * int(i)};
     BOOST_REQUIRE(p.store() ==
                   nullptr);          // detached, like a freshly-fetched copy
     store.assign_row(p, next_row++); // seeds the row from the carriers

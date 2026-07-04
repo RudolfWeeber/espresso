@@ -75,17 +75,54 @@ public:
   ParticleWithStore &operator=(ParticleWithStore const &) = delete;
 
   /** Take ownership of @p p, giving it a single-row store, and restore its
-   *  force (and torque). */
+   *  force (and torque) plus the position group.
+   *
+   *  Migration phase 3: assign_row seeds the fresh store's row from @p p's
+   *  MIGRATION CARRIERS, which are only refreshed on a serialize SAVE. A
+   *  particle handed to us via the head-node fast path (@c received = *p, a
+   *  plain copy, no serialization) therefore carries STALE position-group
+   *  carriers relative to its (correct) live column. Capture the current
+   *  position-group values through the accessors first (they read the column
+   *  when attached, or the carrier when detached -- both correct here), then
+   *  write them back through the fresh store's proxies after attach so the copy
+   *  reflects the source's actual state, not the stale carrier. */
   void assign(Particle const &p, Utils::Vector3d const &force
 #ifdef ESPRESSO_ROTATION
               ,
               Utils::Vector3d const &torque
 #endif
   ) {
+    // Capture the source's current position group through the const accessors
+    // (column when attached, carrier when detached -- both correct) BEFORE the
+    // copy is re-attached and re-seeded from its (possibly stale) carrier.
+    auto const pos = p.pos();
+    auto const image_box = p.image_box();
+    auto const pos_at_last_verlet_update = p.pos_at_last_verlet_update();
+#ifdef ESPRESSO_ROTATION
+    auto const quat = p.quat();
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+    auto const pos_last_time_step = p.pos_last_time_step();
+#endif
+    auto const lees_edwards_offset = p.lees_edwards_offset();
+    auto const lees_edwards_flag = p.lees_edwards_flag();
+
     m_particle = p;
     m_store.begin_rebuild(1u, 0u);
     m_store.finish_rebuild();
     m_store.assign_row(*m_particle, 0);
+
+    m_particle->pos() = pos;
+    m_particle->image_box() = image_box;
+    m_particle->pos_at_last_verlet_update() = pos_at_last_verlet_update;
+#ifdef ESPRESSO_ROTATION
+    m_particle->quat() = quat;
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+    m_particle->pos_last_time_step() = pos_last_time_step;
+#endif
+    m_particle->lees_edwards_offset() = lees_edwards_offset;
+    m_particle->lees_edwards_flag() = lees_edwards_flag;
     m_particle->force() = force;
 #ifdef ESPRESSO_ROTATION
     m_particle->torque() = torque;
@@ -116,9 +153,9 @@ copy_particle_to_head_node(boost::mpi::communicator const &comm,
 #ifdef ESPRESSO_ROTATION
   Utils::Vector3d torque{};
 #endif
+  system.cell_structure->ensure_particle_store_synchronized();
   auto p = system.cell_structure->get_local_particle(p_id);
   if (p and not p->is_ghost()) {
-    system.cell_structure->ensure_particle_store_synchronized();
     force = Utils::Vector3d(p->force());
 #ifdef ESPRESSO_ROTATION
     torque = Utils::Vector3d(p->torque());

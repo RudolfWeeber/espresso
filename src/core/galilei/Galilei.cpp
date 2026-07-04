@@ -70,6 +70,9 @@ void Galilei::kill_particle_forces(System::System &system, bool torque) const {
 Utils::Vector3d
 Galilei::calc_system_cms_position(System::System const &system) const {
   auto const &box_geo = *system.box_geo;
+  // Reading p.pos()/p.image_box() requires a valid ParticleStore row; this is a
+  // script-facing entry point that may follow a topology change (phase 3).
+  system.cell_structure->ensure_particle_store_synchronized();
   auto total_mass = 0.;
   auto cms_pos = Utils::Vector3d{};
   for (auto const &p : system.cell_structure->local_particles()) {

@@ -116,6 +116,85 @@ BOOST_AUTO_TEST_CASE(serialization) {
 #endif
 }
 
+// Migration phase 3: the STATE fields (position, image box, quaternion,
+// position-at-last-verlet-update, position-at-last-time-step, Lees-Edwards
+// offset and flag) live in the ParticleStore columns and are ferried across a
+// boost archive via the migration carriers. This round-trip test attaches p to
+// a store, sets known state, serializes, and deserializes into a DETACHED q so
+// that the carrier values (not a column) are read back through the detached_*()
+// getters -- exactly the path ParticleStore::assign_row uses to seed a migrated
+// particle's new row on the destination rank.
+BOOST_AUTO_TEST_CASE(state_carrier_serialization_round_trip) {
+  ParticleStoreTestFixture fixture{};
+  auto p = Particle();
+  fixture.attach(p);
+
+  auto const ref_pos = Utils::Vector3d{1.25, -2.5, 3.75};
+  auto const ref_image = Utils::Vector3i{4, -5, 6};
+  p.pos() = ref_pos;
+  p.image_box() = ref_image;
+  p.pos_at_last_verlet_update() = Utils::Vector3d{0.5, 0.25, -0.125};
+#ifdef ESPRESSO_ROTATION
+  auto const ref_quat = Utils::Quaternion<double>{{0.5, 0.5, 0.5, 0.5}};
+  p.quat() = ref_quat;
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  auto const ref_pos_last = Utils::Vector3d{7.5, 8.5, 9.5};
+  p.pos_last_time_step() = ref_pos_last;
+#endif
+  p.lees_edwards_offset() = 1.5;
+  p.lees_edwards_flag() = short{3};
+
+  std::stringstream stream;
+  boost::archive::text_oarchive out_ar(stream);
+  out_ar << p;
+
+  boost::archive::text_iarchive in_ar(stream);
+  auto q = Particle(); // intentionally NOT attached to a store
+  in_ar >> q;
+
+  // A detached q reads the ferried carriers through detached_*().
+  BOOST_TEST(q.detached_position() == ref_pos,
+             boost::test_tools::per_element());
+  BOOST_TEST(q.detached_image_box() == ref_image,
+             boost::test_tools::per_element());
+  BOOST_TEST(q.detached_position_at_last_verlet_update() ==
+                 (Utils::Vector3d{0.5, 0.25, -0.125}),
+             boost::test_tools::per_element());
+#ifdef ESPRESSO_ROTATION
+  {
+    auto const q_quat = q.detached_quaternion();
+    for (std::size_t j = 0u; j < 4u; ++j) {
+      BOOST_CHECK_EQUAL(q_quat[j], ref_quat[j]);
+    }
+  }
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  BOOST_TEST(q.detached_position_last_time_step() == ref_pos_last,
+             boost::test_tools::per_element());
+#endif
+  BOOST_CHECK_EQUAL(q.detached_lees_edwards_offset(), 1.5);
+  BOOST_CHECK_EQUAL(q.detached_lees_edwards_flag(), short{3});
+
+  // After attaching q to a fresh store, assign_row seeds the row from those
+  // carriers, so the column reads now return the ferried values.
+  fixture.attach(q);
+  BOOST_TEST(Utils::Vector3d(q.pos()) == ref_pos,
+             boost::test_tools::per_element());
+  BOOST_TEST(Utils::Vector3i(q.image_box()) == ref_image,
+             boost::test_tools::per_element());
+#ifdef ESPRESSO_ROTATION
+  {
+    auto const q_quat = Utils::Quaternion<double>(q.quat());
+    for (std::size_t j = 0u; j < 4u; ++j) {
+      BOOST_CHECK_EQUAL(q_quat[j], ref_quat[j]);
+    }
+  }
+#endif
+  BOOST_CHECK_EQUAL(q.lees_edwards_offset(), 1.5);
+  BOOST_CHECK_EQUAL(q.lees_edwards_flag(), short{3});
+}
+
 namespace Utils {
 template <>
 struct is_statically_serializable<ParticleProperties> : std::true_type {};

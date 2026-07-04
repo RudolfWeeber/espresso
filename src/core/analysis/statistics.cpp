@@ -80,6 +80,10 @@ static auto gather_traits_for_types(System::System const &system,
                                     Trait &&...trait) {
   std::vector<typename DecayTupleResult<Trait...>::type> buffer{};
 
+  // Migration phase 3: reading p.pos()/p.image_box() requires a valid
+  // ParticleStore row. This analysis path is called directly from the script
+  // interface, possibly after a topology change. O(1) when clean; rank-local.
+  system.cell_structure->ensure_particle_store_synchronized();
   for (auto const &p : system.cell_structure->local_particles()) {
     if (Utils::contains(p_types, p.type())) {
       buffer.emplace_back(trait(p)...);
@@ -101,6 +105,7 @@ double mindist(System::System const &system, std::vector<int> const &set1,
   std::vector<Utils::Vector3d> buf_pos{};
 
   auto const &box_geo = *system.box_geo;
+  system.cell_structure->ensure_particle_store_synchronized();
   auto const accept_all = set1.empty() or set2.empty();
   for (auto const &p : system.cell_structure->local_particles()) {
     if (accept_all or contains(set1, p.type()) or contains(set2, p.type())) {
@@ -160,7 +165,8 @@ Utils::Vector3d calc_linear_momentum(System::System const &system,
 
 Utils::Vector3d center_of_mass(System::System const &system, int p_type) {
   auto const &box_geo = *system.box_geo;
-  auto const &cell_structure = *system.cell_structure;
+  auto &cell_structure = *system.cell_structure;
+  cell_structure.ensure_particle_store_synchronized();
   Utils::Vector3d local_com{};
   double local_mass = 0.;
 
@@ -186,7 +192,8 @@ Utils::Vector3d center_of_mass(System::System const &system, int p_type) {
 
 Utils::Vector3d angular_momentum(System::System const &system, int p_type) {
   auto const &box_geo = *system.box_geo;
-  auto const &cell_structure = *system.cell_structure;
+  auto &cell_structure = *system.cell_structure;
+  cell_structure.ensure_particle_store_synchronized();
   Utils::Vector3d am{};
 
   for (auto const &p : cell_structure.local_particles()) {
@@ -238,7 +245,8 @@ Utils::Vector9d gyration_tensor(System::System const &system,
 Utils::Vector9d moment_of_inertia_matrix(System::System const &system,
                                          int p_type) {
   auto const &box_geo = *system.box_geo;
-  auto const &cell_structure = *system.cell_structure;
+  auto &cell_structure = *system.cell_structure;
+  cell_structure.ensure_particle_store_synchronized();
   Utils::Vector9d mat{};
   auto com = center_of_mass(system, p_type);
   boost::mpi::broadcast(::comm_cart, com, 0);
@@ -268,6 +276,7 @@ std::vector<int> nbhood(System::System const &system,
   auto const dist_sq = dist * dist;
   auto const &box_geo = *system.box_geo;
 
+  system.cell_structure->ensure_particle_store_synchronized();
   for (auto const &p : system.cell_structure->local_particles()) {
     auto const r_sq =
         box_geo.get_mi_vector(pos, Utils::Vector3d(p.pos())).norm2();

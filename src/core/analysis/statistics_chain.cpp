@@ -105,6 +105,7 @@ struct GatherMass : public GatherParticleTraits<double> {
 std::array<double, 4> calc_re(System::System const &system, int chain_start,
                               int chain_length, int n_chains) {
   auto const &cell_structure = *system.cell_structure;
+  system.cell_structure->ensure_particle_store_synchronized();
   GatherPos prefetch{*system.box_geo};
   double dist = 0.0, dist2 = 0.0, dist4 = 0.0;
   std::array<double, 4> re{};
@@ -137,6 +138,7 @@ std::array<double, 4> calc_re(System::System const &system, int chain_start,
 std::array<double, 4> calc_rg(System::System const &system, int chain_start,
                               int chain_length, int n_chains) {
   auto const &cell_structure = *system.cell_structure;
+  system.cell_structure->ensure_particle_store_synchronized();
   GatherPos prefetch_pos{*system.box_geo};
   GatherCom prefetch_com{*system.box_geo};
   GatherMass prefetch_mass{};
@@ -201,6 +203,7 @@ std::array<double, 4> calc_rg(System::System const &system, int chain_start,
 std::array<double, 2> calc_rh(System::System const &system, int chain_start,
                               int chain_length, int n_chains) {
   auto const &cell_structure = *system.cell_structure;
+  system.cell_structure->ensure_particle_store_synchronized();
   GatherPos prefetch{*system.box_geo};
   double r_H = 0.0, r_H2 = 0.0;
   std::array<double, 2> rh{};

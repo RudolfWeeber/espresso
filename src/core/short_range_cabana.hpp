@@ -107,13 +107,17 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
       if (p1.id() <= max_id) {
         auto const ii = id_to_index(p1.id());
         if (ii >= 0) {
+          // Hoist p1's position out of the inner loop: it lives in the
+          // ParticleStore column (phase 3), so materializing the proxy once per
+          // outer particle instead of once per pair candidate avoids O(pairs)
+          // strided column reads on this hot path.
+          auto const p1_pos = Utils::Vector3d(p1.pos());
           // pairs in this cell
           for (auto jt = std::next(it); jt != local_particles.end(); ++jt) {
             if ((*jt).id() <= max_id) {
-              if (verlet_criterion(
-                      p1, *jt,
-                      box_geo.get_mi_dist2(Utils::Vector3d(p1.pos()),
-                                           Utils::Vector3d(jt->pos())))) {
+              if (verlet_criterion(p1, *jt,
+                                   box_geo.get_mi_dist2(
+                                       p1_pos, Utils::Vector3d(jt->pos())))) {
                 auto const jj = id_to_index((*jt).id());
                 if (jj >= 0) {
                   intra_operator(ii, jj);
@@ -133,14 +137,15 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
       if (p1.id() <= max_id) {
         auto const ii = id_to_index(p1.id());
         if (ii >= 0) {
+          // Hoist p1's position out of the inner loops (see intra_kernel).
+          auto const p1_pos = Utils::Vector3d(p1.pos());
           // pairs with neighboring cells
           for (auto &neighbor : cells[i]->neighbors().red()) {
             for (auto const &p2 : neighbor->particles()) {
               if (p2.id() <= max_id) {
-                if (verlet_criterion(
-                        p1, p2,
-                        box_geo.get_mi_dist2(Utils::Vector3d(p1.pos()),
-                                             Utils::Vector3d(p2.pos())))) {
+                if (verlet_criterion(p1, p2,
+                                     box_geo.get_mi_dist2(
+                                         p1_pos, Utils::Vector3d(p2.pos())))) {
                   auto const jj = id_to_index(p2.id());
                   if (jj >= 0) {
                     inter_operator(ii, jj);

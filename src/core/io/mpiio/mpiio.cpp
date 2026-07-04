@@ -247,7 +247,8 @@ void mpi_mpiio_common_write(std::string const &prefix, unsigned fields,
     *id_it = p.id();
     ++id_it;
     if (fields & MPIIO_OUT_POS) {
-      std::copy_n(std::begin(p.pos()), 3u, pos_it);
+      auto const pos = Utils::Vector3d(p.pos());
+      std::copy_n(std::begin(pos), 3u, pos_it);
       pos_it += 3u;
     }
     if (fields & MPIIO_OUT_VEL) {
@@ -461,7 +462,9 @@ void mpi_mpiio_common_read(const std::string &prefix, unsigned fields,
                              3ul * pref, MPI_DOUBLE);
 
     for (auto &p : particles) {
-      std::copy_n(pos_it, 3u, std::begin(p.pos()));
+      // position lives in the ParticleStore columns (component-major); write
+      // through the proxy via a plain vector rather than a raw iterator.
+      p.pos() = Utils::Vector3d{pos_it[0], pos_it[1], pos_it[2]};
       pos_it += 3u;
     }
   }

@@ -292,38 +292,14 @@ struct ParticleProperties {
 
 /** Positional information on a particle. Information that is
  *  communicated to calculate interactions with ghost particles.
+ *
+ *  Migration phase 3: the position, image box, quaternion and
+ *  position-at-last-time-step fields have left this struct; they live only in
+ *  the @ref ParticleStore columns (single ownership, spec section 4). The
+ *  struct is retained (empty) for the ghost-transfer documentation reference in
+ *  ghosts.hpp; it is no longer a member of @ref Particle nor serialized.
  */
-struct ParticlePosition {
-  /** periodically folded position. */
-  Utils::Vector3d p = {0., 0., 0.};
-  /** index of the simulation box image where the particle really sits. */
-  Utils::Vector3i i = {0, 0, 0};
-
-#ifdef ESPRESSO_ROTATION
-  /** quaternion to define particle orientation */
-  Utils::Quaternion<double> quat = Utils::Quaternion<double>::identity();
-  /** unit director calculated from the quaternion */
-  Utils::Vector3d calc_director() const {
-    return Utils::convert_quaternion_to_director(quat);
-  }
-#endif
-
-#ifdef ESPRESSO_BOND_CONSTRAINT
-  /** particle position at the previous time step (RATTLE algorithm) */
-  Utils::Vector3d p_last_timestep = {0., 0., 0.};
-#endif
-
-  template <class Archive> void serialize(Archive &ar, long int /* version */) {
-    ar & p;
-    ar & i;
-#ifdef ESPRESSO_ROTATION
-    ar & quat;
-#endif
-#ifdef ESPRESSO_BOND_CONSTRAINT
-    ar & p_last_timestep;
-#endif
-  }
-};
+struct ParticlePosition {};
 
 /** Force information on a particle. Forces of ghost particles are
  *  collected and added up to the force of the original particle.
@@ -398,17 +374,14 @@ struct ParticleMomentum {
 struct ParticleLocal {
   /** is particle a ghost particle. */
   bool ghost = false;
-  short int lees_edwards_flag = 0;
-  /** position from the last Verlet list update. */
-  Utils::Vector3d p_old = {0., 0., 0.};
-  /** Accumulated applied Lees-Edwards offset. */
-  double lees_edwards_offset = 0.;
+
+  // Migration phase 3: the Lees-Edwards flag/offset and the
+  // position-from-the-last-Verlet-list-update (p_old) fields have left this
+  // struct; they live only in the @ref ParticleStore columns (single
+  // ownership, spec section 4). Only the ghost flag remains here.
 
   template <class Archive> void serialize(Archive &ar, long int /* version */) {
     ar & ghost;
-    ar & lees_edwards_flag;
-    ar & p_old;
-    ar & lees_edwards_offset;
   }
 };
 
@@ -436,7 +409,6 @@ struct ParticleRattle {
 struct Particle { // NOLINT(bugprone-exception-escape)
 private:
   ParticleProperties p;
-  ParticlePosition r;
   ParticleMomentum m;
   ParticleLocal l;
 #ifdef ESPRESSO_BOND_CONSTRAINT
@@ -519,45 +491,69 @@ public:
   Utils::Vector3d const &migration_torque() const { return m_detached_torque; }
 #endif
 
-  /** @brief Phase-3 STATE migration carriers, DORMANT until phase 8.
+  /** @brief Phase-3 STATE migration carriers (now LIVE, mirroring the phase-2
+   *  force carriers).
    *
-   *  Mirrors the phase-2 force carriers. The @c detached_*() getters return the
-   *  current value whether the particle is attached to a store or not; the
-   *  @c migration_*() getters return the raw carrier that @ref
-   *  ParticleStore::assign_row seeds from. Until the phase-8 flip BOTH read the
-   *  authoritative sub-struct members directly (the @c m_migration_* members
-   *  are unused reservations); phase 8 rewires them to the columns/carriers.
+   *  The @c detached_*() getters return the current value whether the particle
+   *  is attached to a store (read the column) or detached (read the migration
+   *  carrier). @ref Particle serialization fills the carriers from these
+   *  getters on SAVE. The @c migration_*() getters return the raw carrier that
+   *  @ref ParticleStore::assign_row seeds a new/migrated row from (never
+   * touches a column, so it is safe on a detached particle whose column row is
+   *  invalid). Removed in phase 7 when the inter-rank exchange switches to
+   *  per-field column packing.
    *  @{ */
-  Utils::Vector3d const &detached_position() const { return r.p; }
-  Utils::Vector3d const &migration_position() const { return r.p; }
-  Utils::Vector3i const &detached_image_box() const { return r.i; }
-  Utils::Vector3i const &migration_image_box() const { return r.i; }
+  Utils::Vector3d detached_position() const {
+    return (m_particle_store != nullptr) ? pos() : m_migration_position;
+  }
+  Utils::Vector3d const &migration_position() const {
+    return m_migration_position;
+  }
+  Utils::Vector3i detached_image_box() const {
+    return (m_particle_store != nullptr) ? image_box() : m_migration_image_box;
+  }
+  Utils::Vector3i const &migration_image_box() const {
+    return m_migration_image_box;
+  }
 #ifdef ESPRESSO_ROTATION
-  Utils::Quaternion<double> const &detached_quaternion() const {
-    return r.quat;
+  Utils::Quaternion<double> detached_quaternion() const {
+    return (m_particle_store != nullptr) ? quat() : m_migration_quaternion;
   }
   Utils::Quaternion<double> const &migration_quaternion() const {
-    return r.quat;
+    return m_migration_quaternion;
   }
 #endif
-  Utils::Vector3d const &detached_position_at_last_verlet_update() const {
-    return l.p_old;
+  Utils::Vector3d detached_position_at_last_verlet_update() const {
+    return (m_particle_store != nullptr)
+               ? pos_at_last_verlet_update()
+               : m_migration_position_at_last_verlet_update;
   }
   Utils::Vector3d const &migration_position_at_last_verlet_update() const {
-    return l.p_old;
+    return m_migration_position_at_last_verlet_update;
   }
 #ifdef ESPRESSO_BOND_CONSTRAINT
-  Utils::Vector3d const &detached_position_last_time_step() const {
-    return r.p_last_timestep;
+  Utils::Vector3d detached_position_last_time_step() const {
+    return (m_particle_store != nullptr) ? pos_last_time_step()
+                                         : m_migration_position_last_time_step;
   }
   Utils::Vector3d const &migration_position_last_time_step() const {
-    return r.p_last_timestep;
+    return m_migration_position_last_time_step;
   }
 #endif
-  double detached_lees_edwards_offset() const { return l.lees_edwards_offset; }
-  double migration_lees_edwards_offset() const { return l.lees_edwards_offset; }
-  short int detached_lees_edwards_flag() const { return l.lees_edwards_flag; }
-  short int migration_lees_edwards_flag() const { return l.lees_edwards_flag; }
+  double detached_lees_edwards_offset() const {
+    return (m_particle_store != nullptr) ? lees_edwards_offset()
+                                         : m_migration_lees_edwards_offset;
+  }
+  double migration_lees_edwards_offset() const {
+    return m_migration_lees_edwards_offset;
+  }
+  short int detached_lees_edwards_flag() const {
+    return (m_particle_store != nullptr) ? lees_edwards_flag()
+                                         : m_migration_lees_edwards_flag;
+  }
+  short int migration_lees_edwards_flag() const {
+    return m_migration_lees_edwards_flag;
+  }
   /** @} */
 
   auto const &id() const { return p.identity; }
@@ -577,8 +573,16 @@ public:
   auto const &bonds() const { return bl; }
   auto &bonds() { return bl; }
 
-  auto const &pos() const { return r.p; }
-  auto &pos() { return r.p; }
+  Utils::Vector3d pos() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->position_value(m_store_row)
+               : m_migration_position;
+  }
+  VectorReference pos() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->position_reference(m_store_row)
+               : VectorReference(m_migration_position.data(), 1u);
+  }
   auto const &v() const { return m.v; }
   auto &v() { return m.v; }
   auto force() {
@@ -592,14 +596,49 @@ public:
 
   bool is_ghost() const { return l.ghost; }
   void set_ghost(bool const ghost_flag) { l.ghost = ghost_flag; }
-  auto &pos_at_last_verlet_update() { return l.p_old; }
-  auto const &pos_at_last_verlet_update() const { return l.p_old; }
-  auto const &image_box() const { return r.i; }
-  auto &image_box() { return r.i; }
-  auto const &lees_edwards_offset() const { return l.lees_edwards_offset; }
-  auto &lees_edwards_offset() { return l.lees_edwards_offset; }
-  auto const &lees_edwards_flag() const { return l.lees_edwards_flag; }
-  auto &lees_edwards_flag() { return l.lees_edwards_flag; }
+  VectorReference pos_at_last_verlet_update() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->position_at_last_verlet_update_reference(
+                     m_store_row)
+               : VectorReference(
+                     m_migration_position_at_last_verlet_update.data(), 1u);
+  }
+  Utils::Vector3d pos_at_last_verlet_update() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->position_at_last_verlet_update_value(
+                     m_store_row)
+               : m_migration_position_at_last_verlet_update;
+  }
+  Utils::Vector3i image_box() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->image_box_value(m_store_row)
+               : m_migration_image_box;
+  }
+  IntegerVectorReference image_box() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->image_box_reference(m_store_row)
+               : IntegerVectorReference(m_migration_image_box.data(), 1u);
+  }
+  double lees_edwards_offset() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->lees_edwards_offset(m_store_row)
+               : m_migration_lees_edwards_offset;
+  }
+  double &lees_edwards_offset() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->lees_edwards_offset(m_store_row)
+               : m_migration_lees_edwards_offset;
+  }
+  short lees_edwards_flag() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->lees_edwards_flag(m_store_row)
+               : m_migration_lees_edwards_flag;
+  }
+  short &lees_edwards_flag() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->lees_edwards_flag(m_store_row)
+               : m_migration_lees_edwards_flag;
+  }
 
 #ifdef ESPRESSO_MASS
   auto const &mass() const { return p.mass; }
@@ -627,8 +666,16 @@ public:
   void set_cannot_rotate_all_axes() {
     p.rotation = static_cast<uint8_t>(0b000u);
   }
-  auto const &quat() const { return r.quat; }
-  auto &quat() { return r.quat; }
+  Utils::Quaternion<double> quat() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->quaternion_value(m_store_row)
+               : m_migration_quaternion;
+  }
+  QuaternionReference quat() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->quaternion_reference(m_store_row)
+               : QuaternionReference(m_migration_quaternion.data(), 1u);
+  }
   auto torque() {
     assert(m_particle_store != nullptr);
     return m_particle_store->torque_reference(m_store_row);
@@ -643,7 +690,9 @@ public:
   auto const &ext_torque() const { return p.ext_torque; }
   auto &ext_torque() { return p.ext_torque; }
 #endif // ESPRESSO_EXTERNAL_FORCES
-  auto calc_director() const { return r.calc_director(); }
+  auto calc_director() const {
+    return Utils::convert_quaternion_to_director(quat());
+  }
 #else  // ESPRESSO_ROTATION
   auto can_rotate() const { return false; }
   auto can_rotate_around(unsigned int const) const { return false; }
@@ -753,8 +802,18 @@ public:
   auto &swimming() { return p.swim; }
 #endif
 #ifdef ESPRESSO_BOND_CONSTRAINT
-  auto const &pos_last_time_step() const { return r.p_last_timestep; }
-  auto &pos_last_time_step() { return r.p_last_timestep; }
+  Utils::Vector3d pos_last_time_step() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->position_last_time_step_value(m_store_row)
+               : m_migration_position_last_time_step;
+  }
+  VectorReference pos_last_time_step() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->position_last_time_step_reference(
+                     m_store_row)
+               : VectorReference(m_migration_position_last_time_step.data(),
+                                 1u);
+  }
   auto const &rattle_params() const { return rattle; }
   auto &rattle_params() { return rattle; }
   auto const &rattle_correction() const { return rattle.correction; }
@@ -773,30 +832,54 @@ private:
   friend boost::serialization::access;
   template <class Archive> void serialize(Archive &ar, long int /* version */) {
     ar & p;
-    ar & r;
     ar & m;
     ar & l;
     ar & bl;
 #ifdef ESPRESSO_EXCLUSIONS
     ar & el;
 #endif
-    // Migration phase 2: force/torque live in ParticleStore columns, which are
-    // not carried by this (boost) serializer used for cross-rank particle
-    // exchange. Ferry the observable values so they survive a global resort
-    // that moves the particle to another rank (matching pre-migration
-    // behavior). SAVE reads the current value (column if attached, carrier
-    // otherwise); LOAD lands in the detached carrier, from which
-    // ParticleStore::assign_row seeds the rebuilt row.
+    // Migration phases 2 & 3: force/torque (phase 2) and the STATE fields
+    // (position, image box, quaternion, position-at-last-verlet-update,
+    // position-at-last-time-step, Lees-Edwards offset and flag; phase 3) live
+    // in ParticleStore columns, which are not carried by this (boost)
+    // serializer used for cross-rank particle exchange. Ferry the values so
+    // they survive a global resort that moves the particle to another rank
+    // (matching pre-migration behavior). SAVE reads the current value (column
+    // if attached, carrier otherwise); LOAD lands in the detached carrier,
+    // from which ParticleStore::assign_row seeds the rebuilt row.
     if (Archive::is_saving::value) {
       m_detached_force = detached_force();
 #ifdef ESPRESSO_ROTATION
       m_detached_torque = detached_torque();
 #endif
+      m_migration_position = detached_position();
+      m_migration_image_box = detached_image_box();
+#ifdef ESPRESSO_ROTATION
+      m_migration_quaternion = detached_quaternion();
+#endif
+      m_migration_position_at_last_verlet_update =
+          detached_position_at_last_verlet_update();
+#ifdef ESPRESSO_BOND_CONSTRAINT
+      m_migration_position_last_time_step = detached_position_last_time_step();
+#endif
+      m_migration_lees_edwards_offset = detached_lees_edwards_offset();
+      m_migration_lees_edwards_flag = detached_lees_edwards_flag();
     }
     ar & m_detached_force;
 #ifdef ESPRESSO_ROTATION
     ar & m_detached_torque;
 #endif
+    ar & m_migration_position;
+    ar & m_migration_image_box;
+#ifdef ESPRESSO_ROTATION
+    ar & m_migration_quaternion;
+#endif
+    ar & m_migration_position_at_last_verlet_update;
+#ifdef ESPRESSO_BOND_CONSTRAINT
+    ar & m_migration_position_last_time_step;
+#endif
+    ar & m_migration_lees_edwards_offset;
+    ar & m_migration_lees_edwards_flag;
   }
 };
 

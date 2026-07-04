@@ -58,9 +58,15 @@ setup_trivial_quat(unsigned int i, Utils::Vector3d const &v_in) {
 BOOST_AUTO_TEST_CASE(convert_vector_space_to_body_test) {
   auto const t_in = Utils::Vector3d{{1., 2., 3.}};
   for (unsigned int i : {0u, 1u, 2u, 3u}) {
+    ParticleStoreTestFixture fixture{};
     auto p = Particle();
+    fixture.attach(p);
     Utils::Vector3d t_ref;
-    std::tie(p.quat(), t_ref) = Testing::setup_trivial_quat(i, t_in);
+    // quat() is a write-through proxy returned by value (phase 3): capture the
+    // quaternion into a local, then assign it through the proxy.
+    auto [quat, t_ref_local] = Testing::setup_trivial_quat(i, t_in);
+    p.quat() = quat;
+    t_ref = t_ref_local;
     auto const t_out = convert_vector_space_to_body(p, t_in);
     for (unsigned int j : {0u, 1u, 2u}) {
       BOOST_CHECK_CLOSE(t_out[j], t_ref[j], tol);
@@ -78,7 +84,9 @@ BOOST_AUTO_TEST_CASE(convert_torque_to_body_frame_apply_fix_test) {
       fixture.attach(p);
       p.set_can_rotate_all_axes();
       Utils::Vector3d t_ref;
-      std::tie(p.quat(), t_ref) = Testing::setup_trivial_quat(i, t_in);
+      auto [quat, t_ref_local] = Testing::setup_trivial_quat(i, t_in);
+      p.quat() = quat;
+      t_ref = t_ref_local;
       p.torque() = t_in;
       convert_torque_to_body_frame_apply_fix(p);
       Utils::Vector3d const t_out = p.torque();

@@ -23,6 +23,7 @@
 
 #include "BoxGeometry.hpp"
 #include "Particle.hpp"
+#include "ParticleStoreTestFixture.hpp"
 #include "lees_edwards/LeesEdwardsBC.hpp"
 #include "lees_edwards/lees_edwards.hpp"
 
@@ -48,7 +49,11 @@ BOOST_AUTO_TEST_CASE(test_shear_direction) {
 BOOST_AUTO_TEST_CASE(test_update_offset) {
   auto const prefactor = 2.5;
   auto const old_offset = 1.5;
+  // phase 3: position/image/Lees-Edwards state live in the ParticleStore
+  // columns; attach the hand-made particle to a standalone store.
+  ParticleStoreTestFixture fixture{};
   Particle p;
+  fixture.attach(p);
   p.image_box() = {2, 4, -1};
   p.lees_edwards_offset() = old_offset;
   p.lees_edwards_flag() = 1;
@@ -70,7 +75,9 @@ BOOST_AUTO_TEST_CASE(test_push) {
   auto const old_pos = Utils::Vector3d{{3., shear_normal_l * 1.1, 10.}};
   auto const old_vel = Utils::Vector3d{{-1.2, 2., 4.1}};
 
+  ParticleStoreTestFixture fixture{};
   Particle p;
+  fixture.attach(p);
 
   p.pos() = old_pos;
   p.v() = old_vel;

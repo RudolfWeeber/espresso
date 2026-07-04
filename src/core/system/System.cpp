@@ -403,6 +403,13 @@ void System::on_observable_calc() {
   /* Prepare particle structure: Communication step: number of ghosts and ghost
    * information */
   cell_structure->update_ghosts_and_resort_particle(get_global_ghost_flags());
+  // Migration phase 3: the resort above changed the topology, invalidating the
+  // ParticleStore rows. update_dependent_particles() (virtual sites) and the
+  // observable evaluators that run after on_observable_calc read positions on
+  // live particles, so rebuild the store rows here. O(1) when clean;
+  // rank-local. This is the central sync point for the energy/pressure/analysis
+  // observable paths.
+  cell_structure->ensure_particle_store_synchronized();
   update_dependent_particles();
 
 #ifdef ESPRESSO_ELECTROSTATICS

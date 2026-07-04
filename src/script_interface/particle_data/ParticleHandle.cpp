@@ -290,7 +290,11 @@ ParticleHandle::ParticleHandle() {
        [this](Variant const &value) {
          set_particle_property([&value](Particle &p) {
            auto const dip = get_value<Utils::Vector3d>(value);
-           std::tie(p.quat(), p.dipm()) = convert_dip_to_quat(dip);
+           // quat() is a write-through proxy returned by value (phase 3); it
+           // cannot be an std::tie target. Assign through it explicitly.
+           auto const [quat, dipm] = convert_dip_to_quat(dip);
+           p.quat() = quat;
+           p.dipm() = dipm;
          });
        },
        [this]() { return get_particle_data(m_pid).calc_dip(); }},

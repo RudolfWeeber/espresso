@@ -186,7 +186,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
       p.image_box() = image_box;
     } else if (ghost_shift != nullptr) {
       /* ok, this is not nice, but perhaps fast */
-      Utils::Vector3d position = p.pos() + *ghost_shift;
+      Utils::Vector3d position = Utils::Vector3d(p.pos()) + *ghost_shift;
       Utils::Vector3i image_box = p.image_box();
       box_geo.fold_position(position, image_box);
       ar & position;

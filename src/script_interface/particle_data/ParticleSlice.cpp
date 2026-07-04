@@ -252,6 +252,11 @@ Variant ParticleSlice::do_call_method(std::string const &name,
   if (name == "get_param_parallel") {
     auto const param_name = get_value<std::string>(params, "name");
 
+    // phase 3: the getters below read p.pos()/p.image_box() on live local
+    // particles, which requires valid ParticleStore rows. Sync once here; this
+    // is a script-facing gather that may follow a topology change.
+    get_cell_structure()->ensure_particle_store_synchronized();
+
     // handle special optimized properties
     if (param_name == "type") {
       auto const getter{[](Particle const &p) { return p.type(); }};

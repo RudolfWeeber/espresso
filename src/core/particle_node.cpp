@@ -208,6 +208,13 @@ void reset_fetch_cache_store() {
   fetch_cache_store.release_columns();
   fetch_cache_store_next_row = -1;
   fetch_cache_store_capacity = 0u;
+  // Drop the Kokkos runtime co-ownership: the store now holds no Views, so it
+  // no longer needs to keep Kokkos alive. Holding the handle here would defer
+  // Kokkos::finalize() to this translation unit's static teardown, where the
+  // store static is destroyed AFTER the handle static (reverse construction
+  // order) and its (already released) Views would otherwise be touched post-
+  // finalize. Releasing both together keeps them in lock-step.
+  fetch_cache_store_kokkos_handle.reset();
 }
 
 /** Allocate the fixed-capacity columns for a fresh epoch and reset the row
