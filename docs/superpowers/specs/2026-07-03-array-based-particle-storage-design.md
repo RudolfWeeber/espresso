@@ -177,6 +177,25 @@ assumptions:
 - **Single ownership:** an evicted field's struct accessor must never touch
   struct memory — enforced by removing the struct member in the same commit
   that evicts the field (compile-time, not runtime).
+  Adjudicated deviation (phase 2, observables): migration-carrier members
+  ferry force/torque values through whole-particle serialization (inter-rank
+  migration, fetch cache); accessors never read them; `assign_row` seeds a
+  detached arrival's row from its carriers.
+  Adjudicated deviation (phase 3, state fields): for DETACHED particles
+  (freshly constructed, deserialized, not yet assigned a row), state-field
+  accessors read/write the migration carriers — detached state lives in
+  carriers, attach seeds columns from carriers. Single ownership holds
+  unconditionally for ATTACHED particles: their accessors touch only
+  columns. New invariant this creates: never `assign_row` a particle into a
+  foreign store without refreshing its carriers (serialize) or re-writing
+  its state through accessors afterwards — stale carriers would seed the row.
+  Adjudicated deviation (phase 3, kernels): `commit_particle`'s per-step
+  position/image/director copies into the kernel pack were retained at the
+  phase-3 flip (kernels still read the pack, not the store columns; the
+  pack-index→store-row translation view was not built). Re-adjudication with
+  benchmark data is owed at the phase-3 checkpoint; the copy layer is
+  scheduled to die with the velocity eviction (phase 4) or a dedicated
+  kernel-rewiring step.
 - **Sync-state misuse:** in debug builds, reading a field in a memory space
   where it is stale aborts with the field name and the modifying site.
   In release builds sync is automatic (per-field, copy only when stale).

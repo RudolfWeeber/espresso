@@ -237,8 +237,9 @@ void build_fetch_cache_store() {
  * first use, then hands out one monotonic row per call, seeded from @p p's
  * migration carriers. If the store is exhausted mid-epoch, drops the cache and
  * store and starts a fresh epoch — the caller has already put @p p into the
- * cache, so we ferry it through a detached copy, re-insert it into the cleared
- * cache, and attach the re-inserted copy to row 0 of the fresh store.
+ * cache, so we ferry it through a copy whose carriers hold the current values
+ * (store binding intact), re-insert it into the cleared cache, and attach the
+ * re-inserted copy to row 0 of the fresh store.
  *
  * @param p   the (mutable) particle living inside the fetch cache.
  * @returns   a pointer to the now-attached particle in the cache. This is @p p

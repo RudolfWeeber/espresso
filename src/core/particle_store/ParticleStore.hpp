@@ -52,8 +52,8 @@ class Particle; // attach_to_store is defined in Particle.hpp
  * migration carrier (defaults for genuinely new particles).
  * Rebuilds are purely rank-local (no MPI).
  *
- * Nothing reads the phase-3 state columns yet; the @ref Particle sub-structs
- * remain authoritative until the phase-8 flip.
+ * Since the phase-3 flip, state and observable columns are the source of
+ * truth for attached particles; detached particles live in their carriers.
  */
 class ParticleStore {
 public:
