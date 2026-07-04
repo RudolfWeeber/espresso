@@ -59,6 +59,9 @@ public:
     return *this;
   }
 
+  /** Copying the proxy rebinds the reference; assignment writes through. */
+  BasicVectorReference(BasicVectorReference const &) = default;
+
   // Copy-assignment writes VALUES through (like std::vector<bool>::reference),
   // not the pointer/stride. The copy CONSTRUCTOR remains implicit and rebinds.
   BasicVectorReference &operator=(BasicVectorReference const &other) {
@@ -142,6 +145,9 @@ public:
     m_base[3u * m_stride] = value[3u];
     return *this;
   }
+
+  /** Copying the proxy rebinds the reference; assignment writes through. */
+  QuaternionReference(QuaternionReference const &) = default;
 
   // Copy-assignment writes VALUES through (like std::vector<bool>::reference),
   // not the pointer/stride. The copy CONSTRUCTOR remains implicit and rebinds.
