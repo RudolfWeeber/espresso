@@ -58,6 +58,12 @@ public:
     return *this;
   }
 
+  // Copy-assignment writes VALUES through (like std::vector<bool>::reference),
+  // not the pointer/stride. The copy CONSTRUCTOR remains implicit and rebinds.
+  VectorReference &operator=(VectorReference const &other) {
+    return *this = Utils::Vector3d(other);
+  }
+
   VectorReference &operator+=(Utils::Vector3d const &value) {
     m_base[0u] += value[0u];
     m_base[m_stride] += value[1u];

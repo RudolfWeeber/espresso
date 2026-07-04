@@ -170,6 +170,10 @@ assumptions:
 
 - **Row consistency:** `store.id(p.store_index()) == p.id()` after every
   resort and topology change; column extents equal `n_local + n_ghost`.
+  Adjudicated deviation (phase 2): the id-based cross-check
+  (`store.id(p.store_index()) == p.id()`) is deferred until the id column
+  exists (migration phase 5); phase 2 asserts only the row-index bounds
+  (`0 <= row < n_local + n_ghost`) in `ParticleStore::assign_row`.
 - **Single ownership:** an evicted field's struct accessor must never touch
   struct memory — enforced by removing the struct member in the same commit
   that evicts the field (compile-time, not runtime).

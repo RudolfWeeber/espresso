@@ -93,6 +93,11 @@ ParticleForce ShapeBasedConstraint::force(Particle const &p,
   // Attach it lazily (Kokkos is guaranteed initialized by the time forces are
   // calculated) to its own single row.
   if (part_rep.store_row() < 0) {
+    // Co-own the Kokkos runtime so m_part_rep_store's Views can be released in
+    // our destructor even if this constraint outlives the last CellStructure
+    // (mirrors CellStructure::set_kokkos_handle). Safe to capture here because
+    // Kokkos is initialized by the time forces are computed.
+    m_kokkos_handle = ::kokkos_handle;
     m_part_rep_store.begin_rebuild(1u, 0u);
     m_part_rep_store.finish_rebuild();
     m_part_rep_store.assign_row(part_rep, 0);

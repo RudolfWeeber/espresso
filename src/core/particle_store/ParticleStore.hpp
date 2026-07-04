@@ -44,7 +44,8 @@ class Particle; // attach_to_store is defined in Particle.hpp
  * Migration phase 2: force and torque columns (observables). Rebuild
  * protocol: mark_dirty() on any topology change; the owner (CellStructure)
  * later runs begin_rebuild / assign_row-per-particle / finish_rebuild.
- * Rebuild preserves values by old row and zero-initializes new rows.
+ * Rebuild preserves values by old row and seeds new rows from the particle's
+ * migration carrier (zero for genuinely new particles).
  * Rebuilds are purely rank-local (no MPI).
  */
 class ParticleStore {

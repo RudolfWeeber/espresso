@@ -60,11 +60,4 @@ inline auto charge_range(ParticleRange const &particles) {
   return detail::create_transform_range(particles, return_charge);
 }
 
-inline auto force_range(ParticleRange const &particles) {
-  // p.force() returns a write-through VectorReference proxy by value
-  // (migration phase 2); the transform range yields these proxies.
-  auto return_force = [](Particle &p) { return p.force(); };
-  return detail::create_transform_range(particles, return_force);
-}
-
 } // namespace ParticlePropertyRange

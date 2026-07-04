@@ -80,3 +80,34 @@ BOOST_FIXTURE_TEST_CASE(proxy_copies_alias_the_same_row, ColumnFixture) {
   alias = Utils::Vector3d{7., 8., 9.};
   BOOST_CHECK_EQUAL(storage[1], 7.);
 }
+
+BOOST_FIXTURE_TEST_CASE(copy_assignment_copies_values, ColumnFixture) {
+  row(0) = Utils::Vector3d{1., 2., 3.};
+  row(1) = Utils::Vector3d{4., 5., 6.};
+  // Copy-assignment must write VALUES through, not rebind: storage of row 0
+  // changes to row 1's values, and row 1 itself is unchanged.
+  row(0) = row(1);
+  BOOST_CHECK_EQUAL(storage[0], 4.); // x0 <- x1
+  BOOST_CHECK_EQUAL(storage[4], 5.); // y0 <- y1
+  BOOST_CHECK_EQUAL(storage[8], 6.); // z0 <- z1
+  // row 1 unchanged
+  BOOST_CHECK_EQUAL(storage[1], 4.); // x1
+  BOOST_CHECK_EQUAL(storage[5], 5.); // y1
+  BOOST_CHECK_EQUAL(storage[9], 6.); // z1
+  // writing through row(0) afterwards must not touch row 1 (proved distinct)
+  row(0) = Utils::Vector3d{0., 0., 0.};
+  BOOST_CHECK_EQUAL(storage[1], 4.); // x1 still row 1's value
+}
+
+BOOST_FIXTURE_TEST_CASE(chained_copy_assignment, ColumnFixture) {
+  row(0) = Utils::Vector3d{9., 9., 9.};
+  row(1) = Utils::Vector3d{9., 9., 9.};
+  // Chained assignment must propagate the assigned values to both rows.
+  row(0) = row(1) = Utils::Vector3d{1., 2., 3.};
+  BOOST_CHECK_EQUAL(storage[1], 1.); // x1
+  BOOST_CHECK_EQUAL(storage[5], 2.); // y1
+  BOOST_CHECK_EQUAL(storage[9], 3.); // z1
+  BOOST_CHECK_EQUAL(storage[0], 1.); // x0
+  BOOST_CHECK_EQUAL(storage[4], 2.); // y0
+  BOOST_CHECK_EQUAL(storage[8], 3.); // z0
+}

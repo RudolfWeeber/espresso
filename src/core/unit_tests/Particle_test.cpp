@@ -102,8 +102,12 @@ BOOST_AUTO_TEST_CASE(serialization) {
 
   BOOST_CHECK(q.id() == p.id());
   BOOST_CHECK((*q.bonds().begin() == BondView{bond_id, bond_partners}));
-  // Force/torque are NOT serialized (they belong to the ParticleStore); the
-  // freshly attached q therefore keeps the store's zero-initialized values.
+  // Force/torque ARE serialized via the migration carriers (m_detached_force /
+  // m_detached_torque), so their values survive the archive round-trip. They
+  // are not applied to q's store row here, though: q was attached BEFORE
+  // deserialization, so assign_row seeded row 0 from q's then-zero carrier;
+  // the subsequent load overwrites the carrier but not the (already attached)
+  // column. q.force() therefore reads the store's zero-initialized value.
   BOOST_TEST(Utils::Vector3d(q.force()) == (Utils::Vector3d{0., 0., 0.}),
              boost::test_tools::per_element());
 #ifdef ESPRESSO_ROTATION

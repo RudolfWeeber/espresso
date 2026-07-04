@@ -61,7 +61,9 @@ if args.mode == "lj":
 else:
     charges = np.resize([1.0, -1.0], 216)
     system.part.add(pos=positions, q=charges)
-    # fully pinned parameters: no tuning, fully deterministic
+    # fully pinned parameters: no tuning, fully deterministic. accuracy is a
+    # required argument of the P3M script interface but is unused with
+    # tune=False (mesh/cao/r_cut/alpha are set explicitly below).
     solver = espressomd.electrostatics.P3M(
         prefactor=1.0, accuracy=1e-4, mesh=[16, 16, 16], cao=6,
         r_cut=3.5, alpha=0.85, tune=False)

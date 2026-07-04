@@ -35,6 +35,9 @@
 #include <memory>
 #include <utility>
 
+// forward declaration
+struct KokkosHandle;
+
 namespace System {
 class System;
 }
@@ -105,6 +108,13 @@ private:
    *  @ref force() because Kokkos may not be initialized at construction time.
    */
   ParticleStore m_part_rep_store;
+  /** Co-ownership of the Kokkos runtime (mirrors @ref CellStructure's
+   *  @c m_kokkos_handle). @ref m_part_rep_store holds Kokkos Views that must be
+   *  destroyed before @c Kokkos::finalize(); if this constraint outlives the
+   *  last CellStructure, holding a handle keeps the runtime alive until the
+   *  destructor releases the columns. Captured in the lazy attach path of
+   *  @ref force(), where Kokkos is guaranteed initialized. */
+  std::shared_ptr<KokkosHandle> m_kokkos_handle;
   std::shared_ptr<Shapes::Shape> m_shape;
   bool m_penetrable;
   bool m_only_positive;

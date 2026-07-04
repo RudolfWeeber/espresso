@@ -42,6 +42,7 @@ void ParticleStore::begin_rebuild(std::size_t const number_of_local_particles,
 }
 
 void ParticleStore::assign_row(Particle &particle, int const row) {
+  assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
   auto const old_row = particle.store_row();
   auto &new_force = m_force.view_host();
 #ifdef ESPRESSO_ROTATION

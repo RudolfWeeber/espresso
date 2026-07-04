@@ -49,7 +49,11 @@ class ParticleWithStore {
 
   void reattach() {
     if (m_particle) {
-      m_store.assign_row(*m_particle, 0);
+      // Re-point the particle at the moved store WITHOUT re-seeding: the values
+      // already live in row 0 of the moved-from store's Views. Calling
+      // assign_row here would re-seed from the stale migration carrier, so use
+      // attach_to_store to only fix up the pointer/row.
+      m_particle->attach_to_store(m_store, 0);
     }
   }
 
