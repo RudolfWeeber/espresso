@@ -170,22 +170,52 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
 #endif
   }
   if (data_parts & GHOSTTRANS_POSITION) {
-    if (direction == SerializationDirection::SAVE and ghost_shift != nullptr) {
+    /* Position has no reduction policy: it is MOVE semantics for both
+     * ReductionPolicy values. Branch on direction first (the lesson from the
+     * FORCE path): on LOAD we always write the received value INTO the
+     * particle; on SAVE we read the value FROM the particle, optionally with
+     * the ghost shift + fold applied. Never bind particle-struct memory to the
+     * archive directly, so a future field-storage flip cannot serialize a
+     * proxy. Wire layout is byte-identical to the previous implementation. */
+    if (direction == SerializationDirection::LOAD) {
+      Utils::Vector3d position;
+      Utils::Vector3i image_box;
+      ar & position;
+      ar & image_box;
+      p.pos() = position;
+      p.image_box() = image_box;
+    } else if (ghost_shift != nullptr) {
       /* ok, this is not nice, but perhaps fast */
-      auto pos = p.pos() + *ghost_shift;
-      auto img = p.image_box();
-      box_geo.fold_position(pos, img);
-      ar & pos;
-      ar & img;
+      Utils::Vector3d position = p.pos() + *ghost_shift;
+      Utils::Vector3i image_box = p.image_box();
+      box_geo.fold_position(position, image_box);
+      ar & position;
+      ar & image_box;
     } else {
-      ar & p.pos();
-      ar & p.image_box();
+      Utils::Vector3d position = p.pos();
+      Utils::Vector3i image_box = p.image_box();
+      ar & position;
+      ar & image_box;
     }
 #ifdef ESPRESSO_ROTATION
-    ar & p.quat();
+    if (direction == SerializationDirection::LOAD) {
+      Utils::Quaternion<double> quat;
+      ar & quat;
+      p.quat() = quat;
+    } else {
+      Utils::Quaternion<double> quat = p.quat();
+      ar & quat;
+    }
 #endif
 #ifdef ESPRESSO_BOND_CONSTRAINT
-    ar & p.pos_last_time_step();
+    if (direction == SerializationDirection::LOAD) {
+      Utils::Vector3d pos_last_time_step;
+      ar & pos_last_time_step;
+      p.pos_last_time_step() = pos_last_time_step;
+    } else {
+      Utils::Vector3d pos_last_time_step = p.pos_last_time_step();
+      ar & pos_last_time_step;
+    }
 #endif
   }
   if (data_parts & GHOSTTRANS_MOMENTUM) {
@@ -250,11 +280,32 @@ static auto calc_transmit_size(BoxGeometry const &box_geo,
       return force_size;
     }
   }
+  std::size_t position_size = 0ul;
+  if (data_parts & GHOSTTRANS_POSITION) {
+    /* Compositional, compile-time-constant size of the POSITION wire layout:
+     * pos (Vector3d, 24 B) + image_box (Vector3i, 12 B)
+     * [+ quat (Quaternion<double>, 32 B) under ROTATION]
+     * [+ pos_last_time_step (Vector3d, 24 B) under BOND_CONSTRAINT].
+     * The MemcpyArchive packs every field tightly (exactly sizeof(T), no
+     * alignment padding), and SerializationSizeCalculator likewise accumulates
+     * sizeof(T), so this constant matches the sizer output exactly. */
+    position_size = 3ul * sizeof(double) + 3ul * sizeof(int);
+#ifdef ESPRESSO_ROTATION
+    position_size += sizeof(Utils::Quaternion<double>);
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+    position_size += 3ul * sizeof(double);
+#endif
+    data_parts &= ~static_cast<unsigned>(GHOSTTRANS_POSITION);
+    if (data_parts == 0u) {
+      return force_size + position_size;
+    }
+  }
   SerializationSizeCalculator sizeof_archive;
   Particle p{};
   serialize_and_reduce(sizeof_archive, p, data_parts, ReductionPolicy::MOVE,
                        SerializationDirection::SAVE, box_geo, nullptr);
-  return sizeof_archive.size() + force_size;
+  return sizeof_archive.size() + force_size + position_size;
 }
 
 static auto calc_transmit_size(GhostCommunication const &ghost_comm,
