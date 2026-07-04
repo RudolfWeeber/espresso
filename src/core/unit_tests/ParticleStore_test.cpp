@@ -33,7 +33,9 @@
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 
+#include <cstddef>
 #include <sstream>
+#include <vector>
 
 // ParticleStore allocates Kokkos Views, which requires an initialized runtime.
 struct GlobalConfig {
@@ -305,6 +307,46 @@ BOOST_AUTO_TEST_CASE(rebuild_seeds_migrated_particle_state_from_carrier) {
   BOOST_CHECK_EQUAL(plast[0], -1.);
   BOOST_CHECK_EQUAL(plast[2], -3.);
 #endif
+}
+
+// Head-node fetch-cache SNAPSHOT-STORE pattern (migration phase 3): detached
+// particles (as they arrive from a worker rank, carriers holding their values)
+// are attached to a FIXED-capacity store built once per invalidation epoch,
+// with rows handed out monotonically. This mirrors attach_cached_particle in
+// particle_node.cpp without needing MPI: build a small store once, attach a
+// batch of detached particles to consecutive rows, and check each keeps its own
+// carrier-seeded state (never another particle's row). The head-node cache
+// itself is exercised end-to-end by the multi-rank python gates.
+BOOST_AUTO_TEST_CASE(snapshot_store_attaches_batch_of_detached_particles) {
+  constexpr std::size_t capacity = 4u;
+  ParticleStore store{};
+  store.begin_rebuild(capacity, 0u);
+  store.finish_rebuild();
+
+  std::vector<Particle> parts(capacity);
+  int next_row = 0;
+  for (std::size_t i = 0u; i < capacity; ++i) {
+    auto &p = parts[i];
+    p.id() = static_cast<int>(i);
+    p.pos() = Utils::Vector3d{double(i), double(i) + 0.5, double(i) + 0.25};
+    p.image_box() = Utils::Vector3i{int(i), -int(i), 2 * int(i)};
+    BOOST_REQUIRE(p.store() ==
+                  nullptr);          // detached, like a freshly-fetched copy
+    store.assign_row(p, next_row++); // seeds the row from the carriers
+  }
+
+  for (std::size_t i = 0u; i < capacity; ++i) {
+    auto const &p = parts[i];
+    BOOST_CHECK_EQUAL(p.store_row(), static_cast<int>(i));
+    auto const pos = store.position_value(p.store_row());
+    BOOST_CHECK_EQUAL(pos[0], double(i));
+    BOOST_CHECK_EQUAL(pos[1], double(i) + 0.5);
+    auto const img = store.image_box_value(p.store_row());
+    BOOST_CHECK_EQUAL(img[0], int(i));
+    BOOST_CHECK_EQUAL(img[2], 2 * int(i));
+    // Reading through the (now-attached) particle accessor matches the column.
+    BOOST_CHECK_EQUAL(p.pos()[0], double(i));
+  }
 }
 
 // Scalar column references write through to the stored value.

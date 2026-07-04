@@ -27,6 +27,7 @@
 #include "cells.hpp"
 #include "communication.hpp"
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
+#include "particle_store/ParticleStore.hpp"
 #include "rotation.hpp"
 #include "system/System.hpp"
 
@@ -42,8 +43,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <ranges>
 #include <span>
 #include <stdexcept>
@@ -152,12 +155,128 @@ namespace {
 /* Limit cache to 100 MiB */
 std::size_t const max_cache_size = (100ul * 1048576ul) / sizeof(Particle);
 Utils::Cache<int, Particle> particle_fetch_cache(max_cache_size);
+
+/**
+ * @brief Snapshot store backing the fetch cache (migration phase 3).
+ *
+ * Every detached @ref Particle placed into @ref particle_fetch_cache is a
+ * migration-serialized copy from a worker rank: it arrives with no
+ * @ref ParticleStore, so its force/torque/state accessors would read the
+ * (soon-to-be-removed) sub-structs. To keep ALL accessor reads on cached
+ * particles working after the phase-8 flip (cluster analysis, ParticleHandle
+ * getters), each cached particle is attached to this head-node-local store,
+ * seeded from its migration carriers via @ref ParticleStore::assign_row.
+ * Mirrors @ref Constraints::ShapeBasedConstraint::m_part_rep_store.
+ *
+ * Pointer-stability design (IMPORTANT):
+ * @ref Utils::Cache is backed by a @c std::unordered_map<int,const Particle>,
+ * whose nodes are stable across rehash but whose @c put() EVICTS a RANDOM
+ * other element when the cache is full (@c drop_random_element). We therefore
+ * do NOT keep raw @c Particle* addresses to re-assign on growth (an evicted
+ * entry's address would dangle). Instead the store has a FIXED capacity per
+ * invalidation epoch: it is lazily built once (on the first attach after an
+ * invalidation) sized to the cache's capacity, and rows are handed out
+ * monotonically. If the row counter would exceed the capacity, we simply drop
+ * the whole cache and store (@ref reset_fetch_cache_store) and rebuild lazily
+ * on the next attach — a cache is always safe to drop, and this avoids any
+ * pointer bookkeeping or store-growth relocation. The capacity is capped so a
+ * single epoch never over-allocates. */
+ParticleStore fetch_cache_store;
+/** Next free row in @ref fetch_cache_store; -1 while the store is unbuilt. */
+int fetch_cache_store_next_row = -1;
+/** Capacity @ref fetch_cache_store was built with in the current epoch. */
+std::size_t fetch_cache_store_capacity = 0u;
+/** Co-ownership of the Kokkos runtime (mirrors @ref CellStructure's
+ *  @c m_kokkos_handle and @ref ShapeBasedConstraint's). @ref fetch_cache_store
+ *  holds Kokkos Views that must be released before @c Kokkos::finalize().
+ *  Captured lazily when the store first allocates (particle_node code runs
+ *  well after Kokkos init, but we capture defensively the same way). */
+std::shared_ptr<KokkosHandle> fetch_cache_store_kokkos_handle;
+
+/** Upper bound on rows allocated per invalidation epoch, so a single epoch
+ *  never over-allocates the store. The store never needs more rows than the
+ *  cache can hold entries, so this is min(cache capacity, a sane cap). */
+std::size_t fetch_cache_store_capacity_target() {
+  constexpr std::size_t cap = 65536u;
+  return std::min(particle_fetch_cache.max_size(), cap);
+}
+
+/** Release the snapshot store's columns and reset the epoch. Kept in lock-step
+ *  with @ref particle_fetch_cache invalidation: dropping cached particles whose
+ *  store rows we release simultaneously is exactly correct. */
+void reset_fetch_cache_store() {
+  fetch_cache_store.release_columns();
+  fetch_cache_store_next_row = -1;
+  fetch_cache_store_capacity = 0u;
+}
+
+/** Allocate the fixed-capacity columns for a fresh epoch and reset the row
+ *  counter to 0. Co-owns the Kokkos runtime so the columns can be released even
+ *  if this translation unit outlives the last CellStructure (Kokkos is
+ *  initialized by the time any particle fetch happens; capture defensively). */
+void build_fetch_cache_store() {
+  fetch_cache_store_kokkos_handle = ::kokkos_handle;
+  fetch_cache_store_capacity = fetch_cache_store_capacity_target();
+  fetch_cache_store.begin_rebuild(fetch_cache_store_capacity, 0u);
+  fetch_cache_store.finish_rebuild();
+  fetch_cache_store_next_row = 0;
+}
+
+/**
+ * @brief Attach a just-cached particle to @ref fetch_cache_store.
+ *
+ * Grows nothing: the store is a fixed-capacity snapshot for the current
+ * invalidation epoch (see the store's doc comment). Builds the store lazily on
+ * first use, then hands out one monotonic row per call, seeded from @p p's
+ * migration carriers. If the store is exhausted mid-epoch, drops the cache and
+ * store and starts a fresh epoch — the caller has already put @p p into the
+ * cache, so we ferry it through a detached copy, re-insert it into the cleared
+ * cache, and attach the re-inserted copy to row 0 of the fresh store.
+ *
+ * @param p   the (mutable) particle living inside the fetch cache.
+ * @returns   a pointer to the now-attached particle in the cache. This is @p p
+ *            itself in the common case, but on the exhaustion path the cache is
+ *            cleared and @p p is re-inserted, so the returned pointer differs
+ *            and callers MUST use it instead of their prior cache pointer.
+ */
+Particle const *attach_cached_particle(Particle &p) {
+  auto const exhausted = fetch_cache_store_next_row >= 0 and
+                         static_cast<std::size_t>(fetch_cache_store_next_row) >=
+                             fetch_cache_store_capacity;
+  if (exhausted) {
+    // Dropping the cache is always safe (it is a cache); it also drops @p p, so
+    // ferry it through a detached copy (its carriers hold the values) and
+    // re-insert into the freshly cleared cache before rebuilding the store.
+    Particle kept = p;
+    auto const kept_id = kept.id();
+    particle_fetch_cache.invalidate();
+    reset_fetch_cache_store();
+    auto const reinserted = particle_fetch_cache.put(kept_id, std::move(kept));
+    build_fetch_cache_store();
+    fetch_cache_store.assign_row(const_cast<Particle &>(*reinserted),
+                                 fetch_cache_store_next_row++);
+    return reinserted;
+  }
+  if (fetch_cache_store_next_row < 0) {
+    build_fetch_cache_store();
+  }
+  fetch_cache_store.assign_row(p, fetch_cache_store_next_row++);
+  return &p;
+}
 } // namespace
 
-void invalidate_fetch_cache() { particle_fetch_cache.invalidate(); }
+void invalidate_fetch_cache() {
+  particle_fetch_cache.invalidate();
+  // Cache and snapshot store lifecycles stay in lock-step: rows we release
+  // here back cached particles that we are dropping at the same time.
+  reset_fetch_cache_store();
+}
 std::size_t fetch_cache_max_size() { return particle_fetch_cache.max_size(); }
 
 static void mpi_send_particle_data_local(int p_id) {
+  // Owner-side serialize reads the particle's accessors to fill the migration
+  // carriers, so the owning rank's store must be clean first. O(1) when clean.
+  get_cell_structure().ensure_particle_store_synchronized();
   auto const p = get_cell_structure().get_local_particle(p_id);
   auto const found = p and not p->is_ghost();
   assert(1 == boost::mpi::all_reduce(::comm_cart, static_cast<int>(found),
@@ -174,6 +293,9 @@ const Particle &get_particle_data(int p_id) {
   auto const pnode = get_particle_node(p_id);
 
   if (pnode == this_node) {
+    // The local-return path hands out a live particle whose accessor reads need
+    // valid ParticleStore rows. O(1) when the store is clean; rank-local.
+    get_cell_structure().ensure_particle_store_synchronized();
     auto const p = get_cell_structure().get_local_particle(p_id);
     assert(p != nullptr);
     return *p;
@@ -190,7 +312,15 @@ const Particle &get_particle_data(int p_id) {
   Communication::mpiCallbacks().call_all(mpi_send_particle_data_local, p_id);
   Particle result{};
   ::comm_cart.recv(boost::mpi::any_source, boost::mpi::any_tag, result);
-  return *(particle_fetch_cache.put(p_id, std::move(result)));
+  auto const p_cached = particle_fetch_cache.put(p_id, std::move(result));
+  // Attach the just-cached (detached) copy to the head-node snapshot store so
+  // its accessors keep reading valid rows after the phase-8 flip. The cache
+  // value is const-qualified; attaching only sets the particle's store row (a
+  // rank-local, transitional book-keeping field), so mutating through the cast
+  // is intentional and confined here. On the exhaustion path the cache is
+  // cleared and the particle re-inserted, so we return the pointer that attach
+  // reports (which may differ from p_cached).
+  return *attach_cached_particle(const_cast<Particle &>(*p_cached));
 }
 
 static auto
@@ -322,7 +452,10 @@ void prefetch_particle_data(std::span<const int> in_ids) {
   /* Fetch the particles... */
   for (auto &p : mpi_get_particles(ids)) {
     auto id = p.id();
-    particle_fetch_cache.put(id, std::move(p));
+    auto const p_cached = particle_fetch_cache.put(id, std::move(p));
+    // Attach the just-cached (detached) copy to the snapshot store; see the
+    // matching call and const_cast rationale in get_particle_data.
+    attach_cached_particle(const_cast<Particle &>(*p_cached));
   }
 }
 
