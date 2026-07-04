@@ -64,7 +64,8 @@ commit_particle(Particle const &p, auto const index,
   aosoa.set_vector_at(aosoa.velocity, index, p.v());
 #if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
   aosoa.set_vector_at(aosoa.director, index,
-                      Utils::convert_quaternion_to_director(p.quat()));
+                      Utils::convert_quaternion_to_director(
+                          Utils::Quaternion<double>(p.quat())));
 #endif
 #ifdef ESPRESSO_DIPOLES
   aosoa.dipm(index) = p.dipm();

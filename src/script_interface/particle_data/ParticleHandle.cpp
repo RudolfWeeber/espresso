@@ -357,7 +357,7 @@ ParticleHandle::ParticleHandle() {
          });
        },
        [this]() {
-         auto const quat = get_particle_data(m_pid).quat();
+         Utils::Quaternion<double> const quat = get_particle_data(m_pid).quat();
          return Utils::convert_quaternion_to_director(quat);
        }},
       {"quat",

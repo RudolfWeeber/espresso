@@ -127,7 +127,7 @@ BOOST_AUTO_TEST_CASE(rotate_particle_body_test) {
     p.set_cannot_rotate_all_axes();
     auto const phi = 2.;
     auto const quat = local_rotate_particle_body(p, {0., 0., 1.}, phi);
-    BOOST_TEST((quat == p.quat()));
+    BOOST_TEST((quat == Utils::Quaternion<double>(p.quat())));
   }
   {
     // edge case: null rotation throws an exception
@@ -141,7 +141,7 @@ BOOST_AUTO_TEST_CASE(rotate_particle_body_test) {
     p.set_can_rotate_all_axes();
     auto const phi = 0.;
     auto const quat = local_rotate_particle_body(p, {1., 2., 3.}, phi);
-    BOOST_TEST((quat == p.quat()));
+    BOOST_TEST((quat == Utils::Quaternion<double>(p.quat())));
   }
   {
     // an angle of pi around the z-axis flips the quaternion sequence

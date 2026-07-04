@@ -56,13 +56,14 @@ void convert_initial_torques(const ParticleRange &particles);
 // Frame conversion routines
 inline Utils::Vector3d
 convert_vector_body_to_space(const Particle &p, const Utils::Vector3d &vec) {
-  return p.quat() * vec;
+  return Utils::Quaternion<double>(p.quat()) * vec;
 }
 
 inline Utils::Vector3d convert_vector_space_to_body(const Particle &p,
                                                     const Utils::Vector3d &v) {
-  assert(p.quat().norm() > 0.0);
-  return rotation_matrix(p.quat()).transposed() * v;
+  auto const quaternion = Utils::Quaternion<double>(p.quat());
+  assert(quaternion.norm() > 0.0);
+  return rotation_matrix(quaternion).transposed() * v;
 }
 
 /**
@@ -122,11 +123,11 @@ local_rotate_particle_body(Particle const &p,
                            const double phi) {
   // Rotation turned off entirely?
   if (!p.can_rotate())
-    return p.quat();
+    return Utils::Quaternion<double>(p.quat());
   if (std::abs(phi) > std::numeric_limits<double>::epsilon())
-    return p.quat() *
+    return Utils::Quaternion<double>(p.quat()) *
            boost::qvm::rot_quat(mask(p.rotation(), axis_body_frame), phi);
-  return p.quat();
+  return Utils::Quaternion<double>(p.quat());
 }
 
 /** Rotate the particle p around the NORMALIZED axis aSpaceFrame by amount phi

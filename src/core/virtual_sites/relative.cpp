@@ -50,7 +50,8 @@ static auto connection_vector(Particle const &p_ref, Particle const &p_vs) {
   // of the real particle with the quaternion of the virtual particle, which
   // specifies the relative orientation.
   auto const director = Utils::convert_quaternion_to_director(
-                            p_ref.quat() * p_vs.vs_relative().rel_orientation)
+                            Utils::Quaternion<double>(p_ref.quat()) *
+                            p_vs.vs_relative().rel_orientation)
                             .normalize();
 
   return p_vs.vs_relative().distance * director;
@@ -154,7 +155,7 @@ void vs_relative_update_particles(CellStructure &cell_structure,
 
     // Orientation update
     if (is_vs_relative_rot(p)) {
-      p.quat() = p_ref.quat() * p.vs_relative().quat;
+      p.quat() = Utils::Quaternion<double>(p_ref.quat()) * p.vs_relative().quat;
     }
   });
 

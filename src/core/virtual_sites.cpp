@@ -86,7 +86,7 @@ calculate_vs_relate_to_params(Particle const &p_vs, Particle const &p_relate_to,
       Utils::convert_director_to_quaternion(d);
 
   // Define quaternion as described above
-  auto relate_to_quat = p_relate_to.quat();
+  Utils::Quaternion<double> relate_to_quat = p_relate_to.quat();
   auto quat =
       Utils::Quaternion<double>{{{{Utils::dot(relate_to_quat, quat_director),
                                    -quat_director[0] * relate_to_quat[1] +

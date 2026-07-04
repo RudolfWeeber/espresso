@@ -59,7 +59,7 @@ friction_thermo_langevin(LangevinThermostat const &langevin, Particle const &p,
   if (aniso_flag) {
     // Apply (O * diag(g) * O^T) * v as O * (g ⊙ (O^T * v)) using a single
     // rotation matrix shared between the friction and noise terms.
-    auto const O = rotation_matrix(p.quat());
+    auto const O = rotation_matrix(Utils::Quaternion<double>(p.quat()));
     auto const Ot = O.transposed();
     auto const v_body = Ot * p.v();
     auto const noise_body = Ot * noise;

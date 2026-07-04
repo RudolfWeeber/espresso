@@ -62,17 +62,18 @@ static void define_Qdd(Particle const &p, Utils::Quaternion<double> &Qd,
                        Utils::Vector3d &Wd) {
   /* calculate the first derivative of the quaternion */
   /* Eq. (4) @cite sonnenschein85a */
-  Qd[0] = 0.5 * (-p.quat()[1] * p.omega()[0] - p.quat()[2] * p.omega()[1] -
-                 p.quat()[3] * p.omega()[2]);
+  auto const quaternion = Utils::Quaternion<double>(p.quat());
+  Qd[0] = 0.5 * (-quaternion[1] * p.omega()[0] - quaternion[2] * p.omega()[1] -
+                 quaternion[3] * p.omega()[2]);
 
-  Qd[1] = 0.5 * (p.quat()[0] * p.omega()[0] - p.quat()[3] * p.omega()[1] +
-                 p.quat()[2] * p.omega()[2]);
+  Qd[1] = 0.5 * (quaternion[0] * p.omega()[0] - quaternion[3] * p.omega()[1] +
+                 quaternion[2] * p.omega()[2]);
 
-  Qd[2] = 0.5 * (p.quat()[3] * p.omega()[0] + p.quat()[0] * p.omega()[1] -
-                 p.quat()[1] * p.omega()[2]);
+  Qd[2] = 0.5 * (quaternion[3] * p.omega()[0] + quaternion[0] * p.omega()[1] -
+                 quaternion[1] * p.omega()[2]);
 
-  Qd[3] = 0.5 * (-p.quat()[2] * p.omega()[0] + p.quat()[1] * p.omega()[1] +
-                 p.quat()[0] * p.omega()[2]);
+  Qd[3] = 0.5 * (-quaternion[2] * p.omega()[0] + quaternion[1] * p.omega()[1] +
+                 quaternion[0] * p.omega()[2]);
 
   /* Calculate the angular acceleration. */
   /* Eq. (5) @cite sonnenschein85a */
@@ -93,21 +94,21 @@ static void define_Qdd(Particle const &p, Utils::Quaternion<double> &Qd,
 
   /* Calculate the second derivative of the quaternion. */
   /* Eq. (8) @cite sonnenschein85a */
-  Qdd[0] =
-      0.5 * (-p.quat()[1] * Wd[0] - p.quat()[2] * Wd[1] - p.quat()[3] * Wd[2]) -
-      p.quat()[0] * S1;
+  Qdd[0] = 0.5 * (-quaternion[1] * Wd[0] - quaternion[2] * Wd[1] -
+                  quaternion[3] * Wd[2]) -
+           quaternion[0] * S1;
 
-  Qdd[1] =
-      0.5 * (p.quat()[0] * Wd[0] - p.quat()[3] * Wd[1] + p.quat()[2] * Wd[2]) -
-      p.quat()[1] * S1;
+  Qdd[1] = 0.5 * (quaternion[0] * Wd[0] - quaternion[3] * Wd[1] +
+                  quaternion[2] * Wd[2]) -
+           quaternion[1] * S1;
 
-  Qdd[2] =
-      0.5 * (p.quat()[3] * Wd[0] + p.quat()[0] * Wd[1] - p.quat()[1] * Wd[2]) -
-      p.quat()[2] * S1;
+  Qdd[2] = 0.5 * (quaternion[3] * Wd[0] + quaternion[0] * Wd[1] -
+                  quaternion[1] * Wd[2]) -
+           quaternion[2] * S1;
 
-  Qdd[3] =
-      0.5 * (-p.quat()[2] * Wd[0] + p.quat()[1] * Wd[1] + p.quat()[0] * Wd[2]) -
-      p.quat()[3] * S1;
+  Qdd[3] = 0.5 * (-quaternion[2] * Wd[0] + quaternion[1] * Wd[1] +
+                  quaternion[0] * Wd[2]) -
+           quaternion[3] * S1;
 
   S[0] = S1;
   S[1] = Utils::dot(Qd, Qdd);
@@ -149,7 +150,8 @@ void propagate_omega_quat_particle(Particle &p, double time_step) {
   auto const lambda = 1 - S[0] * 0.5 * time_step_squared - sqrt(square);
 
   p.omega() += time_step_half * Wd;
-  p.quat() += time_step * (Qd + time_step_half * Qdd) - lambda * p.quat();
+  auto const quaternion_old = Utils::Quaternion<double>(p.quat());
+  p.quat() += time_step * (Qd + time_step_half * Qdd) - lambda * quaternion_old;
 
   /* and rescale quaternion, so it is exactly of unit length */
   auto const scale = p.quat().norm();
