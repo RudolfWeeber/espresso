@@ -145,7 +145,8 @@ void GlueToSurface::handle_collisions(
     }
 
     double ratio = -1.;
-    auto const vec21 = box_geo.get_mi_vector(p1->pos(), p2->pos());
+    auto const vec21 = box_geo.get_mi_vector(Utils::Vector3d(p1->pos()),
+                                             Utils::Vector3d(p2->pos()));
     auto const dist = vec21.norm();
 
     // Find out, which is the particle to be glued.
@@ -157,7 +158,7 @@ void GlueToSurface::handle_collisions(
       ratio = dist_glued_part_to_vs / dist;
     }
     assert(ratio != -1.);
-    auto const pos = p2->pos() + vec21 * ratio;
+    auto const pos = Utils::Vector3d(p2->pos()) + vec21 * ratio;
     auto const &attach_vs_to =
         (p1->type() == part_type_to_attach_vs_to) ? *p1 : *p2;
 

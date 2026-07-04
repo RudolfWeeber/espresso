@@ -237,8 +237,8 @@ ParticleHandle::ParticleHandle() {
        },
        [this]() {
          auto const p = get_particle_data(m_pid);
-         auto const pos = p.pos();
-         auto const image_box = p.image_box();
+         Utils::Vector3d const pos = p.pos();
+         Utils::Vector3i const image_box = p.image_box();
          return get_system()->box_geo->unfolded_position(pos, image_box);
        }},
       {"v",

@@ -57,7 +57,7 @@ ESPRESSO_ATTR_ALWAYS_INLINE inline void
 commit_particle(Particle const &p, auto const index,
                 CellStructure::AoSoA_pack &aosoa, bool const rebuild) {
   // Always commit: positions, velocities, charges, directors, dipm
-  aosoa.set_vector_at(aosoa.position, index, p.pos());
+  aosoa.set_vector_at(aosoa.position, index, Utils::Vector3d(p.pos()));
 #ifdef ESPRESSO_ELECTROSTATICS
   aosoa.charge(index) = p.q();
 #endif
@@ -74,7 +74,7 @@ commit_particle(Particle const &p, auto const index,
   if (rebuild) {
     aosoa.id(index) = p.id();
     aosoa.type(index) = p.type();
-    aosoa.set_vector_at(aosoa.image, index, p.image_box());
+    aosoa.set_vector_at(aosoa.image, index, Utils::Vector3i(p.image_box()));
 #ifdef ESPRESSO_MASS
     aosoa.mass(index) = p.mass();
 #endif
@@ -109,8 +109,10 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
           // pairs in this cell
           for (auto jt = std::next(it); jt != local_particles.end(); ++jt) {
             if ((*jt).id() <= max_id) {
-              if (verlet_criterion(p1, *jt,
-                                   box_geo.get_mi_dist2(p1.pos(), jt->pos()))) {
+              if (verlet_criterion(
+                      p1, *jt,
+                      box_geo.get_mi_dist2(Utils::Vector3d(p1.pos()),
+                                           Utils::Vector3d(jt->pos())))) {
                 auto const jj = id_to_index((*jt).id());
                 if (jj >= 0) {
                   intra_operator(ii, jj);
@@ -135,7 +137,9 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
             for (auto const &p2 : neighbor->particles()) {
               if (p2.id() <= max_id) {
                 if (verlet_criterion(
-                        p1, p2, box_geo.get_mi_dist2(p1.pos(), p2.pos()))) {
+                        p1, p2,
+                        box_geo.get_mi_dist2(Utils::Vector3d(p1.pos()),
+                                             Utils::Vector3d(p2.pos())))) {
                   auto const jj = id_to_index(p2.id());
                   if (jj >= 0) {
                     inter_operator(ii, jj);

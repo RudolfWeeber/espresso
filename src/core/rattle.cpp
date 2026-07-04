@@ -90,12 +90,14 @@ static void init_correction_vector(const ParticleRange &particles,
 static bool calculate_positional_correction(RigidBond const &ia_params,
                                             BoxGeometry const &box_geo,
                                             Particle &p1, Particle &p2) {
-  auto const r_ij = box_geo.get_mi_vector(p1.pos(), p2.pos());
+  auto const r_ij = box_geo.get_mi_vector(Utils::Vector3d(p1.pos()),
+                                          Utils::Vector3d(p2.pos()));
   auto const r_ij2 = r_ij.norm2();
 
   if (std::abs(1.0 - r_ij2 / ia_params.d2) > ia_params.p_tol) {
     auto const r_ij_t =
-        box_geo.get_mi_vector(p1.pos_last_time_step(), p2.pos_last_time_step());
+        box_geo.get_mi_vector(Utils::Vector3d(p1.pos_last_time_step()),
+                              Utils::Vector3d(p2.pos_last_time_step()));
     auto const r_ij_dot = r_ij_t * r_ij;
     auto const G =
         0.50 * (ia_params.d2 - r_ij2) / r_ij_dot / (p1.mass() + p2.mass());
@@ -199,7 +201,8 @@ static bool calculate_velocity_correction(RigidBond const &ia_params,
                                           BoxGeometry const &box_geo,
                                           Particle &p1, Particle &p2) {
   auto const v_ij = p1.v() - p2.v();
-  auto const r_ij = box_geo.get_mi_vector(p1.pos(), p2.pos());
+  auto const r_ij = box_geo.get_mi_vector(Utils::Vector3d(p1.pos()),
+                                          Utils::Vector3d(p2.pos()));
 
   auto const v_proj = v_ij * r_ij;
   if (std::abs(v_proj) > ia_params.v_tol) {

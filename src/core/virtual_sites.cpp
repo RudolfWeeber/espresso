@@ -45,7 +45,8 @@ calculate_vs_relate_to_params(Particle const &p_vs, Particle const &p_relate_to,
                               BoxGeometry const &box_geo, double min_global_cut,
                               bool override_cutoff_check) {
   // get the distance between the particles
-  auto d = box_geo.get_mi_vector(p_vs.pos(), p_relate_to.pos());
+  auto d = box_geo.get_mi_vector(Utils::Vector3d(p_vs.pos()),
+                                 Utils::Vector3d(p_relate_to.pos()));
 
   // Check if the distance between virtual and non-virtual particles is larger
   // than minimum global cutoff. If so, warn user.

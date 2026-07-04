@@ -137,13 +137,14 @@ struct MinimalImageDistance {
   BoxGeometry const box;
 
   Distance operator()(Particle const &p1, Particle const &p2) const {
-    return Distance(box.get_mi_vector(p1.pos(), p2.pos()));
+    return Distance(box.get_mi_vector(Utils::Vector3d(p1.pos()),
+                                      Utils::Vector3d(p2.pos())));
   }
 };
 
 struct EuclidianDistance {
   Distance operator()(Particle const &p1, Particle const &p2) const {
-    return Distance(p1.pos() - p2.pos());
+    return Distance(Utils::Vector3d(p1.pos()) - Utils::Vector3d(p2.pos()));
   }
 };
 } // namespace detail

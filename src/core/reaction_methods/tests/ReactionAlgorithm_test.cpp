@@ -169,7 +169,7 @@ BOOST_FIXTURE_TEST_CASE(ReactionAlgorithm_test, ParticleFactory) {
       auto const ref_old_pos = ref_positions[pid].first;
       auto const ref_old_vel = ref_positions[pid].second;
       if (auto const p = cell_structure.get_local_particle(pid)) {
-        auto const &new_pos = p->pos();
+        Utils::Vector3d const new_pos = p->pos();
         auto const &new_vel = p->v();
         BOOST_CHECK_EQUAL(old_pos, ref_old_pos);
         BOOST_CHECK_EQUAL(old_vel, ref_old_vel);
@@ -212,7 +212,7 @@ BOOST_FIXTURE_TEST_CASE(ReactionAlgorithm_test, ParticleFactory) {
     for (auto const pid : {0, 1}) {
       auto const ref_old_pos = ref_positions[pid];
       if (auto const p = cell_structure.get_local_particle(pid)) {
-        auto const &new_pos = p->pos();
+        Utils::Vector3d const new_pos = p->pos();
         BOOST_CHECK_LE((new_pos - ref_old_pos).norm(), tol);
       }
     }
@@ -223,7 +223,8 @@ BOOST_FIXTURE_TEST_CASE(ReactionAlgorithm_test, ParticleFactory) {
     // check that only one particle moved
     for (auto const pid : {0, 1}) {
       if (auto const p = cell_structure.get_local_particle(pid)) {
-        distances[pid] = (ref_positions[pid] - p->pos()).norm();
+        distances[pid] =
+            (ref_positions[pid] - Utils::Vector3d(p->pos())).norm();
       }
     }
     BOOST_CHECK_LE(std::min(distances[0], distances[1]), tol);

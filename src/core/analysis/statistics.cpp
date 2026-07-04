@@ -269,7 +269,8 @@ std::vector<int> nbhood(System::System const &system,
   auto const &box_geo = *system.box_geo;
 
   for (auto const &p : system.cell_structure->local_particles()) {
-    auto const r_sq = box_geo.get_mi_vector(pos, p.pos()).norm2();
+    auto const r_sq =
+        box_geo.get_mi_vector(pos, Utils::Vector3d(p.pos())).norm2();
     if (r_sq < dist_sq) {
       buf_pid.push_back(p.id());
     }

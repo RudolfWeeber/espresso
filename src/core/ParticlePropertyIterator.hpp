@@ -51,7 +51,7 @@ inline auto unfolded_pos_range(ParticleRange const &particles,
 }
 
 inline auto pos_range(ParticleRange const &particles) {
-  auto return_pos = [](Particle &p) -> Utils::Vector3d & { return p.pos(); };
+  auto return_pos = [](Particle &p) -> Utils::Vector3d { return p.pos(); };
   return detail::create_transform_range(particles, return_pos);
 }
 

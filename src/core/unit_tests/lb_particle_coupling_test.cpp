@@ -298,7 +298,7 @@ BOOST_DATA_TEST_CASE_F(CleanupActorLB, swimmer_force, bdata::make(kTs), kT) {
               0.5 + static_cast<double>(j) * params.agrid,
               0.5 + static_cast<double>(k) * params.agrid,
           };
-          if ((pos - p.pos()).norm() < 1e-6)
+          if ((pos - Utils::Vector3d(p.pos())).norm() < 1e-6)
             continue;
           if (in_local_halo(local_box, pos, params.agrid)) {
             auto const interpolated = LB::get_force_to_be_applied(pos);

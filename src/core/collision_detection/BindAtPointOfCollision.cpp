@@ -128,9 +128,10 @@ void BindAtPointOfCollision::handle_collisions(
     p2->set_can_rotate_all_axes();
 
     // Positions of the virtual sites
-    auto const vec21 = box_geo.get_mi_vector(p1->pos(), p2->pos());
-    auto const pos1 = p1->pos() - vec21 * vs_placement;
-    auto const pos2 = p1->pos() - vec21 * (1. - vs_placement);
+    auto const vec21 = box_geo.get_mi_vector(Utils::Vector3d(p1->pos()),
+                                             Utils::Vector3d(p2->pos()));
+    auto const pos1 = Utils::Vector3d(p1->pos()) - vec21 * vs_placement;
+    auto const pos2 = Utils::Vector3d(p1->pos()) - vec21 * (1. - vs_placement);
 
     auto handle_particle = [&
 #if defined(__clang__) and defined(__cray__) or defined(__INTEL_LLVM_COMPILER)

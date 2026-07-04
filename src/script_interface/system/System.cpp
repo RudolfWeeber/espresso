@@ -397,7 +397,7 @@ static void rotate_system(CellStructure &cell_structure, double phi,
 
   for (auto const &p : particles) {
     if (not p.is_virtual()) {
-      local_com += p.mass() * p.pos();
+      local_com += p.mass() * Utils::Vector3d(p.pos());
       local_mass += p.mass();
     }
   }
@@ -416,7 +416,8 @@ static void rotate_system(CellStructure &cell_structure, double phi,
   // Rotate particle coordinates
   for (auto &p : particles) {
     // Move the center of mass of the system to the origin
-    p.pos() = com + Utils::vec_rotate(axis, alpha, p.pos() - com);
+    p.pos() =
+        com + Utils::vec_rotate(axis, alpha, Utils::Vector3d(p.pos()) - com);
 #ifdef ESPRESSO_ROTATION
     local_rotate_particle(p, axis, alpha);
 #endif

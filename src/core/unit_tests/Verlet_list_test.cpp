@@ -163,11 +163,13 @@ struct : public IntegratorHelper {
 } // namespace Testing
 
 inline double get_dist_from_last_verlet_update(Particle const &p) {
-  return (p.pos() - p.pos_at_last_verlet_update()).norm();
+  return (Utils::Vector3d(p.pos()) -
+          Utils::Vector3d(p.pos_at_last_verlet_update()))
+      .norm();
 }
 
 inline double get_dist_from_pair(Particle const &p1, Particle const &p2) {
-  return (p1.pos() - p2.pos()).norm();
+  return (Utils::Vector3d(p1.pos()) - Utils::Vector3d(p2.pos())).norm();
 }
 
 auto const node_grids = std::vector<Utils::Vector3i>{{4, 1, 1}, {2, 2, 1}};

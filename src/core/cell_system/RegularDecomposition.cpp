@@ -170,7 +170,11 @@ void RegularDecomposition::exchange_neighbors(
  * @brief Fold coordinates to box and reset the old position.
  */
 static void fold_and_reset(Particle &p, BoxGeometry const &box_geo) {
-  box_geo.fold_position(p.pos(), p.image_box());
+  Utils::Vector3d position = p.pos();
+  Utils::Vector3i image_box = p.image_box();
+  box_geo.fold_position(position, image_box);
+  p.pos() = position;
+  p.image_box() = image_box;
 
   p.pos_at_last_verlet_update() = p.pos();
 }

@@ -118,7 +118,7 @@ is_valid_position(System::System const &system, Utils::Vector3d const &pos,
     // check for collision with existing particles
     auto local_mindist_sq = std::numeric_limits<double>::infinity();
     for (auto const &p : system.cell_structure->local_particles()) {
-      auto const d = box_geo.get_mi_vector(pos, p.pos());
+      auto const d = box_geo.get_mi_vector(pos, Utils::Vector3d(p.pos()));
       local_mindist_sq = std::min(local_mindist_sq, d.norm2());
     }
     auto const global_mindist_sq =

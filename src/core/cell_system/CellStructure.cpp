@@ -661,7 +661,9 @@ bool CellStructure::check_resort_required(
 
   Reduction::AddPartialResultKernel<bool> add_partial =
       [lim](bool &result, Particle const &p) {
-        if ((p.pos() - p.pos_at_last_verlet_update()).norm2() > lim) {
+        if ((Utils::Vector3d(p.pos()) -
+             Utils::Vector3d(p.pos_at_last_verlet_update()))
+                .norm2() > lim) {
           result = true;
         }
       };

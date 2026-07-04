@@ -191,9 +191,9 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
         for (std::size_t i = 0ul; i < pids.size(); ++i) {
           Utils::Vector3d dist{};
           if (pids[i] == pid5) {
-            dist = p.pos() - vec[i];
+            dist = Utils::Vector3d(p.pos()) - vec[i];
             if (not use_folded_positions) {
-              dist += p.image_box() * box_l;
+              dist += Utils::Vector3i(p.image_box()) * box_l;
             }
           } else {
             dist = start_positions.at(pids[i]) - vec[i];
@@ -529,8 +529,9 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
         auto const p_opt = copy_particle_to_head_node(comm, system, pid);
         if (rank == 0) {
           auto &p = *p_opt;
-          BOOST_CHECK_LE((p.pos() - expected[pid]).norm(), tol);
-          assert((p.pos() - pos_com).norm() < 0.5);
+          BOOST_CHECK_LE((Utils::Vector3d(p.pos()) - expected[pid]).norm(),
+                         tol);
+          assert((Utils::Vector3d(p.pos()) - pos_com).norm() < 0.5);
         }
       }
     }
@@ -597,7 +598,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
     auto ptr = system.cell_structure->get_local_particle(pid2);
     if (ptr and not ptr->is_ghost()) {
       auto &p = *ptr;
-      auto const pos = p.pos();
+      Utils::Vector3d const pos = p.pos();
       p.pos() = Utils::Vector3d::broadcast(0.99 * box_l);
       BOOST_CHECK_THROW(cs.check_particle_sorting(), std::runtime_error);
       p.pos() = pos;
@@ -721,8 +722,10 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
       if (n == 1u) {
         calc_bond_pair_force(none, {}, pl[0].q() * pl[1].q(), nullptr);
       } else if (n == 2u) {
-        auto const vec1 = box_geo.get_mi_vector(pl[1].pos(), pl[0].pos());
-        auto const vec2 = box_geo.get_mi_vector(pl[2].pos(), pl[0].pos());
+        auto const vec1 = box_geo.get_mi_vector(Utils::Vector3d(pl[1].pos()),
+                                                Utils::Vector3d(pl[0].pos()));
+        auto const vec2 = box_geo.get_mi_vector(Utils::Vector3d(pl[2].pos()),
+                                                Utils::Vector3d(pl[0].pos()));
         calc_bonded_three_body_force(none, vec1, vec2);
       } else if (n == 3u) {
         calc_bonded_four_body_force(none, box_geo, pl[0].pos(), pl[1].pos(),

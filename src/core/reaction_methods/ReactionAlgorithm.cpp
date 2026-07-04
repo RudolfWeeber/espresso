@@ -373,7 +373,10 @@ void ReactionAlgorithm::check_exclusion_range(int p_id, int p_type) {
                               exclusion_radius_per_type[p2.type()];
         }
 
-        auto const d_min = box_geo.get_mi_vector(p2.pos(), p1.pos()).norm();
+        auto const d_min = box_geo
+                               .get_mi_vector(Utils::Vector3d(p2.pos()),
+                                              Utils::Vector3d(p1.pos()))
+                               .norm();
 
         if (d_min < excluded_distance) {
           particle_inside_exclusion_range_touched = true;

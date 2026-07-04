@@ -61,7 +61,10 @@ public:
     for (auto const &[pid1, pid2] : m_pairs) {
       auto const *p1 = cell_structure.get_local_particle(pid1);
       auto const *p2 = cell_structure.get_local_particle(pid2);
-      auto const dist = box_geo.get_mi_vector(p1->pos(), p2->pos()).norm();
+      auto const dist = box_geo
+                            .get_mi_vector(Utils::Vector3d(p1->pos()),
+                                           Utils::Vector3d(p2->pos()))
+                            .norm();
       pairwise_distances.emplace_back(dist);
     }
     return pairwise_distances;

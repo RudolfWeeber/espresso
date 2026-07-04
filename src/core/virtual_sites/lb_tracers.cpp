@@ -90,7 +90,9 @@ void lb_tracers_propagate(CellStructure &cell_structure, LB::Solver const &lb,
       }
     }
     // Verlet list update check
-    if ((p.pos() - p.pos_at_last_verlet_update()).norm2() > verlet_skin_sq) {
+    if ((Utils::Vector3d(p.pos()) -
+         Utils::Vector3d(p.pos_at_last_verlet_update()))
+            .norm2() > verlet_skin_sq) {
       cell_structure.set_resort_particles(Cells::RESORT_LOCAL);
     }
   }
