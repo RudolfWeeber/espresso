@@ -44,7 +44,9 @@
 #include <utils/Vector.hpp>
 #include <utils/contains.hpp>
 #include <utils/math/int_pow.hpp>
+#include <utils/math/quaternion.hpp>
 #include <utils/math/sqr.hpp>
+#include <utils/quaternion.hpp>
 
 #ifdef ESPRESSO_CALIPER
 #include <caliper/cali.h>
@@ -97,6 +99,15 @@ void CellStructure::clear_local_properties() {
   m_aosoa.reset();
   m_verlet_list_cabana.reset();
   m_bond_state->clear();
+  // Release the phase-3.5 Kokkos-backed views owned here (translation view and
+  // derived director). The pack's aliasing views were just dropped by
+  // m_aosoa.reset() above, so releasing the owners now is safe and must happen
+  // while Kokkos is still alive (see the destructor's release ordering).
+  m_pack_index_to_store_row = Kokkos::View<int *, Kokkos::HostSpace>{};
+#if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
+  m_director_view =
+      Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>{};
+#endif
   m_rebuild_verlet_list_cabana = true;
 }
 void CellStructure::clear_bond_properties() { m_bond_state->reset(); }
@@ -325,7 +336,67 @@ void CellStructure::set_index_map() {
   registered_index.clear();
   m_cached_max_local_particle_id = max_id;
   m_num_local_particles_cached = unique_particles.size();
+
+  // Build the pack-index -> store-row translation view (phase 3.5). The store
+  // must already be synchronized (rows assigned) by the caller. The local
+  // prefix is the identity: enumerate_local_particles' exclusive-scan order
+  // matches ensure_particle_store_synchronized's local loop, so pack index i
+  // equals store row i for every local particle. Only the deduped ghost tail
+  // needs a real translation.
+  assert(not m_particle_store.is_dirty());
+  auto const n_unique = unique_particles.size();
+  if (m_pack_index_to_store_row.extent(0) != n_unique) {
+    m_pack_index_to_store_row = Kokkos::View<int *, Kokkos::HostSpace>(
+        Kokkos::ViewAllocateWithoutInitializing("pack_index_to_store_row"),
+        n_unique);
+  }
+  auto const n_local = count_local_particles();
+  for (std::size_t i = 0u; i < n_unique; ++i) {
+    m_pack_index_to_store_row(i) = unique_particles[i]->store_row();
+    // local prefix must be the identity (see comment above)
+    assert(i >= n_local or m_pack_index_to_store_row(i) == static_cast<int>(i));
+  }
+  static_cast<void>(n_local);
 }
+
+void CellStructure::bind_pack_store_views() {
+  auto &aosoa = *m_aosoa;
+  aosoa.position = m_particle_store.position_view();
+  aosoa.image = m_particle_store.image_box_view();
+  aosoa.row_map = m_pack_index_to_store_row;
+#if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
+  aosoa.director = m_director_view;
+#endif
+}
+
+#if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
+void CellStructure::update_director_view() {
+#ifdef ESPRESSO_CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
+  auto const n_total = m_particle_store.number_of_particles();
+  if (m_director_view.extent(0) != n_total) {
+    m_director_view =
+        Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>(
+            Kokkos::ViewAllocateWithoutInitializing("director"), n_total);
+  }
+  auto quaternion = m_particle_store.quaternion_view();
+  auto director = m_director_view;
+  Kokkos::parallel_for(
+      "update_director_view", n_total, [quaternion, director](std::size_t row) {
+        Utils::Quaternion<double> q;
+        q[0] = quaternion(row, 0);
+        q[1] = quaternion(row, 1);
+        q[2] = quaternion(row, 2);
+        q[3] = quaternion(row, 3);
+        auto const d = Utils::convert_quaternion_to_director(q);
+        director(row, 0) = d[0];
+        director(row, 1) = d[1];
+        director(row, 2) = d[2];
+      });
+  Kokkos::fence();
+}
+#endif
 
 CellStructure::CellStructure(BoxGeometry const &box)
     : m_decomposition{std::make_unique<AtomDecomposition>(box)} {

@@ -56,17 +56,14 @@ kokkos_parallel_range_for(auto const &name, auto start, auto end,
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 commit_particle(Particle const &p, auto const index,
                 CellStructure::AoSoA_pack &aosoa, bool const rebuild) {
-  // Always commit: positions, velocities, charges, directors, dipm
-  aosoa.set_vector_at(aosoa.position, index, Utils::Vector3d(p.pos()));
+  // phase 3.5: position/image/director are no longer copied here. Kernels read
+  // them directly from the ParticleStore columns (via the pack-index->store-row
+  // translation view) and the store-side derived director view. This commit now
+  // only writes the pack-owned per-step scalars/vectors.
 #ifdef ESPRESSO_ELECTROSTATICS
   aosoa.charge(index) = p.q();
 #endif
   aosoa.set_vector_at(aosoa.velocity, index, p.v());
-#if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
-  aosoa.set_vector_at(aosoa.director, index,
-                      Utils::convert_quaternion_to_director(
-                          Utils::Quaternion<double>(p.quat())));
-#endif
 #ifdef ESPRESSO_DIPOLES
   aosoa.dipm(index) = p.dipm();
 #endif
@@ -75,7 +72,6 @@ commit_particle(Particle const &p, auto const index,
   if (rebuild) {
     aosoa.id(index) = p.id();
     aosoa.type(index) = p.type();
-    aosoa.set_vector_at(aosoa.image, index, Utils::Vector3i(p.image_box()));
 #ifdef ESPRESSO_MASS
     aosoa.mass(index) = p.mass();
 #endif
@@ -178,6 +174,13 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
   auto const &unique_particles = cell_structure.get_unique_particles();
   auto const n_part = unique_particles.size();
   auto const max_id = cell_structure.get_cached_max_local_particle_id();
+  // phase 3.5: recompute the store-side derived director (same cadence as the
+  // old commit-loop director write), then point the pack's store-aliased views
+  // at the current store columns + translation/director views.
+#if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
+  cell_structure.update_director_view();
+#endif
+  cell_structure.bind_pack_store_views();
   auto &aosoa = cell_structure.get_aosoa();
 
   if (rebuild) {

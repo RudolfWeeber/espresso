@@ -190,7 +190,10 @@ template <int cao> struct AssignDipole {
     kokkos_parallel_range_for(
         "InterpolateDipoles", std::size_t{0u}, n_part, [&](auto p_index) {
           auto const tid = omp_get_thread_num();
-          auto const p_pos = aosoa.get_vector_at(aosoa.position, p_index);
+          // phase 3.5: position lives in the ParticleStore column; translate
+          // the pack index to a store row (identity on the local prefix).
+          auto const p_pos =
+              aosoa.get_vector_at(aosoa.position, aosoa.row(p_index));
           auto const dip = unique_particles.at(p_index)->calc_dip();
           auto const weights =
               p3m_calculate_interpolation_weights<cao, memory_order>(

@@ -213,6 +213,17 @@ private:
   std::shared_ptr<KokkosHandle> m_kokkos_handle;
   /** Array-based particle storage (migration phase 2). */
   ParticleStore m_particle_store;
+  /** Pack-index -> store-row translation (phase 3.5). Identity on the local
+   *  prefix; only the deduped ghost tail is remapped. Rebuilt in
+   *  @ref set_index_map. */
+  Kokkos::View<int *, Kokkos::HostSpace> m_pack_index_to_store_row;
+#if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
+  /** Store-side derived director view (phase 3.5), sized n_total, recomputed
+   *  from the quaternion column by @ref update_director_view. Replaces the
+   *  per-step director copy in commit_particle. */
+  Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>
+      m_director_view;
+#endif
 
 public:
   CellStructure(BoxGeometry const &box);
@@ -806,6 +817,27 @@ public:
   }
 
   void set_index_map();
+
+  /** @brief Pack-index -> store-row translation view (phase 3.5).
+   *  @c view(i)==i for all @c i < count_local_particles(). */
+  auto pack_index_to_store_row() const { return m_pack_index_to_store_row; }
+  /** @brief Host view of the ParticleStore position column. */
+  auto store_position_view() { return m_particle_store.position_view(); }
+  /** @brief Host view of the ParticleStore image-box column. */
+  auto store_image_view() { return m_particle_store.image_box_view(); }
+#if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
+  /** @brief Store-side derived director view (phase 3.5). */
+  auto director_view() const { return m_director_view; }
+  /** @brief Recompute the derived director view from the store quaternion
+   *  column. Called every force-calc commit step, where commit_particle's
+   *  director write used to run. */
+  void update_director_view();
+#endif
+
+  /** @brief Point the pack's store-aliased views at the current store columns
+   *  and the translation/director views. Cheap; must run after
+   *  @ref set_index_map (or a store rebuild) before the pack is used. */
+  void bind_pack_store_views();
 
   inline void cell_list_loop(auto &&kernel) {
     kernel(m_decomposition->local_cells(), m_decomposition->box());

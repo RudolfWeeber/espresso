@@ -36,8 +36,15 @@
 #endif
 
 struct CellStructure::AoSoA_pack {
-  // Component-major (LayoutLeft) to match the ParticleStore columns these
-  // views will alias once the struct is no longer authoritative (phase 3).
+  // Component-major (LayoutLeft) to match the ParticleStore columns.
+  //
+  // phase 3.5: position/image/director are no longer owned here. They alias
+  // the authoritative ParticleStore host columns (position/image) and the
+  // store-side derived director view. Kernels index them by *store row*, which
+  // is obtained by translating a pack index i through row(i) (see
+  // pack_index_to_store_row). For i < n_local the translation is the identity
+  // (both are built in cell-traversal order); only the deduped ghost tail is
+  // remapped. commit_particle no longer copies position/image/director.
   using PositionViewType =
       Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>;
   using VelocityViewType =
@@ -46,6 +53,7 @@ struct CellStructure::AoSoA_pack {
       Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>;
   using ImageViewType =
       Kokkos::View<int *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>;
+  using RowMapViewType = Kokkos::View<int const *, Kokkos::HostSpace>;
   using ChargeViewType = Kokkos::View<double *, Kokkos::HostSpace>;
   using DipmViewType = Kokkos::View<double *, Kokkos::HostSpace>;
   using IdViewType = Kokkos::View<int *, Kokkos::HostSpace>;
@@ -53,10 +61,15 @@ struct CellStructure::AoSoA_pack {
   using MassViewType = Kokkos::View<double *, Kokkos::HostSpace>;
   using FlagsViewType = Kokkos::View<uint8_t *, Kokkos::HostSpace>;
 
+  // Store-aliased / store-derived state columns (indexed by store row).
   PositionViewType position;
-  VelocityViewType velocity;
-  DirectorViewType director;
   ImageViewType image;
+  DirectorViewType director;
+  // Pack-index -> store-row translation. Identity on the local prefix.
+  RowMapViewType row_map;
+
+  // Pack-owned per-step columns (indexed by pack index).
+  VelocityViewType velocity;
   ChargeViewType charge;
   DipmViewType dipm;
   IdViewType id;
@@ -68,11 +81,15 @@ struct CellStructure::AoSoA_pack {
 
   AoSoA_pack(std::size_t num_particles) { resize(num_particles); }
 
+  /** @brief Translate a pack index to its ParticleStore row. */
+  ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION int
+  row(std::size_t i) const {
+    return row_map(i);
+  }
+
   void resize(std::size_t num_particles) {
-    if (position.extent(0) == 0) {
+    if (velocity.extent(0) == 0) {
       // First allocation
-      position = PositionViewType("position", num_particles);
-      image = ImageViewType("image", num_particles);
 #ifdef ESPRESSO_ELECTROSTATICS
       charge = ChargeViewType("charge", num_particles);
 #endif
@@ -83,16 +100,11 @@ struct CellStructure::AoSoA_pack {
 #endif
       flags = FlagsViewType("flags", num_particles);
       velocity = VelocityViewType("velocity", num_particles);
-#if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
-      director = DirectorViewType("director", num_particles);
-#endif
 #ifdef ESPRESSO_DIPOLES
       dipm = DipmViewType("dipm", num_particles);
 #endif
     } else {
       // Reallocation
-      Kokkos::realloc(position, num_particles);
-      Kokkos::realloc(image, num_particles);
 #ifdef ESPRESSO_ELECTROSTATICS
       Kokkos::realloc(charge, num_particles);
 #endif
@@ -103,9 +115,6 @@ struct CellStructure::AoSoA_pack {
 #endif
       Kokkos::realloc(flags, num_particles);
       Kokkos::realloc(velocity, num_particles);
-#if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
-      Kokkos::realloc(director, num_particles);
-#endif
 #ifdef ESPRESSO_DIPOLES
       Kokkos::realloc(dipm, num_particles);
 #endif

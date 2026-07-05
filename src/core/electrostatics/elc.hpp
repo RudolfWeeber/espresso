@@ -121,19 +121,22 @@ struct elc_data {
                                       std::size_t p1, std::size_t p2,
                                       auto &aosoa, double q1q2,
                                       auto &&kernel) const {
-    if (aosoa.position(p1, 2) < space_layer) {
+    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    auto const row1 = aosoa.row(p1);
+    auto const row2 = aosoa.row(p2);
+    if (aosoa.position(row1, 2) < space_layer) {
       auto const q_eff = delta_mid_bot * q1q2;
-      auto pos2 = aosoa.get_vector_at(aosoa.position, p2);
-      auto pos1 = aosoa.get_vector_at(aosoa.position, p1);
+      auto pos2 = aosoa.get_vector_at(aosoa.position, row2);
+      auto pos1 = aosoa.get_vector_at(aosoa.position, row1);
       pos1[2] *= -1.;
       auto const d = box_geo.get_mi_vector(pos2, pos1);
       kernel(q_eff, d);
     }
-    if (aosoa.position(p1, 2) > (box_h - space_layer)) {
+    if (aosoa.position(row1, 2) > (box_h - space_layer)) {
       auto const q_eff = delta_mid_top * q1q2;
-      auto const z = 2. * box_h - aosoa.position(p1, 2);
-      auto pos2 = aosoa.get_vector_at(aosoa.position, p2);
-      auto pos1 = aosoa.get_vector_at(aosoa.position, p1);
+      auto const z = 2. * box_h - aosoa.position(row1, 2);
+      auto pos2 = aosoa.get_vector_at(aosoa.position, row2);
+      auto pos1 = aosoa.get_vector_at(aosoa.position, row1);
       pos1[2] = 2. * box_h - pos1[2];
       auto const d = box_geo.get_mi_vector(pos2, pos1);
       kernel(q_eff, d);

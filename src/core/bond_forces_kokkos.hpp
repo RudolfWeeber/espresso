@@ -74,11 +74,14 @@ struct PairBondsKernel {
 
     auto const i = bond_list(idx, 0);
     auto const j = bond_list(idx, 1);
+    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    auto const row_i = aosoa.row(i);
+    auto const row_j = aosoa.row(j);
     auto const &iaparams = *bonded_ias.at(bond_id);
 
     auto const dx =
-        box_geo.get_mi_vector(aosoa.get_vector_at(aosoa.position, i),
-                              aosoa.get_vector_at(aosoa.position, j));
+        box_geo.get_mi_vector(aosoa.get_vector_at(aosoa.position, row_i),
+                              aosoa.get_vector_at(aosoa.position, row_j));
     //  Consider for bond breakage
     if (has_breakage_specs &&
         bond_breakage.check_and_handle_breakage(
@@ -165,11 +168,15 @@ struct AngleBondsKernel {
     auto const i = bond_list(idx, 0);
     auto const j = bond_list(idx, 1);
     auto const k = bond_list(idx, 2);
+    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    auto const row_i = aosoa.row(i);
+    auto const row_j = aosoa.row(j);
+    auto const row_k = aosoa.row(k);
     auto const &iaparams = *bonded_ias.at(bond_id);
 
-    auto const pos1 = aosoa.get_vector_at(aosoa.position, i);
-    auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
-    auto const pos3 = aosoa.get_vector_at(aosoa.position, k);
+    auto const pos1 = aosoa.get_vector_at(aosoa.position, row_i);
+    auto const pos2 = aosoa.get_vector_at(aosoa.position, row_j);
+    auto const pos3 = aosoa.get_vector_at(aosoa.position, row_k);
     auto const vec1 = box_geo.get_mi_vector(pos2, pos1);
     auto const vec2 = box_geo.get_mi_vector(pos3, pos1);
 
@@ -228,15 +235,20 @@ struct DihedralBondsKernel {
     auto const j = bond_list(idx, 1);
     auto const k = bond_list(idx, 2);
     auto const m = bond_list(idx, 3);
+    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    auto const row_i = aosoa.row(i);
+    auto const row_j = aosoa.row(j);
+    auto const row_k = aosoa.row(k);
+    auto const row_m = aosoa.row(m);
     auto const &iaparams = *bonded_ias.at(bond_id);
 
-    auto const pos1 = aosoa.get_vector_at(aosoa.position, i);
-    auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
-    auto const pos3 = aosoa.get_vector_at(aosoa.position, k);
-    auto const pos4 = aosoa.get_vector_at(aosoa.position, m);
+    auto const pos1 = aosoa.get_vector_at(aosoa.position, row_i);
+    auto const pos2 = aosoa.get_vector_at(aosoa.position, row_j);
+    auto const pos3 = aosoa.get_vector_at(aosoa.position, row_k);
+    auto const pos4 = aosoa.get_vector_at(aosoa.position, row_m);
     auto const vel1 = aosoa.get_vector_at(aosoa.velocity, i);
     auto const vel3 = aosoa.get_vector_at(aosoa.velocity, k);
-    auto const image1 = aosoa.get_vector_at(aosoa.image, i);
+    auto const image1 = aosoa.get_vector_at(aosoa.image, row_i);
 
     auto const result = calc_bonded_four_body_force(
         iaparams, box_geo, pos1, pos2, pos3, pos4, vel1, vel3, image1);

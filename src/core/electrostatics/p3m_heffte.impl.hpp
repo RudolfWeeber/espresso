@@ -376,7 +376,10 @@ template <int cao> struct AssignCharge {
     kokkos_parallel_range_for(
         "InterpolateCharges", std::size_t{0u}, n_part, [&](auto p_index) {
           auto const tid = omp_get_thread_num();
-          auto const pos = aosoa.get_vector_at(aosoa.position, p_index);
+          // phase 3.5: position lives in the ParticleStore column; translate
+          // the pack index to a store row (identity on the local prefix).
+          auto const pos =
+              aosoa.get_vector_at(aosoa.position, aosoa.row(p_index));
           auto const q = aosoa.charge(p_index);
           auto const weights =
               p3m_calculate_interpolation_weights<cao, memory_order>(

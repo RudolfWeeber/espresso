@@ -111,12 +111,18 @@ struct ForcesKernel {
   ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION void
   operator()(std::size_t i, std::size_t j) const {
 
+    // Translate pack indices to ParticleStore rows once (phase 3.5); every
+    // position/image/director read below indexes the store columns by row.
+    auto const row_i = aosoa.row(i);
+    auto const row_j = aosoa.row(j);
+
     // calc distance (component-wise, avoids constructing pos1/pos2 Vector3d
     // on the hot early-exit path; pos1/pos2 are built lazily below only
     // where kernels actually require them)
     auto const d = box_geo.get_mi_vector(
-        aosoa.position(i, 0), aosoa.position(i, 1), aosoa.position(i, 2),
-        aosoa.position(j, 0), aosoa.position(j, 1), aosoa.position(j, 2));
+        aosoa.position(row_i, 0), aosoa.position(row_i, 1),
+        aosoa.position(row_i, 2), aosoa.position(row_j, 0),
+        aosoa.position(row_j, 1), aosoa.position(row_j, 2));
     auto const dist_sq = d.norm2();
 
     // Early exit if distance > maximal global cutoff
@@ -173,8 +179,8 @@ struct ForcesKernel {
         // Only call Gay-Berne force kernel if active
 #ifdef ESPRESSO_GAY_BERNE
         if (gay_berne_active(dist, ia_params)) {
-          auto const dir1 = aosoa.get_vector_at(aosoa.director, i);
-          auto const dir2 = aosoa.get_vector_at(aosoa.director, j);
+          auto const dir1 = aosoa.get_vector_at(aosoa.director, row_i);
+          auto const dir2 = aosoa.get_vector_at(aosoa.director, row_j);
           pf += gb_pair_force(dir1, dir2, ia_params, d, dist);
         }
 #endif
@@ -200,8 +206,8 @@ struct ForcesKernel {
     /* The inter dpd force should not be part of the virial */
 #ifdef ESPRESSO_DPD
     if (dpd_active(ia_params, thermostat.thermo_switch)) {
-      auto const pos1 = aosoa.get_vector_at(aosoa.position, i);
-      auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
+      auto const pos1 = aosoa.get_vector_at(aosoa.position, row_i);
+      auto const pos2 = aosoa.get_vector_at(aosoa.position, row_j);
       auto const vel1 = aosoa.get_vector_at(aosoa.velocity, i);
       auto const vel2 = aosoa.get_vector_at(aosoa.velocity, j);
       auto const force =
@@ -227,14 +233,14 @@ struct ForcesKernel {
           pf.f += (*coulomb_kernel)(q1q2, d, dist);
         }
         if (elc_kernel) {
-          auto const pos1 = aosoa.get_vector_at(aosoa.position, i);
-          auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
+          auto const pos1 = aosoa.get_vector_at(aosoa.position, row_i);
+          auto const pos2 = aosoa.get_vector_at(aosoa.position, row_j);
           (*elc_kernel)(pos1, pos2, f1_asym, f2_asym, q1q2);
         }
 #ifdef ESPRESSO_NPT
         if (npt_active()) {
-          auto const pos1 = aosoa.get_vector_at(aosoa.position, i);
-          auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
+          auto const pos1 = aosoa.get_vector_at(aosoa.position, row_i);
+          auto const pos2 = aosoa.get_vector_at(aosoa.position, row_j);
           virial[0] += (*coulomb_u_kernel)(pos1, pos2, q1q2, d, dist);
         }
 #endif // ESPRESSO_NPT
@@ -247,8 +253,8 @@ struct ForcesKernel {
     if (dipoles_kernel != nullptr) {
       auto const d1d2 = aosoa.dipm(i) * aosoa.dipm(j);
       if (d1d2 != 0.) {
-        auto const dir1 = aosoa.get_vector_at(aosoa.director, i);
-        auto const dir2 = aosoa.get_vector_at(aosoa.director, j);
+        auto const dir1 = aosoa.get_vector_at(aosoa.director, row_i);
+        auto const dir2 = aosoa.get_vector_at(aosoa.director, row_j);
         pf += (*dipoles_kernel)(d1d2, aosoa.dipm(i) * dir1,
                                 aosoa.dipm(j) * dir2, d, dist, dist_sq);
       }

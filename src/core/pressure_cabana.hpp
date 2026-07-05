@@ -131,8 +131,11 @@ struct PressureKernel {
 
   KOKKOS_INLINE_FUNCTION
   void operator()(std::size_t i, std::size_t j) const {
-    auto const pos1 = aosoa.get_vector_at(aosoa.position, i);
-    auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
+    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    auto const row_i = aosoa.row(i);
+    auto const row_j = aosoa.row(j);
+    auto const pos1 = aosoa.get_vector_at(aosoa.position, row_i);
+    auto const pos2 = aosoa.get_vector_at(aosoa.position, row_j);
     auto const d = box_geo.get_mi_vector(pos1, pos2);
     auto const dist = d.norm();
     if (dist > system_max_cutoff)
@@ -157,8 +160,8 @@ struct PressureKernel {
 
 #ifdef ESPRESSO_GAY_BERNE
         if (gay_berne_active(dist, ia_params)) {
-          auto const dir1 = aosoa.get_vector_at(aosoa.director, i);
-          auto const dir2 = aosoa.get_vector_at(aosoa.director, j);
+          auto const dir1 = aosoa.get_vector_at(aosoa.director, row_i);
+          auto const dir2 = aosoa.get_vector_at(aosoa.director, row_j);
           f += calc_non_central_force(dir1, dir2, ia_params, d, dist);
         }
 #endif
