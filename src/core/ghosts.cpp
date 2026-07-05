@@ -142,6 +142,20 @@ struct PositionRowContext {
 #endif
 };
 
+/** @brief Raw-pointer view of the force/torque columns, hoisted once per
+ *  communication so the per-part_list bulk loops pay no view-handle
+ *  (refcount) or DualView bookkeeping cost per list. */
+struct ForceRowContext {
+  double *force;
+  std::size_t force_row_stride;
+  std::size_t force_comp_stride;
+#ifdef ESPRESSO_ROTATION
+  double *torque;
+  std::size_t torque_row_stride;
+  std::size_t torque_comp_stride;
+#endif
+};
+
 /** @brief Type of reduction to carry out during serialization. */
 enum class ReductionPolicy {
   /** @brief Reduction for domain-to-domain particle communication. */
@@ -567,6 +581,52 @@ static std::optional<PositionRowContext> make_position_row_context() {
   return ctx;
 }
 
+/** @brief Build a ForceRowContext for the current store (caller has already
+ *  established store validity/cleanliness). */
+static ForceRowContext make_force_row_context(ParticleStore &store) {
+  ForceRowContext ctx{};
+  auto force = store.force_view();
+  ctx.force = &force(0, 0);
+  ctx.force_row_stride = force.stride(0);
+  ctx.force_comp_stride = force.stride(1);
+#ifdef ESPRESSO_ROTATION
+  auto torque = store.torque_view();
+  ctx.torque = &torque(0, 0);
+  ctx.torque_row_stride = torque.stride(0);
+  ctx.torque_comp_stride = torque.stride(1);
+#endif
+  return ctx;
+}
+
+/** @brief Build a PositionRowContext unconditionally from a valid store
+ *  (helper for the columnar bulk paths, which have already checked
+ *  cleanliness via columnar_eligible/columnar_resolve_ranges). */
+static PositionRowContext
+make_position_row_context_unchecked(ParticleStore &store) {
+  PositionRowContext ctx{};
+  auto pos = store.position_view();
+  auto img = store.image_box_view();
+  ctx.pos = &pos(0, 0);
+  ctx.img = &img(0, 0);
+  ctx.pos_row_stride = pos.stride(0);
+  ctx.pos_comp_stride = pos.stride(1);
+  ctx.img_row_stride = img.stride(0);
+  ctx.img_comp_stride = img.stride(1);
+#ifdef ESPRESSO_ROTATION
+  auto quat = store.quaternion_view();
+  ctx.quat = &quat(0, 0);
+  ctx.quat_row_stride = quat.stride(0);
+  ctx.quat_comp_stride = quat.stride(1);
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  auto plast = store.position_last_time_step_view();
+  ctx.plast = &plast(0, 0);
+  ctx.plast_row_stride = plast.stride(0);
+  ctx.plast_comp_stride = plast.stride(1);
+#endif
+  return ctx;
+}
+
 namespace {
 /** @brief Byte cursor over the CommBuf that packs/unpacks scalars via memcpy,
  *  exactly like the MemcpyArchive. Using memcpy (not a reinterpret_cast +
@@ -595,22 +655,19 @@ using ReadCursor = ByteCursor<char const *>;
  *  apply +shift then fold_position (writing the folded image); otherwise copy
  *  the stored pos/image. Then quat (ROTATION) and pos_last_time_step
  *  (BOND_CONSTRAINT) verbatim. */
-static char *pack_position_range(char *out, ParticleStore &store, int first_row,
-                                 std::size_t n, BoxGeometry const &box_geo,
+static char *pack_position_range(char *out, PositionRowContext const &ctx,
+                                 int first_row, std::size_t n,
+                                 BoxGeometry const &box_geo,
                                  Utils::Vector3d const *ghost_shift) {
-  auto const pos = store.position_view();
-  auto const img = store.image_box_view();
-#ifdef ESPRESSO_ROTATION
-  auto const quat = store.quaternion_view();
-#endif
-#ifdef ESPRESSO_BOND_CONSTRAINT
-  auto const plast = store.position_last_time_step_view();
-#endif
   WriteCursor cursor{out};
   for (std::size_t i = 0u; i < n; ++i) {
-    auto const row = first_row + static_cast<int>(i);
-    Utils::Vector3d position{pos(row, 0), pos(row, 1), pos(row, 2)};
-    Utils::Vector3i image_box{img(row, 0), img(row, 1), img(row, 2)};
+    auto const row = static_cast<std::size_t>(first_row) + i;
+    auto const *p = ctx.pos + row * ctx.pos_row_stride;
+    auto const *im = ctx.img + row * ctx.img_row_stride;
+    Utils::Vector3d position{p[0], p[ctx.pos_comp_stride],
+                             p[2u * ctx.pos_comp_stride]};
+    Utils::Vector3i image_box{im[0], im[ctx.img_comp_stride],
+                              im[2u * ctx.img_comp_stride]};
     if (ghost_shift != nullptr) {
       position += *ghost_shift;
       box_geo.fold_position(position, image_box);
@@ -622,15 +679,17 @@ static char *pack_position_range(char *out, ParticleStore &store, int first_row,
     cursor.put(image_box[1]);
     cursor.put(image_box[2]);
 #ifdef ESPRESSO_ROTATION
-    cursor.put(quat(row, 0));
-    cursor.put(quat(row, 1));
-    cursor.put(quat(row, 2));
-    cursor.put(quat(row, 3));
+    auto const *q = ctx.quat + row * ctx.quat_row_stride;
+    cursor.put(q[0]);
+    cursor.put(q[ctx.quat_comp_stride]);
+    cursor.put(q[2u * ctx.quat_comp_stride]);
+    cursor.put(q[3u * ctx.quat_comp_stride]);
 #endif
 #ifdef ESPRESSO_BOND_CONSTRAINT
-    cursor.put(plast(row, 0));
-    cursor.put(plast(row, 1));
-    cursor.put(plast(row, 2));
+    auto const *pl = ctx.plast + row * ctx.plast_row_stride;
+    cursor.put(pl[0]);
+    cursor.put(pl[ctx.plast_comp_stride]);
+    cursor.put(pl[2u * ctx.plast_comp_stride]);
 #endif
   }
   return cursor.ptr;
@@ -638,57 +697,52 @@ static char *pack_position_range(char *out, ParticleStore &store, int first_row,
 
 /** @brief Bulk-unpack POSITION for a contiguous row range from @p in (LOAD).
  *  Assigns pos/image (and quat, pos_last_time_step) directly into columns. */
-static char const *unpack_position_range(char const *in, ParticleStore &store,
+static char const *unpack_position_range(char const *in,
+                                         PositionRowContext const &ctx,
                                          int first_row, std::size_t n) {
-  auto pos = store.position_view();
-  auto img = store.image_box_view();
-#ifdef ESPRESSO_ROTATION
-  auto quat = store.quaternion_view();
-#endif
-#ifdef ESPRESSO_BOND_CONSTRAINT
-  auto plast = store.position_last_time_step_view();
-#endif
   ReadCursor cursor{in};
   for (std::size_t i = 0u; i < n; ++i) {
-    auto const row = first_row + static_cast<int>(i);
-    pos(row, 0) = cursor.get<double>();
-    pos(row, 1) = cursor.get<double>();
-    pos(row, 2) = cursor.get<double>();
-    img(row, 0) = cursor.get<int>();
-    img(row, 1) = cursor.get<int>();
-    img(row, 2) = cursor.get<int>();
+    auto const row = static_cast<std::size_t>(first_row) + i;
+    auto *p = ctx.pos + row * ctx.pos_row_stride;
+    auto *im = ctx.img + row * ctx.img_row_stride;
+    p[0] = cursor.get<double>();
+    p[ctx.pos_comp_stride] = cursor.get<double>();
+    p[2u * ctx.pos_comp_stride] = cursor.get<double>();
+    im[0] = cursor.get<int>();
+    im[ctx.img_comp_stride] = cursor.get<int>();
+    im[2u * ctx.img_comp_stride] = cursor.get<int>();
 #ifdef ESPRESSO_ROTATION
-    quat(row, 0) = cursor.get<double>();
-    quat(row, 1) = cursor.get<double>();
-    quat(row, 2) = cursor.get<double>();
-    quat(row, 3) = cursor.get<double>();
+    auto *q = ctx.quat + row * ctx.quat_row_stride;
+    q[0] = cursor.get<double>();
+    q[ctx.quat_comp_stride] = cursor.get<double>();
+    q[2u * ctx.quat_comp_stride] = cursor.get<double>();
+    q[3u * ctx.quat_comp_stride] = cursor.get<double>();
 #endif
 #ifdef ESPRESSO_BOND_CONSTRAINT
-    plast(row, 0) = cursor.get<double>();
-    plast(row, 1) = cursor.get<double>();
-    plast(row, 2) = cursor.get<double>();
+    auto *pl = ctx.plast + row * ctx.plast_row_stride;
+    pl[0] = cursor.get<double>();
+    pl[ctx.plast_comp_stride] = cursor.get<double>();
+    pl[2u * ctx.plast_comp_stride] = cursor.get<double>();
 #endif
   }
   return cursor.ptr;
 }
 
 /** @brief Bulk-pack FORCE for a contiguous row range into @p out (SAVE). */
-static char *pack_force_range(char *out, ParticleStore &store, int first_row,
-                              std::size_t n) {
-  auto const force = store.force_view();
-#ifdef ESPRESSO_ROTATION
-  auto const torque = store.torque_view();
-#endif
+static char *pack_force_range(char *out, ForceRowContext const &ctx,
+                              int first_row, std::size_t n) {
   WriteCursor cursor{out};
   for (std::size_t i = 0u; i < n; ++i) {
-    auto const row = first_row + static_cast<int>(i);
-    cursor.put(force(row, 0));
-    cursor.put(force(row, 1));
-    cursor.put(force(row, 2));
+    auto const row = static_cast<std::size_t>(first_row) + i;
+    auto const *f = ctx.force + row * ctx.force_row_stride;
+    cursor.put(f[0]);
+    cursor.put(f[ctx.force_comp_stride]);
+    cursor.put(f[2u * ctx.force_comp_stride]);
 #ifdef ESPRESSO_ROTATION
-    cursor.put(torque(row, 0));
-    cursor.put(torque(row, 1));
-    cursor.put(torque(row, 2));
+    auto const *t = ctx.torque + row * ctx.torque_row_stride;
+    cursor.put(t[0]);
+    cursor.put(t[ctx.torque_comp_stride]);
+    cursor.put(t[2u * ctx.torque_comp_stride]);
 #endif
   }
   return cursor.ptr;
@@ -697,40 +751,32 @@ static char *pack_force_range(char *out, ParticleStore &store, int first_row,
 /** @brief Bulk-unpack FORCE for a contiguous row range from @p in.
  *  With @p accumulate (UPDATE policy) the received value is ADDED; otherwise
  *  (MOVE policy) it is assigned. Matches serialize_and_reduce's FORCE LOAD. */
-static char const *unpack_force_range(char const *in, ParticleStore &store,
-                                      int first_row, std::size_t n,
-                                      bool accumulate) {
-  auto force = store.force_view();
-#ifdef ESPRESSO_ROTATION
-  auto torque = store.torque_view();
-#endif
+static char const *unpack_force_range(char const *in,
+                                      ForceRowContext const &ctx, int first_row,
+                                      std::size_t n, bool accumulate) {
   ReadCursor cursor{in};
   for (std::size_t i = 0u; i < n; ++i) {
-    auto const row = first_row + static_cast<int>(i);
-    auto const fx = cursor.get<double>();
-    auto const fy = cursor.get<double>();
-    auto const fz = cursor.get<double>();
+    auto const row = static_cast<std::size_t>(first_row) + i;
+    auto *f = ctx.force + row * ctx.force_row_stride;
     if (accumulate) {
-      force(row, 0) += fx;
-      force(row, 1) += fy;
-      force(row, 2) += fz;
+      f[0] += cursor.get<double>();
+      f[ctx.force_comp_stride] += cursor.get<double>();
+      f[2u * ctx.force_comp_stride] += cursor.get<double>();
     } else {
-      force(row, 0) = fx;
-      force(row, 1) = fy;
-      force(row, 2) = fz;
+      f[0] = cursor.get<double>();
+      f[ctx.force_comp_stride] = cursor.get<double>();
+      f[2u * ctx.force_comp_stride] = cursor.get<double>();
     }
 #ifdef ESPRESSO_ROTATION
-    auto const tx = cursor.get<double>();
-    auto const ty = cursor.get<double>();
-    auto const tz = cursor.get<double>();
+    auto *t = ctx.torque + row * ctx.torque_row_stride;
     if (accumulate) {
-      torque(row, 0) += tx;
-      torque(row, 1) += ty;
-      torque(row, 2) += tz;
+      t[0] += cursor.get<double>();
+      t[ctx.torque_comp_stride] += cursor.get<double>();
+      t[2u * ctx.torque_comp_stride] += cursor.get<double>();
     } else {
-      torque(row, 0) = tx;
-      torque(row, 1) = ty;
-      torque(row, 2) = tz;
+      t[0] = cursor.get<double>();
+      t[ctx.torque_comp_stride] = cursor.get<double>();
+      t[2u * ctx.torque_comp_stride] = cursor.get<double>();
     }
 #endif
   }
@@ -804,16 +850,25 @@ static bool columnar_prepare_send_buffer(CommBuf &send_buffer,
     return false; // decided before touching the buffer/store
   }
   auto &store = *active_particle_store();
+  auto const position_ctx =
+      (data_parts == GHOSTTRANS_POSITION)
+          ? std::optional<PositionRowContext>(
+                make_position_row_context_unchecked(store))
+          : std::nullopt;
+  auto const force_ctx =
+      (data_parts == GHOSTTRANS_FORCE)
+          ? std::optional<ForceRowContext>(make_force_row_context(store))
+          : std::nullopt;
   auto *cursor = send_buffer.data();
   for (auto const &[first_row, n] : *ranges) {
     if (n == 0u) {
       continue;
     }
     if (data_parts == GHOSTTRANS_POSITION) {
-      cursor = pack_position_range(cursor, store, first_row, n, box_geo,
+      cursor = pack_position_range(cursor, *position_ctx, first_row, n, box_geo,
                                    &ghost_comm.shift);
     } else {
-      cursor = pack_force_range(cursor, store, first_row, n);
+      cursor = pack_force_range(cursor, *force_ctx, first_row, n);
     }
   }
   assert(static_cast<std::size_t>(cursor - send_buffer.data()) ==
@@ -897,12 +952,13 @@ static bool columnar_put_recv_buffer(CommBuf &recv_buffer,
     return false; // decided before writing any column
   }
   auto &store = *active_particle_store();
+  auto const position_ctx = make_position_row_context_unchecked(store);
   auto const *cursor = recv_buffer.data();
   for (auto const &[first_row, n] : *ranges) {
     if (n == 0u) {
       continue;
     }
-    cursor = unpack_position_range(cursor, store, first_row, n);
+    cursor = unpack_position_range(cursor, position_ctx, first_row, n);
   }
   assert(static_cast<std::size_t>(cursor - recv_buffer.data()) ==
          recv_buffer.size());
@@ -992,12 +1048,13 @@ columnar_add_forces_from_recv_buffer(CommBuf &recv_buffer,
     return false;
   }
   auto &store = *active_particle_store();
+  auto const force_ctx = make_force_row_context(store);
   auto const *cursor = recv_buffer.data();
   for (auto const &[first_row, n] : *ranges) {
     if (n == 0u) {
       continue;
     }
-    cursor = unpack_force_range(cursor, store, first_row, n,
+    cursor = unpack_force_range(cursor, force_ctx, first_row, n,
                                 /*accumulate=*/true);
   }
   assert(static_cast<std::size_t>(cursor - recv_buffer.data()) ==
@@ -1036,63 +1093,65 @@ static void add_forces_from_recv_buffer(CommBuf &recv_buffer,
  * it is the zero vector for a local cell-to-cell transfer (no periodic wrap),
  * so the `+= shift` is a no-op before the fold in that common case rather than
  * a branch. */
-static void locl_transfer_position(ParticleStore &store, int src_first,
+static void locl_transfer_position(PositionRowContext const &ctx, int src_first,
                                    int dst_first, std::size_t n,
                                    BoxGeometry const &box_geo,
                                    Utils::Vector3d const &shift) {
-  auto pos = store.position_view();
-  auto img = store.image_box_view();
-#ifdef ESPRESSO_ROTATION
-  auto quat = store.quaternion_view();
-#endif
-#ifdef ESPRESSO_BOND_CONSTRAINT
-  auto plast = store.position_last_time_step_view();
-#endif
   for (std::size_t i = 0u; i < n; ++i) {
-    auto const s = src_first + static_cast<int>(i);
-    auto const d = dst_first + static_cast<int>(i);
-    Utils::Vector3d position{pos(s, 0), pos(s, 1), pos(s, 2)};
-    Utils::Vector3i image_box{img(s, 0), img(s, 1), img(s, 2)};
+    auto const s = static_cast<std::size_t>(src_first) + i;
+    auto const d = static_cast<std::size_t>(dst_first) + i;
+    auto const *ps = ctx.pos + s * ctx.pos_row_stride;
+    auto const *is = ctx.img + s * ctx.img_row_stride;
+    auto *pd = ctx.pos + d * ctx.pos_row_stride;
+    auto *id = ctx.img + d * ctx.img_row_stride;
+    Utils::Vector3d position{ps[0], ps[ctx.pos_comp_stride],
+                             ps[2u * ctx.pos_comp_stride]};
+    Utils::Vector3i image_box{is[0], is[ctx.img_comp_stride],
+                              is[2u * ctx.img_comp_stride]};
     position += shift;
     box_geo.fold_position(position, image_box);
-    pos(d, 0) = position[0];
-    pos(d, 1) = position[1];
-    pos(d, 2) = position[2];
-    img(d, 0) = image_box[0];
-    img(d, 1) = image_box[1];
-    img(d, 2) = image_box[2];
+    pd[0] = position[0];
+    pd[ctx.pos_comp_stride] = position[1];
+    pd[2u * ctx.pos_comp_stride] = position[2];
+    id[0] = image_box[0];
+    id[ctx.img_comp_stride] = image_box[1];
+    id[2u * ctx.img_comp_stride] = image_box[2];
 #ifdef ESPRESSO_ROTATION
-    quat(d, 0) = quat(s, 0);
-    quat(d, 1) = quat(s, 1);
-    quat(d, 2) = quat(s, 2);
-    quat(d, 3) = quat(s, 3);
+    auto const *qs = ctx.quat + s * ctx.quat_row_stride;
+    auto *qd = ctx.quat + d * ctx.quat_row_stride;
+    qd[0] = qs[0];
+    qd[ctx.quat_comp_stride] = qs[ctx.quat_comp_stride];
+    qd[2u * ctx.quat_comp_stride] = qs[2u * ctx.quat_comp_stride];
+    qd[3u * ctx.quat_comp_stride] = qs[3u * ctx.quat_comp_stride];
 #endif
 #ifdef ESPRESSO_BOND_CONSTRAINT
-    plast(d, 0) = plast(s, 0);
-    plast(d, 1) = plast(s, 1);
-    plast(d, 2) = plast(s, 2);
+    auto const *ls = ctx.plast + s * ctx.plast_row_stride;
+    auto *ld = ctx.plast + d * ctx.plast_row_stride;
+    ld[0] = ls[0];
+    ld[ctx.plast_comp_stride] = ls[ctx.plast_comp_stride];
+    ld[2u * ctx.plast_comp_stride] = ls[2u * ctx.plast_comp_stride];
 #endif
   }
 }
 
 /** @brief Columnar FORCE cell-to-cell transfer: accumulate source rows into
  *  destination rows (UPDATE policy: += force and torque). */
-static void locl_transfer_force(ParticleStore &store, int src_first,
+static void locl_transfer_force(ForceRowContext const &ctx, int src_first,
                                 int dst_first, std::size_t n) {
-  auto force = store.force_view();
-#ifdef ESPRESSO_ROTATION
-  auto torque = store.torque_view();
-#endif
   for (std::size_t i = 0u; i < n; ++i) {
-    auto const s = src_first + static_cast<int>(i);
-    auto const d = dst_first + static_cast<int>(i);
-    force(d, 0) += force(s, 0);
-    force(d, 1) += force(s, 1);
-    force(d, 2) += force(s, 2);
+    auto const s = static_cast<std::size_t>(src_first) + i;
+    auto const d = static_cast<std::size_t>(dst_first) + i;
+    auto const *fs = ctx.force + s * ctx.force_row_stride;
+    auto *fd = ctx.force + d * ctx.force_row_stride;
+    fd[0] += fs[0];
+    fd[ctx.force_comp_stride] += fs[ctx.force_comp_stride];
+    fd[2u * ctx.force_comp_stride] += fs[2u * ctx.force_comp_stride];
 #ifdef ESPRESSO_ROTATION
-    torque(d, 0) += torque(s, 0);
-    torque(d, 1) += torque(s, 1);
-    torque(d, 2) += torque(s, 2);
+    auto const *ts = ctx.torque + s * ctx.torque_row_stride;
+    auto *td = ctx.torque + d * ctx.torque_row_stride;
+    td[0] += ts[0];
+    td[ctx.torque_comp_stride] += ts[ctx.torque_comp_stride];
+    td[2u * ctx.torque_comp_stride] += ts[2u * ctx.torque_comp_stride];
 #endif
   }
 }
@@ -1132,6 +1191,15 @@ static bool columnar_cell_cell_transfer(GhostCommunication const &ghost_comm,
   }
   // Phase 2: apply the transfers.
   auto &store = *active_particle_store();
+  auto const position_ctx =
+      (data_parts == GHOSTTRANS_POSITION)
+          ? std::optional<PositionRowContext>(
+                make_position_row_context_unchecked(store))
+          : std::nullopt;
+  auto const force_ctx =
+      (data_parts == GHOSTTRANS_FORCE)
+          ? std::optional<ForceRowContext>(make_force_row_context(store))
+          : std::nullopt;
   for (std::size_t pl = 0; pl < offset; pl++) {
     auto const n = sizes[pl];
     if (n == 0u) {
@@ -1139,10 +1207,10 @@ static bool columnar_cell_cell_transfer(GhostCommunication const &ghost_comm,
     }
     auto const [src_first, dst_first] = pairs[pl];
     if (data_parts == GHOSTTRANS_POSITION) {
-      locl_transfer_position(store, src_first, dst_first, n, box_geo,
+      locl_transfer_position(*position_ctx, src_first, dst_first, n, box_geo,
                              ghost_comm.shift);
     } else {
-      locl_transfer_force(store, src_first, dst_first, n);
+      locl_transfer_force(*force_ctx, src_first, dst_first, n);
     }
   }
   return true;
