@@ -36,7 +36,8 @@
 #endif
 
 struct CellStructure::AoSoA_pack {
-  // Component-major (LayoutLeft) to match the ParticleStore columns.
+  // Particle-major (@ref ParticleStore::StateVectorLayout, LayoutRight) to
+  // match the ParticleStore columns these views alias / are derived from.
   //
   // phase 3.5: position/image/director are no longer owned here. They alias
   // the authoritative ParticleStore host columns (position/image) and the
@@ -45,14 +46,22 @@ struct CellStructure::AoSoA_pack {
   // pack_index_to_store_row). For i < n_local the translation is the identity
   // (both are built in cell-traversal order); only the deduped ghost tail is
   // remapped. commit_particle no longer copies position/image/director.
+  //
+  // The layout of the store-aliased views (position/image/director) MUST match
+  // the store columns' layout; VelocityViewType is pack-owned but uses the same
+  // layout for consistency (velocity is committed per-step, and particle-major
+  // contiguous writes are the better default anyway).
   using PositionViewType =
-      Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>;
+      Kokkos::View<double *[3], ParticleStore::StateVectorLayout,
+                   Kokkos::HostSpace>;
   using VelocityViewType =
-      Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>;
+      Kokkos::View<double *[3], ParticleStore::StateVectorLayout,
+                   Kokkos::HostSpace>;
   using DirectorViewType =
-      Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>;
-  using ImageViewType =
-      Kokkos::View<int *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>;
+      Kokkos::View<double *[3], ParticleStore::StateVectorLayout,
+                   Kokkos::HostSpace>;
+  using ImageViewType = Kokkos::View<int *[3], ParticleStore::StateVectorLayout,
+                                     Kokkos::HostSpace>;
   using RowMapViewType = Kokkos::View<int const *, Kokkos::HostSpace>;
   using ChargeViewType = Kokkos::View<double *, Kokkos::HostSpace>;
   using DipmViewType = Kokkos::View<double *, Kokkos::HostSpace>;

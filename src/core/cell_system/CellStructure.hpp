@@ -220,8 +220,10 @@ private:
 #if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
   /** Store-side derived director view (phase 3.5), sized n_total, recomputed
    *  from the quaternion column by @ref update_director_view. Replaces the
-   *  per-step director copy in commit_particle. */
-  Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>
+   *  per-step director copy in commit_particle. Uses the store's vector layout
+   *  (@ref ParticleStore::StateVectorLayout) so it aliases into the pack's
+   *  DirectorViewType. */
+  Kokkos::View<double *[3], ParticleStore::StateVectorLayout, Kokkos::HostSpace>
       m_director_view;
 #endif
 

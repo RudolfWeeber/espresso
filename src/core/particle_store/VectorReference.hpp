@@ -27,9 +27,12 @@
 
 /**
  * @brief Write-through reference to one particle's 3-vector stored in a
- * component-major (LayoutLeft) column.
+ * strided column (any Kokkos layout).
  *
  * Component @c j of the referenced vector lives at <tt>base[j * stride]</tt>.
+ * The stride is supplied by the caller (@c view.stride(1) for a Kokkos column:
+ * 1 for particle-major LayoutRight, number-of-rows for component-major
+ * LayoutLeft), so the proxy is layout-agnostic.
  * The proxy is a cheap value type (pointer + stride); copying it copies the
  * reference, not the data. Reads convert to @ref Utils::Vector<T,3> by value.
  *
@@ -112,12 +115,13 @@ using IntegerVectorReference = BasicVectorReference<int>;
 
 /**
  * @brief Write-through reference to one particle's quaternion stored in a
- * component-major (LayoutLeft) column.
+ * strided column (any Kokkos layout).
  *
  * Component @c j of the referenced quaternion lives at
- * <tt>base[j * stride]</tt>. The proxy is a cheap value type (pointer +
- * stride); copying it copies the reference, not the data. Reads convert to
- * @ref Utils::Quaternion<double> by value.
+ * <tt>base[j * stride]</tt> (stride 1 for particle-major LayoutRight). The
+ * proxy is a cheap value type (pointer + stride); copying it copies the
+ * reference, not the data. Reads convert to @ref Utils::Quaternion<double> by
+ * value.
  */
 class QuaternionReference {
   double *m_base;

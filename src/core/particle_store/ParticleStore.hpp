@@ -39,8 +39,8 @@ class Particle; // attach_to_store is defined in Particle.hpp
  * @brief Array-based particle storage (structure of arrays).
  *
  * Owns per-particle quantities in a single index space: local particles
- * first (cell-traversal order), ghosts appended. Fields are component-major
- * (LayoutLeft) Kokkos columns; see
+ * first (cell-traversal order), ghosts appended. Vector/quaternion fields are
+ * particle-major (@ref StateVectorLayout, LayoutRight) Kokkos columns; see
  * docs/superpowers/specs/2026-07-03-array-based-particle-storage-design.md
  *
  * Migration phase 2: force and torque columns (observables). Phase 3 adds the
@@ -57,9 +57,23 @@ class Particle; // attach_to_store is defined in Particle.hpp
  */
 class ParticleStore {
 public:
-  using Column = Kokkos::DualView<double *[3], Kokkos::LayoutLeft>;
-  using IntegerColumn = Kokkos::DualView<int *[3], Kokkos::LayoutLeft>;
-  using QuaternionColumn = Kokkos::DualView<double *[4], Kokkos::LayoutLeft>;
+  /**
+   * @brief Memory layout of the vector/quaternion state columns.
+   *
+   * Particle-major (LayoutRight): one particle's components are contiguous.
+   *
+   * DECISION (phase 3.5): interleaved same-state A/B measurements (with and
+   * without AVX2) showed component-major (LayoutLeft) columns cost +10-12% on
+   * gather-dominated CPU paths -- pair-kernel neighbor gathers and ghost
+   * packing touch 3 cache lines per particle-vector under LayoutLeft instead
+   * of 1, with zero SIMD offset (vector_length == 1 on the host). The host
+   * columns are therefore particle-major. Component-major is re-evaluated at
+   * phase 8 (GPU), where coalesced per-component access may flip the balance.
+   */
+  using StateVectorLayout = Kokkos::LayoutRight;
+  using Column = Kokkos::DualView<double *[3], StateVectorLayout>;
+  using IntegerColumn = Kokkos::DualView<int *[3], StateVectorLayout>;
+  using QuaternionColumn = Kokkos::DualView<double *[4], StateVectorLayout>;
   using ScalarColumn = Kokkos::DualView<double *>;
   using ShortColumn = Kokkos::DualView<short *>;
 
@@ -211,10 +225,13 @@ private:
   VectorReference column_reference(Column &column, int const row) {
     assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
     auto &view = column.view_host();
-    // stride between the components of one row (LayoutLeft: number of rows).
-    // stride(1) is the non-deprecated spelling of stride_1() in the installed
-    // Kokkos version.
-    return VectorReference(view.data() + row, view.stride(1));
+    // Layout-agnostic proxy over one row: address of component 0 plus the
+    // component-to-component stride. stride(1) is 1 for LayoutRight (row
+    // contiguous) and number-of-rows for LayoutLeft; &view(row, 0) is the
+    // correct base under either layout, unlike view.data() + row (which
+    // assumes LayoutLeft). stride(1) is the non-deprecated spelling of
+    // stride_1() in the installed Kokkos version.
+    return VectorReference(&view(row, 0), view.stride(1));
   }
   Utils::Vector3d column_value(Column const &column, int const row) const {
     assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
@@ -225,7 +242,7 @@ private:
                                                   int const row) {
     assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
     auto &view = column.view_host();
-    return IntegerVectorReference(view.data() + row, view.stride(1));
+    return IntegerVectorReference(&view(row, 0), view.stride(1));
   }
   Utils::Vector3i integer_column_value(IntegerColumn const &column,
                                        int const row) const {
@@ -237,7 +254,7 @@ private:
                                                   int const row) {
     assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
     auto &view = column.view_host();
-    return QuaternionReference(view.data() + row, view.stride(1));
+    return QuaternionReference(&view(row, 0), view.stride(1));
   }
   Utils::Quaternion<double>
   quaternion_column_value(QuaternionColumn const &column, int const row) const {

@@ -105,8 +105,8 @@ void CellStructure::clear_local_properties() {
   // while Kokkos is still alive (see the destructor's release ordering).
   m_pack_index_to_store_row = Kokkos::View<int *, Kokkos::HostSpace>{};
 #if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
-  m_director_view =
-      Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>{};
+  m_director_view = Kokkos::View<double *[3], ParticleStore::StateVectorLayout,
+                                 Kokkos::HostSpace>{};
 #endif
   m_rebuild_verlet_list_cabana = true;
 }
@@ -377,7 +377,8 @@ void CellStructure::update_director_view() {
   auto const n_total = m_particle_store.number_of_particles();
   if (m_director_view.extent(0) != n_total) {
     m_director_view =
-        Kokkos::View<double *[3], Kokkos::LayoutLeft, Kokkos::HostSpace>(
+        Kokkos::View<double *[3], ParticleStore::StateVectorLayout,
+                     Kokkos::HostSpace>(
             Kokkos::ViewAllocateWithoutInitializing("director"), n_total);
   }
   auto quaternion = m_particle_store.quaternion_view();
