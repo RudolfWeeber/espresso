@@ -31,13 +31,25 @@
 #include <utils/Vector.hpp>
 #include <utils/matrix.hpp>
 
+// phase 3.5 (perf reclamation): force-inline the Langevin friction kernels.
+// The init_forces_and_thermostat lambda (forces.cpp) grew past gcc's inline
+// budget after the phase-3 proxy hoists, so friction_thermo_langevin surfaced
+// as a 3.6% out-of-line frame in the profile diff -- it was fully inlined in
+// the phase-0 baseline. Restore that by pinning always-inline. Mirror the
+// guarded macro spelling from aosoa_pack.hpp / BoxGeometry.hpp.
+#if defined(__GNUG__) or defined(__clang__)
+#define ESPRESSO_ATTR_ALWAYS_INLINE [[gnu::always_inline]]
+#else
+#define ESPRESSO_ATTR_ALWAYS_INLINE
+#endif
+
 /** Langevin thermostat for particle translational velocities.
  *  @param[in]     langevin       Parameters
  *  @param[in]     p              Particle
  *  @param[in]     time_step      Time step
  *  @param[in]     kT             Thermal energy
  */
-inline Utils::Vector3d
+ESPRESSO_ATTR_ALWAYS_INLINE inline Utils::Vector3d
 friction_thermo_langevin(LangevinThermostat const &langevin, Particle const &p,
                          double time_step, double kT) {
   using namespace Thermostat;
@@ -78,7 +90,7 @@ friction_thermo_langevin(LangevinThermostat const &langevin, Particle const &p,
  *  @param[in]     time_step      Time step
  *  @param[in]     kT             Thermal energy
  */
-inline Utils::Vector3d
+ESPRESSO_ATTR_ALWAYS_INLINE inline Utils::Vector3d
 friction_thermo_langevin_rotation(LangevinThermostat const &langevin,
                                   Particle const &p, double time_step,
                                   double kT) {

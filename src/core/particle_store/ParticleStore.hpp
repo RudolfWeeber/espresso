@@ -301,7 +301,11 @@ private:
   ScalarColumn m_lees_edwards_offset;
   ShortColumn m_lees_edwards_flag;
 
-  // -- previous-generation columns, alive between begin/finish_rebuild ------
+  // -- spare (previous-generation) columns ----------------------------------
+  // Capacity-cached double buffering (phase 3.5): these are kept alive across
+  // rebuilds as the swap-in write target. During a rebuild they hold the
+  // just-current data (the preserve_or_seed READ source); after finish_rebuild
+  // they hold the retired generation, reused as the spare on the next swap.
   Column m_old_force;
 #ifdef ESPRESSO_ROTATION
   Column m_old_torque;

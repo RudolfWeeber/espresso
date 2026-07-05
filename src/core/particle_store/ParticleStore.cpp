@@ -25,6 +25,8 @@
 #include <utils/quaternion.hpp>
 
 #include <cstddef>
+#include <string>
+#include <utility>
 
 namespace {
 // Generalized per-column rebuild copy: fill row @p row of the freshly
@@ -65,49 +67,85 @@ void preserve_or_seed_scalar(ColumnType &new_column,
 }
 } // namespace
 
+namespace {
+// Grow @p column to hold at least @p total rows, WITHOUT zero-initializing the
+// new storage. Only reallocates when the current extent is too small; existing
+// capacity is reused verbatim. Safe because assign_row's preserve_or_seed
+// writes every logical row in [0, total) before finish_rebuild, so no reader
+// ever observes uninitialized storage (see begin_rebuild's contract below).
+template <class ColumnType>
+void grow_without_init(ColumnType &column, std::size_t const total,
+                       char const *label) {
+  if (column.extent(0) < total) {
+    // Kokkos::view_alloc treats a bare char const* as a pointer-to-memory
+    // (unmanaged view); wrap it in a std::string so it is taken as the label.
+    column = ColumnType(
+        Kokkos::view_alloc(Kokkos::WithoutInitializing, std::string{label}),
+        total);
+  }
+}
+} // namespace
+
+// Capacity-cached double buffering (phase 3.5 perf reclamation). Instead of
+// freshly allocating all columns on every rebuild (every resort), keep two
+// generations and SWAP them: the previous-generation columns become the write
+// target for the new generation, and the just-current columns become the
+// read source ("old") for preserve_or_seed. A (re)allocation happens ONLY when
+// the swapped-in write target is too small for the new particle count; growth
+// uses WithoutInitializing since every logical row is overwritten by assign_row
+// before it is read. Column extents therefore track CAPACITY (a high-water
+// mark), never the logical count -- accessors bound by number_of_particles().
 void ParticleStore::begin_rebuild(std::size_t const number_of_local_particles,
                                   std::size_t const number_of_ghost_particles) {
-  m_old_force = m_force;
+  // Swap current <-> spare generations. After the swap, m_old_* holds the
+  // just-current data (the read source for surviving rows) and m_* holds the
+  // older spare buffer (the write target we grow / overwrite in place).
+  using std::swap;
+  swap(m_force, m_old_force);
 #ifdef ESPRESSO_ROTATION
-  m_old_torque = m_torque;
+  swap(m_torque, m_old_torque);
 #endif
-  m_old_position = m_position;
-  m_old_image_box = m_image_box;
+  swap(m_position, m_old_position);
+  swap(m_image_box, m_old_image_box);
 #ifdef ESPRESSO_ROTATION
-  m_old_quaternion = m_quaternion;
+  swap(m_quaternion, m_old_quaternion);
 #endif
-  m_old_position_at_last_verlet_update = m_position_at_last_verlet_update;
+  swap(m_position_at_last_verlet_update, m_old_position_at_last_verlet_update);
 #ifdef ESPRESSO_BOND_CONSTRAINT
-  m_old_position_last_time_step = m_position_last_time_step;
+  swap(m_position_last_time_step, m_old_position_last_time_step);
 #endif
-  m_old_lees_edwards_offset = m_lees_edwards_offset;
-  m_old_lees_edwards_flag = m_lees_edwards_flag;
+  swap(m_lees_edwards_offset, m_old_lees_edwards_offset);
+  swap(m_lees_edwards_flag, m_old_lees_edwards_flag);
+
   m_old_number_of_particles =
       m_number_of_local_particles + m_number_of_ghost_particles;
   m_number_of_local_particles = number_of_local_particles;
   m_number_of_ghost_particles = number_of_ghost_particles;
   auto const total = number_of_local_particles + number_of_ghost_particles;
-  // fresh zero-initialized allocations (Kokkos default-initializes to zero).
-  // NOTE: quaternion rows land as (0,0,0,0), an INVALID quaternion; assign_row
-  // seeds each row (identity for genuinely new rows), see below.
-  m_force = Column("particle_store::force", total);
+
+  // Grow the (swapped-in) write target only when it cannot hold the new count.
+  // NOTE: rows are NOT zero-initialized; assign_row seeds/preserves every row.
+  // A quaternion row that survives is preserved; a genuinely-new row is seeded
+  // to identity (1,0,0,0) from the migration carrier (never the zero-init).
+  grow_without_init(m_force, total, "particle_store::force");
 #ifdef ESPRESSO_ROTATION
-  m_torque = Column("particle_store::torque", total);
+  grow_without_init(m_torque, total, "particle_store::torque");
 #endif
-  m_position = Column("particle_store::position", total);
-  m_image_box = IntegerColumn("particle_store::image_box", total);
+  grow_without_init(m_position, total, "particle_store::position");
+  grow_without_init(m_image_box, total, "particle_store::image_box");
 #ifdef ESPRESSO_ROTATION
-  m_quaternion = QuaternionColumn("particle_store::quaternion", total);
+  grow_without_init(m_quaternion, total, "particle_store::quaternion");
 #endif
-  m_position_at_last_verlet_update =
-      Column("particle_store::position_at_last_verlet_update", total);
+  grow_without_init(m_position_at_last_verlet_update, total,
+                    "particle_store::position_at_last_verlet_update");
 #ifdef ESPRESSO_BOND_CONSTRAINT
-  m_position_last_time_step =
-      Column("particle_store::position_last_time_step", total);
+  grow_without_init(m_position_last_time_step, total,
+                    "particle_store::position_last_time_step");
 #endif
-  m_lees_edwards_offset =
-      ScalarColumn("particle_store::lees_edwards_offset", total);
-  m_lees_edwards_flag = ShortColumn("particle_store::lees_edwards_flag", total);
+  grow_without_init(m_lees_edwards_offset, total,
+                    "particle_store::lees_edwards_offset");
+  grow_without_init(m_lees_edwards_flag, total,
+                    "particle_store::lees_edwards_flag");
 }
 
 void ParticleStore::assign_row(Particle &particle, int const row) {
@@ -165,21 +203,9 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
 }
 
 void ParticleStore::finish_rebuild() {
-  m_old_force = Column{};
-#ifdef ESPRESSO_ROTATION
-  m_old_torque = Column{};
-#endif
-  m_old_position = Column{};
-  m_old_image_box = IntegerColumn{};
-#ifdef ESPRESSO_ROTATION
-  m_old_quaternion = QuaternionColumn{};
-#endif
-  m_old_position_at_last_verlet_update = Column{};
-#ifdef ESPRESSO_BOND_CONSTRAINT
-  m_old_position_last_time_step = Column{};
-#endif
-  m_old_lees_edwards_offset = ScalarColumn{};
-  m_old_lees_edwards_flag = ShortColumn{};
+  // Keep the old-generation columns alive as the spare buffer for the next
+  // rebuild's swap (capacity-cached double buffering). Only the bookkeeping is
+  // cleared; release_columns drops BOTH generations at teardown.
   m_old_number_of_particles = 0u;
   m_dirty = false;
 }
