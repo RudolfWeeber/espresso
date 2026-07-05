@@ -315,10 +315,25 @@ static ParticleStore *active_particle_store() {
   return &system.cell_structure->particle_store();
 }
 
-/** @brief Contiguous store-row range [first, first+size) for a part_list, or
- *  std::nullopt if the list is empty, any particle is detached, or the rows are
- *  not contiguous (the latter must not happen for a cell-sorted store; asserted
- *  in debug, safe fallback in release). */
+/** @brief Contiguous store-row range [first_row, first_row + size) for a
+ *  part_list, or std::nullopt if the list is empty or its first particle is
+ *  detached (store()==nullptr / store_row() < 0).
+ *
+ *  Contiguity is a STRUCTURAL invariant, not something we scan for in release:
+ *  ensure_particle_store_synchronized assigns rows in cell-traversal order
+ *  (every local cell's particles, then every ghost cell's particles), and every
+ *  ghost-comm part_list is exactly one cell's ParticleList, so each cell's
+ *  particles occupy one consecutive row block. The fast path is only reachable
+ *  on a clean store (columnar_eligible), where this holds by construction. We
+ *  therefore derive the range from the FIRST particle alone
+ *  (first_row = first->store_row(); size = list size) with no per-particle
+ * scan. A detached first particle (empty list or dirty/fresh-ghost store)
+ * yields nullopt, detectable BEFORE any caller mutates the store, and callers
+ * then fall back to the generic per-particle communication for the whole comm.
+ *
+ *  In debug builds ONLY, the whole list is validated up front (before any
+ * caller reads/writes a column) and a contiguity/attachment violation asserts
+ * with a clear message. */
 static std::optional<std::pair<int, std::size_t>>
 contiguous_store_rows(ParticleList const &part_list) {
   auto const size = part_list.size();
@@ -333,15 +348,45 @@ contiguous_store_rows(ParticleList const &part_list) {
   if (first_row < 0) {
     return std::nullopt;
   }
+#ifndef NDEBUG
   for (std::size_t i = 0u; i < size; ++i) {
     auto const &p = first[i];
     if (p.store() == nullptr or
         p.store_row() != first_row + static_cast<int>(i)) {
       assert(false and "ghost part_list store rows are not contiguous");
-      return std::nullopt;
     }
   }
+#endif
   return std::make_pair(first_row, size);
+}
+
+/** @brief Resolve the contiguous store-row range for every part_list in a comm,
+ *  deciding fast-path applicability BEFORE any caller mutates the store.
+ *
+ *  Returns std::nullopt (fall back to the generic path for the WHOLE comm) if
+ *  any non-empty part_list has a detached first particle; empty lists yield an
+ *  entry with size 0. Reads only each list's first particle (no per-particle
+ *  scan): contiguity within a list is a structural invariant on a clean store
+ *  (see contiguous_store_rows). Because the fall-back decision is taken here,
+ *  before any column is read or written, the mutating callers (FORCE `+=`,
+ *  POSITION assign) can never partially apply and then fall back -- which for
+ *  FORCE would double-count. */
+static std::optional<std::vector<std::pair<int, std::size_t>>>
+columnar_resolve_ranges(GhostCommunication const &ghost_comm) {
+  std::vector<std::pair<int, std::size_t>> ranges;
+  ranges.reserve(ghost_comm.part_lists.size());
+  for (auto part_list : ghost_comm.part_lists) {
+    auto const range = contiguous_store_rows(*part_list);
+    if (not range.has_value()) {
+      if (part_list->empty()) {
+        ranges.emplace_back(0, 0u);
+        continue;
+      }
+      return std::nullopt; // detached first particle: fall back before mutating
+    }
+    ranges.push_back(*range);
+  }
+  return ranges;
 }
 
 /** @brief Whether data_parts selects a columnar-eligible per-step comm on a
@@ -586,18 +631,16 @@ static bool columnar_prepare_send_buffer(CommBuf &send_buffer,
                                          GhostCommunication const &ghost_comm,
                                          BoxGeometry const &box_geo,
                                          unsigned int data_parts) {
+  auto const ranges = columnar_resolve_ranges(ghost_comm);
+  if (not ranges.has_value()) {
+    return false; // decided before touching the buffer/store
+  }
   auto &store = *active_particle_store();
   auto *cursor = send_buffer.data();
-  for (auto part_list : ghost_comm.part_lists) {
-    auto const range = contiguous_store_rows(*part_list);
-    if (not range.has_value()) {
-      if (part_list->empty()) {
-        continue;
-      }
-      return false; // contiguity/attachment broke unexpectedly: fall back
+  for (auto const &[first_row, n] : *ranges) {
+    if (n == 0u) {
+      continue;
     }
-    auto const first_row = range->first;
-    auto const n = range->second;
     if (data_parts == GHOSTTRANS_POSITION) {
       cursor = pack_position_range(cursor, store, first_row, n, box_geo,
                                    &ghost_comm.shift);
@@ -672,17 +715,17 @@ static bool columnar_put_recv_buffer(CommBuf &recv_buffer,
                                      unsigned int data_parts) {
   assert(data_parts == GHOSTTRANS_POSITION);
   static_cast<void>(data_parts);
+  auto const ranges = columnar_resolve_ranges(ghost_comm);
+  if (not ranges.has_value()) {
+    return false; // decided before writing any column
+  }
   auto &store = *active_particle_store();
   auto const *cursor = recv_buffer.data();
-  for (auto part_list : ghost_comm.part_lists) {
-    auto const range = contiguous_store_rows(*part_list);
-    if (not range.has_value()) {
-      if (part_list->empty()) {
-        continue;
-      }
-      return false;
+  for (auto const &[first_row, n] : *ranges) {
+    if (n == 0u) {
+      continue;
     }
-    cursor = unpack_position_range(cursor, store, range->first, range->second);
+    cursor = unpack_position_range(cursor, store, first_row, n);
   }
   assert(static_cast<std::size_t>(cursor - recv_buffer.data()) ==
          recv_buffer.size());
@@ -756,17 +799,19 @@ add_rattle_correction_from_recv_buffer(CommBuf &recv_buffer,
 static bool
 columnar_add_forces_from_recv_buffer(CommBuf &recv_buffer,
                                      GhostCommunication const &ghost_comm) {
+  /* The fall-back decision is made BEFORE any `+=`: a mid-list fall-back after
+   * a partial accumulate would double-count on the generic retry. */
+  auto const ranges = columnar_resolve_ranges(ghost_comm);
+  if (not ranges.has_value()) {
+    return false;
+  }
   auto &store = *active_particle_store();
   auto const *cursor = recv_buffer.data();
-  for (auto part_list : ghost_comm.part_lists) {
-    auto const range = contiguous_store_rows(*part_list);
-    if (not range.has_value()) {
-      if (part_list->empty()) {
-        continue;
-      }
-      return false;
+  for (auto const &[first_row, n] : *ranges) {
+    if (n == 0u) {
+      continue;
     }
-    cursor = unpack_force_range(cursor, store, range->first, range->second,
+    cursor = unpack_force_range(cursor, store, first_row, n,
                                 /*accumulate=*/true);
   }
   assert(static_cast<std::size_t>(cursor - recv_buffer.data()) ==
@@ -800,7 +845,11 @@ static void add_forces_from_recv_buffer(CommBuf &recv_buffer,
 
 /** @brief Columnar POSITION cell-to-cell transfer: shift+fold the source rows
  *  and assign into the destination rows (quat, pos_last_time_step verbatim).
- *  Matches the LOCL SAVE(shift)+LOAD(assign) semantics. */
+ *  Matches the generic LOCL SAVE(shift)+LOAD(assign) semantics: the shift is
+ *  ALWAYS applied (the generic LOCL SAVE always passes a non-null shift), and
+ * it is the zero vector for a local cell-to-cell transfer (no periodic wrap),
+ * so the `+= shift` is a no-op before the fold in that common case rather than
+ * a branch. */
 static void locl_transfer_position(ParticleStore &store, int src_first,
                                    int dst_first, std::size_t n,
                                    BoxGeometry const &box_geo,
@@ -863,17 +912,28 @@ static void locl_transfer_force(ParticleStore &store, int src_first,
 }
 
 /** @brief Columnar LOCL fast path. Returns false on a broken precondition
- *  (so the caller falls back to the per-particle path). */
+ *  (so the caller falls back to the per-particle path).
+ *
+ *  All src/dst row ranges are resolved (reading only each list's first
+ *  particle, no per-particle scan) BEFORE any transfer, so the FORCE `+=`
+ *  transfer can never partially apply and then fall back (which would
+ *  double-count on the generic retry). */
 static bool columnar_cell_cell_transfer(GhostCommunication const &ghost_comm,
                                         BoxGeometry const &box_geo,
                                         unsigned int data_parts) {
-  auto &store = *active_particle_store();
   auto const offset = ghost_comm.part_lists.size() / 2;
+  // Phase 1: resolve every src/dst range pair; bail before mutating on break.
+  std::vector<std::pair<int, int>> pairs; // (src_first, dst_first); n implicit
+  std::vector<std::size_t> sizes;
+  pairs.reserve(offset);
+  sizes.reserve(offset);
   for (std::size_t pl = 0; pl < offset; pl++) {
     auto *src_list = ghost_comm.part_lists[pl];
     auto *dst_list = ghost_comm.part_lists[pl + offset];
     assert(src_list->size() == dst_list->size());
     if (src_list->empty()) {
+      pairs.emplace_back(0, 0);
+      sizes.push_back(0u);
       continue;
     }
     auto const src_range = contiguous_store_rows(*src_list);
@@ -881,12 +941,22 @@ static bool columnar_cell_cell_transfer(GhostCommunication const &ghost_comm,
     if (not src_range.has_value() or not dst_range.has_value()) {
       return false;
     }
-    auto const n = src_range->second;
+    pairs.emplace_back(src_range->first, dst_range->first);
+    sizes.push_back(src_range->second);
+  }
+  // Phase 2: apply the transfers.
+  auto &store = *active_particle_store();
+  for (std::size_t pl = 0; pl < offset; pl++) {
+    auto const n = sizes[pl];
+    if (n == 0u) {
+      continue;
+    }
+    auto const [src_first, dst_first] = pairs[pl];
     if (data_parts == GHOSTTRANS_POSITION) {
-      locl_transfer_position(store, src_range->first, dst_range->first, n,
-                             box_geo, ghost_comm.shift);
+      locl_transfer_position(store, src_first, dst_first, n, box_geo,
+                             ghost_comm.shift);
     } else {
-      locl_transfer_force(store, src_range->first, dst_range->first, n);
+      locl_transfer_force(store, src_first, dst_first, n);
     }
   }
   return true;
