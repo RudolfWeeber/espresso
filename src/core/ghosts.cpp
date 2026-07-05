@@ -32,9 +32,13 @@
 
 #include "BoxGeometry.hpp"
 #include "Particle.hpp"
+#include "cell_system/CellStructure.hpp"
 #include "cell_system/ParticleListOperations.hpp"
+#include "particle_store/ParticleStore.hpp"
 #include "system/System.hpp"
 
+#include <utils/Vector.hpp>
+#include <utils/quaternion.hpp>
 #include <utils/serialization/memcpy_archive.hpp>
 
 #include <boost/archive/binary_iarchive.hpp>
@@ -49,9 +53,11 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstring>
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -266,6 +272,258 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
 #endif
 }
 
+/* ------------------------------------------------------------------------- *
+ *  Columnar fast paths for the two per-step ghost communications.
+ *
+ *  The two hot, per-integration-step ghost transfers carry exactly one field
+ *  group each: POSITION (ghost position distribution) and FORCE (ghost force
+ *  reduction). For these the ParticleStore state/observable columns can be
+ *  streamed to/from the CommBuf in bulk over contiguous store-row ranges,
+ *  bypassing the per-Particle proxy construction and per-field archive
+ *  dispatch that the generic serialize_and_reduce path incurs.
+ *
+ *  Wire layout is BYTE-IDENTICAL to serialize_and_reduce (the MemcpyArchive
+ *  packs each field as its raw component bytes, tightly, no padding):
+ *    POSITION: pos (3 double) | image (3 int)
+ *              [| quat (4 double)] [| pos_last_time_step (3 double)]
+ *    FORCE:    force (3 double) [| torque (3 double)]
+ *  so buffer sizes (calc_transmit_size, untouched) and the GHOST_RDCE bitwise
+ *  reduction over raw doubles stay identical.
+ *
+ *  Applicability (see ghost_communicator): the fast path is taken only when
+ *  data_parts is EXACTLY GHOSTTRANS_POSITION or GHOSTTRANS_FORCE, AND the
+ *  ParticleStore is not dirty. FORCE reduction always runs on a clean store
+ *  (calculate_forces syncs the store, then reduces with no intervening
+ *  topology change). POSITION update runs clean on non-resort steps, but on a
+ *  resort step it runs while the store is dirty (ghosts_count marks it dirty;
+ *  the sync happens later, at the top of calculate_forces): freshly created
+ *  ghost particles are then DETACHED (store()==nullptr) and the generic path
+ *  correctly reads/writes their migration carriers rather than columns. We
+ *  therefore never sync here (that would be wrong: rows must match the current
+ *  columns, not a fresh generation) -- we simply fall back to the per-particle
+ *  path when the store is dirty. This is the safe branch required by the task,
+ *  and it is exercised every resort step.
+ * ------------------------------------------------------------------------- */
+
+/** @brief The ParticleStore backing the current cell structure, or nullptr if
+ *  no system/cell structure is set up (e.g. unit-test harnesses). */
+static ParticleStore *active_particle_store() {
+  auto const &system = System::get_system();
+  if (system.cell_structure == nullptr) {
+    return nullptr;
+  }
+  return &system.cell_structure->particle_store();
+}
+
+/** @brief Contiguous store-row range [first, first+size) for a part_list, or
+ *  std::nullopt if the list is empty, any particle is detached, or the rows are
+ *  not contiguous (the latter must not happen for a cell-sorted store; asserted
+ *  in debug, safe fallback in release). */
+static std::optional<std::pair<int, std::size_t>>
+contiguous_store_rows(ParticleList const &part_list) {
+  auto const size = part_list.size();
+  if (size == 0u) {
+    return std::nullopt;
+  }
+  auto const first = part_list.begin();
+  if (first->store() == nullptr) {
+    return std::nullopt;
+  }
+  auto const first_row = first->store_row();
+  if (first_row < 0) {
+    return std::nullopt;
+  }
+  for (std::size_t i = 0u; i < size; ++i) {
+    auto const &p = first[i];
+    if (p.store() == nullptr or
+        p.store_row() != first_row + static_cast<int>(i)) {
+      assert(false and "ghost part_list store rows are not contiguous");
+      return std::nullopt;
+    }
+  }
+  return std::make_pair(first_row, size);
+}
+
+/** @brief Whether data_parts selects a columnar-eligible per-step comm on a
+ *  clean store. When false, callers use the generic per-particle path. */
+static bool columnar_eligible(unsigned int data_parts) {
+  if (data_parts != GHOSTTRANS_POSITION and data_parts != GHOSTTRANS_FORCE) {
+    return false;
+  }
+  auto const *store = active_particle_store();
+  return store != nullptr and not store->is_dirty();
+}
+
+namespace {
+/** @brief Byte cursor over the CommBuf that packs/unpacks scalars via memcpy,
+ *  exactly like the MemcpyArchive. Using memcpy (not a reinterpret_cast +
+ *  dereference) is REQUIRED: the tightly packed per-particle wire layout is not
+ *  8-byte aligned (e.g. 36 B/particle for POSITION without ROTATION), so a
+ *  direct double* dereference would be misaligned UB (and trip UBSan). */
+template <class CharPtr> struct ByteCursor {
+  CharPtr ptr;
+  template <class T> void put(T const &value) {
+    std::memcpy(ptr, &value, sizeof(T));
+    ptr += sizeof(T);
+  }
+  template <class T> T get() {
+    T value;
+    std::memcpy(&value, ptr, sizeof(T));
+    ptr += sizeof(T);
+    return value;
+  }
+};
+using WriteCursor = ByteCursor<char *>;
+using ReadCursor = ByteCursor<char const *>;
+} // namespace
+
+/** @brief Bulk-pack POSITION for a contiguous row range into @p out (SAVE).
+ *  Reproduces serialize_and_reduce's SAVE branch exactly: with a ghost shift,
+ *  apply +shift then fold_position (writing the folded image); otherwise copy
+ *  the stored pos/image. Then quat (ROTATION) and pos_last_time_step
+ *  (BOND_CONSTRAINT) verbatim. */
+static char *pack_position_range(char *out, ParticleStore &store, int first_row,
+                                 std::size_t n, BoxGeometry const &box_geo,
+                                 Utils::Vector3d const *ghost_shift) {
+  auto const pos = store.position_view();
+  auto const img = store.image_box_view();
+#ifdef ESPRESSO_ROTATION
+  auto const quat = store.quaternion_view();
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  auto const plast = store.position_last_time_step_view();
+#endif
+  WriteCursor cursor{out};
+  for (std::size_t i = 0u; i < n; ++i) {
+    auto const row = first_row + static_cast<int>(i);
+    Utils::Vector3d position{pos(row, 0), pos(row, 1), pos(row, 2)};
+    Utils::Vector3i image_box{img(row, 0), img(row, 1), img(row, 2)};
+    if (ghost_shift != nullptr) {
+      position += *ghost_shift;
+      box_geo.fold_position(position, image_box);
+    }
+    cursor.put(position[0]);
+    cursor.put(position[1]);
+    cursor.put(position[2]);
+    cursor.put(image_box[0]);
+    cursor.put(image_box[1]);
+    cursor.put(image_box[2]);
+#ifdef ESPRESSO_ROTATION
+    cursor.put(quat(row, 0));
+    cursor.put(quat(row, 1));
+    cursor.put(quat(row, 2));
+    cursor.put(quat(row, 3));
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+    cursor.put(plast(row, 0));
+    cursor.put(plast(row, 1));
+    cursor.put(plast(row, 2));
+#endif
+  }
+  return cursor.ptr;
+}
+
+/** @brief Bulk-unpack POSITION for a contiguous row range from @p in (LOAD).
+ *  Assigns pos/image (and quat, pos_last_time_step) directly into columns. */
+static char const *unpack_position_range(char const *in, ParticleStore &store,
+                                         int first_row, std::size_t n) {
+  auto pos = store.position_view();
+  auto img = store.image_box_view();
+#ifdef ESPRESSO_ROTATION
+  auto quat = store.quaternion_view();
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  auto plast = store.position_last_time_step_view();
+#endif
+  ReadCursor cursor{in};
+  for (std::size_t i = 0u; i < n; ++i) {
+    auto const row = first_row + static_cast<int>(i);
+    pos(row, 0) = cursor.get<double>();
+    pos(row, 1) = cursor.get<double>();
+    pos(row, 2) = cursor.get<double>();
+    img(row, 0) = cursor.get<int>();
+    img(row, 1) = cursor.get<int>();
+    img(row, 2) = cursor.get<int>();
+#ifdef ESPRESSO_ROTATION
+    quat(row, 0) = cursor.get<double>();
+    quat(row, 1) = cursor.get<double>();
+    quat(row, 2) = cursor.get<double>();
+    quat(row, 3) = cursor.get<double>();
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+    plast(row, 0) = cursor.get<double>();
+    plast(row, 1) = cursor.get<double>();
+    plast(row, 2) = cursor.get<double>();
+#endif
+  }
+  return cursor.ptr;
+}
+
+/** @brief Bulk-pack FORCE for a contiguous row range into @p out (SAVE). */
+static char *pack_force_range(char *out, ParticleStore &store, int first_row,
+                              std::size_t n) {
+  auto const force = store.force_view();
+#ifdef ESPRESSO_ROTATION
+  auto const torque = store.torque_view();
+#endif
+  WriteCursor cursor{out};
+  for (std::size_t i = 0u; i < n; ++i) {
+    auto const row = first_row + static_cast<int>(i);
+    cursor.put(force(row, 0));
+    cursor.put(force(row, 1));
+    cursor.put(force(row, 2));
+#ifdef ESPRESSO_ROTATION
+    cursor.put(torque(row, 0));
+    cursor.put(torque(row, 1));
+    cursor.put(torque(row, 2));
+#endif
+  }
+  return cursor.ptr;
+}
+
+/** @brief Bulk-unpack FORCE for a contiguous row range from @p in.
+ *  With @p accumulate (UPDATE policy) the received value is ADDED; otherwise
+ *  (MOVE policy) it is assigned. Matches serialize_and_reduce's FORCE LOAD. */
+static char const *unpack_force_range(char const *in, ParticleStore &store,
+                                      int first_row, std::size_t n,
+                                      bool accumulate) {
+  auto force = store.force_view();
+#ifdef ESPRESSO_ROTATION
+  auto torque = store.torque_view();
+#endif
+  ReadCursor cursor{in};
+  for (std::size_t i = 0u; i < n; ++i) {
+    auto const row = first_row + static_cast<int>(i);
+    auto const fx = cursor.get<double>();
+    auto const fy = cursor.get<double>();
+    auto const fz = cursor.get<double>();
+    if (accumulate) {
+      force(row, 0) += fx;
+      force(row, 1) += fy;
+      force(row, 2) += fz;
+    } else {
+      force(row, 0) = fx;
+      force(row, 1) = fy;
+      force(row, 2) = fz;
+    }
+#ifdef ESPRESSO_ROTATION
+    auto const tx = cursor.get<double>();
+    auto const ty = cursor.get<double>();
+    auto const tz = cursor.get<double>();
+    if (accumulate) {
+      torque(row, 0) += tx;
+      torque(row, 1) += ty;
+      torque(row, 2) += tz;
+    } else {
+      torque(row, 0) = tx;
+      torque(row, 1) = ty;
+      torque(row, 2) = tz;
+    }
+#endif
+  }
+  return cursor.ptr;
+}
+
 static auto calc_transmit_size(BoxGeometry const &box_geo,
                                unsigned data_parts) {
   std::size_t force_size = 0ul;
@@ -321,6 +579,37 @@ static auto calc_transmit_size(GhostCommunication const &ghost_comm,
   return n_part * calc_transmit_size(box_geo, data_parts);
 }
 
+/** @brief Columnar bulk fill of @p send_buffer for POSITION/FORCE on a clean
+ *  store. Returns false (leaving the buffer untouched) if any part_list breaks
+ *  the contiguity/attachment precondition, so the caller can fall back. */
+static bool columnar_prepare_send_buffer(CommBuf &send_buffer,
+                                         GhostCommunication const &ghost_comm,
+                                         BoxGeometry const &box_geo,
+                                         unsigned int data_parts) {
+  auto &store = *active_particle_store();
+  auto *cursor = send_buffer.data();
+  for (auto part_list : ghost_comm.part_lists) {
+    auto const range = contiguous_store_rows(*part_list);
+    if (not range.has_value()) {
+      if (part_list->empty()) {
+        continue;
+      }
+      return false; // contiguity/attachment broke unexpectedly: fall back
+    }
+    auto const first_row = range->first;
+    auto const n = range->second;
+    if (data_parts == GHOSTTRANS_POSITION) {
+      cursor = pack_position_range(cursor, store, first_row, n, box_geo,
+                                   &ghost_comm.shift);
+    } else {
+      cursor = pack_force_range(cursor, store, first_row, n);
+    }
+  }
+  assert(static_cast<std::size_t>(cursor - send_buffer.data()) ==
+         send_buffer.size());
+  return true;
+}
+
 static void prepare_send_buffer(CommBuf &send_buffer,
                                 GhostCommunication const &ghost_comm,
                                 BoxGeometry const &box_geo,
@@ -329,6 +618,13 @@ static void prepare_send_buffer(CommBuf &send_buffer,
   /* reallocate send buffer */
   send_buffer.resize(calc_transmit_size(ghost_comm, box_geo, data_parts));
   send_buffer.bonds().clear();
+
+  /* Columnar fast path for the two per-step comms on a clean store. */
+  if (columnar_eligible(data_parts) and
+      columnar_prepare_send_buffer(send_buffer, ghost_comm, box_geo,
+                                   data_parts)) {
+    return;
+  }
 
   auto archiver = Utils::MemcpyOArchive{send_buffer.make_span()};
 
@@ -369,10 +665,41 @@ static void prepare_recv_buffer(CommBuf &recv_buffer,
   recv_buffer.bonds().clear();
 }
 
+/** @brief Columnar bulk unpack of @p recv_buffer into columns for POSITION on
+ *  a clean store. Returns false (untouched) on a broken precondition. */
+static bool columnar_put_recv_buffer(CommBuf &recv_buffer,
+                                     GhostCommunication const &ghost_comm,
+                                     unsigned int data_parts) {
+  assert(data_parts == GHOSTTRANS_POSITION);
+  static_cast<void>(data_parts);
+  auto &store = *active_particle_store();
+  auto const *cursor = recv_buffer.data();
+  for (auto part_list : ghost_comm.part_lists) {
+    auto const range = contiguous_store_rows(*part_list);
+    if (not range.has_value()) {
+      if (part_list->empty()) {
+        continue;
+      }
+      return false;
+    }
+    cursor = unpack_position_range(cursor, store, range->first, range->second);
+  }
+  assert(static_cast<std::size_t>(cursor - recv_buffer.data()) ==
+         recv_buffer.size());
+  return true;
+}
+
 static void put_recv_buffer(CommBuf &recv_buffer,
                             GhostCommunication const &ghost_comm,
                             BoxGeometry const &box_geo,
                             unsigned int data_parts) {
+  /* Columnar fast path: pure POSITION on a clean store. */
+  if (data_parts == GHOSTTRANS_POSITION and columnar_eligible(data_parts) and
+      columnar_put_recv_buffer(recv_buffer, ghost_comm, data_parts)) {
+    recv_buffer.bonds().clear();
+    return;
+  }
+
   /* put back data */
   auto archiver = Utils::MemcpyIArchive{recv_buffer.make_span()};
 
@@ -424,8 +751,37 @@ add_rattle_correction_from_recv_buffer(CommBuf &recv_buffer,
 }
 #endif
 
+/** @brief Columnar bulk force accumulation from @p recv_buffer on a clean
+ *  store. Returns false (untouched) on a broken precondition. */
+static bool
+columnar_add_forces_from_recv_buffer(CommBuf &recv_buffer,
+                                     GhostCommunication const &ghost_comm) {
+  auto &store = *active_particle_store();
+  auto const *cursor = recv_buffer.data();
+  for (auto part_list : ghost_comm.part_lists) {
+    auto const range = contiguous_store_rows(*part_list);
+    if (not range.has_value()) {
+      if (part_list->empty()) {
+        continue;
+      }
+      return false;
+    }
+    cursor = unpack_force_range(cursor, store, range->first, range->second,
+                                /*accumulate=*/true);
+  }
+  assert(static_cast<std::size_t>(cursor - recv_buffer.data()) ==
+         recv_buffer.size());
+  return true;
+}
+
 static void add_forces_from_recv_buffer(CommBuf &recv_buffer,
                                         const GhostCommunication &ghost_comm) {
+  /* Columnar fast path: FORCE reduction always runs on a clean store. */
+  if (columnar_eligible(GHOSTTRANS_FORCE) and
+      columnar_add_forces_from_recv_buffer(recv_buffer, ghost_comm)) {
+    return;
+  }
+
   /* put back data */
   auto archiver = Utils::MemcpyIArchive{recv_buffer.make_span()};
   for (auto &part_list : ghost_comm.part_lists) {
@@ -442,9 +798,109 @@ static void add_forces_from_recv_buffer(CommBuf &recv_buffer,
   }
 }
 
+/** @brief Columnar POSITION cell-to-cell transfer: shift+fold the source rows
+ *  and assign into the destination rows (quat, pos_last_time_step verbatim).
+ *  Matches the LOCL SAVE(shift)+LOAD(assign) semantics. */
+static void locl_transfer_position(ParticleStore &store, int src_first,
+                                   int dst_first, std::size_t n,
+                                   BoxGeometry const &box_geo,
+                                   Utils::Vector3d const &shift) {
+  auto pos = store.position_view();
+  auto img = store.image_box_view();
+#ifdef ESPRESSO_ROTATION
+  auto quat = store.quaternion_view();
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  auto plast = store.position_last_time_step_view();
+#endif
+  for (std::size_t i = 0u; i < n; ++i) {
+    auto const s = src_first + static_cast<int>(i);
+    auto const d = dst_first + static_cast<int>(i);
+    Utils::Vector3d position{pos(s, 0), pos(s, 1), pos(s, 2)};
+    Utils::Vector3i image_box{img(s, 0), img(s, 1), img(s, 2)};
+    position += shift;
+    box_geo.fold_position(position, image_box);
+    pos(d, 0) = position[0];
+    pos(d, 1) = position[1];
+    pos(d, 2) = position[2];
+    img(d, 0) = image_box[0];
+    img(d, 1) = image_box[1];
+    img(d, 2) = image_box[2];
+#ifdef ESPRESSO_ROTATION
+    quat(d, 0) = quat(s, 0);
+    quat(d, 1) = quat(s, 1);
+    quat(d, 2) = quat(s, 2);
+    quat(d, 3) = quat(s, 3);
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+    plast(d, 0) = plast(s, 0);
+    plast(d, 1) = plast(s, 1);
+    plast(d, 2) = plast(s, 2);
+#endif
+  }
+}
+
+/** @brief Columnar FORCE cell-to-cell transfer: accumulate source rows into
+ *  destination rows (UPDATE policy: += force and torque). */
+static void locl_transfer_force(ParticleStore &store, int src_first,
+                                int dst_first, std::size_t n) {
+  auto force = store.force_view();
+#ifdef ESPRESSO_ROTATION
+  auto torque = store.torque_view();
+#endif
+  for (std::size_t i = 0u; i < n; ++i) {
+    auto const s = src_first + static_cast<int>(i);
+    auto const d = dst_first + static_cast<int>(i);
+    force(d, 0) += force(s, 0);
+    force(d, 1) += force(s, 1);
+    force(d, 2) += force(s, 2);
+#ifdef ESPRESSO_ROTATION
+    torque(d, 0) += torque(s, 0);
+    torque(d, 1) += torque(s, 1);
+    torque(d, 2) += torque(s, 2);
+#endif
+  }
+}
+
+/** @brief Columnar LOCL fast path. Returns false on a broken precondition
+ *  (so the caller falls back to the per-particle path). */
+static bool columnar_cell_cell_transfer(GhostCommunication const &ghost_comm,
+                                        BoxGeometry const &box_geo,
+                                        unsigned int data_parts) {
+  auto &store = *active_particle_store();
+  auto const offset = ghost_comm.part_lists.size() / 2;
+  for (std::size_t pl = 0; pl < offset; pl++) {
+    auto *src_list = ghost_comm.part_lists[pl];
+    auto *dst_list = ghost_comm.part_lists[pl + offset];
+    assert(src_list->size() == dst_list->size());
+    if (src_list->empty()) {
+      continue;
+    }
+    auto const src_range = contiguous_store_rows(*src_list);
+    auto const dst_range = contiguous_store_rows(*dst_list);
+    if (not src_range.has_value() or not dst_range.has_value()) {
+      return false;
+    }
+    auto const n = src_range->second;
+    if (data_parts == GHOSTTRANS_POSITION) {
+      locl_transfer_position(store, src_range->first, dst_range->first, n,
+                             box_geo, ghost_comm.shift);
+    } else {
+      locl_transfer_force(store, src_range->first, dst_range->first, n);
+    }
+  }
+  return true;
+}
+
 static void cell_cell_transfer(GhostCommunication const &ghost_comm,
                                BoxGeometry const &box_geo,
                                unsigned int data_parts) {
+  /* Columnar fast path for the two per-step comms on a clean store. */
+  if (columnar_eligible(data_parts) and
+      columnar_cell_cell_transfer(ghost_comm, box_geo, data_parts)) {
+    return;
+  }
+
   CommBuf buffer;
   if (!(data_parts & GHOSTTRANS_PARTNUM)) {
     buffer.resize(calc_transmit_size(box_geo, data_parts));
