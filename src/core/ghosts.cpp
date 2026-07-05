@@ -239,6 +239,16 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
      * so the shift+fold and the assignment semantics are exactly as before. */
     auto const row = p.store_row();
     bool const use_ctx = pos_ctx != nullptr and row >= 0;
+#ifndef NDEBUG
+    // When use_ctx is true the particle must belong to the active store: a
+    // stale pos_ctx from a different store generation or a different store
+    // object would silently corrupt the wrong memory region.
+    if (use_ctx) {
+      assert(p.store() == active_particle_store() and
+             "serialize_and_reduce: use_ctx row used but p.store() != active "
+             "store");
+    }
+#endif
     if (direction == SerializationDirection::LOAD) {
       Utils::Vector3d position;
       Utils::Vector3i image_box;
@@ -412,15 +422,14 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
  *  data_parts is EXACTLY GHOSTTRANS_POSITION or GHOSTTRANS_FORCE, AND the
  *  ParticleStore is not dirty. FORCE reduction always runs on a clean store
  *  (calculate_forces syncs the store, then reduces with no intervening
- *  topology change). POSITION update runs clean on non-resort steps, but on a
- *  resort step it runs while the store is dirty (ghosts_count marks it dirty;
- *  the sync happens later, at the top of calculate_forces): freshly created
- *  ghost particles are then DETACHED (store()==nullptr) and the generic path
- *  correctly reads/writes their migration carriers rather than columns. We
- *  therefore never sync here (that would be wrong: rows must match the current
- *  columns, not a fresh generation) -- we simply fall back to the per-particle
- *  path when the store is dirty. This is the safe branch required by the task,
- *  and it is exercised every resort step.
+ *  topology change). POSITION distribution (ghosts_count / ghosts_update) runs
+ *  on a clean store for non-resort steps. On resort steps the store is rebuilt
+ *  between ghosts_count and ghosts_update: resort-step ghost updates therefore
+ *  run with an attached (clean) store and the fast path engages there. The
+ *  dirty window (mark_particle_store_dirty before decomposition resort,
+ *  re-synced at calculate_forces) is where the mixed-ctx path in
+ *  serialize_and_reduce is exercised for freshly attached ghosts. We simply
+ *  fall back to the per-particle path when the store is dirty.
  * ------------------------------------------------------------------------- */
 
 /** @brief The ParticleStore backing the current cell structure, or nullptr if
@@ -497,7 +506,32 @@ columnar_resolve_ranges(GhostCommunication const &ghost_comm,
    * pay neither the per-list first-particle dereference (a cache-miss
    * pointer chase) nor a heap allocation. */
   if (ghost_comm.cached_ranges_valid and
-      ghost_comm.cached_store_generation == store.generation()) {
+      ghost_comm.cached_store_generation == store.generation() and
+      ghost_comm.cached_store == &store) {
+#ifndef NDEBUG
+    // Contiguity canary: recompute ranges from scratch and assert equality.
+    // This verifies that the cache has not gone stale while the store identity
+    // and generation both remained constant (e.g. a mid-step realloc that
+    // preserves the generation counter). The debug overhead is acceptable; the
+    // release path skips all of this.
+    std::vector<std::pair<int, std::size_t>> check_ranges;
+    check_ranges.reserve(ghost_comm.part_lists.size());
+    for (auto part_list : ghost_comm.part_lists) {
+      auto const range = contiguous_store_rows(*part_list);
+      if (not range.has_value()) {
+        if (part_list->empty()) {
+          check_ranges.emplace_back(0, 0u);
+          continue;
+        }
+        assert(false and
+               "cached range became detached: cache invariant violated");
+        return nullptr;
+      }
+      check_ranges.push_back(*range);
+    }
+    assert(check_ranges == ghost_comm.cached_ranges and
+           "cached columnar ranges diverged from live contiguous_store_rows");
+#endif
     return &ghost_comm.cached_ranges;
   }
   ghost_comm.cached_ranges_valid = false;
@@ -516,6 +550,7 @@ columnar_resolve_ranges(GhostCommunication const &ghost_comm,
     ranges.push_back(*range);
   }
   ghost_comm.cached_store_generation = store.generation();
+  ghost_comm.cached_store = &store;
   ghost_comm.cached_ranges_valid = true;
   return &ghost_comm.cached_ranges;
 }
@@ -595,8 +630,14 @@ static std::optional<PositionRowContext> make_position_row_context() {
 }
 
 /** @brief Build a ForceRowContext for the current store (caller has already
- *  established store validity/cleanliness). */
+ *  established store validity/cleanliness). Returns a zero-initialized context
+ *  when the store is empty; callers' loops skip n==0 ranges so the null
+ *  pointers are never dereferenced, but taking &view(0,0) on an empty view is
+ *  UB under bounds-checking. */
 static ForceRowContext make_force_row_context(ParticleStore &store) {
+  if (store.number_of_particles() == 0u) {
+    return ForceRowContext{};
+  }
   ForceRowContext ctx{};
   auto force = store.force_view();
   ctx.force = &force(0, 0);
@@ -613,9 +654,15 @@ static ForceRowContext make_force_row_context(ParticleStore &store) {
 
 /** @brief Build a PositionRowContext unconditionally from a valid store
  *  (helper for the columnar bulk paths, which have already checked
- *  cleanliness via columnar_eligible/columnar_resolve_ranges). */
+ *  cleanliness via columnar_eligible/columnar_resolve_ranges). Returns a
+ *  zero-initialized context when the store is empty; callers' loops skip n==0
+ *  ranges so the null pointers are never dereferenced, but taking &view(0,0)
+ *  on an empty view is UB under bounds-checking. */
 static PositionRowContext
 make_position_row_context_unchecked(ParticleStore &store) {
+  if (store.number_of_particles() == 0u) {
+    return PositionRowContext{};
+  }
   PositionRowContext ctx{};
   auto pos = store.position_view();
   auto img = store.image_box_view();
@@ -1001,8 +1048,9 @@ static void put_recv_buffer(CommBuf &recv_buffer,
   } else {
     /* Mixed-parts POSITION fast path (see prepare_send_buffer): write
      * pos/image/quat/pos_last straight into the (clean) store columns by row.
-     * nullptr => accessor fallback (POSITION absent, or dirty/absent store, or
-     * detached fresh ghosts on a resort step). */
+     * nullptr => accessor fallback (POSITION absent, or dirty/absent store).
+     * On resort steps the store is REBUILT before ghosts_update, so this path
+     * engages there with the attached, clean store. */
     auto const pos_ctx = (data_parts & GHOSTTRANS_POSITION)
                              ? make_position_row_context()
                              : std::nullopt;

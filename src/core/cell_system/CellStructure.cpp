@@ -618,8 +618,12 @@ void CellStructure::resort_particles(bool global_flag) {
 
   std::vector<ParticleChange> diff;
 
-  m_decomposition->resort(global_flag, diff);
+  // Mark the store dirty BEFORE the decomposition's resort: the dirty flag must
+  // be truthful DURING the resort window. HybridDecomposition runs an internal
+  // PARTNUM+ghost update inside that window, and the columnar ghost paths must
+  // see dirty and fall back to the per-particle path there.
   mark_particle_store_dirty();
+  m_decomposition->resort(global_flag, diff);
 
   for (auto d : diff) {
     std::visit(UpdateParticleIndexVisitor{this}, d);

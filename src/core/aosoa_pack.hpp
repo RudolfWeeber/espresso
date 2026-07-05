@@ -21,6 +21,7 @@
 
 #include <config/config.hpp>
 
+#include "attributes.hpp"
 #include "cell_system/CellStructure.hpp"
 
 #include <Kokkos_Core.hpp>
@@ -28,12 +29,6 @@
 #include <omp.h>
 
 #include <cstdint>
-
-#if defined(__GNUG__) or defined(__clang__)
-#define ESPRESSO_ATTR_ALWAYS_INLINE [[gnu::always_inline]]
-#else
-#define ESPRESSO_ATTR_ALWAYS_INLINE
-#endif
 
 struct CellStructure::AoSoA_pack {
   // Particle-major (@ref ParticleStore::StateVectorLayout, LayoutRight) to

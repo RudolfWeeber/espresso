@@ -23,6 +23,7 @@
 
 #include "config/config.hpp"
 
+#include "../attributes.hpp"
 #include "Particle.hpp"
 #include "random.hpp"
 #include "rotation.hpp"
@@ -35,13 +36,8 @@
 // The init_forces_and_thermostat lambda (forces.cpp) grew past gcc's inline
 // budget after the phase-3 proxy hoists, so friction_thermo_langevin surfaced
 // as a 3.6% out-of-line frame in the profile diff -- it was fully inlined in
-// the phase-0 baseline. Restore that by pinning always-inline. Mirror the
-// guarded macro spelling from aosoa_pack.hpp / BoxGeometry.hpp.
-#if defined(__GNUG__) or defined(__clang__)
-#define ESPRESSO_ATTR_ALWAYS_INLINE [[gnu::always_inline]]
-#else
-#define ESPRESSO_ATTR_ALWAYS_INLINE
-#endif
+// the phase-0 baseline. Restore that by pinning always-inline; see
+// src/core/attributes.hpp for the macro definition.
 
 /** Langevin thermostat for particle translational velocities.
  *  @param[in]     langevin       Parameters

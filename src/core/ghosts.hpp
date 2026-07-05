@@ -143,11 +143,15 @@ enum : unsigned {
 };
 
 struct GhostCommunication {
-  /** Cached contiguous store-row ranges (and LOCL pairs) for the columnar
-   *  bulk paths, valid while cached_store_generation matches the store's
-   *  generation() (rows only change at a rebuild). Rank-local scratch. */
+  /** Cached contiguous store-row ranges for the columnar bulk paths, valid
+   *  while cached_store_generation matches the store's generation() AND
+   *  cached_store equals the store's identity (address). Both checks are
+   *  required: a new store object at the same address with the same generation
+   *  counter would otherwise produce a false hit. LOCL resolves fresh (no
+   *  cache). Rank-local scratch. */
   mutable std::uint64_t cached_store_generation = 0u;
   mutable bool cached_ranges_valid = false;
+  mutable void const *cached_store = nullptr;
   mutable std::vector<std::pair<int, std::size_t>> cached_ranges;
 
   /** Communication type. */

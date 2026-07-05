@@ -156,7 +156,9 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
   // Otherwise the particle is detached (brand-new or just migrated from
   // another rank): its columns are seeded from the migration carriers, which
   // hold the values ferried through Particle serialization (see Particle.hpp).
-  // Reading a raw carrier never touches the fresh (zero-initialized) columns.
+  // Reading a raw carrier never touches the fresh columns (allocated
+  // WithoutInitializing; every row is written by assign_row before
+  // finish_rebuild).
   bool const preserve =
       particle.store() == this and old_row >= 0 and
       static_cast<std::size_t>(old_row) < m_old_number_of_particles;
