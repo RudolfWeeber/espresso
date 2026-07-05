@@ -709,6 +709,12 @@ void CellStructure::update_ghosts_and_resort_particle(unsigned data_parts) {
     /* Resort cell system */
     resort_particles(do_global_resort);
     ghosts_count();
+    /* Rebuild the store rows NOW: resort_particles/ghosts_count marked the
+     * store dirty, and a dirty store forces the ghost update below onto the
+     * slow per-field accessor path (measured +49% in this slot on lj-4rank).
+     * After the rebuild, freshly created ghosts are attached and the update
+     * writes their state straight into the columns by row. */
+    ensure_particle_store_synchronized();
     ghosts_update(data_parts);
 
     /* Add the ghost particles to the index if we don't already
