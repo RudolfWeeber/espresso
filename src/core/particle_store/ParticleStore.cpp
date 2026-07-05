@@ -203,6 +203,7 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
 }
 
 void ParticleStore::finish_rebuild() {
+  ++m_generation;
   // Keep the old-generation columns alive as the spare buffer for the next
   // rebuild's swap (capacity-cached double buffering). Only the bookkeeping is
   // cleared; release_columns drops BOTH generations at teardown.

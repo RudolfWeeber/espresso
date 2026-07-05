@@ -489,9 +489,20 @@ contiguous_store_rows(ParticleList const &part_list) {
  *  before any column is read or written, the mutating callers (FORCE `+=`,
  *  POSITION assign) can never partially apply and then fall back -- which for
  *  FORCE would double-count. */
-static std::optional<std::vector<std::pair<int, std::size_t>>>
-columnar_resolve_ranges(GhostCommunication const &ghost_comm) {
-  std::vector<std::pair<int, std::size_t>> ranges;
+static std::vector<std::pair<int, std::size_t>> const *
+columnar_resolve_ranges(GhostCommunication const &ghost_comm,
+                        ParticleStore const &store) {
+  /* Rows only change at a rebuild (store generation bump); the resolved
+   * ranges per communication are cached until then, so steady-state steps
+   * pay neither the per-list first-particle dereference (a cache-miss
+   * pointer chase) nor a heap allocation. */
+  if (ghost_comm.cached_ranges_valid and
+      ghost_comm.cached_store_generation == store.generation()) {
+    return &ghost_comm.cached_ranges;
+  }
+  ghost_comm.cached_ranges_valid = false;
+  auto &ranges = ghost_comm.cached_ranges;
+  ranges.clear();
   ranges.reserve(ghost_comm.part_lists.size());
   for (auto part_list : ghost_comm.part_lists) {
     auto const range = contiguous_store_rows(*part_list);
@@ -500,11 +511,13 @@ columnar_resolve_ranges(GhostCommunication const &ghost_comm) {
         ranges.emplace_back(0, 0u);
         continue;
       }
-      return std::nullopt; // detached first particle: fall back before mutating
+      return nullptr; // detached first particle: fall back before mutating
     }
     ranges.push_back(*range);
   }
-  return ranges;
+  ghost_comm.cached_store_generation = store.generation();
+  ghost_comm.cached_ranges_valid = true;
+  return &ghost_comm.cached_ranges;
 }
 
 /** @brief Whether data_parts selects a columnar-eligible per-step comm on a
@@ -845,11 +858,11 @@ static bool columnar_prepare_send_buffer(CommBuf &send_buffer,
                                          GhostCommunication const &ghost_comm,
                                          BoxGeometry const &box_geo,
                                          unsigned int data_parts) {
-  auto const ranges = columnar_resolve_ranges(ghost_comm);
-  if (not ranges.has_value()) {
+  auto &store = *active_particle_store();
+  auto const *ranges = columnar_resolve_ranges(ghost_comm, store);
+  if (ranges == nullptr) {
     return false; // decided before touching the buffer/store
   }
-  auto &store = *active_particle_store();
   auto const position_ctx =
       (data_parts == GHOSTTRANS_POSITION)
           ? std::optional<PositionRowContext>(
@@ -947,11 +960,11 @@ static bool columnar_put_recv_buffer(CommBuf &recv_buffer,
                                      unsigned int data_parts) {
   assert(data_parts == GHOSTTRANS_POSITION);
   static_cast<void>(data_parts);
-  auto const ranges = columnar_resolve_ranges(ghost_comm);
-  if (not ranges.has_value()) {
+  auto &store = *active_particle_store();
+  auto const *ranges = columnar_resolve_ranges(ghost_comm, store);
+  if (ranges == nullptr) {
     return false; // decided before writing any column
   }
-  auto &store = *active_particle_store();
   auto const position_ctx = make_position_row_context_unchecked(store);
   auto const *cursor = recv_buffer.data();
   for (auto const &[first_row, n] : *ranges) {
@@ -1043,11 +1056,11 @@ columnar_add_forces_from_recv_buffer(CommBuf &recv_buffer,
                                      GhostCommunication const &ghost_comm) {
   /* The fall-back decision is made BEFORE any `+=`: a mid-list fall-back after
    * a partial accumulate would double-count on the generic retry. */
-  auto const ranges = columnar_resolve_ranges(ghost_comm);
-  if (not ranges.has_value()) {
+  auto &store = *active_particle_store();
+  auto const *ranges = columnar_resolve_ranges(ghost_comm, store);
+  if (ranges == nullptr) {
     return false;
   }
-  auto &store = *active_particle_store();
   auto const force_ctx = make_force_row_context(store);
   auto const *cursor = recv_buffer.data();
   for (auto const &[first_row, n] : *ranges) {

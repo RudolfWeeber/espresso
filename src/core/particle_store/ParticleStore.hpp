@@ -31,6 +31,7 @@
 
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <type_traits>
 
 class Particle; // attach_to_store is defined in Particle.hpp
@@ -88,6 +89,10 @@ public:
   }
 
   void mark_dirty() { m_dirty = true; }
+  /** @brief Monotonic row-assignment generation; bumped by finish_rebuild.
+   *  Consumers may cache row-derived data (e.g. ghost-communication row
+   *  ranges) tagged with this value and reuse it while it is unchanged. */
+  std::uint64_t generation() const { return m_generation; }
   bool is_dirty() const { return m_dirty; }
 
   void begin_rebuild(std::size_t number_of_local_particles,
@@ -283,6 +288,7 @@ private:
   std::size_t m_number_of_local_particles = 0u;
   std::size_t m_number_of_ghost_particles = 0u;
   bool m_dirty = false;
+  std::uint64_t m_generation = 0u;
 
   // -- current-generation columns -------------------------------------------
   Column m_force;

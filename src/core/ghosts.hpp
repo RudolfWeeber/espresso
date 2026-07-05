@@ -95,6 +95,7 @@
 #include <boost/mpi/communicator.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -142,6 +143,13 @@ enum : unsigned {
 };
 
 struct GhostCommunication {
+  /** Cached contiguous store-row ranges (and LOCL pairs) for the columnar
+   *  bulk paths, valid while cached_store_generation matches the store's
+   *  generation() (rows only change at a rebuild). Rank-local scratch. */
+  mutable std::uint64_t cached_store_generation = 0u;
+  mutable bool cached_ranges_valid = false;
+  mutable std::vector<std::pair<int, std::size_t>> cached_ranges;
+
   /** Communication type. */
   int type;
   /** Node to communicate with (to use with all MPI operations). */
