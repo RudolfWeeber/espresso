@@ -256,11 +256,12 @@ void ElectrostaticLayerCorrection::add_dipole_force() const {
   }
 
   for (auto &p : particles) {
-    p.force()[2] -= field_tot * p.q();
+    auto force = p.force();
+    force[2] -= field_tot * p.q();
 
     if (!elc.neutralize) {
       // SUBTRACT the forces of the P3M homogeneous neutralizing background
-      p.force()[2] += gblcblk[2] * p.q() * (p.pos()[2] - shift);
+      force[2] += gblcblk[2] * p.q() * (p.pos()[2] - shift);
     }
   }
 }

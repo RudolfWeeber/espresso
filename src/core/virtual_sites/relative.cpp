@@ -137,19 +137,21 @@ void vs_relative_update_particles(CellStructure &cell_structure,
 
     // position update
     if (is_vs_relative_trans(p)) {
-      p.image_box() = p_ref.image_box();
-      p.pos() = Utils::Vector3d(p_ref.pos()) + connection_vector(p_ref, p);
+      auto pos = p.pos();
+      auto img = p.image_box();
+      img = p_ref.image_box();
+      pos = Utils::Vector3d(p_ref.pos()) + connection_vector(p_ref, p);
       p.v() = velocity(p_ref, p);
 
       if (box_geo.type() == BoxType::LEES_EDWARDS) {
         auto push = LeesEdwards::Push(box_geo);
         push(p, 1); // includes a position fold
       } else {
-        Utils::Vector3d position = p.pos();
-        Utils::Vector3i image_box = p.image_box();
+        Utils::Vector3d position = pos;
+        Utils::Vector3i image_box = img;
         box_geo.fold_position(position, image_box);
-        p.pos() = position;
-        p.image_box() = image_box;
+        pos = position;
+        img = image_box;
       }
     }
 
@@ -181,15 +183,15 @@ void vs_relative_back_transfer_forces_and_torques(
         assert(p_ref_ptr != nullptr);
 
         auto &p_ref = *p_ref_ptr;
+        auto ref_torque = p_ref.torque();
         if (is_vs_relative_trans(p)) {
           auto const p_force = Utils::Vector3d(p.force());
           p_ref.force() += p_force;
-          p_ref.torque() +=
-              vector_product(connection_vector(p_ref, p), p_force);
+          ref_torque += vector_product(connection_vector(p_ref, p), p_force);
         }
 
         if (is_vs_rot(p)) {
-          p_ref.torque() += p.torque();
+          ref_torque += p.torque();
         }
       },
       /* parallel */ false);

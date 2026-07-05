@@ -89,13 +89,15 @@ static void sd_update_locally(ParticleIterable const &parts,
 
   for (auto &p : parts) {
     // Copy velocities
-    p.v()[0] = v_sd[6 * i + 0];
-    p.v()[1] = v_sd[6 * i + 1];
-    p.v()[2] = v_sd[6 * i + 2];
+    auto &vel = p.v();
+    vel[0] = v_sd[6 * i + 0];
+    vel[1] = v_sd[6 * i + 1];
+    vel[2] = v_sd[6 * i + 2];
 
-    p.omega()[0] = v_sd[6 * i + 3];
-    p.omega()[1] = v_sd[6 * i + 4];
-    p.omega()[2] = v_sd[6 * i + 5];
+    auto &omega = p.omega();
+    omega[0] = v_sd[6 * i + 3];
+    omega[1] = v_sd[6 * i + 4];
+    omega[2] = v_sd[6 * i + 5];
 
     ++i;
   }

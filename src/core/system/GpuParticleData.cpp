@@ -134,10 +134,14 @@ static void add_forces_and_torques(ParticleRange const &particles,
                                    std::span<const float> torques) {
   std::size_t i = 0ul;
   for (auto &p : particles) {
-    for (std::size_t j = 0ul; j < 3ul; j++) {
-      p.force()[j] += static_cast<double>(forces[3ul * i + j]);
+    auto force = p.force();
 #ifdef ESPRESSO_ROTATION
-      p.torque()[j] += static_cast<double>(torques[3ul * i + j]);
+    auto torque = p.torque();
+#endif
+    for (std::size_t j = 0ul; j < 3ul; j++) {
+      force[j] += static_cast<double>(forces[3ul * i + j]);
+#ifdef ESPRESSO_ROTATION
+      torque[j] += static_cast<double>(torques[3ul * i + j]);
 #endif
     }
     i++;

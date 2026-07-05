@@ -111,19 +111,21 @@ static void init_forces_and_thermostat(System::System const &system) {
   cell_structure.for_each_local_particle([&](Particle &p) {
     // Initialize force with external forces
     auto const external = external_force(p);
-    p.force() = external.f;
+    auto force = p.force();
+    force = external.f;
 #ifdef ESPRESSO_ROTATION
-    p.torque() = external.torque;
+    auto torque = p.torque();
+    torque = external.torque;
 #endif
 
     // Apply Langevin noise if thermostat is active
     if (langevin_active) {
       auto const &langevin = *thermostat.langevin;
       if (propagation.should_propagate_with(p, PropagationMode::TRANS_LANGEVIN))
-        p.force() += friction_thermo_langevin(langevin, p, time_step, kT);
+        force += friction_thermo_langevin(langevin, p, time_step, kT);
 #ifdef ESPRESSO_ROTATION
       if (propagation.should_propagate_with(p, PropagationMode::ROT_LANGEVIN))
-        p.torque() += convert_vector_body_to_space(
+        torque += convert_vector_body_to_space(
             p, friction_thermo_langevin_rotation(langevin, p, time_step, kT));
 #endif
     }
@@ -139,9 +141,10 @@ static void force_capping(CellStructure &cell_structure, double force_cap) {
     auto const force_cap_sq = Utils::sqr(force_cap);
     cell_structure.for_each_local_particle(
         [&force_cap, &force_cap_sq](Particle &p) {
-          auto const force_sq = p.force().norm2();
+          auto force = p.force();
+          auto const force_sq = force.norm2();
           if (force_sq > force_cap_sq) {
-            p.force() *= force_cap / std::sqrt(force_sq);
+            force *= force_cap / std::sqrt(force_sq);
           }
         });
   }
@@ -249,9 +252,10 @@ static void reduce_cabana_forces_and_torques(System::System const &system,
                          torque[1] += local_torque(i, 1);
                          torque[2] += local_torque(i, 2);
 #endif
-                         unique_particles.at(i)->force() += force;
+                         auto *particle = unique_particles[i];
+                         particle->force() += force;
 #ifdef ESPRESSO_ROTATION
-                         unique_particles.at(i)->torque() += torque;
+                         particle->torque() += torque;
 #endif
                        });
   Kokkos::fence();

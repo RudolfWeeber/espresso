@@ -37,9 +37,10 @@ inline void stokesian_dynamics_step_1(ParticleRangeStokesian const &particles,
     // translate
     p.pos() += p.v() * time_step;
     // rotate
-    auto const norm = p.omega().norm();
+    auto const omega = p.omega();
+    auto const norm = omega.norm();
     if (norm != 0.) {
-      auto const omega_unit = (1. / norm) * p.omega();
+      auto const omega_unit = (1. / norm) * omega;
       local_rotate_particle(p, omega_unit, norm * time_step);
     }
   }

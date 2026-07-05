@@ -314,12 +314,13 @@ void ParticleCoupling::kernel(std::vector<Particle *> const &particles) {
 
     auto const span_size = *it_positions_force_coupling_counter;
     ++it_positions_force_coupling_counter;
+    auto p_force = p.force();
     for (uint8_t i{0u}; i < span_size; ++i) {
       auto &pos = *it_positions_force_coupling;
       if (pos >= domain_lower_corner and pos < domain_upper_corner) {
         /* Particle is in our LB volume, so this node
          * is responsible to adding its force */
-        p.force() += force_on_particle;
+        p_force += force_on_particle;
       }
       force_coupling_forces.emplace_back(force_on_fluid);
       ++it_positions_force_coupling;

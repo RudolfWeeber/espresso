@@ -64,6 +64,7 @@ inline Utils::Vector3d bd_drag(Thermostat::GammaType const &brownian_gamma,
 #endif
 
   Utils::Vector3d position = {};
+  auto const force = p.force();
   for (unsigned int j = 0; j < 3; j++) {
     // Second (deterministic) term of the Eq. (14.39) of schlick10a.
     // Only a conservative part of the force is used here
@@ -74,12 +75,12 @@ inline Utils::Vector3d bd_drag(Thermostat::GammaType const &brownian_gamma,
       }
     } else {
       if (!p.is_fixed_along(j)) {
-        position[j] = p.force()[j] * dt / gamma[j];
+        position[j] = force[j] * dt / gamma[j];
       }
     }
 #else
     if (!p.is_fixed_along(j)) {
-      position[j] = p.force()[j] * dt / gamma;
+      position[j] = force[j] * dt / gamma;
     }
 #endif // ESPRESSO_PARTICLE_ANISOTROPY
   }
@@ -117,6 +118,7 @@ inline Utils::Vector3d bd_drag_vel(Thermostat::GammaType const &brownian_gamma,
 #endif
 
   Utils::Vector3d velocity = {};
+  auto const force = p.force();
   for (unsigned int j = 0; j < 3; j++) {
     // First (deterministic) term of the eq. (14.34) of schlick10a taking
     // into account eq. (14.35). Only conservative part of the force is used
@@ -128,12 +130,12 @@ inline Utils::Vector3d bd_drag_vel(Thermostat::GammaType const &brownian_gamma,
       }
     } else {
       if (!p.is_fixed_along(j)) {
-        velocity[j] = p.force()[j] / gamma[j];
+        velocity[j] = force[j] / gamma[j];
       }
     }
 #else  // ESPRESSO_PARTICLE_ANISOTROPY
     if (!p.is_fixed_along(j)) {
-      velocity[j] = p.force()[j] / gamma;
+      velocity[j] = force[j] / gamma;
     }
 #endif // ESPRESSO_PARTICLE_ANISOTROPY
   }
@@ -256,13 +258,14 @@ bd_drag_rot(Thermostat::GammaType const &brownian_gamma_rotation, Particle &p,
   }
 
   Utils::Vector3d dphi = {};
+  auto const torque = p.torque();
   for (unsigned int j = 0; j < 3; j++) {
     if (p.can_rotate_around(j)) {
       // only a conservative part of the torque is used here
 #ifndef ESPRESSO_PARTICLE_ANISOTROPY
-      dphi[j] = p.torque()[j] * dt / gamma;
+      dphi[j] = torque[j] * dt / gamma;
 #else
-      dphi[j] = p.torque()[j] * dt / gamma[j];
+      dphi[j] = torque[j] * dt / gamma[j];
 #endif // ESPRESSO_PARTICLE_ANISOTROPY
     }
   }
@@ -295,12 +298,13 @@ bd_drag_vel_rot(Thermostat::GammaType const &brownian_gamma_rotation,
   }
 
   Utils::Vector3d omega = {};
+  auto const torque = p.torque();
   for (unsigned int j = 0; j < 3; j++) {
     if (p.can_rotate_around(j)) {
 #ifdef ESPRESSO_PARTICLE_ANISOTROPY
-      omega[j] = p.torque()[j] / gamma[j];
+      omega[j] = torque[j] / gamma[j];
 #else
-      omega[j] = p.torque()[j] / gamma;
+      omega[j] = torque[j] / gamma;
 #endif // ESPRESSO_PARTICLE_ANISOTROPY
     }
   }

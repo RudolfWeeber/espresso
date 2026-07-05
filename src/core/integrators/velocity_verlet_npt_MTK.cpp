@@ -83,9 +83,11 @@ velocity_verlet_npt_propagate_p_eps(NptIsoParameters &nptiso,
 static void velocity_verlet_npt_propagate_pos(ParticleRangeNPT const &particles,
                                               double time_step) {
   for (auto &p : particles) {
+    auto pos = p.pos();
+    auto &vel = p.v();
     for (auto j = 0u; j < 3u; ++j) {
       if (!p.is_fixed_along(j)) {
-        p.pos()[j] = p.pos()[j] + p.v()[j] * 0.5 * time_step;
+        pos[j] = pos[j] + vel[j] * 0.5 * time_step;
       }
     }
   }
@@ -101,10 +103,11 @@ velocity_verlet_npt_propagate_pos_MTK(NptIsoParameters &nptiso,
       std::exp(nptiso.half_dt_inv_piston * nptiso.p_epsilon);
 
   for (auto &p : particles) {
+    auto pos = p.pos();
     for (auto j = 0u; j < 3u; ++j) {
       if (!p.is_fixed_along(j)) {
         if (nptiso.geometry & NptIsoParameters::nptgeom_dir[j]) {
-          p.pos()[j] *= propagator;
+          pos[j] *= propagator;
         }
       }
     }
@@ -137,12 +140,13 @@ static void velocity_verlet_npt_propagate_AVOVA_MTK(
    *                      + \sqrt{k_B T (1 - \exp(-2 \gamma_0 dt)}N(0,1) @f$
    */
   for (auto &p : particles) {
+    auto &vel = p.v();
     auto const v_therm =
-        propagate_therm0_nptiso(npt_iso, p.v(), p.mass(), p.id());
+        propagate_therm0_nptiso(npt_iso, vel, p.mass(), p.id());
     for (unsigned int j = 0; j < 3; j++) {
       if (!p.is_fixed_along(j)) {
         if (nptiso.geometry & NptIsoParameters::nptgeom_dir[j]) {
-          p.v()[j] = v_therm[j];
+          vel[j] = v_therm[j];
         }
       }
     }
@@ -205,11 +209,13 @@ velocity_verlet_npt_propagate_vel_MTK(NptIsoParameters const &nptiso,
       std::exp(nptiso.half_dt_inv_piston_and_Nf * nptiso.p_epsilon);
 
   for (auto &p : particles) {
+    auto &vel = p.v();
+    auto const mass = p.mass();
     for (auto j = 0u; j < 3u; ++j) {
       if (!p.is_fixed_along(j)) {
         if (nptiso.geometry & NptIsoParameters::nptgeom_dir[j]) {
-          p.v()[j] *= propagater;
-          npt_inst_pressure.p_vel[j] += Utils::sqr(p.v()[j]) * p.mass();
+          vel[j] *= propagater;
+          npt_inst_pressure.p_vel[j] += Utils::sqr(vel[j]) * mass;
         }
       }
     }

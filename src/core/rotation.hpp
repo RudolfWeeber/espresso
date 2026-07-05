@@ -143,8 +143,9 @@ inline void local_rotate_particle(Particle &p,
 }
 
 inline void convert_torque_to_body_frame_apply_fix(Particle &p) {
-  auto const torque = convert_vector_space_to_body(p, p.torque());
-  p.torque() = mask(p.rotation(), torque);
+  auto torque_ref = p.torque();
+  auto const torque = convert_vector_space_to_body(p, torque_ref);
+  torque_ref = mask(p.rotation(), torque);
 }
 
 #endif // ESPRESSO_ROTATION

@@ -63,32 +63,32 @@ static void define_Qdd(Particle const &p, Utils::Quaternion<double> &Qd,
   /* calculate the first derivative of the quaternion */
   /* Eq. (4) @cite sonnenschein85a */
   auto const quaternion = Utils::Quaternion<double>(p.quat());
-  Qd[0] = 0.5 * (-quaternion[1] * p.omega()[0] - quaternion[2] * p.omega()[1] -
-                 quaternion[3] * p.omega()[2]);
+  auto const &omega = p.omega();
+  auto const &rinertia = p.rinertia();
+  Qd[0] = 0.5 * (-quaternion[1] * omega[0] - quaternion[2] * omega[1] -
+                 quaternion[3] * omega[2]);
 
-  Qd[1] = 0.5 * (quaternion[0] * p.omega()[0] - quaternion[3] * p.omega()[1] +
-                 quaternion[2] * p.omega()[2]);
+  Qd[1] = 0.5 * (quaternion[0] * omega[0] - quaternion[3] * omega[1] +
+                 quaternion[2] * omega[2]);
 
-  Qd[2] = 0.5 * (quaternion[3] * p.omega()[0] + quaternion[0] * p.omega()[1] -
-                 quaternion[1] * p.omega()[2]);
+  Qd[2] = 0.5 * (quaternion[3] * omega[0] + quaternion[0] * omega[1] -
+                 quaternion[1] * omega[2]);
 
-  Qd[3] = 0.5 * (-quaternion[2] * p.omega()[0] + quaternion[1] * p.omega()[1] +
-                 quaternion[0] * p.omega()[2]);
+  Qd[3] = 0.5 * (-quaternion[2] * omega[0] + quaternion[1] * omega[1] +
+                 quaternion[0] * omega[2]);
 
   /* Calculate the angular acceleration. */
   /* Eq. (5) @cite sonnenschein85a */
+  auto const torque = p.torque();
   if (p.can_rotate_around(0))
-    Wd[0] = (p.torque()[0] + p.omega()[1] * p.omega()[2] *
-                                 (p.rinertia()[1] - p.rinertia()[2])) /
-            p.rinertia()[0];
+    Wd[0] = (torque[0] + omega[1] * omega[2] * (rinertia[1] - rinertia[2])) /
+            rinertia[0];
   if (p.can_rotate_around(1))
-    Wd[1] = (p.torque()[1] + p.omega()[2] * p.omega()[0] *
-                                 (p.rinertia()[2] - p.rinertia()[0])) /
-            p.rinertia()[1];
+    Wd[1] = (torque[1] + omega[2] * omega[0] * (rinertia[2] - rinertia[0])) /
+            rinertia[1];
   if (p.can_rotate_around(2))
-    Wd[2] = (p.torque()[2] + p.omega()[0] * p.omega()[1] *
-                                 (p.rinertia()[0] - p.rinertia()[1])) /
-            p.rinertia()[2];
+    Wd[2] = (torque[2] + omega[0] * omega[1] * (rinertia[0] - rinertia[1])) /
+            rinertia[2];
 
   auto const S1 = Qd.norm2();
 
@@ -134,7 +134,8 @@ void propagate_omega_quat_particle(Particle &p, double time_step) {
   Utils::Vector3d S{}, Wd{};
 
   // Clear rotational velocity for blocked rotation axes.
-  p.omega() = Utils::mask(p.rotation(), p.omega());
+  auto &omega = p.omega();
+  omega = Utils::mask(p.rotation(), omega);
 
   define_Qdd(p, Qd, Qdd, S, Wd);
 
@@ -149,16 +150,17 @@ void propagate_omega_quat_particle(Particle &p, double time_step) {
   assert(square >= 0.);
   auto const lambda = 1 - S[0] * 0.5 * time_step_squared - sqrt(square);
 
-  p.omega() += time_step_half * Wd;
-  auto const quaternion_old = Utils::Quaternion<double>(p.quat());
-  p.quat() += time_step * (Qd + time_step_half * Qdd) - lambda * quaternion_old;
+  omega += time_step_half * Wd;
+  auto quat = p.quat();
+  auto const quaternion_old = Utils::Quaternion<double>(quat);
+  quat += time_step * (Qd + time_step_half * Qdd) - lambda * quaternion_old;
 
   /* and rescale quaternion, so it is exactly of unit length */
-  auto const scale = p.quat().norm();
+  auto const scale = quat.norm();
   if (scale == 0) {
-    p.quat() = Utils::Quaternion<double>::identity();
+    quat = Utils::Quaternion<double>::identity();
   } else {
-    p.quat() /= scale;
+    quat /= scale;
   }
 }
 
@@ -167,28 +169,30 @@ void convert_torque_propagate_omega(Particle &p, double time_step) {
   convert_torque_to_body_frame_apply_fix(p);
 
   // Propagation of angular velocities
-  p.omega() += hadamard_division(0.5 * time_step * Utils::Vector3d(p.torque()),
-                                 p.rinertia());
+  auto &omega = p.omega();
+  auto const &rinertia = p.rinertia();
+  omega += hadamard_division(0.5 * time_step * Utils::Vector3d(p.torque()),
+                             rinertia);
 
   // zeroth estimate of omega
-  Utils::Vector3d omega_0 = p.omega();
+  Utils::Vector3d omega_0 = omega;
 
   /* if the tensor of inertia is isotropic, the following refinement is not
      needed.
      Otherwise repeat this loop 2-3 times depending on the required accuracy
    */
 
-  auto const rinertia_diff_01 = p.rinertia()[0] - p.rinertia()[1];
-  auto const rinertia_diff_12 = p.rinertia()[1] - p.rinertia()[2];
-  auto const rinertia_diff_20 = p.rinertia()[2] - p.rinertia()[0];
+  auto const rinertia_diff_01 = rinertia[0] - rinertia[1];
+  auto const rinertia_diff_12 = rinertia[1] - rinertia[2];
+  auto const rinertia_diff_20 = rinertia[2] - rinertia[0];
   for (int times = 0; times <= 5; times++) {
     Utils::Vector3d Wd;
 
-    Wd[0] = p.omega()[1] * p.omega()[2] * rinertia_diff_12 / p.rinertia()[0];
-    Wd[1] = p.omega()[2] * p.omega()[0] * rinertia_diff_20 / p.rinertia()[1];
-    Wd[2] = p.omega()[0] * p.omega()[1] * rinertia_diff_01 / p.rinertia()[2];
+    Wd[0] = omega[1] * omega[2] * rinertia_diff_12 / rinertia[0];
+    Wd[1] = omega[2] * omega[0] * rinertia_diff_20 / rinertia[1];
+    Wd[2] = omega[0] * omega[1] * rinertia_diff_01 / rinertia[2];
 
-    p.omega() = omega_0 + (0.5 * time_step) * Wd;
+    omega = omega_0 + (0.5 * time_step) * Wd;
   }
 }
 
