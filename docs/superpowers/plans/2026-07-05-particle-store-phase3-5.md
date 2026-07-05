@@ -62,3 +62,11 @@
 ## Self-Review Notes
 - The ghost-tail translation gather is the only new per-access cost; locals (the bulk) hit the identity prefix. If Task-1 benchmarks show the gather hurting, the fallback (reorder m_unique_particles ghost tail to store-row order — dedup semantics preserved since dedup selects WHICH instances participate, not their order) is a contained follow-up.
 - Type consistency: `pack_index_to_store_row`, `update_director_view`, `store_position_view` names used consistently across tasks.
+
+### Task 2.5 (added after T2 benchmark): columnar ghost POSITION update + FORCE reduction
+
+**Measured motivation:** post-T2 ratios lj4 1.055 / p3m1 1.056 / p3m4 1.070 — residue isolated to the per-step ghost path (per-particle value serialization from strided columns). Implements spec section 2's ghost design (per-column gathers; contiguous ghost row ranges) for the two per-step field groups.
+
+**Files:** src/core/ghosts.cpp (+ CellStructure access to store views).
+
+**Design:** when `data_parts == GHOSTTRANS_POSITION` (the per-step ghost update) or `== GHOSTTRANS_FORCE` (reduction), take a columnar fast path: for each part_list, rows form a contiguous range `[first_row, first_row + size)` (cell-sorted store; ASSERT contiguity in debug); pack/unpack loops read/write the position/image/quaternion (or force/torque) columns directly by row — no Particle accessors, no proxies. Wire layout stays byte-identical (per-particle field order, same sizes). SAVE+shift path applies `+shift` and `fold_position` inside the bulk loop. Any other data_parts combination falls back to the existing per-particle `serialize_and_reduce` path (resort-time comms are not hot). GHOST_LOCL cell_cell_transfer gets the same bulk treatment. Identity must stay bitwise; the full ghost-mode battery (send/recv, BCST, RDCE, LOCL; 1/4 ranks; lees_edwards shift; hybrid) gates it.
