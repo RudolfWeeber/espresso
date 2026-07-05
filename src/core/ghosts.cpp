@@ -112,6 +112,36 @@ public:
   template <class T> auto &operator&(T &t) { return *this << t; }
 };
 
+/**
+ * @brief Raw column pointers + strides for the mixed-parts POSITION fast path.
+ *
+ * Captured once per communication from the (clean) ParticleStore's host views
+ * so the generic per-particle POSITION serialization can read/write the four
+ * position columns directly by row instead of through per-field accessor
+ * proxies. See make_position_row_context() below for how it is built and for
+ * the applicability rationale. A row-r component-c element of a column lives at
+ * base + r*row_stride + c*comp_stride (comp_stride==1 and one row contiguous
+ * under the store's LayoutRight).
+ */
+struct PositionRowContext {
+  double *pos; ///< base of the position column (row 0, component 0)
+  int *img;    ///< base of the image-box column
+  std::size_t pos_row_stride;
+  std::size_t pos_comp_stride;
+  std::size_t img_row_stride;
+  std::size_t img_comp_stride;
+#ifdef ESPRESSO_ROTATION
+  double *quat;
+  std::size_t quat_row_stride;
+  std::size_t quat_comp_stride;
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  double *plast;
+  std::size_t plast_row_stride;
+  std::size_t plast_comp_stride;
+#endif
+};
+
 /** @brief Type of reduction to carry out during serialization. */
 enum class ReductionPolicy {
   /** @brief Reduction for domain-to-domain particle communication. */
@@ -134,7 +164,8 @@ static void
 serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
                      ReductionPolicy policy, SerializationDirection direction,
                      BoxGeometry const &box_geo,
-                     Utils::Vector3d const *ghost_shift) {
+                     Utils::Vector3d const *ghost_shift,
+                     PositionRowContext const *pos_ctx = nullptr) {
   if (data_parts & GHOSTTRANS_PROPRTS) {
     ar & p.id() & p.mol_id() & p.type() & p.propagation();
 #ifdef ESPRESSO_ROTATION
@@ -182,24 +213,61 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
      * particle; on SAVE we read the value FROM the particle, optionally with
      * the ghost shift + fold applied. Never bind particle-struct memory to the
      * archive directly, so a future field-storage flip cannot serialize a
-     * proxy. Wire layout is byte-identical to the previous implementation. */
+     * proxy. Wire layout is byte-identical to the previous implementation.
+     *
+     * When a PositionRowContext is present AND the particle is attached
+     * (store_row() >= 0), read/write pos/image (and quat, pos_last_time_step)
+     * directly through the raw column pointers rather than the per-field
+     * accessor proxies -- this is the mixed-parts (POSITION|PROPERTIES) hot
+     * path. A detached particle (resort-step fresh ghost) or an absent context
+     * falls back to the accessor, which uses the migration carriers. Local
+     * copies are still made for the archive (SAVE) / from the archive (LOAD),
+     * so the shift+fold and the assignment semantics are exactly as before. */
+    auto const row = p.store_row();
+    bool const use_ctx = pos_ctx != nullptr and row >= 0;
     if (direction == SerializationDirection::LOAD) {
       Utils::Vector3d position;
       Utils::Vector3i image_box;
       ar & position;
       ar & image_box;
-      p.pos() = position;
-      p.image_box() = image_box;
-    } else if (ghost_shift != nullptr) {
-      /* ok, this is not nice, but perhaps fast */
-      Utils::Vector3d position = Utils::Vector3d(p.pos()) + *ghost_shift;
-      Utils::Vector3i image_box = p.image_box();
-      box_geo.fold_position(position, image_box);
-      ar & position;
-      ar & image_box;
+      if (use_ctx) {
+        auto *pos = pos_ctx->pos +
+                    static_cast<std::size_t>(row) * pos_ctx->pos_row_stride;
+        auto *img = pos_ctx->img +
+                    static_cast<std::size_t>(row) * pos_ctx->img_row_stride;
+        pos[0 * pos_ctx->pos_comp_stride] = position[0];
+        pos[1 * pos_ctx->pos_comp_stride] = position[1];
+        pos[2 * pos_ctx->pos_comp_stride] = position[2];
+        img[0 * pos_ctx->img_comp_stride] = image_box[0];
+        img[1 * pos_ctx->img_comp_stride] = image_box[1];
+        img[2 * pos_ctx->img_comp_stride] = image_box[2];
+      } else {
+        p.pos() = position;
+        p.image_box() = image_box;
+      }
     } else {
-      Utils::Vector3d position = p.pos();
-      Utils::Vector3i image_box = p.image_box();
+      Utils::Vector3d position;
+      Utils::Vector3i image_box;
+      if (use_ctx) {
+        auto const *pos = pos_ctx->pos + static_cast<std::size_t>(row) *
+                                             pos_ctx->pos_row_stride;
+        auto const *img = pos_ctx->img + static_cast<std::size_t>(row) *
+                                             pos_ctx->img_row_stride;
+        position = {pos[0 * pos_ctx->pos_comp_stride],
+                    pos[1 * pos_ctx->pos_comp_stride],
+                    pos[2 * pos_ctx->pos_comp_stride]};
+        image_box = {img[0 * pos_ctx->img_comp_stride],
+                     img[1 * pos_ctx->img_comp_stride],
+                     img[2 * pos_ctx->img_comp_stride]};
+      } else {
+        position = p.pos();
+        image_box = p.image_box();
+      }
+      if (ghost_shift != nullptr) {
+        /* ok, this is not nice, but perhaps fast */
+        position += *ghost_shift;
+        box_geo.fold_position(position, image_box);
+      }
       ar & position;
       ar & image_box;
     }
@@ -207,9 +275,28 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
     if (direction == SerializationDirection::LOAD) {
       Utils::Quaternion<double> quat;
       ar & quat;
-      p.quat() = quat;
+      if (use_ctx) {
+        auto *q = pos_ctx->quat +
+                  static_cast<std::size_t>(row) * pos_ctx->quat_row_stride;
+        q[0 * pos_ctx->quat_comp_stride] = quat[0];
+        q[1 * pos_ctx->quat_comp_stride] = quat[1];
+        q[2 * pos_ctx->quat_comp_stride] = quat[2];
+        q[3 * pos_ctx->quat_comp_stride] = quat[3];
+      } else {
+        p.quat() = quat;
+      }
     } else {
-      Utils::Quaternion<double> quat = p.quat();
+      Utils::Quaternion<double> quat;
+      if (use_ctx) {
+        auto const *q = pos_ctx->quat + static_cast<std::size_t>(row) *
+                                            pos_ctx->quat_row_stride;
+        quat[0] = q[0 * pos_ctx->quat_comp_stride];
+        quat[1] = q[1 * pos_ctx->quat_comp_stride];
+        quat[2] = q[2 * pos_ctx->quat_comp_stride];
+        quat[3] = q[3 * pos_ctx->quat_comp_stride];
+      } else {
+        quat = p.quat();
+      }
       ar & quat;
     }
 #endif
@@ -217,9 +304,26 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
     if (direction == SerializationDirection::LOAD) {
       Utils::Vector3d pos_last_time_step;
       ar & pos_last_time_step;
-      p.pos_last_time_step() = pos_last_time_step;
+      if (use_ctx) {
+        auto *pl = pos_ctx->plast +
+                   static_cast<std::size_t>(row) * pos_ctx->plast_row_stride;
+        pl[0 * pos_ctx->plast_comp_stride] = pos_last_time_step[0];
+        pl[1 * pos_ctx->plast_comp_stride] = pos_last_time_step[1];
+        pl[2 * pos_ctx->plast_comp_stride] = pos_last_time_step[2];
+      } else {
+        p.pos_last_time_step() = pos_last_time_step;
+      }
     } else {
-      Utils::Vector3d pos_last_time_step = p.pos_last_time_step();
+      Utils::Vector3d pos_last_time_step;
+      if (use_ctx) {
+        auto const *pl = pos_ctx->plast + static_cast<std::size_t>(row) *
+                                              pos_ctx->plast_row_stride;
+        pos_last_time_step = {pl[0 * pos_ctx->plast_comp_stride],
+                              pl[1 * pos_ctx->plast_comp_stride],
+                              pl[2 * pos_ctx->plast_comp_stride]};
+      } else {
+        pos_last_time_step = p.pos_last_time_step();
+      }
       ar & pos_last_time_step;
     }
 #endif
@@ -397,6 +501,70 @@ static bool columnar_eligible(unsigned int data_parts) {
   }
   auto const *store = active_particle_store();
   return store != nullptr and not store->is_dirty();
+}
+
+/* ------------------------------------------------------------------------- *
+ *  Per-communication row-access context for the MIXED-parts POSITION branch.
+ *
+ *  The per-step ghost update slot NEVER carries a pure GHOSTTRANS_POSITION
+ *  transfer: get_global_ghost_flags() always yields POSITION|PROPERTIES, so
+ *  the whole-communication POSITION-only fast path above cannot engage for it.
+ *  It therefore goes through the generic per-particle serialize_and_reduce,
+ *  whose POSITION branch would otherwise route every pos/image/quat/pos_last
+ *  field through a per-field VectorReference/QuaternionReference proxy (SAVE:
+ *  proxy construct + materialize per field; LOAD: proxy construct + write per
+ *  field), ~2k ghosts x both sides x per step -- the measured +49% regression
+ *  in update_ghosts_and_resort_particle.
+ *
+ *  The context captures, ONCE per ghost_communicator/cell_cell_transfer
+ *  invocation (only when the store is present and clean, WITHOUT the
+ *  data_parts==POSITION restriction of columnar_eligible), the raw host base
+ *  pointers + row/component strides for the four POSITION columns. Any attached
+ *  particle's row-r vector then lives at base + r*row_stride, its components at
+ *  component_stride apart (component_stride==1 and the row contiguous under the
+ *  store's LayoutRight, matching the accessor proxies' invariants). The generic
+ *  POSITION branch reads/writes these directly by row instead of through the
+ *  accessor, producing a byte-identical wire layout.
+ *
+ *  Passed to serialize_and_reduce as an optional pointer (nullptr = accessor
+ *  fallback), and consulted only when p.store_row() >= 0 (an attached
+ *  particle). Detached ghosts during a resort-step update (store()==nullptr /
+ *  store_row() < 0) and any dirty-store situation fall back to the accessor,
+ *  which correctly reads/writes their migration carriers.
+ * ------------------------------------------------------------------------- */
+
+/** @brief Build a PositionRowContext for the current clean store, or
+ *  std::nullopt if there is no store or it is dirty (accessor fallback). This
+ *  intentionally omits the data_parts==POSITION gate of columnar_eligible: it
+ *  is meant for the mixed-parts (POSITION|PROPERTIES) per-step update. */
+static std::optional<PositionRowContext> make_position_row_context() {
+  auto *store = active_particle_store();
+  if (store == nullptr or store->is_dirty() or
+      store->number_of_particles() == 0u) {
+    return std::nullopt;
+  }
+  auto pos = store->position_view();
+  auto img = store->image_box_view();
+  PositionRowContext ctx{};
+  ctx.pos = &pos(0, 0);
+  ctx.img = &img(0, 0);
+  ctx.pos_row_stride = pos.stride(0);
+  ctx.pos_comp_stride = pos.stride(1);
+  ctx.img_row_stride = img.stride(0);
+  ctx.img_comp_stride = img.stride(1);
+#ifdef ESPRESSO_ROTATION
+  auto quat = store->quaternion_view();
+  ctx.quat = &quat(0, 0);
+  ctx.quat_row_stride = quat.stride(0);
+  ctx.quat_comp_stride = quat.stride(1);
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  auto plast = store->position_last_time_step_view();
+  ctx.plast = &plast(0, 0);
+  ctx.plast_row_stride = plast.stride(0);
+  ctx.plast_comp_stride = plast.stride(1);
+#endif
+  return ctx;
 }
 
 namespace {
@@ -671,6 +839,15 @@ static void prepare_send_buffer(CommBuf &send_buffer,
 
   auto archiver = Utils::MemcpyOArchive{send_buffer.make_span()};
 
+  /* Mixed-parts POSITION fast path: read pos/image/quat/pos_last straight from
+   * the (clean) store columns by row instead of via per-field accessor proxies.
+   * nullptr when POSITION is absent or the store is dirty/absent (accessor
+   * fallback, per-particle). */
+  auto const pos_ctx = (data_parts & GHOSTTRANS_POSITION)
+                           ? make_position_row_context()
+                           : std::nullopt;
+  auto const *pos_ctx_ptr = pos_ctx.has_value() ? &(*pos_ctx) : nullptr;
+
   /* Construct archive that pushes back to the bond buffer */
   namespace io = boost::iostreams;
   io::stream<io::back_insert_device<std::vector<char>>> os{
@@ -687,7 +864,7 @@ static void prepare_send_buffer(CommBuf &send_buffer,
       for (auto &p : *part_list) {
         serialize_and_reduce(archiver, p, data_parts, ReductionPolicy::MOVE,
                              SerializationDirection::SAVE, box_geo,
-                             &ghost_comm.shift);
+                             &ghost_comm.shift, pos_ctx_ptr);
         if (data_parts & GHOSTTRANS_BONDS) {
           bond_archiver << p.bonds();
         }
@@ -753,10 +930,19 @@ static void put_recv_buffer(CommBuf &recv_buffer,
       CellParticleStorage::resize_ghost_storage(*part_list, np);
     }
   } else {
+    /* Mixed-parts POSITION fast path (see prepare_send_buffer): write
+     * pos/image/quat/pos_last straight into the (clean) store columns by row.
+     * nullptr => accessor fallback (POSITION absent, or dirty/absent store, or
+     * detached fresh ghosts on a resort step). */
+    auto const pos_ctx = (data_parts & GHOSTTRANS_POSITION)
+                             ? make_position_row_context()
+                             : std::nullopt;
+    auto const *pos_ctx_ptr = pos_ctx.has_value() ? &(*pos_ctx) : nullptr;
     for (auto part_list : ghost_comm.part_lists) {
       for (auto &p : *part_list) {
         serialize_and_reduce(archiver, p, data_parts, ReductionPolicy::MOVE,
-                             SerializationDirection::LOAD, box_geo, nullptr);
+                             SerializationDirection::LOAD, box_geo, nullptr,
+                             pos_ctx_ptr);
       }
     }
     if (data_parts & GHOSTTRANS_BONDS) {
@@ -975,6 +1161,13 @@ static void cell_cell_transfer(GhostCommunication const &ghost_comm,
   if (!(data_parts & GHOSTTRANS_PARTNUM)) {
     buffer.resize(calc_transmit_size(box_geo, data_parts));
   }
+  /* Mixed-parts POSITION fast path (see prepare_send_buffer): both source and
+   * destination particles read/write pos/image/quat/pos_last through the
+   * (clean) store columns by their own row. nullptr => accessor fallback. */
+  auto const pos_ctx = (data_parts & GHOSTTRANS_POSITION)
+                           ? make_position_row_context()
+                           : std::nullopt;
+  auto const *pos_ctx_ptr = pos_ctx.has_value() ? &(*pos_ctx) : nullptr;
   /* transfer data */
   auto const offset = ghost_comm.part_lists.size() / 2;
   for (std::size_t pl = 0; pl < offset; pl++) {
@@ -995,9 +1188,10 @@ static void cell_cell_transfer(GhostCommunication const &ghost_comm,
         auto &p2 = dst_part.begin()[i];
         serialize_and_reduce(ar_out, p1, data_parts, ReductionPolicy::UPDATE,
                              SerializationDirection::SAVE, box_geo,
-                             &ghost_comm.shift);
+                             &ghost_comm.shift, pos_ctx_ptr);
         serialize_and_reduce(ar_in, p2, data_parts, ReductionPolicy::UPDATE,
-                             SerializationDirection::LOAD, box_geo, nullptr);
+                             SerializationDirection::LOAD, box_geo, nullptr,
+                             pos_ctx_ptr);
         if (data_parts & GHOSTTRANS_BONDS) {
           p2.bonds() = p1.bonds();
         }
