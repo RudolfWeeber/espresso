@@ -64,7 +64,7 @@ static Thermostat::GammaType lb_handle_particle_anisotropy(Particle const &p,
 static Utils::Vector3d lb_drag_force(Particle const &p, double lb_gamma,
                                      Utils::Vector3d const &v_fluid) {
 #ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
-  auto const v_drift = v_fluid + p.mu_E();
+  auto const v_drift = v_fluid + Utils::Vector3d(p.mu_E());
 #else
   auto const &v_drift = v_fluid;
 #endif
@@ -336,7 +336,9 @@ static void lb_coupling_sanity_checks(Particle const &p) {
   lb does (at the moment) not support rotational particle coupling.
   Consequently, anisotropic particles are also not supported.
   */
-  auto const &p_gamma = p.gamma();
+  // gamma() returns a value/proxy (not an lvalue reference) once the friction
+  // coefficient moves into the ParticleStore columns; bind by value.
+  Utils::Vector3d const p_gamma = p.gamma();
   if (p_gamma[0] != p_gamma[1] or p_gamma[1] != p_gamma[2]) {
     runtimeErrorMsg() << "anisotropic particle (id " << p.id()
                       << ") coupled to LB.";

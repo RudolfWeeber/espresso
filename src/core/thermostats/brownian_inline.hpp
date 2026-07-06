@@ -249,8 +249,13 @@ bd_drag_rot(Thermostat::GammaType const &brownian_gamma_rotation, Particle &p,
   Thermostat::GammaType gamma;
 
 #ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-  if (p.gamma_rot() >= Thermostat::GammaType{}) {
-    gamma = p.gamma_rot();
+  // gamma_rot() returns a value/proxy (not an lvalue reference) on this
+  // non-const particle once the friction coefficient moves into the
+  // ParticleStore columns; bind by value so the vector comparison below does
+  // not try to deduce its type from a proxy.
+  Thermostat::GammaType const p_gamma_rot = p.gamma_rot();
+  if (p_gamma_rot >= Thermostat::GammaType{}) {
+    gamma = p_gamma_rot;
   } else
 #endif
   {

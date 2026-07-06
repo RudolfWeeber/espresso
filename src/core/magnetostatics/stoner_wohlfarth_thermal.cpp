@@ -270,7 +270,7 @@ void System::System::integrate_magnetodynamics() {
     assert(thermostat->thermo_switch & THERMO_LANGEVIN);
     auto const &langevin = *thermostat->langevin;
     auto const e_k = p_ref->calc_director();
-    auto const ext_fld_dpl = ext_fld + p.dip_fld();
+    auto const ext_fld_dpl = ext_fld + Utils::Vector3d(p.dip_fld());
     auto const random_ints =
         Random::philox_4_uint64s<RNGSalt::THERMAL_STONER_WOHLFARTH>(
             langevin.rng_counter(), langevin.rng_seed(), p.id());

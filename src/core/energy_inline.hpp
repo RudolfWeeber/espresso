@@ -319,7 +319,7 @@ inline double rotational_kinetic_energy([[maybe_unused]] Particle const &p) {
   return (p.can_rotate() and not p.is_virtual())
              ? 0.5 * (hadamard_product(Utils::Vector3d(p.omega()),
                                        Utils::Vector3d(p.omega())) *
-                      p.rinertia())
+                      Utils::Vector3d(p.rinertia()))
              : 0.0;
 #else
   return 0.0;

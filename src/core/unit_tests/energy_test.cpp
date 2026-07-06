@@ -68,7 +68,7 @@ BOOST_AUTO_TEST_CASE(rotational_kinetic_energy_) {
 
     auto const expected = 0.5 * (hadamard_product(Utils::Vector3d(p.omega()),
                                                   Utils::Vector3d(p.omega())) *
-                                 p.rinertia());
+                                 Utils::Vector3d(p.rinertia()));
     BOOST_CHECK_EQUAL(rotational_kinetic_energy(p), expected);
   }
 

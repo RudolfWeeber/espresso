@@ -64,7 +64,9 @@ static void define_Qdd(Particle const &p, Utils::Quaternion<double> &Qd,
   /* Eq. (4) @cite sonnenschein85a */
   auto const quaternion = Utils::Quaternion<double>(p.quat());
   Utils::Vector3d const omega = p.omega();
-  auto const &rinertia = p.rinertia();
+  // rinertia() will return a value/proxy (not an lvalue reference) once the
+  // rotational inertia moves into the ParticleStore columns, so bind by value.
+  Utils::Vector3d const rinertia = p.rinertia();
   Qd[0] = 0.5 * (-quaternion[1] * omega[0] - quaternion[2] * omega[1] -
                  quaternion[3] * omega[2]);
 
@@ -179,7 +181,10 @@ void convert_torque_propagate_omega(Particle &p, double time_step) {
   // proxy (not an lvalue reference) once velocity moves into the ParticleStore
   // columns, so mutate a local copy and write it back at the end.
   Utils::Vector3d omega = p.omega();
-  auto const &rinertia = p.rinertia();
+  // rinertia() will return a value/proxy (not an lvalue reference) once the
+  // rotational inertia moves into the ParticleStore columns, so bind by value;
+  // this also lets hadamard_division deduce its vector type below.
+  Utils::Vector3d const rinertia = p.rinertia();
   omega += hadamard_division(0.5 * time_step * Utils::Vector3d(p.torque()),
                              rinertia);
 

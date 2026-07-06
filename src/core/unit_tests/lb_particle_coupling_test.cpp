@@ -253,7 +253,7 @@ BOOST_DATA_TEST_CASE_F(CleanupActorLB, drag_force, bdata::make(kTs), kT) {
     auto const observed = lb_drag_force(lb, 0.2, p, p.pos());
     Utils::Vector3d expected{0.5, -0.3, -0.4};
 #ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
-    expected += thermostat.gamma * p.mu_E();
+    expected += thermostat.gamma * Utils::Vector3d(p.mu_E());
 #endif
     BOOST_CHECK_SMALL((observed - expected).norm(), eps);
   }
@@ -339,7 +339,7 @@ BOOST_DATA_TEST_CASE_F(CleanupActorLB, particle_coupling, bdata::make(kTs),
   auto expected = coupling.get_noise_term(p);
 #ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
   p.mu_E() = Utils::Vector3d{-2., 1.5, 1.};
-  expected += thermostat.gamma * p.mu_E();
+  expected += thermostat.gamma * Utils::Vector3d(p.mu_E());
 #endif
   p.pos() = first_lb_node + Utils::Vector3d::broadcast(0.5);
 
@@ -405,7 +405,7 @@ BOOST_DATA_TEST_CASE_F(CleanupActorLB, coupling_particle_lattice_ia,
       auto const &p = *p_opt;
       expected += coupling.get_noise_term(p);
 #ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
-      expected += gamma * p.mu_E();
+      expected += gamma * Utils::Vector3d(p.mu_E());
 #endif
     }
   }

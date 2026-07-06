@@ -311,7 +311,12 @@ ParticleHandle::ParticleHandle() {
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
       {"dip_fld",
        [this](Variant const &value) {
-         set_particle_property(&Particle::dip_fld, value);
+         // dip_fld() returns a write-through proxy (not an lvalue reference)
+         // once the dipole field moves into the ParticleStore columns, so
+         // assign through it explicitly instead of via a member setter.
+         set_particle_property([&value](Particle &p) {
+           p.dip_fld() = get_value<Utils::Vector3d>(value);
+         });
        },
        [this]() { return get_particle_data(m_pid).dip_fld(); }},
 #endif
@@ -420,14 +425,24 @@ ParticleHandle::ParticleHandle() {
 #ifdef ESPRESSO_ROTATIONAL_INERTIA
       {"rinertia",
        [this](Variant const &value) {
-         set_particle_property(&Particle::rinertia, value);
+         // rinertia() returns a write-through proxy (not an lvalue reference)
+         // once the rotational inertia moves into the ParticleStore columns, so
+         // assign through it explicitly instead of via a member setter.
+         set_particle_property([&value](Particle &p) {
+           p.rinertia() = get_value<Utils::Vector3d>(value);
+         });
        },
        [this]() { return get_particle_data(m_pid).rinertia(); }},
 #endif // ESPRESSO_ROTATIONAL_INERTIA
 #ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
       {"mu_E",
        [this](Variant const &value) {
-         set_particle_property(&Particle::mu_E, value);
+         // mu_E() returns a write-through proxy (not an lvalue reference) once
+         // the electrophoretic mobility moves into the ParticleStore columns,
+         // so assign through it explicitly instead of via a member setter.
+         set_particle_property([&value](Particle &p) {
+           p.mu_E() = get_value<Utils::Vector3d>(value);
+         });
        },
        [this]() { return get_particle_data(m_pid).mu_E(); }},
 #endif // ESPRESSO_LB_ELECTROHYDRODYNAMICS
@@ -448,13 +463,23 @@ ParticleHandle::ParticleHandle() {
        }},
       {"ext_force",
        [this](Variant const &value) {
-         set_particle_property(&Particle::ext_force, value);
+         // ext_force() returns a write-through proxy (not an lvalue reference)
+         // once the external force moves into the ParticleStore columns, so
+         // assign through it explicitly instead of via a member setter.
+         set_particle_property([&value](Particle &p) {
+           p.ext_force() = get_value<Utils::Vector3d>(value);
+         });
        },
        [this]() { return get_particle_data(m_pid).ext_force(); }},
 #ifdef ESPRESSO_ROTATION
       {"ext_torque",
        [this](Variant const &value) {
-         set_particle_property(&Particle::ext_torque, value);
+         // ext_torque() returns a write-through proxy (not an lvalue reference)
+         // once the external torque moves into the ParticleStore columns, so
+         // assign through it explicitly instead of via a member setter.
+         set_particle_property([&value](Particle &p) {
+           p.ext_torque() = get_value<Utils::Vector3d>(value);
+         });
        },
        [this]() { return get_particle_data(m_pid).ext_torque(); }},
 #endif // ESPRESSO_ROTATION
@@ -462,15 +487,24 @@ ParticleHandle::ParticleHandle() {
 #ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
       {"gamma",
        [this](Variant const &value) {
-         set_particle_property(&Particle::gamma,
-                               Variant{get_gamma_safe(value)});
+         // gamma() returns a write-through proxy (Vector3d,
+         // PARTICLE_ANISOTROPY) or an lvalue reference (double) once the
+         // friction coefficient moves into the ParticleStore columns, so assign
+         // through it explicitly. get_gamma_safe() yields the config-matching
+         // value type.
+         auto const gamma = get_gamma_safe(value);
+         set_particle_property([&gamma](Particle &p) { p.gamma() = gamma; });
        },
        [this]() { return get_particle_data(m_pid).gamma(); }},
 #ifdef ESPRESSO_ROTATION
       {"gamma_rot",
        [this](Variant const &value) {
-         set_particle_property(&Particle::gamma_rot,
-                               Variant{get_gamma_safe(value)});
+         // gamma_rot() returns a write-through proxy (Vector3d) or an lvalue
+         // reference (double) once the rotational friction coefficient moves
+         // into the ParticleStore columns, so assign through it explicitly.
+         auto const gamma_rot = get_gamma_safe(value);
+         set_particle_property(
+             [&gamma_rot](Particle &p) { p.gamma_rot() = gamma_rot; });
        },
        [this]() { return get_particle_data(m_pid).gamma_rot(); }},
 #endif // ESPRESSO_ROTATION
