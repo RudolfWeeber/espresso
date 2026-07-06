@@ -195,6 +195,52 @@ BOOST_AUTO_TEST_CASE(state_carrier_serialization_round_trip) {
   BOOST_CHECK_EQUAL(q.lees_edwards_flag(), short{3});
 }
 
+// Migration phase 4: the MOMENTUM fields (velocity and angular velocity) live
+// in the ParticleStore columns and are ferried across a boost archive via the
+// migration carriers. Mirror of state_carrier_serialization_round_trip for the
+// momentum fields: attach p to a store, set known velocity/omega, serialize,
+// deserialize into a DETACHED q (reads the carriers through detached_*()), then
+// attach q to a fresh store and confirm assign_row seeds the columns from the
+// ferried carriers -- exactly the cross-rank migration seeding path.
+BOOST_AUTO_TEST_CASE(momentum_carrier_serialization_round_trip) {
+  ParticleStoreTestFixture fixture{};
+  auto p = Particle();
+  fixture.attach(p);
+
+  auto const ref_vel = Utils::Vector3d{-1.5, 2.25, -3.5};
+  p.v() = ref_vel;
+#ifdef ESPRESSO_ROTATION
+  auto const ref_omega = Utils::Vector3d{0.75, -1.25, 4.5};
+  p.omega() = ref_omega;
+#endif
+
+  std::stringstream stream;
+  boost::archive::text_oarchive out_ar(stream);
+  out_ar << p;
+
+  boost::archive::text_iarchive in_ar(stream);
+  auto q = Particle(); // intentionally NOT attached to a store
+  in_ar >> q;
+
+  // A detached q reads the ferried carriers through detached_*().
+  BOOST_TEST(q.detached_velocity() == ref_vel,
+             boost::test_tools::per_element());
+#ifdef ESPRESSO_ROTATION
+  BOOST_TEST(q.detached_angular_velocity() == ref_omega,
+             boost::test_tools::per_element());
+#endif
+
+  // After attaching q to a fresh store, assign_row seeds the row from those
+  // carriers, so the column reads now return the ferried values.
+  fixture.attach(q);
+  BOOST_TEST(Utils::Vector3d(q.v()) == ref_vel,
+             boost::test_tools::per_element());
+#ifdef ESPRESSO_ROTATION
+  BOOST_TEST(Utils::Vector3d(q.omega()) == ref_omega,
+             boost::test_tools::per_element());
+#endif
+}
+
 namespace Utils {
 template <>
 struct is_statically_serializable<ParticleProperties> : std::true_type {};

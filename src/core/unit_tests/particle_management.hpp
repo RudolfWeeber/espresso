@@ -75,26 +75,28 @@ public:
   ParticleWithStore &operator=(ParticleWithStore const &) = delete;
 
   /** Take ownership of @p p, giving it a single-row store, and restore its
-   *  force (and torque) plus the position group.
+   *  force (and torque) plus the position and momentum groups.
    *
-   *  Migration phase 3: assign_row seeds the fresh store's row from @p p's
+   *  Migration phases 3 & 4: assign_row seeds the fresh store's row from @p p's
    *  MIGRATION CARRIERS, which are only refreshed on a serialize SAVE. A
    *  particle handed to us via the head-node fast path (@c received = *p, a
-   *  plain copy, no serialization) therefore carries STALE position-group
+   *  plain copy, no serialization) therefore carries STALE position/momentum
    *  carriers relative to its (correct) live column. Capture the current
-   *  position-group values through the accessors first (they read the column
-   *  when attached, or the carrier when detached -- both correct here), then
-   *  write them back through the fresh store's proxies after attach so the copy
-   *  reflects the source's actual state, not the stale carrier. */
+   *  position-group and velocity/angular-velocity values through the accessors
+   *  first (they read the column when attached, or the carrier when detached --
+   *  both correct here), then write them back through the fresh store's proxies
+   *  after attach so the copy reflects the source's actual state, not the stale
+   *  carrier. */
   void assign(Particle const &p, Utils::Vector3d const &force
 #ifdef ESPRESSO_ROTATION
               ,
               Utils::Vector3d const &torque
 #endif
   ) {
-    // Capture the source's current position group through the const accessors
-    // (column when attached, carrier when detached -- both correct) BEFORE the
-    // copy is re-attached and re-seeded from its (possibly stale) carrier.
+    // Capture the source's current position/momentum groups through the const
+    // accessors (column when attached, carrier when detached -- both correct)
+    // BEFORE the copy is re-attached and re-seeded from its (possibly stale)
+    // carrier.
     auto const pos = p.pos();
     auto const image_box = p.image_box();
     auto const pos_at_last_verlet_update = p.pos_at_last_verlet_update();
@@ -106,6 +108,10 @@ public:
 #endif
     auto const lees_edwards_offset = p.lees_edwards_offset();
     auto const lees_edwards_flag = p.lees_edwards_flag();
+    auto const velocity = p.v();
+#ifdef ESPRESSO_ROTATION
+    auto const angular_velocity = p.omega();
+#endif
 
     m_particle = p;
     m_store.begin_rebuild(1u, 0u);
@@ -123,6 +129,10 @@ public:
 #endif
     m_particle->lees_edwards_offset() = lees_edwards_offset;
     m_particle->lees_edwards_flag() = lees_edwards_flag;
+    m_particle->v() = velocity;
+#ifdef ESPRESSO_ROTATION
+    m_particle->omega() = angular_velocity;
+#endif
     m_particle->force() = force;
 #ifdef ESPRESSO_ROTATION
     m_particle->torque() = torque;

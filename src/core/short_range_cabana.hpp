@@ -58,12 +58,15 @@ commit_particle(Particle const &p, auto const index,
                 CellStructure::AoSoA_pack &aosoa, bool const rebuild) {
   // phase 3.5: position/image/director are no longer copied here. Kernels read
   // them directly from the ParticleStore columns (via the pack-index->store-row
-  // translation view) and the store-side derived director view. This commit now
-  // only writes the pack-owned per-step scalars/vectors.
+  // translation view) and the store-side derived director view.
+  // phase 4: velocity is no longer copied here either. It lives in the
+  // ParticleStore velocity column, which the pack's `velocity` view now aliases
+  // (bound in bind_pack_store_views); velocity-dependent kernels read it by
+  // *store row* via row(i), just like position. This commit now only writes the
+  // pack-owned per-step scalars.
 #ifdef ESPRESSO_ELECTROSTATICS
   aosoa.charge(index) = p.q();
 #endif
-  aosoa.set_vector_at(aosoa.velocity, index, Utils::Vector3d(p.v()));
 #ifdef ESPRESSO_DIPOLES
   aosoa.dipm(index) = p.dipm();
 #endif

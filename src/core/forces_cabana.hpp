@@ -208,8 +208,9 @@ struct ForcesKernel {
     if (dpd_active(ia_params, thermostat.thermo_switch)) {
       auto const pos1 = aosoa.get_vector_at(aosoa.position, row_i);
       auto const pos2 = aosoa.get_vector_at(aosoa.position, row_j);
-      auto const vel1 = aosoa.get_vector_at(aosoa.velocity, i);
-      auto const vel2 = aosoa.get_vector_at(aosoa.velocity, j);
+      // phase 4: velocity aliases the store column; read by *store row*.
+      auto const vel1 = aosoa.get_vector_at(aosoa.velocity, row_i);
+      auto const vel2 = aosoa.get_vector_at(aosoa.velocity, row_j);
       auto const force =
           dpd_pair_force(pos1, vel1, aosoa.id(i), pos2, vel2, aosoa.id(j),
                          *thermostat.dpd, box_geo, ia_params, d, dist, dist_sq);

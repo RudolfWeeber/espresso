@@ -345,28 +345,16 @@ struct ParticleForce {
   }
 };
 
-/** Momentum information on a particle. Information not contained in
- *  communication of ghost particles so far, but a communication would
- *  be necessary for velocity-dependent potentials.
+/** Momentum information on a particle. Information communicated to calculate
+ *  velocity-dependent interactions with ghost particles.
+ *
+ *  Migration phase 4: the velocity and angular-velocity fields have left this
+ *  struct; they live only in the @ref ParticleStore columns (single ownership,
+ *  spec section 4). The struct is retained (empty) for the ghost-transfer
+ *  documentation reference in ghosts.hpp; it is no longer a member of @ref
+ *  Particle nor serialized.
  */
-struct ParticleMomentum {
-  /** velocity. */
-  Utils::Vector3d v = {0., 0., 0.};
-
-#ifdef ESPRESSO_ROTATION
-  /** angular velocity.
-   *  ALWAYS IN PARTICLE FIXED, I.E., CO-ROTATING COORDINATE SYSTEM.
-   */
-  Utils::Vector3d omega = {0., 0., 0.};
-#endif
-
-  template <class Archive> void serialize(Archive &ar, long int /* version */) {
-    ar & v;
-#ifdef ESPRESSO_ROTATION
-    ar & omega;
-#endif
-  }
-};
+struct ParticleMomentum {};
 
 /** Information on a particle that is needed only on the
  *  node the particle belongs to.
@@ -409,7 +397,6 @@ struct ParticleRattle {
 struct Particle { // NOLINT(bugprone-exception-escape)
 private:
   ParticleProperties p;
-  ParticleMomentum m;
   ParticleLocal l;
 #ifdef ESPRESSO_BOND_CONSTRAINT
   ParticleRattle rattle;
@@ -465,14 +452,16 @@ private:
   double m_migration_lees_edwards_offset = 0.;
   short int m_migration_lees_edwards_flag = 0;
 
-  /** Transitional (migration phase 4): MOMENTUM migration carriers, DORMANT
-   *  until phase 8. Mirror of the phase-3 state carriers for velocity
-   *  (m.v) and angular velocity (m.omega). The @c migration_*() getters read
-   *  these raw carriers for @ref ParticleStore::assign_row to seed a new/
-   *  migrated row (pre-flip the struct fields m.v/m.omega are authoritative;
-   *  the getters expose defaults so assign_row can supply zero-velocity for
-   *  brand-new rows). NOT added to @ref Particle::serialize yet — serialization
-   *  changes exactly once at the Task-4 flip. */
+  /** Transitional (migration phase 4): MOMENTUM migration carriers (now LIVE).
+   *  Mirror of the phase-3 state carriers for velocity and angular velocity,
+   *  which live in the @ref ParticleStore columns. These members ferry the
+   *  velocity/angular-velocity across the boost-serialized inter-rank exchange
+   *  (which does not carry Kokkos columns) so @ref ParticleStore::assign_row
+   *  can seed a migrated particle's new row. @ref Particle::serialize fills
+   * them from the detached_*() getters on SAVE; the migration_*() getters read
+   * them raw (safe on a detached particle). Defaults match the pre-migration
+   *  m.v/m.omega defaults (zero velocity for brand-new rows). Removed in phase
+   * 7 when the inter-rank exchange switches to per-field column packing. */
   Utils::Vector3d m_migration_velocity = {0., 0., 0.};
 #ifdef ESPRESSO_ROTATION
   Utils::Vector3d m_migration_angular_velocity = {0., 0., 0.};
@@ -569,23 +558,29 @@ public:
   }
   /** @} */
 
-  /** @brief Phase-4 MOMENTUM migration carriers (DORMANT — pre-flip the struct
-   *  fields m.v / m.omega are authoritative; post-flip these become live in the
-   *  same way as the phase-3 state carriers above).
+  /** @brief Phase-4 MOMENTUM migration carriers (now LIVE, mirroring the
+   *  phase-3 state carriers above).
    *
-   *  The @c detached_*() getters return the current value whether attached
-   *  (column) or detached (carrier). The @c migration_*() getters return the
-   *  raw carrier that @ref ParticleStore::assign_row seeds a new/migrated row
-   *  from; pre-flip they always return the zero-initialized default because
-   *  serialization has not yet been wired — assign_row therefore seeds new
-   *  rows with zero velocity (matching Particle's m.v/m.omega defaults).
+   *  The @c detached_*() getters return the current value whether the particle
+   *  is attached to a store (read the column) or detached (read the migration
+   *  carrier). @ref Particle serialization fills the carriers from these
+   * getters on SAVE. The @c migration_*() getters return the raw carrier that
+   * @ref ParticleStore::assign_row seeds a new/migrated row from (never touches
+   * a column, so it is safe on a detached particle whose column row is
+   * invalid). Removed in phase 7 when the inter-rank exchange switches to
+   * per-field column packing.
    *  @{ */
-  Utils::Vector3d detached_velocity() const { return m.v; }
+  Utils::Vector3d detached_velocity() const {
+    return (m_particle_store != nullptr) ? v() : m_migration_velocity;
+  }
   Utils::Vector3d const &migration_velocity() const {
     return m_migration_velocity;
   }
 #ifdef ESPRESSO_ROTATION
-  Utils::Vector3d detached_angular_velocity() const { return m.omega; }
+  Utils::Vector3d detached_angular_velocity() const {
+    return (m_particle_store != nullptr) ? omega()
+                                         : m_migration_angular_velocity;
+  }
   Utils::Vector3d const &migration_angular_velocity() const {
     return m_migration_angular_velocity;
   }
@@ -619,8 +614,16 @@ public:
                ? m_particle_store->position_reference(m_store_row)
                : VectorReference(m_migration_position.data(), 1u);
   }
-  auto const &v() const { return m.v; }
-  auto &v() { return m.v; }
+  Utils::Vector3d v() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->velocity_value(m_store_row)
+               : m_migration_velocity;
+  }
+  VectorReference v() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->velocity_reference(m_store_row)
+               : VectorReference(m_migration_velocity.data(), 1u);
+  }
   auto force() {
     assert(m_particle_store != nullptr);
     return m_particle_store->force_reference(m_store_row);
@@ -720,8 +723,16 @@ public:
     assert(m_particle_store != nullptr);
     return m_particle_store->torque_value(m_store_row);
   }
-  auto const &omega() const { return m.omega; }
-  auto &omega() { return m.omega; }
+  Utils::Vector3d omega() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->angular_velocity_value(m_store_row)
+               : m_migration_angular_velocity;
+  }
+  VectorReference omega() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->angular_velocity_reference(m_store_row)
+               : VectorReference(m_migration_angular_velocity.data(), 1u);
+  }
 #ifdef ESPRESSO_EXTERNAL_FORCES
   auto const &ext_torque() const { return p.ext_torque; }
   auto &ext_torque() { return p.ext_torque; }
@@ -868,21 +879,21 @@ private:
   friend boost::serialization::access;
   template <class Archive> void serialize(Archive &ar, long int /* version */) {
     ar & p;
-    ar & m;
     ar & l;
     ar & bl;
 #ifdef ESPRESSO_EXCLUSIONS
     ar & el;
 #endif
-    // Migration phases 2 & 3: force/torque (phase 2) and the STATE fields
+    // Migration phases 2, 3 & 4: force/torque (phase 2), the STATE fields
     // (position, image box, quaternion, position-at-last-verlet-update,
-    // position-at-last-time-step, Lees-Edwards offset and flag; phase 3) live
-    // in ParticleStore columns, which are not carried by this (boost)
-    // serializer used for cross-rank particle exchange. Ferry the values so
-    // they survive a global resort that moves the particle to another rank
-    // (matching pre-migration behavior). SAVE reads the current value (column
-    // if attached, carrier otherwise); LOAD lands in the detached carrier,
-    // from which ParticleStore::assign_row seeds the rebuilt row.
+    // position-at-last-time-step, Lees-Edwards offset and flag; phase 3), and
+    // the MOMENTUM fields (velocity and angular velocity; phase 4) live in
+    // ParticleStore columns, which are not carried by this (boost) serializer
+    // used for cross-rank particle exchange. Ferry the values so they survive a
+    // global resort that moves the particle to another rank (matching
+    // pre-migration behavior). SAVE reads the current value (column if
+    // attached, carrier otherwise); LOAD lands in the detached carrier, from
+    // which ParticleStore::assign_row seeds the rebuilt row.
     if (Archive::is_saving::value) {
       m_detached_force = detached_force();
 #ifdef ESPRESSO_ROTATION
@@ -900,6 +911,10 @@ private:
 #endif
       m_migration_lees_edwards_offset = detached_lees_edwards_offset();
       m_migration_lees_edwards_flag = detached_lees_edwards_flag();
+      m_migration_velocity = detached_velocity();
+#ifdef ESPRESSO_ROTATION
+      m_migration_angular_velocity = detached_angular_velocity();
+#endif
     }
     ar & m_detached_force;
 #ifdef ESPRESSO_ROTATION
@@ -916,6 +931,10 @@ private:
 #endif
     ar & m_migration_lees_edwards_offset;
     ar & m_migration_lees_edwards_flag;
+    ar & m_migration_velocity;
+#ifdef ESPRESSO_ROTATION
+    ar & m_migration_angular_velocity;
+#endif
   }
 };
 

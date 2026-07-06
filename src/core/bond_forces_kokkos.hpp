@@ -96,8 +96,10 @@ struct PairBondsKernel {
 #else
           1.0, 1.0,
 #endif
-          aosoa.get_vector_at(aosoa.velocity, i),
-          aosoa.get_vector_at(aosoa.velocity, j), aosoa.id(i), aosoa.id(j), dx);
+          // phase 4: velocity aliases the store column; read by *store row*.
+          aosoa.get_vector_at(aosoa.velocity, row_i),
+          aosoa.get_vector_at(aosoa.velocity, row_j), aosoa.id(i), aosoa.id(j),
+          dx);
       if (result) {
         auto const &forces = result.value();
 
@@ -246,8 +248,9 @@ struct DihedralBondsKernel {
     auto const pos2 = aosoa.get_vector_at(aosoa.position, row_j);
     auto const pos3 = aosoa.get_vector_at(aosoa.position, row_k);
     auto const pos4 = aosoa.get_vector_at(aosoa.position, row_m);
-    auto const vel1 = aosoa.get_vector_at(aosoa.velocity, i);
-    auto const vel3 = aosoa.get_vector_at(aosoa.velocity, k);
+    // phase 4: velocity aliases the store column; read by *store row*.
+    auto const vel1 = aosoa.get_vector_at(aosoa.velocity, row_i);
+    auto const vel3 = aosoa.get_vector_at(aosoa.velocity, row_k);
     auto const image1 = aosoa.get_vector_at(aosoa.image, row_i);
 
     auto const result = calc_bonded_four_body_force(

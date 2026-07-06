@@ -42,10 +42,13 @@ struct CellStructure::AoSoA_pack {
   // (both are built in cell-traversal order); only the deduped ghost tail is
   // remapped. commit_particle no longer copies position/image/director.
   //
-  // The layout of the store-aliased views (position/image/director) MUST match
-  // the store columns' layout; VelocityViewType is pack-owned but uses the same
-  // layout for consistency (velocity is committed per-step, and particle-major
-  // contiguous writes are the better default anyway).
+  // phase 4: velocity joins the store-aliased views — it aliases the
+  // authoritative ParticleStore velocity host column and is likewise indexed by
+  // *store row* via row(i). commit_particle no longer copies velocity, and
+  // resize() no longer allocates it.
+  //
+  // The layout of the store-aliased views (position/image/director/velocity)
+  // MUST match the store columns' layout.
   using PositionViewType =
       Kokkos::View<double *[3], ParticleStore::StateVectorLayout,
                    Kokkos::HostSpace>;
@@ -69,11 +72,11 @@ struct CellStructure::AoSoA_pack {
   PositionViewType position;
   ImageViewType image;
   DirectorViewType director;
+  VelocityViewType velocity;
   // Pack-index -> store-row translation. Identity on the local prefix.
   RowMapViewType row_map;
 
   // Pack-owned per-step columns (indexed by pack index).
-  VelocityViewType velocity;
   ChargeViewType charge;
   DipmViewType dipm;
   IdViewType id;
@@ -92,7 +95,9 @@ struct CellStructure::AoSoA_pack {
   }
 
   void resize(std::size_t num_particles) {
-    if (velocity.extent(0) == 0) {
+    // phase 4: velocity is store-aliased (bound in bind_pack_store_views), not
+    // allocated here; `id` is the allocation sentinel (always pack-owned).
+    if (id.extent(0) == 0) {
       // First allocation
 #ifdef ESPRESSO_ELECTROSTATICS
       charge = ChargeViewType("charge", num_particles);
@@ -103,7 +108,6 @@ struct CellStructure::AoSoA_pack {
       mass = MassViewType("mass", num_particles);
 #endif
       flags = FlagsViewType("flags", num_particles);
-      velocity = VelocityViewType("velocity", num_particles);
 #ifdef ESPRESSO_DIPOLES
       dipm = DipmViewType("dipm", num_particles);
 #endif
@@ -118,7 +122,6 @@ struct CellStructure::AoSoA_pack {
       Kokkos::realloc(mass, num_particles);
 #endif
       Kokkos::realloc(flags, num_particles);
-      Kokkos::realloc(velocity, num_particles);
 #ifdef ESPRESSO_DIPOLES
       Kokkos::realloc(dipm, num_particles);
 #endif

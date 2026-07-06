@@ -363,6 +363,7 @@ void CellStructure::bind_pack_store_views() {
   auto &aosoa = *m_aosoa;
   aosoa.position = m_particle_store.position_view();
   aosoa.image = m_particle_store.image_box_view();
+  aosoa.velocity = m_particle_store.velocity_view();
   aosoa.row_map = m_pack_index_to_store_row;
 #if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
   aosoa.director = m_director_view;

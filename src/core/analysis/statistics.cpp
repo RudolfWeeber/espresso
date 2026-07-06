@@ -150,6 +150,10 @@ Utils::Vector3d calc_linear_momentum(System::System const &system,
                                      bool include_lbfluid) {
   Utils::Vector3d momentum{};
   if (include_particles) {
+    // Reading p.v() requires a valid ParticleStore row (phase 4: velocity lives
+    // in the store columns); this is a script-facing entry point that may
+    // follow a topology change. O(1) when clean.
+    system.cell_structure->ensure_particle_store_synchronized();
     momentum = reduce_over_local_particles<Utils::Vector3d>(
         *(system.cell_structure),
         [](Utils::Vector3d &acc, Particle const &p) {

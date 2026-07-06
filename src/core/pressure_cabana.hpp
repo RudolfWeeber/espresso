@@ -182,8 +182,9 @@ struct PressureKernel {
 
 #ifdef ESPRESSO_DPD
         if (dpd_active(ia_params, thermo_switch)) {
-          auto const vel1 = aosoa.get_vector_at(aosoa.velocity, i);
-          auto const vel2 = aosoa.get_vector_at(aosoa.velocity, j);
+          // phase 4: velocity aliases the store column; read by *store row*.
+          auto const vel1 = aosoa.get_vector_at(aosoa.velocity, row_i);
+          auto const vel2 = aosoa.get_vector_at(aosoa.velocity, row_j);
           auto const v21 = box_geo.velocity_difference(pos1, pos2, vel1, vel2);
           auto const dist2 = d.norm2();
           // f_r/f_t: dissipative force from radial/transverse DPD channel

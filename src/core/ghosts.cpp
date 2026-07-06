@@ -810,10 +810,12 @@ make_position_row_context_unchecked(ParticleStore &store) {
  *  use_ctx branch, the three call sites, calc_transmit_size masking) is already
  *  in place, so the flip is a one-line change here. */
 static std::optional<MomentumRowContext> make_momentum_row_context() {
-  // FLIP-GATE: flip to true in the Task-4 velocity/omega flip, at which point
-  // the store velocity/angular-velocity columns become authoritative and this
-  // context reads/writes the same memory as Particle::v()/omega().
-  static constexpr bool velocity_columns_authoritative = false;
+  // FLIPPED (Task 4): the ParticleStore velocity/angular-velocity columns are
+  // now authoritative (Particle::v()/omega() read/write them), so this context
+  // reads/writes the same memory as the accessors. The MOMENTUM ghost value
+  // path may therefore route through the columnar row-context when the store is
+  // clean and attached, exactly like the POSITION path.
+  static constexpr bool velocity_columns_authoritative = true;
   auto *store = active_particle_store();
   if (not velocity_columns_authoritative or store == nullptr or
       store->is_dirty() or store->number_of_particles() == 0u) {

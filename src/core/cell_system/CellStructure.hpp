@@ -827,6 +827,8 @@ public:
   auto store_position_view() { return m_particle_store.position_view(); }
   /** @brief Host view of the ParticleStore image-box column. */
   auto store_image_view() { return m_particle_store.image_box_view(); }
+  /** @brief Host view of the ParticleStore velocity column (phase 4). */
+  auto store_velocity_view() { return m_particle_store.velocity_view(); }
 #if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
   /** @brief Store-side derived director view (phase 3.5). */
   auto director_view() const { return m_director_view; }
