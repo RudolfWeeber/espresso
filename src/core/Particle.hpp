@@ -757,6 +757,23 @@ public:
     return m_migration_vs_relative;
   }
 #endif
+
+  /** @brief Phase-6 RAGGED migration seed getters (DORMANT).
+   *
+   *  Bonds/exclusions are the last owned non-POD members; they are evicted into
+   *  ParticleStore ragged sidecars in phase 6. Unlike the POD carriers, no
+   *  separate carrier member is introduced (the dual-role design of exploration
+   *  finding 3 keeps the struct members themselves as the detached storage /
+   * the migration envelope once the flip lands). While DORMANT, these getters
+   * read the @c bl / @c el members directly so @ref ParticleStore::assign_row
+   * can seed a new/migrated row's sidecar from them, mirroring how the phase-5
+   *  dormant carriers read their sub-struct members. Getter-only; the members
+   *  stay the source of truth until THE FLIP (Task 3).
+   *  @{ */
+  BondList const &migration_bonds() const { return bl; }
+#ifdef ESPRESSO_EXCLUSIONS
+  Utils::compact_vector<int> const &migration_exclusions() const { return el; }
+#endif
   /** @} */
 
   int const &id() const {

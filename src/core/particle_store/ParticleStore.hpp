@@ -21,10 +21,12 @@
 
 #include <config/config.hpp>
 
+#include "BondList.hpp"
 #include "particle_store/ParticleParameters.hpp"
 #include "particle_store/VectorReference.hpp"
 
 #include <utils/Vector.hpp>
+#include <utils/compact_vector.hpp>
 #include <utils/quaternion.hpp>
 
 #include <Kokkos_Core.hpp>
@@ -126,6 +128,9 @@ public:
 #ifdef ESPRESSO_ROTATION
     m_torque = Column{};
 #endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+    m_rattle_correction = Column{};
+#endif
     m_position = Column{};
     m_image_box = IntegerColumn{};
 #ifdef ESPRESSO_ROTATION
@@ -144,6 +149,9 @@ public:
     m_old_force = Column{};
 #ifdef ESPRESSO_ROTATION
     m_old_torque = Column{};
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+    m_old_rattle_correction = Column{};
 #endif
     m_old_position = Column{};
     m_old_image_box = IntegerColumn{};
@@ -255,6 +263,13 @@ public:
     m_vs_relative.clear();
     m_old_vs_relative.clear();
 #endif
+    // Ragged host sidecars (phase 6).
+    m_bonds_sidecar.clear();
+    m_old_bonds_sidecar.clear();
+#ifdef ESPRESSO_EXCLUSIONS
+    m_exclusions_sidecar.clear();
+    m_old_exclusions_sidecar.clear();
+#endif
     m_number_of_local_particles = 0u;
     m_number_of_ghost_particles = 0u;
     m_old_number_of_particles = 0u;
@@ -275,6 +290,20 @@ public:
   Utils::Vector3d torque_value(int const row) const {
     return column_value(m_torque, row);
   }
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  // RATTLE/SHAKE correction accumulator (phase 6): a per-iteration scratch
+  // observable, structurally like force -- zeroed each SHAKE iteration,
+  // reduced into locals, then applied. No migration carrier (never persisted
+  // nor migrated); a genuinely-new row defaults to zero (preserve-or-default
+  // like dip_fld / force).
+  VectorReference rattle_correction_reference(int const row) {
+    return column_reference(m_rattle_correction, row);
+  }
+  Utils::Vector3d rattle_correction_value(int const row) const {
+    return column_value(m_rattle_correction, row);
+  }
+  auto rattle_correction_view() { return m_rattle_correction.view_host(); }
 #endif
 
   // -- state columns (phase 3) ----------------------------------------------
@@ -537,6 +566,30 @@ public:
   }
 #endif
 
+  // -- ragged host sidecars (phase 6) ---------------------------------------
+  // Owned per-particle variable-size data (bond list; exclusion list) lives in
+  // plain std::vector sidecars indexed by store row, following the phase-5 POD
+  // sidecar machinery (swap/resize in begin_rebuild; preserve-or-seed in
+  // assign_row; cleared in release_columns) with ONE difference: the element
+  // owns heap storage, so a surviving row is MOVED from the old vector element
+  // rather than copied. Accessors return a real element reference (same as the
+  // POD sidecars) via the shared sidecar_reference helper.
+  BondList &bonds_sidecar_reference(int const row) {
+    return sidecar_reference(m_bonds_sidecar, row);
+  }
+  BondList const &bonds_sidecar_reference(int const row) const {
+    return sidecar_reference(m_bonds_sidecar, row);
+  }
+#ifdef ESPRESSO_EXCLUSIONS
+  Utils::compact_vector<int> &exclusions_sidecar_reference(int const row) {
+    return sidecar_reference(m_exclusions_sidecar, row);
+  }
+  Utils::compact_vector<int> const &
+  exclusions_sidecar_reference(int const row) const {
+    return sidecar_reference(m_exclusions_sidecar, row);
+  }
+#endif
+
 private:
   // -- proxy factories for the various column kinds -------------------------
   VectorReference column_reference(Column &column, int const row) {
@@ -619,6 +672,9 @@ private:
 #ifdef ESPRESSO_ROTATION
   Column m_torque;
 #endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  Column m_rattle_correction;
+#endif
   Column m_position;
   IntegerColumn m_image_box;
 #ifdef ESPRESSO_ROTATION
@@ -692,6 +748,19 @@ private:
   std::vector<VirtualSitesRelativeParameters> m_vs_relative;
 #endif
 
+  // -- ragged host sidecars (phase 6) ---------------------------------------
+  // Owned variable-size per-particle data (indexed by store row). Rebuilt with
+  // the store like the POD sidecars (swap current <-> spare in begin_rebuild,
+  // resize to the new count, preserve-by-old-row / seed-from-carrier in
+  // assign_row) -- but the preserve step MOVES the element out of the old
+  // vector (the element owns heap storage) instead of copying it. Ghost/new
+  // rows default to empty. The exclusion sidecar exists only when EXCLUSIONS is
+  // enabled (its element type is the exact current type of Particle::el).
+  std::vector<BondList> m_bonds_sidecar;
+#ifdef ESPRESSO_EXCLUSIONS
+  std::vector<Utils::compact_vector<int>> m_exclusions_sidecar;
+#endif
+
   // -- spare (previous-generation) columns ----------------------------------
   // Capacity-cached double buffering (phase 3.5): these are kept alive across
   // rebuilds as the swap-in write target. During a rebuild they hold the
@@ -700,6 +769,9 @@ private:
   Column m_old_force;
 #ifdef ESPRESSO_ROTATION
   Column m_old_torque;
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  Column m_old_rattle_correction;
 #endif
   Column m_old_position;
   IntegerColumn m_old_image_box;
@@ -768,6 +840,12 @@ private:
 #endif
 #ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
   std::vector<VirtualSitesRelativeParameters> m_old_vs_relative;
+#endif
+
+  // -- spare (previous-generation) ragged host sidecars (phase 6) -----------
+  std::vector<BondList> m_old_bonds_sidecar;
+#ifdef ESPRESSO_EXCLUSIONS
+  std::vector<Utils::compact_vector<int>> m_old_exclusions_sidecar;
 #endif
 
   std::size_t m_old_number_of_particles = 0u;

@@ -81,6 +81,28 @@ void preserve_or_seed_sidecar(SidecarVector &new_sidecar,
     new_sidecar[static_cast<std::size_t>(row)] = seed;
   }
 }
+
+// Ragged host-sidecar (std::vector of heap-owning element, e.g. BondList /
+// compact_vector) counterpart of preserve_or_seed_sidecar. Unlike the POD
+// sidecars, the element owns heap storage, so on preserve the surviving element
+// is MOVED out of the old vector (transfers the buffer -- no reallocation /
+// deep copy of a ragged run) instead of copied. The old vector is discarded
+// after the rebuild (retired as the spare), so leaving a moved-from element
+// behind is harmless. On seed the carrier value is copied (it is still owned by
+// the migrating particle). @p old_sidecar is a non-const reference here because
+// the move reads (and empties) its element.
+template <class SidecarVector, class SeedType>
+void preserve_or_move_sidecar(SidecarVector &new_sidecar,
+                              SidecarVector &old_sidecar, int const row,
+                              int const old_row, bool const preserve,
+                              SeedType const &seed) {
+  if (preserve) {
+    new_sidecar[static_cast<std::size_t>(row)] =
+        std::move(old_sidecar[static_cast<std::size_t>(old_row)]);
+  } else {
+    new_sidecar[static_cast<std::size_t>(row)] = seed;
+  }
+}
 } // namespace
 
 namespace {
@@ -120,6 +142,9 @@ void ParticleStore::begin_rebuild(std::size_t const number_of_local_particles,
   swap(m_force, m_old_force);
 #ifdef ESPRESSO_ROTATION
   swap(m_torque, m_old_torque);
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  swap(m_rattle_correction, m_old_rattle_correction);
 #endif
   swap(m_position, m_old_position);
   swap(m_image_box, m_old_image_box);
@@ -188,6 +213,13 @@ void ParticleStore::begin_rebuild(std::size_t const number_of_local_particles,
 #ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
   swap(m_vs_relative, m_old_vs_relative);
 #endif
+  // Ragged host sidecars: swap current <-> spare (spare now holds the old-row
+  // elements, the preserve/move source; the swapped-in current vector is
+  // resized below).
+  swap(m_bonds_sidecar, m_old_bonds_sidecar);
+#ifdef ESPRESSO_EXCLUSIONS
+  swap(m_exclusions_sidecar, m_old_exclusions_sidecar);
+#endif
 
   m_old_number_of_particles =
       m_number_of_local_particles + m_number_of_ghost_particles;
@@ -202,6 +234,10 @@ void ParticleStore::begin_rebuild(std::size_t const number_of_local_particles,
   grow_without_init(m_force, total, "particle_store::force");
 #ifdef ESPRESSO_ROTATION
   grow_without_init(m_torque, total, "particle_store::torque");
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  grow_without_init(m_rattle_correction, total,
+                    "particle_store::rattle_correction");
 #endif
   grow_without_init(m_position, total, "particle_store::position");
   grow_without_init(m_image_box, total, "particle_store::image_box");
@@ -277,6 +313,16 @@ void ParticleStore::begin_rebuild(std::size_t const number_of_local_particles,
 #ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
   m_vs_relative.resize(total);
 #endif
+  // Ragged host sidecars: resize the (swapped-in) current vector to the new
+  // count. Every row is overwritten by assign_row's preserve_or_move_sidecar
+  // before finish_rebuild; the default-constructed (empty) filler that resize
+  // inserts is only observed for a row that assign_row never reaches, which
+  // never happens (all [0,total) rows are assigned). A ghost/new row is seeded
+  // to an empty element.
+  m_bonds_sidecar.resize(total);
+#ifdef ESPRESSO_EXCLUSIONS
+  m_exclusions_sidecar.resize(total);
+#endif
 }
 
 void ParticleStore::assign_row(Particle &particle, int const row) {
@@ -300,6 +346,17 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
 #ifdef ESPRESSO_ROTATION
   preserve_or_seed<3u>(m_torque, m_old_torque, row, old_row, preserve,
                        particle.migration_torque());
+#endif
+
+  // RATTLE correction observable column (phase 6). Preserve-by-old-row for
+  // uniformity with the other observables (SHAKE zeroes it each iteration, so a
+  // preserved value is never actually relied upon); a genuinely-new row
+  // defaults to zero. There is NO migration carrier -- the correction is a
+  // per-iteration scratch that is never persisted nor migrated -- so the seed
+  // is a literal zero vector, not a carrier read.
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  preserve_or_seed<3u>(m_rattle_correction, m_old_rattle_correction, row,
+                       old_row, preserve, Utils::Vector3d{0., 0., 0.});
 #endif
 
   // State columns (phase 3). Genuinely-new rows (detached, carriers at their
@@ -429,6 +486,18 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
 #ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
   preserve_or_seed_sidecar(m_vs_relative, m_old_vs_relative, row, old_row,
                            preserve, particle.migration_vs_relative());
+#endif
+
+  // Ragged host sidecars (phase 6): a surviving row is MOVED out of the old
+  // vector element (transfers the heap buffer -- no deep copy of the ragged
+  // run); a genuinely-new / migrated row is seeded (copied) from the migration
+  // carrier, which for the dormant phase reads the Particle's bl/el members
+  // directly (empty for a fresh ghost). Nothing reads these sidecars yet.
+  preserve_or_move_sidecar(m_bonds_sidecar, m_old_bonds_sidecar, row, old_row,
+                           preserve, particle.migration_bonds());
+#ifdef ESPRESSO_EXCLUSIONS
+  preserve_or_move_sidecar(m_exclusions_sidecar, m_old_exclusions_sidecar, row,
+                           old_row, preserve, particle.migration_exclusions());
 #endif
 
   particle.attach_to_store(*this, row);

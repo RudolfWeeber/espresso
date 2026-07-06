@@ -23,9 +23,11 @@
 
 #include "particle_store/ParticleStore.hpp"
 
+#include "BondList.hpp"
 #include "Particle.hpp"
 
 #include <utils/Vector.hpp>
+#include <utils/compact_vector.hpp>
 #include <utils/quaternion.hpp>
 
 #include <Kokkos_Core.hpp>
@@ -33,6 +35,7 @@
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 
+#include <array>
 #include <cstddef>
 #include <sstream>
 #include <vector>
@@ -644,6 +647,186 @@ BOOST_AUTO_TEST_CASE(swimming_sidecar_preserve_and_default) {
   BOOST_CHECK(not store.swimming(p2.store_row()).swimming);
 }
 #endif
+
+// Phase-6 RATTLE observable column: a Vector3d written into the column must
+// preserve by old row across a rank-local rebuild that shuffles the order, and
+// a genuinely-new row must default to zero (there is NO migration carrier).
+#ifdef ESPRESSO_BOND_CONSTRAINT
+BOOST_AUTO_TEST_CASE(rattle_correction_column_preserve_and_default) {
+  ParticleStore store{};
+  Particle p0{}, p1{};
+  store.begin_rebuild(2u, 0u);
+  store.assign_row(p0, 0);
+  store.assign_row(p1, 1);
+  store.finish_rebuild();
+
+  store.rattle_correction_reference(p0.store_row()) =
+      Utils::Vector3d{1.0, 2.0, 3.0};
+  store.rattle_correction_reference(p1.store_row()) =
+      Utils::Vector3d{-4.0, -5.0, -6.0};
+
+  Particle p2{};
+  store.mark_dirty();
+  store.begin_rebuild(3u, 0u);
+  store.assign_row(p1, 0);
+  store.assign_row(p0, 1);
+  store.assign_row(p2, 2);
+  store.finish_rebuild();
+
+  BOOST_CHECK(store.rattle_correction_value(p1.store_row()) ==
+              (Utils::Vector3d{-4.0, -5.0, -6.0}));
+  BOOST_CHECK(store.rattle_correction_value(p0.store_row()) ==
+              (Utils::Vector3d{1.0, 2.0, 3.0}));
+  // genuinely-new row: preserve-or-default seeds a zero vector (no carrier).
+  BOOST_CHECK_EQUAL(store.rattle_correction_value(p2.store_row()).norm2(), 0.);
+}
+#endif
+
+// Phase-6 ragged bond sidecar: a non-empty BondList written into a sidecar row
+// must survive a rank-local rebuild that shuffles the row order, with its
+// contents intact. The preserve path MOVES the element out of the old vector
+// (the BondList owns heap storage), so this also exercises the move path
+// explicitly: the moved element's logical value (bonds + partner ids) is
+// unchanged in the new generation. A genuinely-new row defaults to empty.
+BOOST_AUTO_TEST_CASE(bonds_sidecar_preserve_moves_intact_and_default) {
+  ParticleStore store{};
+  Particle p0{}, p1{};
+  store.begin_rebuild(2u, 0u);
+  store.assign_row(p0, 0);
+  store.assign_row(p1, 1);
+  store.finish_rebuild();
+
+  // p0 gets two bonds of different arity (heap-backed ragged run): a pair bond
+  // (id 7, partners {11}) and an angle bond (id 3, partners {12, 13}).
+  {
+    auto &bonds0 = store.bonds_sidecar_reference(p0.store_row());
+    std::array<int, 1> const pair_partners{11};
+    std::array<int, 2> const angle_partners{12, 13};
+    bonds0.insert(BondView{7, pair_partners});
+    bonds0.insert(BondView{3, angle_partners});
+  }
+  // p1 gets a single pair bond (id 5, partners {21}).
+  {
+    auto &bonds1 = store.bonds_sidecar_reference(p1.store_row());
+    std::array<int, 1> const partners{21};
+    bonds1.insert(BondView{5, partners});
+  }
+
+  // Snapshot p0's logical value (id + partner-ids of every bond) before the
+  // rebuild moves it, to assert the move left it unchanged.
+  auto flatten = [](BondList const &bonds) {
+    std::vector<std::vector<int>> out;
+    for (auto const bond : bonds) {
+      std::vector<int> entry{bond.bond_id()};
+      for (auto const pid : bond.partner_ids()) {
+        entry.push_back(pid);
+      }
+      out.push_back(entry);
+    }
+    return out;
+  };
+  auto const p0_before = flatten(store.bonds_sidecar_reference(p0.store_row()));
+  auto const p1_before = flatten(store.bonds_sidecar_reference(p1.store_row()));
+  BOOST_REQUIRE_EQUAL(p0_before.size(), 2u);
+  BOOST_REQUIRE_EQUAL(p1_before.size(), 1u);
+
+  Particle p2{};
+  store.mark_dirty();
+  store.begin_rebuild(3u, 0u);
+  store.assign_row(p1, 0);
+  store.assign_row(p0, 1);
+  store.assign_row(p2, 2);
+  store.finish_rebuild();
+
+  // The moved elements carry their exact logical value into the new rows.
+  auto const p0_after = flatten(store.bonds_sidecar_reference(p0.store_row()));
+  auto const p1_after = flatten(store.bonds_sidecar_reference(p1.store_row()));
+  BOOST_CHECK(p0_after == p0_before);
+  BOOST_CHECK(p1_after == p1_before);
+  // Spell out p0's surviving contents to guard the flatten helper itself.
+  BOOST_REQUIRE_EQUAL(p0_after.size(), 2u);
+  BOOST_CHECK((p0_after[0] == std::vector<int>{7, 11}));
+  BOOST_CHECK((p0_after[1] == std::vector<int>{3, 12, 13}));
+  // genuinely-new row: empty bond list.
+  BOOST_CHECK_EQUAL(store.bonds_sidecar_reference(p2.store_row()).size(), 0u);
+}
+
+#ifdef ESPRESSO_EXCLUSIONS
+// Phase-6 ragged exclusion sidecar: an exclusion id list written into a sidecar
+// row must preserve (move) by old row across a shuffling rebuild; a
+// genuinely-new / ghost row defaults to empty (exclusions are never
+// ghost-transferred).
+BOOST_AUTO_TEST_CASE(exclusions_sidecar_preserve_moves_intact_and_default) {
+  ParticleStore store{};
+  Particle p0{}, p1{};
+  store.begin_rebuild(2u, 0u);
+  store.assign_row(p0, 0);
+  store.assign_row(p1, 1);
+  store.finish_rebuild();
+
+  {
+    auto &excl0 = store.exclusions_sidecar_reference(p0.store_row());
+    excl0.push_back(101);
+    excl0.push_back(102);
+    excl0.push_back(103);
+  }
+  {
+    auto &excl1 = store.exclusions_sidecar_reference(p1.store_row());
+    excl1.push_back(201);
+  }
+  Utils::compact_vector<int> const p0_before =
+      store.exclusions_sidecar_reference(p0.store_row());
+  Utils::compact_vector<int> const p1_before =
+      store.exclusions_sidecar_reference(p1.store_row());
+
+  Particle p2{}; // a fresh (ghost-like) row: empty exclusion sidecar
+  store.mark_dirty();
+  store.begin_rebuild(2u, 1u);
+  store.assign_row(p1, 0);
+  store.assign_row(p0, 1);
+  store.assign_row(p2, 2);
+  store.finish_rebuild();
+
+  BOOST_CHECK(store.exclusions_sidecar_reference(p0.store_row()) == p0_before);
+  BOOST_CHECK(store.exclusions_sidecar_reference(p1.store_row()) == p1_before);
+  BOOST_CHECK_EQUAL(store.exclusions_sidecar_reference(p2.store_row()).size(),
+                    0u);
+}
+#endif // ESPRESSO_EXCLUSIONS
+
+// Phase-6: a genuinely new / migrated row seeds its ragged sidecars from the
+// dormant migration getters, which read the Particle's bl/el members directly.
+// Set them on a detached particle, attach it, and verify the sidecar rows.
+BOOST_AUTO_TEST_CASE(rebuild_seeds_ragged_sidecars_from_carrier) {
+  Particle p{};
+  BOOST_REQUIRE(p.store() == nullptr);
+  {
+    std::array<int, 1> const partners{99};
+    p.bonds().insert(BondView{2, partners});
+  }
+  BOOST_REQUIRE_EQUAL(p.migration_bonds().size(), 1u);
+#ifdef ESPRESSO_EXCLUSIONS
+  p.exclusions().push_back(55);
+  BOOST_REQUIRE_EQUAL(p.migration_exclusions().size(), 1u);
+#endif
+
+  ParticleStore store{};
+  store.begin_rebuild(1u, 0u);
+  store.assign_row(p, 0);
+  store.finish_rebuild();
+
+  auto const &seeded_bonds = store.bonds_sidecar_reference(p.store_row());
+  BOOST_REQUIRE_EQUAL(seeded_bonds.size(), 1u);
+  auto const bond = *seeded_bonds.begin();
+  BOOST_CHECK_EQUAL(bond.bond_id(), 2);
+  BOOST_REQUIRE_EQUAL(bond.partner_ids().size(), 1u);
+  BOOST_CHECK_EQUAL(bond.partner_ids()[0], 99);
+#ifdef ESPRESSO_EXCLUSIONS
+  auto const &seeded_excl = store.exclusions_sidecar_reference(p.store_row());
+  BOOST_REQUIRE_EQUAL(seeded_excl.size(), 1u);
+  BOOST_CHECK_EQUAL(seeded_excl[0], 55);
+#endif
+}
 
 // Phase-5: a genuinely new row's parameter columns/sidecars must default to
 // ParticleProperties' member defaults, seeded from the migration carriers of a
