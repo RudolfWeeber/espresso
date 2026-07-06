@@ -466,6 +466,267 @@ BOOST_AUTO_TEST_CASE(snapshot_store_attaches_batch_of_detached_particles) {
   }
 }
 
+// Phase-5 PARAMETER columns/sidecars: a rank-local rebuild that shuffles the
+// row order must preserve each particle's parameters (representative subset:
+// id, type, mass, gamma, ext_force, dip_fld) by old row, and seed a genuinely
+// new row from the migration carrier defaults, exactly as the state columns do.
+BOOST_AUTO_TEST_CASE(rebuild_preserves_parameter_columns_by_old_row) {
+  ParticleStore store{};
+  Particle p0{}, p1{};
+  store.begin_rebuild(2u, 0u);
+  store.assign_row(p0, 0);
+  store.assign_row(p1, 1);
+  store.finish_rebuild();
+
+  store.id(p0.store_row()) = 10;
+  store.id(p1.store_row()) = 20;
+  store.type(p0.store_row()) = 3;
+  store.type(p1.store_row()) = 7;
+#ifdef ESPRESSO_MASS
+  store.mass(p0.store_row()) = 2.5;
+  store.mass(p1.store_row()) = 4.25;
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  store.gamma_reference(p0.store_row()) = Utils::Vector3d{1., 2., 3.};
+  store.gamma_reference(p1.store_row()) = Utils::Vector3d{4., 5., 6.};
+#else
+  store.gamma_reference(p0.store_row()) = 1.5;
+  store.gamma_reference(p1.store_row()) = 2.5;
+#endif
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  store.ext_force_reference(p0.store_row()) = Utils::Vector3d{-1., -2., -3.};
+  store.ext_force_reference(p1.store_row()) = Utils::Vector3d{7., 8., 9.};
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  store.dip_fld_reference(p0.store_row()) = Utils::Vector3d{0.1, 0.2, 0.3};
+  store.dip_fld_reference(p1.store_row()) = Utils::Vector3d{0.4, 0.5, 0.6};
+#endif
+
+  // resort that swaps the two particles' order and appends a new one
+  Particle p2{};
+  store.mark_dirty();
+  store.begin_rebuild(3u, 0u);
+  store.assign_row(p1, 0);
+  store.assign_row(p0, 1);
+  store.assign_row(p2, 2);
+  store.finish_rebuild();
+
+  BOOST_CHECK_EQUAL(store.id(p1.store_row()), 20);
+  BOOST_CHECK_EQUAL(store.id(p0.store_row()), 10);
+  BOOST_CHECK_EQUAL(store.id(p2.store_row()), -1); // default
+  BOOST_CHECK_EQUAL(store.type(p1.store_row()), 7);
+  BOOST_CHECK_EQUAL(store.type(p0.store_row()), 3);
+  BOOST_CHECK_EQUAL(store.type(p2.store_row()), 0); // default
+#ifdef ESPRESSO_MASS
+  BOOST_CHECK_EQUAL(store.mass(p1.store_row()), 4.25);
+  BOOST_CHECK_EQUAL(store.mass(p0.store_row()), 2.5);
+  BOOST_CHECK_EQUAL(store.mass(p2.store_row()), 1.0); // default
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  Utils::Vector3d const g_p1 = store.gamma_value(p1.store_row());
+  Utils::Vector3d const g_p0 = store.gamma_value(p0.store_row());
+  Utils::Vector3d const g_p2 = store.gamma_value(p2.store_row());
+  BOOST_CHECK_EQUAL(g_p1[0], 4.);
+  BOOST_CHECK_EQUAL(g_p0[2], 3.);
+  BOOST_CHECK_EQUAL(g_p2[0], -1.); // default {-1,-1,-1}
+  BOOST_CHECK_EQUAL(g_p2[2], -1.);
+#else
+  BOOST_CHECK_EQUAL(store.gamma_value(p1.store_row()), 2.5);
+  BOOST_CHECK_EQUAL(store.gamma_value(p0.store_row()), 1.5);
+  BOOST_CHECK_EQUAL(store.gamma_value(p2.store_row()), -1.); // default
+#endif
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  Utils::Vector3d const ef_p1 = store.ext_force_value(p1.store_row());
+  Utils::Vector3d const ef_p0 = store.ext_force_value(p0.store_row());
+  Utils::Vector3d const ef_p2 = store.ext_force_value(p2.store_row());
+  BOOST_CHECK_EQUAL(ef_p1[0], 7.);
+  BOOST_CHECK_EQUAL(ef_p0[2], -3.);
+  BOOST_CHECK_EQUAL(ef_p2.norm2(), 0.); // default {0,0,0}
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  Utils::Vector3d const df_p1 = store.dip_fld_value(p1.store_row());
+  Utils::Vector3d const df_p0 = store.dip_fld_value(p0.store_row());
+  Utils::Vector3d const df_p2 = store.dip_fld_value(p2.store_row());
+  BOOST_CHECK_EQUAL(df_p1[0], 0.4);
+  BOOST_CHECK_EQUAL(df_p0[2], 0.3);
+  BOOST_CHECK_EQUAL(df_p2.norm2(), 0.); // default {0,0,0}
+#endif
+}
+
+// Phase-5 uint8 column (rotation / ext_flag): exercises the NEW element type.
+// Bitfield values must round-trip through the DualView<uint8_t*> column, write
+// through the element reference, and preserve by old row across a rebuild.
+#if defined(ESPRESSO_ROTATION) || defined(ESPRESSO_EXTERNAL_FORCES)
+BOOST_AUTO_TEST_CASE(uint8_parameter_column_write_through_and_preserve) {
+  ParticleStore store{};
+  Particle p0{}, p1{};
+  store.begin_rebuild(2u, 0u);
+  store.assign_row(p0, 0);
+  store.assign_row(p1, 1);
+  store.finish_rebuild();
+
+#ifdef ESPRESSO_ROTATION
+  store.rotation(p0.store_row()) = static_cast<std::uint8_t>(0b101u);
+  store.rotation(p1.store_row()) = static_cast<std::uint8_t>(0b010u);
+  BOOST_CHECK_EQUAL(store.rotation(p0.store_row()),
+                    static_cast<std::uint8_t>(0b101u));
+  std::uint8_t &rot_ref = store.rotation(p1.store_row());
+  rot_ref = static_cast<std::uint8_t>(0b111u);
+  BOOST_CHECK_EQUAL(store.rotation(p1.store_row()),
+                    static_cast<std::uint8_t>(0b111u));
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  store.ext_flag(p0.store_row()) = static_cast<std::uint8_t>(0b011u);
+  store.ext_flag(p1.store_row()) = static_cast<std::uint8_t>(0b100u);
+#endif
+
+  Particle p2{};
+  store.mark_dirty();
+  store.begin_rebuild(3u, 0u);
+  store.assign_row(p1, 0);
+  store.assign_row(p0, 1);
+  store.assign_row(p2, 2);
+  store.finish_rebuild();
+
+#ifdef ESPRESSO_ROTATION
+  BOOST_CHECK_EQUAL(store.rotation(p1.store_row()),
+                    static_cast<std::uint8_t>(0b111u));
+  BOOST_CHECK_EQUAL(store.rotation(p0.store_row()),
+                    static_cast<std::uint8_t>(0b101u));
+  BOOST_CHECK_EQUAL(store.rotation(p2.store_row()),
+                    static_cast<std::uint8_t>(0u)); // default
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  BOOST_CHECK_EQUAL(store.ext_flag(p1.store_row()),
+                    static_cast<std::uint8_t>(0b100u));
+  BOOST_CHECK_EQUAL(store.ext_flag(p0.store_row()),
+                    static_cast<std::uint8_t>(0b011u));
+  BOOST_CHECK_EQUAL(store.ext_flag(p2.store_row()),
+                    static_cast<std::uint8_t>(0u)); // default
+#endif
+}
+#endif
+
+// Phase-5 host sidecar (POD std::vector): exercises the NEW sidecar machinery.
+// A POD written into a sidecar row must preserve by old row across a rebuild
+// and a genuinely-new row must default to a value-constructed POD.
+#ifdef ESPRESSO_ENGINE
+BOOST_AUTO_TEST_CASE(swimming_sidecar_preserve_and_default) {
+  ParticleStore store{};
+  Particle p0{}, p1{};
+  store.begin_rebuild(2u, 0u);
+  store.assign_row(p0, 0);
+  store.assign_row(p1, 1);
+  store.finish_rebuild();
+
+  store.swimming(p0.store_row()).f_swim = 1.5;
+  store.swimming(p0.store_row()).swimming = true;
+  store.swimming(p1.store_row()).f_swim = -2.5;
+
+  Particle p2{};
+  store.mark_dirty();
+  store.begin_rebuild(3u, 0u);
+  store.assign_row(p1, 0);
+  store.assign_row(p0, 1);
+  store.assign_row(p2, 2);
+  store.finish_rebuild();
+
+  BOOST_CHECK_EQUAL(store.swimming(p1.store_row()).f_swim, -2.5);
+  BOOST_CHECK_EQUAL(store.swimming(p0.store_row()).f_swim, 1.5);
+  BOOST_CHECK(store.swimming(p0.store_row()).swimming);
+  // genuinely-new row: value-constructed POD default (matches the carrier /
+  // ParticleParametersSwimming member defaults)
+  BOOST_CHECK_EQUAL(store.swimming(p2.store_row()).f_swim, 0.);
+  BOOST_CHECK(not store.swimming(p2.store_row()).swimming);
+}
+#endif
+
+// Phase-5: a genuinely new row's parameter columns/sidecars must default to
+// ParticleProperties' member defaults, seeded from the migration carriers of a
+// freshly-constructed (detached) particle.
+BOOST_AUTO_TEST_CASE(new_row_parameter_defaults) {
+  ParticleStore store{};
+  Particle p{};
+  BOOST_REQUIRE(p.store() == nullptr);
+  store.begin_rebuild(1u, 0u);
+  store.assign_row(p, 0);
+  store.finish_rebuild();
+
+  BOOST_CHECK_EQUAL(store.id(p.store_row()), -1);
+  BOOST_CHECK_EQUAL(store.mol_id(p.store_row()), 0);
+  BOOST_CHECK_EQUAL(store.type(p.store_row()), 0);
+  BOOST_CHECK_EQUAL(store.propagation(p.store_row()),
+                    static_cast<int>(PropagationMode::SYSTEM_DEFAULT));
+#ifdef ESPRESSO_MASS
+  BOOST_CHECK_EQUAL(store.mass(p.store_row()), 1.0);
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  BOOST_CHECK_EQUAL(store.q(p.store_row()), 0.0);
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  Utils::Vector3d const ri = store.rinertia_value(p.store_row());
+  BOOST_CHECK_EQUAL(ri[0], 1.);
+  BOOST_CHECK_EQUAL(ri[1], 1.);
+  BOOST_CHECK_EQUAL(ri[2], 1.);
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  BOOST_CHECK_EQUAL(store.ext_force_value(p.store_row()).norm2(), 0.);
+  BOOST_CHECK_EQUAL(store.ext_flag(p.store_row()),
+                    static_cast<std::uint8_t>(0u));
+#endif
+#ifdef ESPRESSO_ROTATION
+  BOOST_CHECK_EQUAL(store.rotation(p.store_row()),
+                    static_cast<std::uint8_t>(0u));
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  Utils::Vector3d const g = store.gamma_value(p.store_row());
+  BOOST_CHECK_EQUAL(g[0], -1.);
+  BOOST_CHECK_EQUAL(g[2], -1.);
+#else
+  BOOST_CHECK_EQUAL(store.gamma_value(p.store_row()), -1.);
+#endif
+#endif
+}
+
+// Phase-5: a detached particle (freshly constructed) carries its parameters in
+// the ParticleProperties member; assign_row seeds the columns/sidecars from the
+// dormant migration carriers (which read those struct fields pre-flip). Set the
+// values on the detached particle, then attach it and verify the columns.
+BOOST_AUTO_TEST_CASE(rebuild_seeds_parameters_from_carrier) {
+  Particle p{};
+  BOOST_REQUIRE(p.store() == nullptr);
+  p.id() = 42;
+  p.type() = 5;
+#ifdef ESPRESSO_MASS
+  p.mass() = 3.5;
+#endif
+#ifdef ESPRESSO_ENGINE
+  p.swimming().f_swim = 9.5;
+#endif
+  // The dormant carriers read the struct fields directly.
+  BOOST_CHECK_EQUAL(p.migration_id(), 42);
+  BOOST_CHECK_EQUAL(p.migration_type(), 5);
+
+  ParticleStore store{};
+  store.begin_rebuild(1u, 0u);
+  store.assign_row(p, 0);
+  store.finish_rebuild();
+
+  BOOST_CHECK_EQUAL(store.id(p.store_row()), 42);
+  BOOST_CHECK_EQUAL(store.type(p.store_row()), 5);
+#ifdef ESPRESSO_MASS
+  BOOST_CHECK_EQUAL(store.mass(p.store_row()), 3.5);
+#endif
+#ifdef ESPRESSO_ENGINE
+  BOOST_CHECK_EQUAL(store.swimming(p.store_row()).f_swim, 9.5);
+#endif
+}
+
 // Scalar column references write through to the stored value.
 BOOST_AUTO_TEST_CASE(scalar_column_references_write_through) {
   ParticleStore store{};

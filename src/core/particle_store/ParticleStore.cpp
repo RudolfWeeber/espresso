@@ -65,6 +65,22 @@ void preserve_or_seed_scalar(ColumnType &new_column,
     new_view(row) = seed;
   }
 }
+
+// Host-sidecar (std::vector of POD) counterpart of preserve_or_seed_scalar:
+// copy the whole POD from the old vector at @p old_row (row survived) or from
+// the migration carrier @p seed (detached / brand-new particle).
+template <class SidecarVector, class SeedType>
+void preserve_or_seed_sidecar(SidecarVector &new_sidecar,
+                              SidecarVector const &old_sidecar, int const row,
+                              int const old_row, bool const preserve,
+                              SeedType const &seed) {
+  if (preserve) {
+    new_sidecar[static_cast<std::size_t>(row)] =
+        old_sidecar[static_cast<std::size_t>(old_row)];
+  } else {
+    new_sidecar[static_cast<std::size_t>(row)] = seed;
+  }
+}
 } // namespace
 
 namespace {
@@ -120,6 +136,58 @@ void ParticleStore::begin_rebuild(std::size_t const number_of_local_particles,
 #ifdef ESPRESSO_ROTATION
   swap(m_angular_velocity, m_old_angular_velocity);
 #endif
+  // Parameter columns (phase 5).
+  swap(m_id, m_old_id);
+  swap(m_mol_id, m_old_mol_id);
+  swap(m_type, m_old_type);
+  swap(m_propagation, m_old_propagation);
+#ifdef ESPRESSO_ROTATION
+  swap(m_rotation, m_old_rotation);
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  swap(m_ext_flag, m_old_ext_flag);
+#endif
+#ifdef ESPRESSO_MASS
+  swap(m_mass, m_old_mass);
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  swap(m_q, m_old_q);
+#endif
+#ifdef ESPRESSO_DIPOLES
+  swap(m_dipm, m_old_dipm);
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  swap(m_rinertia, m_old_rinertia);
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+  swap(m_mu_E, m_old_mu_E);
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  swap(m_dip_fld, m_old_dip_fld);
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  swap(m_ext_force, m_old_ext_force);
+#ifdef ESPRESSO_ROTATION
+  swap(m_ext_torque, m_old_ext_torque);
+#endif
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+  swap(m_gamma, m_old_gamma);
+#ifdef ESPRESSO_ROTATION
+  swap(m_gamma_rot, m_old_gamma_rot);
+#endif
+#endif
+  // Host sidecars: swap current <-> spare (spare now holds the old-row values,
+  // the preserve source; the swapped-in current vector is resized below).
+#ifdef ESPRESSO_ENGINE
+  swap(m_swimming, m_old_swimming);
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+  swap(m_magnetodynamics, m_old_magnetodynamics);
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+  swap(m_vs_relative, m_old_vs_relative);
+#endif
 
   m_old_number_of_particles =
       m_number_of_local_particles + m_number_of_ghost_particles;
@@ -154,6 +222,60 @@ void ParticleStore::begin_rebuild(std::size_t const number_of_local_particles,
 #ifdef ESPRESSO_ROTATION
   grow_without_init(m_angular_velocity, total,
                     "particle_store::angular_velocity");
+#endif
+  // Parameter columns (phase 5).
+  grow_without_init(m_id, total, "particle_store::id");
+  grow_without_init(m_mol_id, total, "particle_store::mol_id");
+  grow_without_init(m_type, total, "particle_store::type");
+  grow_without_init(m_propagation, total, "particle_store::propagation");
+#ifdef ESPRESSO_ROTATION
+  grow_without_init(m_rotation, total, "particle_store::rotation");
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  grow_without_init(m_ext_flag, total, "particle_store::ext_flag");
+#endif
+#ifdef ESPRESSO_MASS
+  grow_without_init(m_mass, total, "particle_store::mass");
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  grow_without_init(m_q, total, "particle_store::q");
+#endif
+#ifdef ESPRESSO_DIPOLES
+  grow_without_init(m_dipm, total, "particle_store::dipm");
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  grow_without_init(m_rinertia, total, "particle_store::rinertia");
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+  grow_without_init(m_mu_E, total, "particle_store::mu_E");
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  grow_without_init(m_dip_fld, total, "particle_store::dip_fld");
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  grow_without_init(m_ext_force, total, "particle_store::ext_force");
+#ifdef ESPRESSO_ROTATION
+  grow_without_init(m_ext_torque, total, "particle_store::ext_torque");
+#endif
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+  grow_without_init(m_gamma, total, "particle_store::gamma");
+#ifdef ESPRESSO_ROTATION
+  grow_without_init(m_gamma_rot, total, "particle_store::gamma_rot");
+#endif
+#endif
+  // Host sidecars: resize the (swapped-in) current vector to the new count.
+  // Every row is overwritten by assign_row's preserve_or_seed_sidecar before
+  // finish_rebuild, so the value-initialized filler resize inserts is never
+  // observed; it only ensures the storage exists.
+#ifdef ESPRESSO_ENGINE
+  m_swimming.resize(total);
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+  m_magnetodynamics.resize(total);
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+  m_vs_relative.resize(total);
 #endif
 }
 
@@ -218,6 +340,96 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
 #ifdef ESPRESSO_ROTATION
   preserve_or_seed<3u>(m_angular_velocity, m_old_angular_velocity, row, old_row,
                        preserve, particle.migration_angular_velocity());
+#endif
+
+  // Parameter columns (phase 5). Genuinely-new rows are seeded from the
+  // migration carriers, whose defaults match ParticleProperties' member
+  // defaults (id -1, mol_id 0, type 0, propagation SYSTEM_DEFAULT, bitfields 0,
+  // mass 1, rinertia {1,1,1}, q/dipm 0, mu_E/dip_fld/ext_force/ext_torque zero,
+  // gamma/gamma_rot -1 or {-1,-1,-1}). The dormant carriers are NOT serialized
+  // yet (pre-flip the ParticleProperties members are authoritative and the
+  // migration_*() getters read them), so a migrated particle's parameters are
+  // still carried by the boost-serialized ParticleProperties member p; the
+  // carriers reproduce the same values for seeding.
+  preserve_or_seed_scalar(m_id, m_old_id, row, old_row, preserve,
+                          particle.migration_id());
+  preserve_or_seed_scalar(m_mol_id, m_old_mol_id, row, old_row, preserve,
+                          particle.migration_mol_id());
+  preserve_or_seed_scalar(m_type, m_old_type, row, old_row, preserve,
+                          particle.migration_type());
+  preserve_or_seed_scalar(m_propagation, m_old_propagation, row, old_row,
+                          preserve, particle.migration_propagation());
+#ifdef ESPRESSO_ROTATION
+  preserve_or_seed_scalar(m_rotation, m_old_rotation, row, old_row, preserve,
+                          particle.migration_rotation());
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  preserve_or_seed_scalar(m_ext_flag, m_old_ext_flag, row, old_row, preserve,
+                          particle.migration_ext_flag());
+#endif
+#ifdef ESPRESSO_MASS
+  preserve_or_seed_scalar(m_mass, m_old_mass, row, old_row, preserve,
+                          particle.migration_mass());
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  preserve_or_seed_scalar(m_q, m_old_q, row, old_row, preserve,
+                          particle.migration_q());
+#endif
+#ifdef ESPRESSO_DIPOLES
+  preserve_or_seed_scalar(m_dipm, m_old_dipm, row, old_row, preserve,
+                          particle.migration_dipm());
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  preserve_or_seed<3u>(m_rinertia, m_old_rinertia, row, old_row, preserve,
+                       particle.migration_rinertia());
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+  preserve_or_seed<3u>(m_mu_E, m_old_mu_E, row, old_row, preserve,
+                       particle.migration_mu_E());
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  preserve_or_seed<3u>(m_dip_fld, m_old_dip_fld, row, old_row, preserve,
+                       particle.migration_dip_fld());
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  preserve_or_seed<3u>(m_ext_force, m_old_ext_force, row, old_row, preserve,
+                       particle.migration_ext_force());
+#ifdef ESPRESSO_ROTATION
+  preserve_or_seed<3u>(m_ext_torque, m_old_ext_torque, row, old_row, preserve,
+                       particle.migration_ext_torque());
+#endif
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  preserve_or_seed<3u>(m_gamma, m_old_gamma, row, old_row, preserve,
+                       particle.migration_gamma());
+#ifdef ESPRESSO_ROTATION
+  preserve_or_seed<3u>(m_gamma_rot, m_old_gamma_rot, row, old_row, preserve,
+                       particle.migration_gamma_rot());
+#endif
+#else // ESPRESSO_PARTICLE_ANISOTROPY
+  preserve_or_seed_scalar(m_gamma, m_old_gamma, row, old_row, preserve,
+                          particle.migration_gamma());
+#ifdef ESPRESSO_ROTATION
+  preserve_or_seed_scalar(m_gamma_rot, m_old_gamma_rot, row, old_row, preserve,
+                          particle.migration_gamma_rot());
+#endif
+#endif // ESPRESSO_PARTICLE_ANISOTROPY
+#endif // ESPRESSO_THERMOSTAT_PER_PARTICLE
+
+  // Host sidecars (phase 5): whole-POD preserve-by-old-row / seed-from-carrier.
+#ifdef ESPRESSO_ENGINE
+  preserve_or_seed_sidecar(m_swimming, m_old_swimming, row, old_row, preserve,
+                           particle.migration_swimming());
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+  preserve_or_seed_sidecar(m_magnetodynamics, m_old_magnetodynamics, row,
+                           old_row, preserve,
+                           particle.migration_magnetodynamics());
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+  preserve_or_seed_sidecar(m_vs_relative, m_old_vs_relative, row, old_row,
+                           preserve, particle.migration_vs_relative());
 #endif
 
   particle.attach_to_store(*this, row);

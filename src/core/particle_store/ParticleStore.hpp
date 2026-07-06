@@ -21,6 +21,7 @@
 
 #include <config/config.hpp>
 
+#include "particle_store/ParticleParameters.hpp"
 #include "particle_store/VectorReference.hpp"
 
 #include <utils/Vector.hpp>
@@ -33,6 +34,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
+#include <vector>
 
 class Particle; // attach_to_store is defined in Particle.hpp
 
@@ -77,6 +79,22 @@ public:
   using QuaternionColumn = Kokkos::DualView<double *[4], StateVectorLayout>;
   using ScalarColumn = Kokkos::DualView<double *>;
   using ShortColumn = Kokkos::DualView<short *>;
+  // Phase-5 parameter scalar columns: int-typed (id/mol_id/type/propagation)
+  // and uint8-typed bitfields (rotation/ext_flag).
+  using IntScalarColumn = Kokkos::DualView<int *>;
+  using Uint8Column = Kokkos::DualView<std::uint8_t *>;
+
+  // Phase-5 per-particle friction (gamma/gamma_rot): scalar when isotropic,
+  // a 3-vector column when ESPRESSO_PARTICLE_ANISOTROPY selects per-axis
+  // friction. The value type and column follow the same switch as the
+  // ParticleProperties::gamma member (see Particle.hpp).
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  using GammaValue = Utils::Vector3d;
+  using GammaColumn = Column;
+#else
+  using GammaValue = double;
+  using GammaColumn = ScalarColumn;
+#endif
 
   std::size_t number_of_local_particles() const {
     return m_number_of_local_particles;
@@ -141,6 +159,101 @@ public:
     m_old_velocity = Column{};
 #ifdef ESPRESSO_ROTATION
     m_old_angular_velocity = Column{};
+#endif
+    // Parameter columns (phase 5).
+    m_id = IntScalarColumn{};
+    m_mol_id = IntScalarColumn{};
+    m_type = IntScalarColumn{};
+    m_propagation = IntScalarColumn{};
+#ifdef ESPRESSO_ROTATION
+    m_rotation = Uint8Column{};
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+    m_ext_flag = Uint8Column{};
+#endif
+#ifdef ESPRESSO_MASS
+    m_mass = ScalarColumn{};
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+    m_q = ScalarColumn{};
+#endif
+#ifdef ESPRESSO_DIPOLES
+    m_dipm = ScalarColumn{};
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+    m_rinertia = Column{};
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+    m_mu_E = Column{};
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+    m_dip_fld = Column{};
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+    m_ext_force = Column{};
+#ifdef ESPRESSO_ROTATION
+    m_ext_torque = Column{};
+#endif
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+    m_gamma = GammaColumn{};
+#ifdef ESPRESSO_ROTATION
+    m_gamma_rot = GammaColumn{};
+#endif
+#endif
+    // Parameter spares (phase 5).
+    m_old_id = IntScalarColumn{};
+    m_old_mol_id = IntScalarColumn{};
+    m_old_type = IntScalarColumn{};
+    m_old_propagation = IntScalarColumn{};
+#ifdef ESPRESSO_ROTATION
+    m_old_rotation = Uint8Column{};
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+    m_old_ext_flag = Uint8Column{};
+#endif
+#ifdef ESPRESSO_MASS
+    m_old_mass = ScalarColumn{};
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+    m_old_q = ScalarColumn{};
+#endif
+#ifdef ESPRESSO_DIPOLES
+    m_old_dipm = ScalarColumn{};
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+    m_old_rinertia = Column{};
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+    m_old_mu_E = Column{};
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+    m_old_dip_fld = Column{};
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+    m_old_ext_force = Column{};
+#ifdef ESPRESSO_ROTATION
+    m_old_ext_torque = Column{};
+#endif
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+    m_old_gamma = GammaColumn{};
+#ifdef ESPRESSO_ROTATION
+    m_old_gamma_rot = GammaColumn{};
+#endif
+#endif
+    // Host parameter sidecars (phase 5).
+#ifdef ESPRESSO_ENGINE
+    m_swimming.clear();
+    m_old_swimming.clear();
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+    m_magnetodynamics.clear();
+    m_old_magnetodynamics.clear();
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+    m_vs_relative.clear();
+    m_old_vs_relative.clear();
 #endif
     m_number_of_local_particles = 0u;
     m_number_of_ghost_particles = 0u;
@@ -251,6 +364,179 @@ public:
   auto angular_velocity_view() { return m_angular_velocity.view_host(); }
 #endif
 
+  // -- parameter columns (phase 5) ------------------------------------------
+  // Scalar-typed parameters expose a real element reference (like
+  // lees_edwards_offset) plus a by-value getter and a host view. Vector-typed
+  // parameters expose a VectorReference/value/view triple (like force).
+
+  // int scalars: id, mol_id, type, propagation.
+  int &id(int const row) { return scalar_reference(m_id, row); }
+  int id(int const row) const { return scalar_value(m_id, row); }
+  auto id_view() { return m_id.view_host(); }
+  int &mol_id(int const row) { return scalar_reference(m_mol_id, row); }
+  int mol_id(int const row) const { return scalar_value(m_mol_id, row); }
+  auto mol_id_view() { return m_mol_id.view_host(); }
+  int &type(int const row) { return scalar_reference(m_type, row); }
+  int type(int const row) const { return scalar_value(m_type, row); }
+  auto type_view() { return m_type.view_host(); }
+  int &propagation(int const row) {
+    return scalar_reference(m_propagation, row);
+  }
+  int propagation(int const row) const {
+    return scalar_value(m_propagation, row);
+  }
+  auto propagation_view() { return m_propagation.view_host(); }
+
+#ifdef ESPRESSO_ROTATION
+  std::uint8_t &rotation(int const row) {
+    return scalar_reference(m_rotation, row);
+  }
+  std::uint8_t rotation(int const row) const {
+    return scalar_value(m_rotation, row);
+  }
+  auto rotation_view() { return m_rotation.view_host(); }
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  std::uint8_t &ext_flag(int const row) {
+    return scalar_reference(m_ext_flag, row);
+  }
+  std::uint8_t ext_flag(int const row) const {
+    return scalar_value(m_ext_flag, row);
+  }
+  auto ext_flag_view() { return m_ext_flag.view_host(); }
+#endif
+
+#ifdef ESPRESSO_MASS
+  double &mass(int const row) { return scalar_reference(m_mass, row); }
+  double mass(int const row) const { return scalar_value(m_mass, row); }
+  auto mass_view() { return m_mass.view_host(); }
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  double &q(int const row) { return scalar_reference(m_q, row); }
+  double q(int const row) const { return scalar_value(m_q, row); }
+  auto q_view() { return m_q.view_host(); }
+#endif
+#ifdef ESPRESSO_DIPOLES
+  double &dipm(int const row) { return scalar_reference(m_dipm, row); }
+  double dipm(int const row) const { return scalar_value(m_dipm, row); }
+  auto dipm_view() { return m_dipm.view_host(); }
+#endif
+
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  VectorReference rinertia_reference(int const row) {
+    return column_reference(m_rinertia, row);
+  }
+  Utils::Vector3d rinertia_value(int const row) const {
+    return column_value(m_rinertia, row);
+  }
+  auto rinertia_view() { return m_rinertia.view_host(); }
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+  VectorReference mu_E_reference(int const row) {
+    return column_reference(m_mu_E, row);
+  }
+  Utils::Vector3d mu_E_value(int const row) const {
+    return column_value(m_mu_E, row);
+  }
+  auto mu_E_view() { return m_mu_E.view_host(); }
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  VectorReference dip_fld_reference(int const row) {
+    return column_reference(m_dip_fld, row);
+  }
+  Utils::Vector3d dip_fld_value(int const row) const {
+    return column_value(m_dip_fld, row);
+  }
+  auto dip_fld_view() { return m_dip_fld.view_host(); }
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  VectorReference ext_force_reference(int const row) {
+    return column_reference(m_ext_force, row);
+  }
+  Utils::Vector3d ext_force_value(int const row) const {
+    return column_value(m_ext_force, row);
+  }
+  auto ext_force_view() { return m_ext_force.view_host(); }
+#ifdef ESPRESSO_ROTATION
+  VectorReference ext_torque_reference(int const row) {
+    return column_reference(m_ext_torque, row);
+  }
+  Utils::Vector3d ext_torque_value(int const row) const {
+    return column_value(m_ext_torque, row);
+  }
+  auto ext_torque_view() { return m_ext_torque.view_host(); }
+#endif
+#endif
+
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+  // gamma/gamma_rot: scalar element-ref when isotropic, VectorReference when
+  // ESPRESSO_PARTICLE_ANISOTROPY selects per-axis friction (GammaColumn).
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  VectorReference gamma_reference(int const row) {
+    return column_reference(m_gamma, row);
+  }
+  GammaValue gamma_value(int const row) const {
+    return column_value(m_gamma, row);
+  }
+#else
+  double &gamma_reference(int const row) {
+    return scalar_reference(m_gamma, row);
+  }
+  GammaValue gamma_value(int const row) const {
+    return scalar_value(m_gamma, row);
+  }
+#endif
+  auto gamma_view() { return m_gamma.view_host(); }
+#ifdef ESPRESSO_ROTATION
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  VectorReference gamma_rot_reference(int const row) {
+    return column_reference(m_gamma_rot, row);
+  }
+  GammaValue gamma_rot_value(int const row) const {
+    return column_value(m_gamma_rot, row);
+  }
+#else
+  double &gamma_rot_reference(int const row) {
+    return scalar_reference(m_gamma_rot, row);
+  }
+  GammaValue gamma_rot_value(int const row) const {
+    return scalar_value(m_gamma_rot, row);
+  }
+#endif
+  auto gamma_rot_view() { return m_gamma_rot.view_host(); }
+#endif // ESPRESSO_ROTATION
+#endif // ESPRESSO_THERMOSTAT_PER_PARTICLE
+
+  // -- host parameter sidecars (phase 5) ------------------------------------
+  // Cold PODs live in plain std::vector sidecars indexed by store row (not
+  // Kokkos columns). Rebuilt with the store (old vector swapped like a column;
+  // preserve-by-old-row / seed-from-carrier in assign_row). Accessors return
+  // references by row.
+#ifdef ESPRESSO_ENGINE
+  ParticleParametersSwimming &swimming(int const row) {
+    return sidecar_reference(m_swimming, row);
+  }
+  ParticleParametersSwimming const &swimming(int const row) const {
+    return sidecar_reference(m_swimming, row);
+  }
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+  ThermalStonerWohlfarthParameters &magnetodynamics(int const row) {
+    return sidecar_reference(m_magnetodynamics, row);
+  }
+  ThermalStonerWohlfarthParameters const &magnetodynamics(int const row) const {
+    return sidecar_reference(m_magnetodynamics, row);
+  }
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+  VirtualSitesRelativeParameters &vs_relative(int const row) {
+    return sidecar_reference(m_vs_relative, row);
+  }
+  VirtualSitesRelativeParameters const &vs_relative(int const row) const {
+    return sidecar_reference(m_vs_relative, row);
+  }
+#endif
+
 private:
   // -- proxy factories for the various column kinds -------------------------
   VectorReference column_reference(Column &column, int const row) {
@@ -310,6 +596,13 @@ private:
     assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
     return column.view_host()(row);
   }
+  // Host sidecar (plain std::vector) element access by row.
+  template <class SidecarVector>
+  auto sidecar_reference(SidecarVector &sidecar, int const row) const
+      -> decltype(sidecar[static_cast<std::size_t>(row)]) {
+    assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
+    return sidecar[static_cast<std::size_t>(row)];
+  }
 
   std::size_t m_number_of_local_particles = 0u;
   std::size_t m_number_of_ghost_particles = 0u;
@@ -337,6 +630,63 @@ private:
   Column m_angular_velocity;
 #endif
 
+  // -- current-generation parameter columns (phase 5) ----------------------
+  IntScalarColumn m_id;
+  IntScalarColumn m_mol_id;
+  IntScalarColumn m_type;
+  IntScalarColumn m_propagation;
+#ifdef ESPRESSO_ROTATION
+  Uint8Column m_rotation;
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  Uint8Column m_ext_flag;
+#endif
+#ifdef ESPRESSO_MASS
+  ScalarColumn m_mass;
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  ScalarColumn m_q;
+#endif
+#ifdef ESPRESSO_DIPOLES
+  ScalarColumn m_dipm;
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  Column m_rinertia;
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+  Column m_mu_E;
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  Column m_dip_fld;
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  Column m_ext_force;
+#ifdef ESPRESSO_ROTATION
+  Column m_ext_torque;
+#endif
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+  GammaColumn m_gamma;
+#ifdef ESPRESSO_ROTATION
+  GammaColumn m_gamma_rot;
+#endif
+#endif
+
+  // -- host parameter sidecars (phase 5) ------------------------------------
+  // Cold PODs (indexed by store row). Rebuilt with the store: the current
+  // vector is swapped with its spare in begin_rebuild (holding the old-row
+  // values as the preserve source), grown to the new count, and each row is
+  // preserved-by-old-row / seeded-from-carrier in assign_row.
+#ifdef ESPRESSO_ENGINE
+  std::vector<ParticleParametersSwimming> m_swimming;
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+  std::vector<ThermalStonerWohlfarthParameters> m_magnetodynamics;
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+  std::vector<VirtualSitesRelativeParameters> m_vs_relative;
+#endif
+
   // -- spare (previous-generation) columns ----------------------------------
   // Capacity-cached double buffering (phase 3.5): these are kept alive across
   // rebuilds as the swap-in write target. During a rebuild they hold the
@@ -360,6 +710,59 @@ private:
   Column m_old_velocity;
 #ifdef ESPRESSO_ROTATION
   Column m_old_angular_velocity;
+#endif
+
+  // -- spare (previous-generation) parameter columns (phase 5) --------------
+  IntScalarColumn m_old_id;
+  IntScalarColumn m_old_mol_id;
+  IntScalarColumn m_old_type;
+  IntScalarColumn m_old_propagation;
+#ifdef ESPRESSO_ROTATION
+  Uint8Column m_old_rotation;
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  Uint8Column m_old_ext_flag;
+#endif
+#ifdef ESPRESSO_MASS
+  ScalarColumn m_old_mass;
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  ScalarColumn m_old_q;
+#endif
+#ifdef ESPRESSO_DIPOLES
+  ScalarColumn m_old_dipm;
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  Column m_old_rinertia;
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+  Column m_old_mu_E;
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  Column m_old_dip_fld;
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  Column m_old_ext_force;
+#ifdef ESPRESSO_ROTATION
+  Column m_old_ext_torque;
+#endif
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+  GammaColumn m_old_gamma;
+#ifdef ESPRESSO_ROTATION
+  GammaColumn m_old_gamma_rot;
+#endif
+#endif
+
+  // -- spare (previous-generation) host sidecars (phase 5) ------------------
+#ifdef ESPRESSO_ENGINE
+  std::vector<ParticleParametersSwimming> m_old_swimming;
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+  std::vector<ThermalStonerWohlfarthParameters> m_old_magnetodynamics;
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+  std::vector<VirtualSitesRelativeParameters> m_old_vs_relative;
 #endif
 
   std::size_t m_old_number_of_particles = 0u;
