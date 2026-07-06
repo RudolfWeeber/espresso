@@ -55,18 +55,25 @@ kokkos_parallel_range_for(auto const &name, auto start, auto end,
 
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 commit_particle(Particle const &p, auto const index,
-                CellStructure::AoSoA_pack &aosoa,
-                [[maybe_unused]] bool const rebuild) {
+                CellStructure::AoSoA_pack &aosoa, bool const rebuild) {
   // phase 3.5: position/image/director are no longer copied here. Kernels read
   // them directly from the ParticleStore columns (via the pack-index->store-row
   // translation view) and the store-side derived director view.
   // phase 4: velocity is no longer copied here either. It aliases the
   // ParticleStore velocity column; velocity-dependent kernels read it by *store
   // row* via row(i), just like position.
-  // phase 5: charge/dipm and id/type/mass are no longer copied here either.
-  // They alias the ParticleStore scalar columns (q/dipm/id/type/mass), read by
-  // *store row* via row(i). This commit now only writes the pack-owned
-  // exclusion flags (the last pack-owned column).
+  // phase 5: id/mass are no longer copied here — they alias the ParticleStore
+  // id/mass columns, read by *store row* via row(i) on the cold bond path.
+  // charge/dipm are refreshed per step (when a solver is active) in
+  // refresh_pack_charges / refresh_pack_dipm, not here.
+  // phase-5 perf recovery: `type` is once again PACK-OWNED and written here on
+  // rebuild (it is read pack-indexed by the hot pair kernels). The
+  // ParticleStore type column stays authoritative; a mid-run type change forces
+  // a rebuild (on_particle_type_change -> set_resort_particles), so this cache
+  // is refreshed before it is next read.
+  if (rebuild) {
+    aosoa.type(index) = p.type();
+  }
 #ifdef ESPRESSO_EXCLUSIONS
   aosoa.set_has_exclusion(index, !p.exclusions().empty());
 #else
@@ -284,17 +291,41 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
 }
 
 #ifdef ESPRESSO_ELECTROSTATICS
-// phase 5: the pack's `charge` view now ALIASES the authoritative ParticleStore
-// q column (bound in bind_pack_store_views), so a mutation of p.q() is
-// immediately visible to the pack -- no per-step copy is needed. The store must
-// be synchronized and the pack views rebound (both done in update_cabana_state)
-// so the alias points at the current-generation column. Kept as a thin
-// re-binder for callers (ICC) that mutate charges mid-solve after a ghost
-// PROPERTIES update; it re-points the alias at the (unchanged-generation)
-// column, which is a cheap no-op assignment but keeps the call site explicit.
+// phase-5 perf recovery: refresh the PACK-OWNED contiguous charge column from
+// the authoritative ParticleStore q column. This runs once per step (O(N))
+// ONLY when a coulomb actor is active; the hot pair loop and the P3M
+// gather/spread loops then read `aosoa.charge(pack_index)` contiguously, which
+// is O(pairs) >> O(N). Pure-LJ runs never call this and pay zero cost.
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
-update_aosoa_charges(CellStructure &cell_structure) {
-  cell_structure.bind_pack_store_views();
+refresh_pack_charges(CellStructure &cell_structure) {
+  using execution_space = Kokkos::DefaultExecutionSpace;
+  using policy_type = Kokkos::RangePolicy<execution_space>;
+  auto const &unique_particles = cell_structure.get_unique_particles();
+  auto const n_part = unique_particles.size();
+  auto &aosoa = cell_structure.get_aosoa();
+  kokkos_parallel_range_for<policy_type>(
+      "refresh pack charges", std::size_t{0}, n_part,
+      [&unique_particles, &aosoa](std::size_t const index) {
+        aosoa.pair_charge(index) = unique_particles.at(index)->q();
+      });
+}
+#endif
+
+#ifdef ESPRESSO_DIPOLES
+// phase-5 perf recovery: pack-owned dipm column refresh, guarded by an active
+// dipolar actor (see refresh_pack_charges for the rationale).
+ESPRESSO_ATTR_ALWAYS_INLINE inline void
+refresh_pack_dipm(CellStructure &cell_structure) {
+  using execution_space = Kokkos::DefaultExecutionSpace;
+  using policy_type = Kokkos::RangePolicy<execution_space>;
+  auto const &unique_particles = cell_structure.get_unique_particles();
+  auto const n_part = unique_particles.size();
+  auto &aosoa = cell_structure.get_aosoa();
+  kokkos_parallel_range_for<policy_type>(
+      "refresh pack dipm", std::size_t{0}, n_part,
+      [&unique_particles, &aosoa](std::size_t const index) {
+        aosoa.pair_dipm(index) = unique_particles.at(index)->dipm();
+      });
 }
 #endif
 

@@ -394,43 +394,53 @@ static bool integrator_step_1(CellStructure &cell_structure,
     if (p.is_virtual())
       return;
 #endif
+    // Read the propagation bitfield ONCE per particle; every mode query below
+    // reuses it instead of re-reading the ParticleStore propagation column.
+    int const prop = p.propagation();
     if (propagation.integ_switch == INTEG_METHOD_SYMPLECTIC_EULER) {
       if (propagation.should_propagate_with(
-              p, PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE))
+              prop, PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE))
         symplectic_euler_propagator_1(p, time_step);
-      if (propagation.should_propagate_with(p, PropagationMode::TRANS_NEWTON))
+      if (propagation.should_propagate_with(prop,
+                                            PropagationMode::TRANS_NEWTON))
         symplectic_euler_propagator_1(p, time_step);
 #ifdef ESPRESSO_ROTATION
-      if (propagation.should_propagate_with(p, PropagationMode::ROT_EULER))
+      if (propagation.should_propagate_with(prop, PropagationMode::ROT_EULER))
         symplectic_euler_rotator_1(p, time_step);
 #endif
-      if (propagation.should_propagate_with(p, PropagationMode::TRANS_LANGEVIN))
+      if (propagation.should_propagate_with(prop,
+                                            PropagationMode::TRANS_LANGEVIN))
         symplectic_euler_propagator_1(p, time_step);
 #ifdef ESPRESSO_ROTATION
-      if (propagation.should_propagate_with(p, PropagationMode::ROT_LANGEVIN))
+      if (propagation.should_propagate_with(prop,
+                                            PropagationMode::ROT_LANGEVIN))
         symplectic_euler_rotator_1(p, time_step);
 #endif
     } else {
       if (propagation.should_propagate_with(
-              p, PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE))
+              prop, PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE))
         velocity_verlet_propagator_1(p, time_step);
-      if (propagation.should_propagate_with(p, PropagationMode::TRANS_NEWTON))
+      if (propagation.should_propagate_with(prop,
+                                            PropagationMode::TRANS_NEWTON))
         velocity_verlet_propagator_1(p, time_step);
 #ifdef ESPRESSO_ROTATION
-      if (propagation.should_propagate_with(p, PropagationMode::ROT_EULER))
+      if (propagation.should_propagate_with(prop, PropagationMode::ROT_EULER))
         velocity_verlet_rotator_1(p, time_step);
 #endif
-      if (propagation.should_propagate_with(p, PropagationMode::TRANS_LANGEVIN))
+      if (propagation.should_propagate_with(prop,
+                                            PropagationMode::TRANS_LANGEVIN))
         velocity_verlet_propagator_1(p, time_step);
 #ifdef ESPRESSO_ROTATION
-      if (propagation.should_propagate_with(p, PropagationMode::ROT_LANGEVIN))
+      if (propagation.should_propagate_with(prop,
+                                            PropagationMode::ROT_LANGEVIN))
         velocity_verlet_rotator_1(p, time_step);
 #endif
     }
-    if (propagation.should_propagate_with(p, PropagationMode::TRANS_BROWNIAN))
+    if (propagation.should_propagate_with(prop,
+                                          PropagationMode::TRANS_BROWNIAN))
       brownian_dynamics_propagator(*thermostat.brownian, p, time_step, kT);
 #ifdef ESPRESSO_ROTATION
-    if (propagation.should_propagate_with(p, PropagationMode::ROT_BROWNIAN))
+    if (propagation.should_propagate_with(prop, PropagationMode::ROT_BROWNIAN))
       brownian_dynamics_rotator(*thermostat.brownian, p, time_step, kT);
 #endif
   });
@@ -480,36 +490,44 @@ static void integrator_step_2(CellStructure &cell_structure,
     if (p.is_virtual())
       return;
 #endif
+    // Read the propagation bitfield ONCE per particle (see integrator_step_1).
+    int const prop = p.propagation();
     if (propagation.integ_switch == INTEG_METHOD_SYMPLECTIC_EULER) {
       if (propagation.should_propagate_with(
-              p, PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE))
+              prop, PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE))
         symplectic_euler_propagator_2(p, time_step);
-      if (propagation.should_propagate_with(p, PropagationMode::TRANS_NEWTON))
+      if (propagation.should_propagate_with(prop,
+                                            PropagationMode::TRANS_NEWTON))
         symplectic_euler_propagator_2(p, time_step);
 #ifdef ESPRESSO_ROTATION
-      if (propagation.should_propagate_with(p, PropagationMode::ROT_EULER))
+      if (propagation.should_propagate_with(prop, PropagationMode::ROT_EULER))
         symplectic_euler_rotator_2(p, time_step);
 #endif
-      if (propagation.should_propagate_with(p, PropagationMode::TRANS_LANGEVIN))
+      if (propagation.should_propagate_with(prop,
+                                            PropagationMode::TRANS_LANGEVIN))
         symplectic_euler_propagator_2(p, time_step);
 #ifdef ESPRESSO_ROTATION
-      if (propagation.should_propagate_with(p, PropagationMode::ROT_LANGEVIN))
+      if (propagation.should_propagate_with(prop,
+                                            PropagationMode::ROT_LANGEVIN))
         symplectic_euler_rotator_2(p, time_step);
 #endif
     } else {
       if (propagation.should_propagate_with(
-              p, PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE))
+              prop, PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE))
         velocity_verlet_propagator_2(p, time_step);
-      if (propagation.should_propagate_with(p, PropagationMode::TRANS_NEWTON))
+      if (propagation.should_propagate_with(prop,
+                                            PropagationMode::TRANS_NEWTON))
         velocity_verlet_propagator_2(p, time_step);
 #ifdef ESPRESSO_ROTATION
-      if (propagation.should_propagate_with(p, PropagationMode::ROT_EULER))
+      if (propagation.should_propagate_with(prop, PropagationMode::ROT_EULER))
         velocity_verlet_rotator_2(p, time_step);
 #endif
-      if (propagation.should_propagate_with(p, PropagationMode::TRANS_LANGEVIN))
+      if (propagation.should_propagate_with(prop,
+                                            PropagationMode::TRANS_LANGEVIN))
         velocity_verlet_propagator_2(p, time_step);
 #ifdef ESPRESSO_ROTATION
-      if (propagation.should_propagate_with(p, PropagationMode::ROT_LANGEVIN))
+      if (propagation.should_propagate_with(prop,
+                                            PropagationMode::ROT_LANGEVIN))
         velocity_verlet_rotator_2(p, time_step);
 #endif
     }

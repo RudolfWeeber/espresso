@@ -380,7 +380,9 @@ template <int cao> struct AssignCharge {
           // the pack index to a store row (identity on the local prefix).
           auto const pos =
               aosoa.get_vector_at(aosoa.position, aosoa.row(p_index));
-          auto const q = aosoa.charge(p_index);
+          // phase-5 perf recovery: read the pack-owned contiguous charge column
+          // pack-indexed (refreshed this step; coulomb solver active).
+          auto const q = aosoa.pair_charge(p_index);
           auto const weights =
               p3m_calculate_interpolation_weights<cao, memory_order>(
                   pos.as_span(), p3m.params.ai, p3m.local_mesh);
@@ -457,7 +459,7 @@ template <int cao> struct AssignForces {
     auto scatter_force = cell_structure.get_scatter_force();
     kokkos_parallel_range_for(
         "AssignForces", std::size_t{0u}, n_part, [&](std::size_t p_index) {
-          if (auto const pref = aosoa.charge(p_index) * force_prefac) {
+          if (auto const pref = aosoa.pair_charge(p_index) * force_prefac) {
             kernel(pref, scatter_force, p_index);
           }
         });
@@ -683,7 +685,7 @@ double CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::long_range_kernel(
                                 n_part,
                                 [&aosoa, &scatter_force, dm](auto p_index) {
                                   auto access = scatter_force.access();
-                                  auto const q = aosoa.charge(p_index);
+                                  auto const q = aosoa.pair_charge(p_index);
                                   access(p_index, 0) -= q * dm[0];
                                   access(p_index, 1) -= q * dm[1];
                                   access(p_index, 2) -= q * dm[2];

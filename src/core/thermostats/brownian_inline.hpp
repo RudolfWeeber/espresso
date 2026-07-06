@@ -44,8 +44,9 @@ inline Utils::Vector3d bd_drag(Thermostat::GammaType const &brownian_gamma,
   Thermostat::GammaType gamma;
 
 #ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-  if (p.gamma() >= Thermostat::GammaType{}) {
-    gamma = p.gamma();
+  auto const p_gamma = p.gamma(); // hoist: read the store column once
+  if (p_gamma >= Thermostat::GammaType{}) {
+    gamma = p_gamma;
   } else
 #endif
   {
@@ -98,8 +99,9 @@ inline Utils::Vector3d bd_drag_vel(Thermostat::GammaType const &brownian_gamma,
   Thermostat::GammaType gamma;
 
 #ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-  if (p.gamma() >= Thermostat::GammaType{}) {
-    gamma = p.gamma();
+  auto const p_gamma = p.gamma(); // hoist: read the store column once
+  if (p_gamma >= Thermostat::GammaType{}) {
+    gamma = p_gamma;
   } else
 #endif
   {
@@ -155,9 +157,10 @@ inline Utils::Vector3d bd_random_walk(BrownianThermostat const &brownian,
   Thermostat::GammaType sigma_pos = brownian.sigma_pos;
 #ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
   // override default if particle-specific gamma
-  if (p.gamma() >= Thermostat::GammaType{}) {
+  auto const p_gamma = p.gamma(); // hoist: read the store column once
+  if (p_gamma >= Thermostat::GammaType{}) {
     if (kT > 0.0) {
-      sigma_pos = BrownianThermostat::sigma(kT, p.gamma());
+      sigma_pos = BrownianThermostat::sigma(kT, p_gamma);
     } else {
       sigma_pos = Thermostat::GammaType{};
     }
@@ -220,6 +223,7 @@ inline Utils::Vector3d bd_random_walk_vel(BrownianThermostat const &brownian,
   auto const noise = Random::noise_gaussian<RNGSalt::BROWNIAN_INC>(
       brownian.rng_counter(), brownian.rng_seed(), p.id());
   Utils::Vector3d velocity = {};
+  auto const sqrt_mass = sqrt(p.mass()); // hoist: read mass once, sqrt once
   for (unsigned int j = 0; j < 3; j++) {
     if (!p.is_fixed_along(j)) {
       // Random (heat) velocity. See eq. (10.2.16) taking into account eq.
@@ -229,7 +233,7 @@ inline Utils::Vector3d bd_random_walk_vel(BrownianThermostat const &brownian,
       // (14.31) of schlick10a. A difference is the mass factor to the friction
       // tensor. The noise is Gaussian according to the convention at p. 237
       // (last paragraph), pottier10a.
-      velocity[j] += brownian.sigma_vel * noise[j] / sqrt(p.mass());
+      velocity[j] += brownian.sigma_vel * noise[j] / sqrt_mass;
     }
   }
   return velocity;
@@ -294,8 +298,9 @@ bd_drag_vel_rot(Thermostat::GammaType const &brownian_gamma_rotation,
   Thermostat::GammaType gamma;
 
 #ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-  if (p.gamma_rot() >= Thermostat::GammaType{}) {
-    gamma = p.gamma_rot();
+  auto const p_gamma_rot = p.gamma_rot(); // hoist: read the store column once
+  if (p_gamma_rot >= Thermostat::GammaType{}) {
+    gamma = p_gamma_rot;
   } else
 #endif
   {
@@ -382,9 +387,10 @@ bd_random_walk_vel_rot(BrownianThermostat const &brownian, Particle const &p) {
   Utils::Vector3d domega{};
   auto const noise = Random::noise_gaussian<RNGSalt::BROWNIAN_ROT_WALK>(
       brownian.rng_counter(), brownian.rng_seed(), p.id());
+  auto const rinertia = p.rinertia(); // hoist: read the store column once
   for (unsigned int j = 0; j < 3; j++) {
     if (p.can_rotate_around(j)) {
-      domega[j] = sigma_vel * noise[j] / sqrt(p.rinertia()[j]);
+      domega[j] = sigma_vel * noise[j] / sqrt(rinertia[j]);
     }
   }
   return mask(p.rotation(), domega);

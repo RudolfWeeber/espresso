@@ -88,6 +88,18 @@ std::shared_ptr<Observable_stat> System::calculate_energy() {
                                            inactive_cutoff};
   update_cabana_state(*cell_structure, verlet_criterion,
                       get_interaction_range(), propagation->integ_switch);
+#ifdef ESPRESSO_ELECTROSTATICS
+  // phase-5 perf recovery: refresh the pack-owned charge column once, guarded
+  // by an active coulomb actor (the energy pair kernel reads it contiguously).
+  if (coulomb.impl->solver) {
+    refresh_pack_charges(*cell_structure);
+  }
+#endif // ESPRESSO_ELECTROSTATICS
+#ifdef ESPRESSO_DIPOLES
+  if (dipoles.impl->solver) {
+    refresh_pack_dipm(*cell_structure);
+  }
+#endif // ESPRESSO_DIPOLES
 
   EnergyBinLayout layout{
       static_cast<std::size_t>(bonded_ias->get_next_key()),

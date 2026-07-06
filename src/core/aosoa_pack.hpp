@@ -47,12 +47,25 @@ struct CellStructure::AoSoA_pack {
   // *store row* via row(i). commit_particle no longer copies velocity, and
   // resize() no longer allocates it.
   //
-  // phase 5: charge/dipm and id/type/mass ALSO join the store-aliased views —
-  // they alias the authoritative ParticleStore scalar columns (q/dipm/id/type/
-  // mass) and are likewise indexed by *store row* via row(i). The per-step
-  // charge/dipm copies and the rebuild-time id/type/mass writes in
-  // commit_particle DIE; commit_particle only sets the pack-owned exclusion
-  // flags. `flags` becomes the allocation sentinel (the last pack-owned view).
+  // phase 5: id/mass join the store-aliased views — they alias the
+  // authoritative ParticleStore id/mass columns and are indexed by *store row*
+  // via row(i). They are read only on cold paths (bond kernels), so the strided
+  // store gather is acceptable. The rebuild-time id/mass writes in
+  // commit_particle DIE.
+  //
+  // phase-5 perf recovery: `type` is once again a PACK-OWNED contiguous array,
+  // written at pack-rebuild time in commit_particle (`type(index)=p.type()`)
+  // and read pack-indexed by the hot pair kernels
+  // (forces/energy/pressure_cabana). The ParticleStore type column REMAINS
+  // authoritative; this pack copy is a derived cache refreshed on rebuild (a
+  // mid-run type change forces a rebuild via on_particle_type_change ->
+  // set_resort_particles).
+  //
+  // Likewise `charge`/`dipm` are pack-owned contiguous arrays, refreshed per
+  // step ONLY when a coulomb (resp. dipolar) actor is active (see
+  // refresh_pack_charges / refresh_pack_dipm). The hot pair kernels and the P3M
+  // gather/spread loops read them PACK-INDEXED (contiguous). Pure-LJ runs never
+  // touch them, paying zero cost. The store q/dipm columns stay authoritative.
   //
   // The layout of the store-aliased vector views (position/image/director/
   // velocity) MUST match the store columns' layout.
@@ -80,15 +93,26 @@ struct CellStructure::AoSoA_pack {
   ImageViewType image;
   DirectorViewType director;
   VelocityViewType velocity;
-  ChargeViewType charge;
-  DipmViewType dipm;
   IdViewType id;
-  TypeViewType type;
   MassViewType mass;
+  // `charge` aliases the authoritative ParticleStore q column and is read by
+  // *store row* on the cold BOND path (BondedCoulomb needs charges even with NO
+  // coulomb solver, so it must always be valid — hence it aliases the store
+  // rather than the guarded pack-owned pair_charge below).
+  ChargeViewType charge;
   // Pack-index -> store-row translation. Identity on the local prefix.
   RowMapViewType row_map;
 
-  // Pack-owned per-step column (indexed by pack index).
+  // Pack-owned columns (indexed by pack index).
+  // `type` is written on rebuild (read by the hot pair kernels). `pair_charge`/
+  // `pair_dipm` are the contiguous hot-path charge/dipm columns, refreshed per
+  // step ONLY when the respective solver is active (see refresh_pack_charges /
+  // refresh_pack_dipm); the hot pair kernels and P3M gather/spread read them
+  // pack-indexed. `flags` is written every commit and is the allocation
+  // sentinel (type/pair_charge/pair_dipm/flags are resized together).
+  TypeViewType type;
+  ChargeViewType pair_charge;
+  DipmViewType pair_dipm;
   FlagsViewType flags;
 
   AoSoA_pack() = default;
@@ -102,14 +126,28 @@ struct CellStructure::AoSoA_pack {
   }
 
   void resize(std::size_t num_particles) {
-    // phase 5: charge/dipm/id/type/mass are store-aliased (bound in
-    // bind_pack_store_views), not allocated here; `flags` is the last
-    // pack-owned column and serves as the allocation sentinel.
+    // phase 5: id/mass/charge are store-aliased (bound in
+    // bind_pack_store_views), not allocated here.
+    // `type`/`pair_charge`/`pair_dipm`/`flags` are pack-owned contiguous
+    // columns allocated here; `flags` serves as the allocation sentinel (all
+    // four are resized together).
     if (flags.extent(0) == 0) {
       // First allocation
+      type =
+          TypeViewType(Kokkos::view_alloc(Kokkos::WithoutInitializing, "type"),
+                       num_particles);
+      pair_charge = ChargeViewType(
+          Kokkos::view_alloc(Kokkos::WithoutInitializing, "pair_charge"),
+          num_particles);
+      pair_dipm = DipmViewType(
+          Kokkos::view_alloc(Kokkos::WithoutInitializing, "pair_dipm"),
+          num_particles);
       flags = FlagsViewType("flags", num_particles);
     } else {
       // Reallocation
+      Kokkos::realloc(Kokkos::WithoutInitializing, type, num_particles);
+      Kokkos::realloc(Kokkos::WithoutInitializing, pair_charge, num_particles);
+      Kokkos::realloc(Kokkos::WithoutInitializing, pair_dipm, num_particles);
       Kokkos::realloc(flags, num_particles);
     }
   }

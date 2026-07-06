@@ -121,10 +121,15 @@ static void init_forces_and_thermostat(System::System const &system) {
     // Apply Langevin noise if thermostat is active
     if (langevin_active) {
       auto const &langevin = *thermostat.langevin;
-      if (propagation.should_propagate_with(p, PropagationMode::TRANS_LANGEVIN))
+      // Read the propagation bitfield once per particle (each
+      // should_propagate_with call would otherwise re-read the store column).
+      int const prop = p.propagation();
+      if (propagation.should_propagate_with(prop,
+                                            PropagationMode::TRANS_LANGEVIN))
         force += friction_thermo_langevin(langevin, p, time_step, kT);
 #ifdef ESPRESSO_ROTATION
-      if (propagation.should_propagate_with(p, PropagationMode::ROT_LANGEVIN))
+      if (propagation.should_propagate_with(prop,
+                                            PropagationMode::ROT_LANGEVIN))
         torque += convert_vector_body_to_space(
             p, friction_thermo_langevin_rotation(langevin, p, time_step, kT));
 #endif
@@ -325,10 +330,23 @@ void System::System::calculate_forces() {
   update_cabana_state(*cell_structure, verlet_criterion,
                       get_interaction_range(), propagation->integ_switch);
 #ifdef ESPRESSO_ELECTROSTATICS
+  // phase-5 perf recovery: refresh the pack-owned charge column once per step,
+  // ONLY when a coulomb actor is active (both the P3M long-range gather below
+  // and the real-space pair kernel read it contiguously). Pure-LJ runs skip it.
+  if (coulomb.impl->solver) {
+    refresh_pack_charges(*cell_structure);
+  }
   if (coulomb.impl->extension) {
     update_icc_particles();
   }
 #endif // ESPRESSO_ELECTROSTATICS
+#ifdef ESPRESSO_DIPOLES
+  // phase-5 perf recovery: pack-owned dipm refresh, guarded by an active
+  // dipolar actor.
+  if (dipoles.impl->solver) {
+    refresh_pack_dipm(*cell_structure);
+  }
+#endif // ESPRESSO_DIPOLES
   init_forces_and_thermostat(*this);
 #ifdef ESPRESSO_CALIPER
   CALI_MARK_BEGIN("calc_long_range_forces");

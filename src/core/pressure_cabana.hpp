@@ -141,8 +141,9 @@ struct PressureKernel {
     if (dist > system_max_cutoff)
       return;
 
-    auto const t1 = aosoa.type(row_i);
-    auto const t2 = aosoa.type(row_j);
+    // phase-5 perf recovery: type is pack-owned and read PACK-INDEXED (i/j).
+    auto const t1 = aosoa.type(i);
+    auto const t2 = aosoa.type(j);
     auto const &ia_params = nonbonded_ias.get_ia_param(t1, t2);
     auto const tid = omp_get_thread_num();
 
@@ -203,7 +204,9 @@ struct PressureKernel {
 
 #ifdef ESPRESSO_ELECTROSTATICS
     if (coulomb_p_kernel != nullptr) {
-      auto const q1 = aosoa.charge(row_i), q2 = aosoa.charge(row_j);
+      // phase-5 perf recovery: charge is read from the pack-owned pair_charge
+      // column PACK-INDEXED (refreshed this step; coulomb solver active).
+      auto const q1 = aosoa.pair_charge(i), q2 = aosoa.pair_charge(j);
       if (q1 != 0. and q2 != 0.) {
         auto const p_c = Utils::flatten((*coulomb_p_kernel)(q1 * q2, d, dist));
         for (std::size_t k = 0; k < 9; ++k)

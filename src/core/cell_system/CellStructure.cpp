@@ -364,15 +364,17 @@ void CellStructure::bind_pack_store_views() {
   aosoa.position = m_particle_store.position_view();
   aosoa.image = m_particle_store.image_box_view();
   aosoa.velocity = m_particle_store.velocity_view();
-  // phase 5: charge/dipm and id/type/mass alias the authoritative ParticleStore
-  // scalar columns (indexed by store row), like position/velocity.
+  // phase 5: id/mass/charge alias the authoritative ParticleStore scalar
+  // columns (indexed by store row), like position/velocity, and are read only
+  // on cold paths (bond kernels; charge is needed by BondedCoulomb even with no
+  // coulomb solver, so it must always be valid). phase-5 perf recovery: type is
+  // a pack-owned contiguous column written on rebuild in commit_particle, and
+  // pair_charge/pair_dipm are pack-owned contiguous hot-path columns refreshed
+  // per step by refresh_pack_charges/refresh_pack_dipm when the corresponding
+  // solver is active; those pack-owned columns are not bound here.
   aosoa.id = m_particle_store.id_view();
-  aosoa.type = m_particle_store.type_view();
 #ifdef ESPRESSO_ELECTROSTATICS
   aosoa.charge = m_particle_store.q_view();
-#endif
-#ifdef ESPRESSO_DIPOLES
-  aosoa.dipm = m_particle_store.dipm_view();
 #endif
 #ifdef ESPRESSO_MASS
   aosoa.mass = m_particle_store.mass_view();

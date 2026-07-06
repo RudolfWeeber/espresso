@@ -1157,6 +1157,12 @@ public:
                : m_migration_ext_flag;
   }
   bool has_fixed_coordinates() const { return static_cast<bool>(fixed()); }
+  /** @brief Raw fixed-coordinate bitfield, by value.
+   *  Hot integrator loops read this ONCE per particle and bit-test locally
+   *  instead of calling @ref is_fixed_along (which re-reads the ParticleStore
+   *  ext_flag column on every axis). Bit @c axis set means the coordinate is
+   *  fixed. */
+  std::uint8_t fixed_flags_byte() const { return fixed(); }
   bool is_fixed_along(unsigned int const axis) const {
     assert(axis <= 2u);
     return detail::get_nth_bit(fixed(), axis);
@@ -1181,6 +1187,9 @@ public:
   }
 #else  // ESPRESSO_EXTERNAL_FORCES
   constexpr bool has_fixed_coordinates() const { return false; }
+  constexpr std::uint8_t fixed_flags_byte() const {
+    return static_cast<std::uint8_t>(0u);
+  }
   constexpr bool is_fixed_along(unsigned int const) const { return false; }
 #endif // ESPRESSO_EXTERNAL_FORCES
 #ifdef ESPRESSO_ENGINE

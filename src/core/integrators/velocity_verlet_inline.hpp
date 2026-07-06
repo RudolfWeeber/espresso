@@ -33,8 +33,13 @@ inline void velocity_verlet_propagator_1(Particle &p, double time_step) {
   auto pos = p.pos();
   auto const force = p.force();
   auto const mass = p.mass();
+  // Read the fixed-coordinate bitfield ONCE (each is_fixed_along call would
+  // otherwise re-read the ParticleStore ext_flag column). Bit j set => axis j
+  // fixed; the byte is 0 when ESPRESSO_EXTERNAL_FORCES is off, so no axis is
+  // fixed (identical semantics to is_fixed_along returning false).
+  auto const fixed = p.fixed_flags_byte();
   for (unsigned int j = 0; j < 3; j++) {
-    if (!p.is_fixed_along(j)) {
+    if (not detail::get_nth_bit(fixed, j)) {
       /* Propagate velocities: v(t+0.5*dt) = v(t) + 0.5 * dt * a(t) */
       p.v()[j] += 0.5 * time_step * force[j] / mass;
 
@@ -51,8 +56,10 @@ inline void velocity_verlet_propagator_1(Particle &p, double time_step) {
 inline void velocity_verlet_propagator_2(Particle &p, double time_step) {
   auto const force = p.force();
   auto const mass = p.mass();
+  // Read the fixed-coordinate bitfield once (see velocity_verlet_propagator_1).
+  auto const fixed = p.fixed_flags_byte();
   for (unsigned int j = 0; j < 3; j++) {
-    if (!p.is_fixed_along(j)) {
+    if (not detail::get_nth_bit(fixed, j)) {
       /* Propagate velocity: v(t+dt) = v(t+0.5*dt) + 0.5*dt * a(t+dt) */
       p.v()[j] += 0.5 * time_step * force[j] / mass;
     }

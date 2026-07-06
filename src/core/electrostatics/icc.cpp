@@ -226,8 +226,9 @@ void ICCStar::iteration() {
 
     /* Update charges on ghosts. */
     cell_structure.ghosts_update(Cells::DATA_PART_PROPERTIES);
-    // refresh local properties
-    update_aosoa_charges(cell_structure);
+    // refresh the pack-owned charge column from the (mutated) store q column so
+    // the next real-space charge kernel sees the ICC-updated charges
+    refresh_pack_charges(cell_structure);
 
     icc_cfg.citeration++;
 

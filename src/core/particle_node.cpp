@@ -128,6 +128,17 @@ static void add_id_to_type_map(int p_id, int type) {
 }
 
 void on_particle_type_change(int p_id, int old_type, int new_type) {
+  // phase-5 perf recovery: `type` is a PACK-OWNED contiguous cache in the
+  // Cabana pack, written only at pack-rebuild time (commit_particle). A mid-run
+  // type change (e.g. ReactionAlgorithm via on_particle_local_change, which
+  // does NOT by itself set a resort flag) must therefore force the next force
+  // calculation to rebuild the pack, otherwise the cached type would go stale.
+  // Requesting a local resort sets m_rebuild_verlet_list_cabana, so the pack
+  // takes the full-commit branch that refreshes the pack type column (and also
+  // updates ghosts so the new type propagates across ranks).
+  if (old_type != new_type) {
+    get_cell_structure().set_resort_particles(Cells::RESORT_LOCAL);
+  }
   if (::type_list_enable) {
     if (old_type == type_tracking::any_type) {
       for (auto &kv : ::particle_type_map) {
