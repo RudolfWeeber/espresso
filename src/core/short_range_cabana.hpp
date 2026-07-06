@@ -55,32 +55,18 @@ kokkos_parallel_range_for(auto const &name, auto start, auto end,
 
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 commit_particle(Particle const &p, auto const index,
-                CellStructure::AoSoA_pack &aosoa, bool const rebuild) {
+                CellStructure::AoSoA_pack &aosoa,
+                [[maybe_unused]] bool const rebuild) {
   // phase 3.5: position/image/director are no longer copied here. Kernels read
   // them directly from the ParticleStore columns (via the pack-index->store-row
   // translation view) and the store-side derived director view.
-  // phase 4: velocity is no longer copied here either. It lives in the
-  // ParticleStore velocity column, which the pack's `velocity` view now aliases
-  // (bound in bind_pack_store_views); velocity-dependent kernels read it by
-  // *store row* via row(i), just like position. This commit now only writes the
-  // pack-owned per-step scalars.
-#ifdef ESPRESSO_ELECTROSTATICS
-  aosoa.charge(index) = p.q();
-#endif
-#ifdef ESPRESSO_DIPOLES
-  aosoa.dipm(index) = p.dipm();
-#endif
-
-  // Only commit on rebuild: id, type
-  if (rebuild) {
-    aosoa.id(index) = p.id();
-    aosoa.type(index) = p.type();
-#ifdef ESPRESSO_MASS
-    aosoa.mass(index) = p.mass();
-#endif
-  }
-
-  // Always update exclusion flags (they can change during simulation)
+  // phase 4: velocity is no longer copied here either. It aliases the
+  // ParticleStore velocity column; velocity-dependent kernels read it by *store
+  // row* via row(i), just like position.
+  // phase 5: charge/dipm and id/type/mass are no longer copied here either.
+  // They alias the ParticleStore scalar columns (q/dipm/id/type/mass), read by
+  // *store row* via row(i). This commit now only writes the pack-owned
+  // exclusion flags (the last pack-owned column).
 #ifdef ESPRESSO_EXCLUSIONS
   aosoa.set_has_exclusion(index, !p.exclusions().empty());
 #else
@@ -298,19 +284,17 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
 }
 
 #ifdef ESPRESSO_ELECTROSTATICS
+// phase 5: the pack's `charge` view now ALIASES the authoritative ParticleStore
+// q column (bound in bind_pack_store_views), so a mutation of p.q() is
+// immediately visible to the pack -- no per-step copy is needed. The store must
+// be synchronized and the pack views rebound (both done in update_cabana_state)
+// so the alias points at the current-generation column. Kept as a thin
+// re-binder for callers (ICC) that mutate charges mid-solve after a ghost
+// PROPERTIES update; it re-points the alias at the (unchanged-generation)
+// column, which is a cheap no-op assignment but keeps the call site explicit.
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 update_aosoa_charges(CellStructure &cell_structure) {
-  using execution_space = Kokkos::DefaultExecutionSpace;
-  using policy_type = Kokkos::RangePolicy<execution_space>;
-  auto const &unique_particles = cell_structure.get_unique_particles();
-  auto const n_part = unique_particles.size();
-  auto &aosoa = cell_structure.get_aosoa();
-
-  kokkos_parallel_range_for<policy_type>(
-      "Views update charges", std::size_t{0}, n_part,
-      [&unique_particles, &aosoa](std::size_t const index) {
-        aosoa.charge(index) = unique_particles.at(index)->q();
-      });
+  cell_structure.bind_pack_store_views();
 }
 #endif
 

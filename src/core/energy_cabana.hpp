@@ -122,8 +122,8 @@ struct EnergyKernel {
       return;
     auto const dist = std::sqrt(dist_sq);
 
-    auto const t1 = aosoa.type(i);
-    auto const t2 = aosoa.type(j);
+    auto const t1 = aosoa.type(row_i);
+    auto const t2 = aosoa.type(row_j);
     auto const &ia_params = nonbonded_ias.get_ia_param(t1, t2);
 
     // Determine which data needs to be loaded based on active algorithms
@@ -184,7 +184,7 @@ struct EnergyKernel {
 
 #ifdef ESPRESSO_ELECTROSTATICS
     if (coulomb_u_kernel != nullptr) {
-      auto const q1 = aosoa.charge(i), q2 = aosoa.charge(j);
+      auto const q1 = aosoa.charge(row_i), q2 = aosoa.charge(row_j);
       if (q1 != 0. and q2 != 0.) {
         auto const pos1 = aosoa.get_vector_at(aosoa.position, row_i);
         auto const pos2 = aosoa.get_vector_at(aosoa.position, row_j);
@@ -196,11 +196,12 @@ struct EnergyKernel {
 
 #ifdef ESPRESSO_DIPOLES
     if (dipoles_u_kernel != nullptr) {
-      if (aosoa.dipm(i) != 0. and aosoa.dipm(j) != 0.) {
+      if (aosoa.dipm(row_i) != 0. and aosoa.dipm(row_j) != 0.) {
         auto const dir1 = aosoa.get_vector_at(aosoa.director, row_i);
         auto const dir2 = aosoa.get_vector_at(aosoa.director, row_j);
-        double const e_d = (*dipoles_u_kernel)(
-            aosoa.dipm(i) * dir1, aosoa.dipm(j) * dir2, d, dist, dist_sq);
+        double const e_d =
+            (*dipoles_u_kernel)(aosoa.dipm(row_i) * dir1,
+                                aosoa.dipm(row_j) * dir2, d, dist, dist_sq);
         local_energy(tid, layout.dipolar_idx()) += e_d;
       }
     }

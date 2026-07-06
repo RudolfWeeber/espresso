@@ -364,6 +364,19 @@ void CellStructure::bind_pack_store_views() {
   aosoa.position = m_particle_store.position_view();
   aosoa.image = m_particle_store.image_box_view();
   aosoa.velocity = m_particle_store.velocity_view();
+  // phase 5: charge/dipm and id/type/mass alias the authoritative ParticleStore
+  // scalar columns (indexed by store row), like position/velocity.
+  aosoa.id = m_particle_store.id_view();
+  aosoa.type = m_particle_store.type_view();
+#ifdef ESPRESSO_ELECTROSTATICS
+  aosoa.charge = m_particle_store.q_view();
+#endif
+#ifdef ESPRESSO_DIPOLES
+  aosoa.dipm = m_particle_store.dipm_view();
+#endif
+#ifdef ESPRESSO_MASS
+  aosoa.mass = m_particle_store.mass_view();
+#endif
   aosoa.row_map = m_pack_index_to_store_row;
 #if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
   aosoa.director = m_director_view;

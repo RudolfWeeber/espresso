@@ -1240,9 +1240,12 @@ static std::optional<MomentumRowContext> make_momentum_row_context() {
  * use_ctx branch, the three call sites, calc_transmit_size masking) is already
  * in place, so the flip is a one-line change here. */
 static std::optional<ParameterRowContext> make_parameter_row_context() {
-  // Pre-flip inertness gate (see the phase-4 velocity context precedent). The
-  // parameter columns/sidecars are not authoritative until the Task-4 flip.
-  static constexpr bool parameter_columns_authoritative = false;
+  // FLIPPED (Task 4): the ParticleStore parameter columns and host sidecars are
+  // now authoritative (the Particle parameter accessors read/write them), so
+  // this context reads/writes the same memory as the accessors. The PROPERTIES
+  // ghost value path may therefore route through the columnar row-context when
+  // the store is clean and attached, exactly like the POSITION/MOMENTUM paths.
+  static constexpr bool parameter_columns_authoritative = true;
   auto *store = active_particle_store();
   if (not parameter_columns_authoritative or store == nullptr or
       store->is_dirty() or store->number_of_particles() == 0u) {

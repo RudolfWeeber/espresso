@@ -57,6 +57,16 @@ inline bool get_nth_bit(uint8_t const bitfield, unsigned int const bit_idx) {
  *  for all ghosts. Ghosts are particles which are
  *  needed in the interaction calculation, but are just copies of
  *  particles stored on different nodes.
+ *
+ *  Migration phase 5: these parameter fields have left the @ref Particle
+ *  struct; they live only in the @ref ParticleStore columns / host sidecars
+ *  (single ownership, spec section 4). @ref ParticleProperties is retained
+ *  purely as a type anchor: several call sites name its field types via
+ *  @c decltype(ParticleProperties::identity) etc., the
+ *  @c ParticleProperties::VirtualSitesRelativeParameters member typedef keeps
+ *  the historical script-interface spelling compiling, and the standalone
+ *  properties-serialization unit test exercises it. It is no longer a member
+ *  of @ref Particle nor part of @ref Particle serialization.
  */
 struct ParticleProperties {
   /** unique identifier for the particle. */
@@ -334,7 +344,6 @@ struct ParticleRattle {
 /** Struct holding all information for one particle. */
 struct Particle { // NOLINT(bugprone-exception-escape)
 private:
-  ParticleProperties p;
   ParticleLocal l;
 #ifdef ESPRESSO_BOND_CONSTRAINT
   ParticleRattle rattle;
@@ -403,6 +412,92 @@ private:
   Utils::Vector3d m_migration_velocity = {0., 0., 0.};
 #ifdef ESPRESSO_ROTATION
   Utils::Vector3d m_migration_angular_velocity = {0., 0., 0.};
+#endif
+
+  /** Transitional (migration phase 5): PARAMETER migration carriers (now LIVE).
+   *  Mirror of the phase-3/4 state/momentum carriers for every parameter field
+   *  that leaves the (now-deleted) @ref ParticleProperties member. These
+   *  members ferry the parameters across the boost-serialized inter-rank
+   *  exchange (which does not carry Kokkos columns / host sidecars) so @ref
+   *  ParticleStore::assign_row can seed a migrated particle's new row. @ref
+   *  Particle::serialize fills them from the detached_*() getters on SAVE; the
+   *  migration_*() getters read them raw (safe on a detached particle).
+   *  Defaults match the pre-flip ParticleProperties member defaults EXACTLY.
+   *  The constexpr-when-disabled fields (mass/q/rinertia/rotation/ext_flag
+   *  under their #else branches) have NO carrier: their accessors keep the
+   *  static fallback (no column, nothing to ferry when the feature is off).
+   *  Removed in phase 7 when the inter-rank exchange switches to per-field
+   *  column packing. */
+  int m_migration_id = -1;
+  int m_migration_mol_id = 0;
+  int m_migration_type = 0;
+  int m_migration_propagation = PropagationMode::SYSTEM_DEFAULT;
+#ifdef ESPRESSO_ROTATION
+  std::uint8_t m_migration_rotation = static_cast<std::uint8_t>(0b000u);
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  std::uint8_t m_migration_ext_flag = static_cast<std::uint8_t>(0b000u);
+#endif
+#ifdef ESPRESSO_MASS
+  double m_migration_mass = 1.0;
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  double m_migration_q = 0.0;
+#endif
+#ifdef ESPRESSO_DIPOLES
+  double m_migration_dipm = 0.0;
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  Utils::Vector3d m_migration_rinertia = {1., 1., 1.};
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+  Utils::Vector3d m_migration_mu_E = {0., 0., 0.};
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  Utils::Vector3d m_migration_dip_fld = {0., 0., 0.};
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  Utils::Vector3d m_migration_ext_force = {0., 0., 0.};
+#ifdef ESPRESSO_ROTATION
+  Utils::Vector3d m_migration_ext_torque = {0., 0., 0.};
+#endif
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+#ifndef ESPRESSO_PARTICLE_ANISOTROPY
+  double m_migration_gamma = -1.;
+#else
+  Utils::Vector3d m_migration_gamma = {-1., -1., -1.};
+#endif
+#ifdef ESPRESSO_ROTATION
+#ifndef ESPRESSO_PARTICLE_ANISOTROPY
+  double m_migration_gamma_rot = -1.;
+#else
+  Utils::Vector3d m_migration_gamma_rot = {-1., -1., -1.};
+#endif
+#endif // ESPRESSO_ROTATION
+#endif // ESPRESSO_THERMOSTAT_PER_PARTICLE
+#ifdef ESPRESSO_ENGINE
+  ParticleParametersSwimming m_migration_swimming{};
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+  ThermalStonerWohlfarthParameters m_migration_magnetodynamics{};
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+  VirtualSitesRelativeParameters m_migration_vs_relative{};
+#endif
+
+  /** Static fallbacks for the constexpr-when-disabled parameter accessors.
+   *  When the feature is off there is no ParticleStore column and no migration
+   *  carrier; the accessor returns a reference to this immutable default so the
+   *  read-only accessor keeps its pre-migration constexpr semantics. */
+#ifndef ESPRESSO_MASS
+  static constexpr double mass_fallback{1.0};
+#endif
+#ifndef ESPRESSO_ROTATIONAL_INERTIA
+  static constexpr Utils::Vector3d rinertia_fallback = {1., 1., 1.};
+#endif
+#ifndef ESPRESSO_ELECTROSTATICS
+  static constexpr double q_fallback{0.0};
 #endif
 
 public:
@@ -525,85 +620,184 @@ public:
 #endif
   /** @} */
 
-  /** @brief Phase-5 PARAMETER migration carriers, DORMANT until the phase-4
-   *  parameter flip (this migration's THE FLIP task).
+  /** @brief Phase-5 PARAMETER migration carriers (now LIVE, mirroring the
+   *  phase-3/4 state/momentum carriers above).
    *
-   *  Pre-flip the @ref ParticleProperties member @c p (and the cold parameter
-   *  PODs it holds) is still authoritative and is carried across the
-   *  boost-serialized inter-rank exchange by @c ar & p, so no dedicated carrier
-   *  members are needed yet. These getters read the struct fields directly and
-   *  are safe whether the particle is attached or detached (parameters do not
-   *  live in the store columns yet). @ref ParticleStore::assign_row uses them
-   *  to seed a new/migrated row so the new parameter columns/sidecars already
-   *  carry the correct values before the flip makes them authoritative. At the
-   *  flip these turn into real detached carriers wired into serialize().
+   *  The @c detached_*() getters return the current value whether the particle
+   *  is attached to a store (read the column / sidecar) or detached (read the
+   *  migration carrier). @ref Particle serialization fills the carriers from
+   *  these getters on SAVE. The @c migration_*() getters return the raw carrier
+   *  that @ref ParticleStore::assign_row seeds a new/migrated row from (never
+   *  touches a column, so it is safe on a detached particle whose column row is
+   *  invalid). The constexpr-when-disabled fields keep their static fallbacks
+   *  under #else and have no carrier. Removed in phase 7 when the inter-rank
+   *  exchange switches to per-field column packing.
    *  @{ */
-  int migration_id() const { return p.identity; }
-  int migration_mol_id() const { return p.mol_id; }
-  int migration_type() const { return p.type; }
-  int migration_propagation() const { return p.propagation; }
+  int detached_id() const {
+    return (m_particle_store != nullptr) ? id() : m_migration_id;
+  }
+  int migration_id() const { return m_migration_id; }
+  int detached_mol_id() const {
+    return (m_particle_store != nullptr) ? mol_id() : m_migration_mol_id;
+  }
+  int migration_mol_id() const { return m_migration_mol_id; }
+  int detached_type() const {
+    return (m_particle_store != nullptr) ? type() : m_migration_type;
+  }
+  int migration_type() const { return m_migration_type; }
+  int detached_propagation() const {
+    return (m_particle_store != nullptr) ? propagation()
+                                         : m_migration_propagation;
+  }
+  int migration_propagation() const { return m_migration_propagation; }
 #ifdef ESPRESSO_ROTATION
-  std::uint8_t migration_rotation() const { return p.rotation; }
+  std::uint8_t detached_rotation() const {
+    return (m_particle_store != nullptr) ? rotation() : m_migration_rotation;
+  }
+  std::uint8_t migration_rotation() const { return m_migration_rotation; }
 #endif
 #ifdef ESPRESSO_EXTERNAL_FORCES
-  std::uint8_t migration_ext_flag() const { return p.ext_flag; }
+  std::uint8_t detached_ext_flag() const {
+    return (m_particle_store != nullptr) ? fixed() : m_migration_ext_flag;
+  }
+  std::uint8_t migration_ext_flag() const { return m_migration_ext_flag; }
 #endif
 #ifdef ESPRESSO_MASS
-  double migration_mass() const { return p.mass; }
+  double detached_mass() const {
+    return (m_particle_store != nullptr) ? mass() : m_migration_mass;
+  }
+  double migration_mass() const { return m_migration_mass; }
 #endif
 #ifdef ESPRESSO_ELECTROSTATICS
-  double migration_q() const { return p.q; }
+  double detached_q() const {
+    return (m_particle_store != nullptr) ? q() : m_migration_q;
+  }
+  double migration_q() const { return m_migration_q; }
 #endif
 #ifdef ESPRESSO_DIPOLES
-  double migration_dipm() const { return p.dipm; }
+  double detached_dipm() const {
+    return (m_particle_store != nullptr) ? dipm() : m_migration_dipm;
+  }
+  double migration_dipm() const { return m_migration_dipm; }
 #endif
 #ifdef ESPRESSO_ROTATIONAL_INERTIA
-  Utils::Vector3d const &migration_rinertia() const { return p.rinertia; }
+  Utils::Vector3d detached_rinertia() const {
+    return (m_particle_store != nullptr) ? Utils::Vector3d(rinertia())
+                                         : m_migration_rinertia;
+  }
+  Utils::Vector3d const &migration_rinertia() const {
+    return m_migration_rinertia;
+  }
 #endif
 #ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
-  Utils::Vector3d const &migration_mu_E() const { return p.mu_E; }
+  Utils::Vector3d detached_mu_E() const {
+    return (m_particle_store != nullptr) ? Utils::Vector3d(mu_E())
+                                         : m_migration_mu_E;
+  }
+  Utils::Vector3d const &migration_mu_E() const { return m_migration_mu_E; }
 #endif
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
-  Utils::Vector3d const &migration_dip_fld() const { return p.dip_fld; }
+  Utils::Vector3d detached_dip_fld() const {
+    return (m_particle_store != nullptr) ? Utils::Vector3d(dip_fld())
+                                         : m_migration_dip_fld;
+  }
+  Utils::Vector3d const &migration_dip_fld() const {
+    return m_migration_dip_fld;
+  }
 #endif
 #ifdef ESPRESSO_EXTERNAL_FORCES
-  Utils::Vector3d const &migration_ext_force() const { return p.ext_force; }
+  Utils::Vector3d detached_ext_force() const {
+    return (m_particle_store != nullptr) ? Utils::Vector3d(ext_force())
+                                         : m_migration_ext_force;
+  }
+  Utils::Vector3d const &migration_ext_force() const {
+    return m_migration_ext_force;
+  }
 #ifdef ESPRESSO_ROTATION
-  Utils::Vector3d const &migration_ext_torque() const { return p.ext_torque; }
+  Utils::Vector3d detached_ext_torque() const {
+    return (m_particle_store != nullptr) ? Utils::Vector3d(ext_torque())
+                                         : m_migration_ext_torque;
+  }
+  Utils::Vector3d const &migration_ext_torque() const {
+    return m_migration_ext_torque;
+  }
 #endif
 #endif
 #ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-  auto const &migration_gamma() const { return p.gamma; }
+  auto detached_gamma() const {
+    return (m_particle_store != nullptr) ? gamma() : m_migration_gamma;
+  }
+  auto const &migration_gamma() const { return m_migration_gamma; }
 #ifdef ESPRESSO_ROTATION
-  auto const &migration_gamma_rot() const { return p.gamma_rot; }
+  auto detached_gamma_rot() const {
+    return (m_particle_store != nullptr) ? gamma_rot() : m_migration_gamma_rot;
+  }
+  auto const &migration_gamma_rot() const { return m_migration_gamma_rot; }
 #endif
 #endif
 #ifdef ESPRESSO_ENGINE
+  ParticleParametersSwimming detached_swimming() const {
+    return (m_particle_store != nullptr) ? swimming() : m_migration_swimming;
+  }
   ParticleParametersSwimming const &migration_swimming() const {
-    return p.swim;
+    return m_migration_swimming;
   }
 #endif
 #ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+  ThermalStonerWohlfarthParameters detached_magnetodynamics() const {
+    return (m_particle_store != nullptr) ? magnetodynamics()
+                                         : m_migration_magnetodynamics;
+  }
   ThermalStonerWohlfarthParameters const &migration_magnetodynamics() const {
-    return p.magnetodynamics;
+    return m_migration_magnetodynamics;
   }
 #endif
 #ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+  VirtualSitesRelativeParameters detached_vs_relative() const {
+    return (m_particle_store != nullptr) ? vs_relative()
+                                         : m_migration_vs_relative;
+  }
   VirtualSitesRelativeParameters const &migration_vs_relative() const {
-    return p.vs_relative;
+    return m_migration_vs_relative;
   }
 #endif
   /** @} */
 
-  auto const &id() const { return p.identity; }
-  auto &id() { return p.identity; }
-  auto const &mol_id() const { return p.mol_id; }
-  auto &mol_id() { return p.mol_id; }
-  auto const &type() const { return p.type; }
-  auto &type() { return p.type; }
+  int const &id() const {
+    return (m_particle_store != nullptr) ? m_particle_store->id(m_store_row)
+                                         : m_migration_id;
+  }
+  int &id() {
+    return (m_particle_store != nullptr) ? m_particle_store->id(m_store_row)
+                                         : m_migration_id;
+  }
+  int const &mol_id() const {
+    return (m_particle_store != nullptr) ? m_particle_store->mol_id(m_store_row)
+                                         : m_migration_mol_id;
+  }
+  int &mol_id() {
+    return (m_particle_store != nullptr) ? m_particle_store->mol_id(m_store_row)
+                                         : m_migration_mol_id;
+  }
+  int const &type() const {
+    return (m_particle_store != nullptr) ? m_particle_store->type(m_store_row)
+                                         : m_migration_type;
+  }
+  int &type() {
+    return (m_particle_store != nullptr) ? m_particle_store->type(m_store_row)
+                                         : m_migration_type;
+  }
 
-  auto const &propagation() const { return p.propagation; }
-  auto &propagation() { return p.propagation; }
+  int const &propagation() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->propagation(m_store_row)
+               : m_migration_propagation;
+  }
+  int &propagation() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->propagation(m_store_row)
+               : m_migration_propagation;
+  }
 
   bool operator==(Particle const &rhs) const { return id() == rhs.id(); }
 
@@ -688,30 +882,44 @@ public:
   }
 
 #ifdef ESPRESSO_MASS
-  auto const &mass() const { return p.mass; }
-  auto &mass() { return p.mass; }
+  double const &mass() const {
+    return (m_particle_store != nullptr) ? m_particle_store->mass(m_store_row)
+                                         : m_migration_mass;
+  }
+  double &mass() {
+    return (m_particle_store != nullptr) ? m_particle_store->mass(m_store_row)
+                                         : m_migration_mass;
+  }
 #else
-  constexpr auto &mass() const { return p.mass; }
+  constexpr auto &mass() const { return mass_fallback; }
 #endif
 #ifdef ESPRESSO_ROTATION
-  auto const &rotation() const { return p.rotation; }
-  auto &rotation() { return p.rotation; }
-  bool can_rotate() const { return static_cast<bool>(p.rotation); }
+  std::uint8_t const &rotation() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->rotation(m_store_row)
+               : m_migration_rotation;
+  }
+  std::uint8_t &rotation() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->rotation(m_store_row)
+               : m_migration_rotation;
+  }
+  bool can_rotate() const { return static_cast<bool>(rotation()); }
   bool can_rotate_around(unsigned int const axis) const {
     assert(axis <= 2u);
-    return detail::get_nth_bit(p.rotation, axis);
+    return detail::get_nth_bit(rotation(), axis);
   }
   void set_can_rotate_around(unsigned int const axis, bool const rot_flag) {
     assert(axis <= 2u);
     if (rot_flag) {
-      p.rotation |= static_cast<uint8_t>(1u << axis);
+      rotation() |= static_cast<uint8_t>(1u << axis);
     } else {
-      p.rotation &= static_cast<uint8_t>(~(1u << axis));
+      rotation() &= static_cast<uint8_t>(~(1u << axis));
     }
   }
-  void set_can_rotate_all_axes() { p.rotation = static_cast<uint8_t>(0b111u); }
+  void set_can_rotate_all_axes() { rotation() = static_cast<uint8_t>(0b111u); }
   void set_cannot_rotate_all_axes() {
-    p.rotation = static_cast<uint8_t>(0b000u);
+    rotation() = static_cast<uint8_t>(0b000u);
   }
   Utils::Quaternion<double> quat() const {
     return (m_particle_store != nullptr)
@@ -742,8 +950,16 @@ public:
                : VectorReference(m_migration_angular_velocity.data(), 1u);
   }
 #ifdef ESPRESSO_EXTERNAL_FORCES
-  auto const &ext_torque() const { return p.ext_torque; }
-  auto &ext_torque() { return p.ext_torque; }
+  Utils::Vector3d ext_torque() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->ext_torque_value(m_store_row)
+               : m_migration_ext_torque;
+  }
+  VectorReference ext_torque() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->ext_torque_reference(m_store_row)
+               : VectorReference(m_migration_ext_torque.data(), 1u);
+  }
 #endif // ESPRESSO_EXTERNAL_FORCES
   auto calc_director() const {
     return Utils::convert_quaternion_to_director(quat());
@@ -753,63 +969,113 @@ public:
   auto can_rotate_around(unsigned int const) const { return false; }
 #endif // ESPRESSO_ROTATION
 #ifdef ESPRESSO_DIPOLES
-  auto const &dipm() const { return p.dipm; }
-  auto &dipm() { return p.dipm; }
+  double const &dipm() const {
+    return (m_particle_store != nullptr) ? m_particle_store->dipm(m_store_row)
+                                         : m_migration_dipm;
+  }
+  double &dipm() {
+    return (m_particle_store != nullptr) ? m_particle_store->dipm(m_store_row)
+                                         : m_migration_dipm;
+  }
   auto calc_dip() const { return calc_director() * dipm(); }
 #endif
 #ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+  // The Stoner-Wohlfarth parameters live in the ParticleStore host sidecar (a
+  // whole POD indexed by store row) when attached, or in the migration carrier
+  // when detached. The accessors return a reference into whichever holds the
+  // POD; the individual-field accessors then reference into that.
+  ThermalStonerWohlfarthParameters &magnetodynamics() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->magnetodynamics(m_store_row)
+               : m_migration_magnetodynamics;
+  }
+  ThermalStonerWohlfarthParameters const &magnetodynamics() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->magnetodynamics(m_store_row)
+               : m_migration_magnetodynamics;
+  }
   auto const &stoner_wohlfarth_is_enabled() const {
-    return p.magnetodynamics.is_enabled;
+    return magnetodynamics().is_enabled;
   }
-  auto &stoner_wohlfarth_is_enabled() { return p.magnetodynamics.is_enabled; }
-  auto const &stoner_wohlfarth_phi_0() const { return p.magnetodynamics.phi0; }
-  auto &stoner_wohlfarth_phi_0() { return p.magnetodynamics.phi0; }
+  auto &stoner_wohlfarth_is_enabled() { return magnetodynamics().is_enabled; }
+  auto const &stoner_wohlfarth_phi_0() const { return magnetodynamics().phi0; }
+  auto &stoner_wohlfarth_phi_0() { return magnetodynamics().phi0; }
   auto const &saturation_magnetization() const {
-    return p.magnetodynamics.sat_mag;
+    return magnetodynamics().sat_mag;
   }
-  auto &saturation_magnetization() { return p.magnetodynamics.sat_mag; }
+  auto &saturation_magnetization() { return magnetodynamics().sat_mag; }
   auto const &magnetic_anisotropy_field_inv() const {
-    return p.magnetodynamics.ani_fld_inv;
+    return magnetodynamics().ani_fld_inv;
   }
   auto &magnetic_anisotropy_field_inv() {
-    return p.magnetodynamics.ani_fld_inv;
+    return magnetodynamics().ani_fld_inv;
   }
   auto const &magnetic_anisotropy_energy() const {
-    return p.magnetodynamics.ani_energy;
+    return magnetodynamics().ani_energy;
   }
-  auto &magnetic_anisotropy_energy() { return p.magnetodynamics.ani_energy; }
+  auto &magnetic_anisotropy_energy() { return magnetodynamics().ani_energy; }
   auto const &stoner_wohlfarth_tau0_inv() const {
-    return p.magnetodynamics.tau0_inv;
+    return magnetodynamics().tau0_inv;
   }
-  auto &stoner_wohlfarth_tau0_inv() { return p.magnetodynamics.tau0_inv; }
+  auto &stoner_wohlfarth_tau0_inv() { return magnetodynamics().tau0_inv; }
   auto const &stoner_wohlfarth_dt_incr() const {
-    return p.magnetodynamics.dt_incr;
+    return magnetodynamics().dt_incr;
   }
-  auto &stoner_wohlfarth_dt_incr() { return p.magnetodynamics.dt_incr; }
+  auto &stoner_wohlfarth_dt_incr() { return magnetodynamics().dt_incr; }
 #endif // ESPRESSO_THERMAL_STONER_WOHLFARTH
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
-  auto const &dip_fld() const { return p.dip_fld; }
-  auto &dip_fld() { return p.dip_fld; }
+  Utils::Vector3d dip_fld() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->dip_fld_value(m_store_row)
+               : m_migration_dip_fld;
+  }
+  VectorReference dip_fld() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->dip_fld_reference(m_store_row)
+               : VectorReference(m_migration_dip_fld.data(), 1u);
+  }
 #endif
 #ifdef ESPRESSO_ROTATIONAL_INERTIA
-  auto const &rinertia() const { return p.rinertia; }
-  auto &rinertia() { return p.rinertia; }
+  Utils::Vector3d rinertia() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->rinertia_value(m_store_row)
+               : m_migration_rinertia;
+  }
+  VectorReference rinertia() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->rinertia_reference(m_store_row)
+               : VectorReference(m_migration_rinertia.data(), 1u);
+  }
 #else
-  constexpr auto &rinertia() const { return p.rinertia; }
+  constexpr auto &rinertia() const { return rinertia_fallback; }
 #endif
 #ifdef ESPRESSO_ELECTROSTATICS
-  auto const &q() const { return p.q; }
-  auto &q() { return p.q; }
+  double const &q() const {
+    return (m_particle_store != nullptr) ? m_particle_store->q(m_store_row)
+                                         : m_migration_q;
+  }
+  double &q() {
+    return (m_particle_store != nullptr) ? m_particle_store->q(m_store_row)
+                                         : m_migration_q;
+  }
 #else
-  constexpr auto &q() const { return p.q; }
+  constexpr auto &q() const { return q_fallback; }
 #endif
 #ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
-  auto const &mu_E() const { return p.mu_E; }
-  auto &mu_E() { return p.mu_E; }
+  Utils::Vector3d mu_E() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->mu_E_value(m_store_row)
+               : m_migration_mu_E;
+  }
+  VectorReference mu_E() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->mu_E_reference(m_store_row)
+               : VectorReference(m_migration_mu_E.data(), 1u);
+  }
 #endif
 #ifdef ESPRESSO_VIRTUAL_SITES
   auto is_virtual() const {
-    return (p.propagation & (PropagationMode::TRANS_VS_RELATIVE |
+    return (propagation() & (PropagationMode::TRANS_VS_RELATIVE |
                              PropagationMode::TRANS_VS_CENTER_OF_MASS |
                              PropagationMode::ROT_VS_RELATIVE |
                              PropagationMode::ROT_VS_INDEPENDENT |
@@ -819,42 +1085,119 @@ public:
   constexpr auto is_virtual() const { return false; }
 #endif // ESPRESSO_VIRTUAL_SITES
 #ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
-  auto const &vs_relative() const { return p.vs_relative; }
-  auto &vs_relative() { return p.vs_relative; }
+  VirtualSitesRelativeParameters &vs_relative() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->vs_relative(m_store_row)
+               : m_migration_vs_relative;
+  }
+  VirtualSitesRelativeParameters const &vs_relative() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->vs_relative(m_store_row)
+               : m_migration_vs_relative;
+  }
 #endif // ESPRESSO_VIRTUAL_SITES_RELATIVE
 #ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-  auto const &gamma() const { return p.gamma; }
-  auto &gamma() { return p.gamma; }
+  // gamma/gamma_rot: element reference (double&) when isotropic, or a
+  // VectorReference when ESPRESSO_PARTICLE_ANISOTROPY selects per-axis
+  // friction; const returns a value. Detached falls back to the carrier.
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  Utils::Vector3d gamma() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->gamma_value(m_store_row)
+               : m_migration_gamma;
+  }
+  VectorReference gamma() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->gamma_reference(m_store_row)
+               : VectorReference(m_migration_gamma.data(), 1u);
+  }
+#else
+  double gamma() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->gamma_value(m_store_row)
+               : m_migration_gamma;
+  }
+  double &gamma() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->gamma_reference(m_store_row)
+               : m_migration_gamma;
+  }
+#endif // ESPRESSO_PARTICLE_ANISOTROPY
 #ifdef ESPRESSO_ROTATION
-  auto const &gamma_rot() const { return p.gamma_rot; }
-  auto &gamma_rot() { return p.gamma_rot; }
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  Utils::Vector3d gamma_rot() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->gamma_rot_value(m_store_row)
+               : m_migration_gamma_rot;
+  }
+  VectorReference gamma_rot() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->gamma_rot_reference(m_store_row)
+               : VectorReference(m_migration_gamma_rot.data(), 1u);
+  }
+#else
+  double gamma_rot() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->gamma_rot_value(m_store_row)
+               : m_migration_gamma_rot;
+  }
+  double &gamma_rot() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->gamma_rot_reference(m_store_row)
+               : m_migration_gamma_rot;
+  }
+#endif // ESPRESSO_PARTICLE_ANISOTROPY
 #endif // ESPRESSO_ROTATION
 #endif // ESPRESSO_THERMOSTAT_PER_PARTICLE
 #ifdef ESPRESSO_EXTERNAL_FORCES
-  auto const &fixed() const { return p.ext_flag; }
-  auto &fixed() { return p.ext_flag; }
-  bool has_fixed_coordinates() const { return static_cast<bool>(p.ext_flag); }
+  std::uint8_t const &fixed() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->ext_flag(m_store_row)
+               : m_migration_ext_flag;
+  }
+  std::uint8_t &fixed() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->ext_flag(m_store_row)
+               : m_migration_ext_flag;
+  }
+  bool has_fixed_coordinates() const { return static_cast<bool>(fixed()); }
   bool is_fixed_along(unsigned int const axis) const {
     assert(axis <= 2u);
-    return detail::get_nth_bit(p.ext_flag, axis);
+    return detail::get_nth_bit(fixed(), axis);
   }
   void set_fixed_along(int const axis, bool const fixed_flag) {
     // set new flag
     if (fixed_flag) {
-      p.ext_flag |= static_cast<uint8_t>(1u << axis);
+      fixed() |= static_cast<uint8_t>(1u << axis);
     } else {
-      p.ext_flag &= static_cast<uint8_t>(~(1u << axis));
+      fixed() &= static_cast<uint8_t>(~(1u << axis));
     }
   }
-  auto const &ext_force() const { return p.ext_force; }
-  auto &ext_force() { return p.ext_force; }
+  Utils::Vector3d ext_force() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->ext_force_value(m_store_row)
+               : m_migration_ext_force;
+  }
+  VectorReference ext_force() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->ext_force_reference(m_store_row)
+               : VectorReference(m_migration_ext_force.data(), 1u);
+  }
 #else  // ESPRESSO_EXTERNAL_FORCES
   constexpr bool has_fixed_coordinates() const { return false; }
   constexpr bool is_fixed_along(unsigned int const) const { return false; }
 #endif // ESPRESSO_EXTERNAL_FORCES
 #ifdef ESPRESSO_ENGINE
-  auto const &swimming() const { return p.swim; }
-  auto &swimming() { return p.swim; }
+  ParticleParametersSwimming &swimming() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->swimming(m_store_row)
+               : m_migration_swimming;
+  }
+  ParticleParametersSwimming const &swimming() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->swimming(m_store_row)
+               : m_migration_swimming;
+  }
 #endif
 #ifdef ESPRESSO_BOND_CONSTRAINT
   Utils::Vector3d pos_last_time_step() const {
@@ -886,22 +1229,27 @@ public:
 private:
   friend boost::serialization::access;
   template <class Archive> void serialize(Archive &ar, long int /* version */) {
-    ar & p;
     ar & l;
     ar & bl;
 #ifdef ESPRESSO_EXCLUSIONS
     ar & el;
 #endif
-    // Migration phases 2, 3 & 4: force/torque (phase 2), the STATE fields
+    // Migration phases 2, 3, 4 & 5: force/torque (phase 2), the STATE fields
     // (position, image box, quaternion, position-at-last-verlet-update,
-    // position-at-last-time-step, Lees-Edwards offset and flag; phase 3), and
-    // the MOMENTUM fields (velocity and angular velocity; phase 4) live in
-    // ParticleStore columns, which are not carried by this (boost) serializer
-    // used for cross-rank particle exchange. Ferry the values so they survive a
-    // global resort that moves the particle to another rank (matching
-    // pre-migration behavior). SAVE reads the current value (column if
-    // attached, carrier otherwise); LOAD lands in the detached carrier, from
-    // which ParticleStore::assign_row seeds the rebuilt row.
+    // position-at-last-time-step, Lees-Edwards offset and flag; phase 3), the
+    // MOMENTUM fields (velocity and angular velocity; phase 4), and ALL the
+    // PARAMETER fields (id, mol_id, type, propagation, the rotation/ext_flag
+    // bitfields, mass, rinertia, q, mu_E, dipm, dip_fld, gamma/gamma_rot,
+    // ext_force/ext_torque and the three cold PODs swim/magnetodynamics/
+    // vs_relative; phase 5) live in ParticleStore columns/sidecars, which are
+    // not carried by this (boost) serializer used for cross-rank particle
+    // exchange. Ferry the values so they survive a global resort that moves the
+    // particle to another rank (matching pre-migration behavior). SAVE reads
+    // the current value (column/sidecar if attached, carrier otherwise); LOAD
+    // lands in the detached carrier, from which ParticleStore::assign_row seeds
+    // the rebuilt row. The constexpr-when-disabled fields have no carrier and
+    // are not serialized (their static fallback is the only value when the
+    // feature is off).
     if (Archive::is_saving::value) {
       m_detached_force = detached_force();
 #ifdef ESPRESSO_ROTATION
@@ -923,6 +1271,55 @@ private:
 #ifdef ESPRESSO_ROTATION
       m_migration_angular_velocity = detached_angular_velocity();
 #endif
+      m_migration_id = detached_id();
+      m_migration_mol_id = detached_mol_id();
+      m_migration_type = detached_type();
+      m_migration_propagation = detached_propagation();
+#ifdef ESPRESSO_ROTATION
+      m_migration_rotation = detached_rotation();
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+      m_migration_ext_flag = detached_ext_flag();
+#endif
+#ifdef ESPRESSO_MASS
+      m_migration_mass = detached_mass();
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+      m_migration_q = detached_q();
+#endif
+#ifdef ESPRESSO_DIPOLES
+      m_migration_dipm = detached_dipm();
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+      m_migration_rinertia = detached_rinertia();
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+      m_migration_mu_E = detached_mu_E();
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+      m_migration_dip_fld = detached_dip_fld();
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+      m_migration_ext_force = detached_ext_force();
+#ifdef ESPRESSO_ROTATION
+      m_migration_ext_torque = detached_ext_torque();
+#endif
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+      m_migration_gamma = detached_gamma();
+#ifdef ESPRESSO_ROTATION
+      m_migration_gamma_rot = detached_gamma_rot();
+#endif
+#endif
+#ifdef ESPRESSO_ENGINE
+      m_migration_swimming = detached_swimming();
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+      m_migration_magnetodynamics = detached_magnetodynamics();
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+      m_migration_vs_relative = detached_vs_relative();
+#endif
     }
     ar & m_detached_force;
 #ifdef ESPRESSO_ROTATION
@@ -942,6 +1339,55 @@ private:
     ar & m_migration_velocity;
 #ifdef ESPRESSO_ROTATION
     ar & m_migration_angular_velocity;
+#endif
+    ar & m_migration_id;
+    ar & m_migration_mol_id;
+    ar & m_migration_type;
+    ar & m_migration_propagation;
+#ifdef ESPRESSO_ROTATION
+    ar & m_migration_rotation;
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+    ar & m_migration_ext_flag;
+#endif
+#ifdef ESPRESSO_MASS
+    ar & m_migration_mass;
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+    ar & m_migration_q;
+#endif
+#ifdef ESPRESSO_DIPOLES
+    ar & m_migration_dipm;
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+    ar & m_migration_rinertia;
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+    ar & m_migration_mu_E;
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+    ar & m_migration_dip_fld;
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+    ar & m_migration_ext_force;
+#ifdef ESPRESSO_ROTATION
+    ar & m_migration_ext_torque;
+#endif
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+    ar & m_migration_gamma;
+#ifdef ESPRESSO_ROTATION
+    ar & m_migration_gamma_rot;
+#endif
+#endif
+#ifdef ESPRESSO_ENGINE
+    ar & m_migration_swimming;
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+    ar & m_migration_magnetodynamics;
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+    ar & m_migration_vs_relative;
 #endif
   }
 };

@@ -141,8 +141,8 @@ struct PressureKernel {
     if (dist > system_max_cutoff)
       return;
 
-    auto const t1 = aosoa.type(i);
-    auto const t2 = aosoa.type(j);
+    auto const t1 = aosoa.type(row_i);
+    auto const t2 = aosoa.type(row_j);
     auto const &ia_params = nonbonded_ias.get_ia_param(t1, t2);
     auto const tid = omp_get_thread_num();
 
@@ -203,7 +203,7 @@ struct PressureKernel {
 
 #ifdef ESPRESSO_ELECTROSTATICS
     if (coulomb_p_kernel != nullptr) {
-      auto const q1 = aosoa.charge(i), q2 = aosoa.charge(j);
+      auto const q1 = aosoa.charge(row_i), q2 = aosoa.charge(row_j);
       if (q1 != 0. and q2 != 0.) {
         auto const p_c = Utils::flatten((*coulomb_p_kernel)(q1 * q2, d, dist));
         for (std::size_t k = 0; k < 9; ++k)

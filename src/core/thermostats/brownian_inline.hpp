@@ -329,10 +329,15 @@ bd_random_walk_rot(BrownianThermostat const &brownian, Particle const &p,
 
   Thermostat::GammaType sigma_pos = brownian.sigma_pos_rotation;
 #ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-  // override default if particle-specific gamma
-  if (p.gamma_rot() >= Thermostat::GammaType{}) {
+  // override default if particle-specific gamma. gamma_rot() returns a
+  // value/proxy (not an lvalue reference) once the friction coefficient lives
+  // in the ParticleStore columns; hoist it into one local so the guard and the
+  // sigma() call read a single consistent value (and materialize the proxy
+  // once).
+  Thermostat::GammaType const p_gamma_rot = p.gamma_rot();
+  if (p_gamma_rot >= Thermostat::GammaType{}) {
     if (kT > 0.) {
-      sigma_pos = BrownianThermostat::sigma(kT, p.gamma_rot());
+      sigma_pos = BrownianThermostat::sigma(kT, p_gamma_rot);
     } else {
       sigma_pos = {}; // just an indication of the infinity
     }

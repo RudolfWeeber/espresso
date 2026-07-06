@@ -47,8 +47,15 @@ struct CellStructure::AoSoA_pack {
   // *store row* via row(i). commit_particle no longer copies velocity, and
   // resize() no longer allocates it.
   //
-  // The layout of the store-aliased views (position/image/director/velocity)
-  // MUST match the store columns' layout.
+  // phase 5: charge/dipm and id/type/mass ALSO join the store-aliased views —
+  // they alias the authoritative ParticleStore scalar columns (q/dipm/id/type/
+  // mass) and are likewise indexed by *store row* via row(i). The per-step
+  // charge/dipm copies and the rebuild-time id/type/mass writes in
+  // commit_particle DIE; commit_particle only sets the pack-owned exclusion
+  // flags. `flags` becomes the allocation sentinel (the last pack-owned view).
+  //
+  // The layout of the store-aliased vector views (position/image/director/
+  // velocity) MUST match the store columns' layout.
   using PositionViewType =
       Kokkos::View<double *[3], ParticleStore::StateVectorLayout,
                    Kokkos::HostSpace>;
@@ -68,20 +75,20 @@ struct CellStructure::AoSoA_pack {
   using MassViewType = Kokkos::View<double *, Kokkos::HostSpace>;
   using FlagsViewType = Kokkos::View<uint8_t *, Kokkos::HostSpace>;
 
-  // Store-aliased / store-derived state columns (indexed by store row).
+  // Store-aliased / store-derived columns (indexed by store row).
   PositionViewType position;
   ImageViewType image;
   DirectorViewType director;
   VelocityViewType velocity;
-  // Pack-index -> store-row translation. Identity on the local prefix.
-  RowMapViewType row_map;
-
-  // Pack-owned per-step columns (indexed by pack index).
   ChargeViewType charge;
   DipmViewType dipm;
   IdViewType id;
   TypeViewType type;
   MassViewType mass;
+  // Pack-index -> store-row translation. Identity on the local prefix.
+  RowMapViewType row_map;
+
+  // Pack-owned per-step column (indexed by pack index).
   FlagsViewType flags;
 
   AoSoA_pack() = default;
@@ -95,36 +102,15 @@ struct CellStructure::AoSoA_pack {
   }
 
   void resize(std::size_t num_particles) {
-    // phase 4: velocity is store-aliased (bound in bind_pack_store_views), not
-    // allocated here; `id` is the allocation sentinel (always pack-owned).
-    if (id.extent(0) == 0) {
+    // phase 5: charge/dipm/id/type/mass are store-aliased (bound in
+    // bind_pack_store_views), not allocated here; `flags` is the last
+    // pack-owned column and serves as the allocation sentinel.
+    if (flags.extent(0) == 0) {
       // First allocation
-#ifdef ESPRESSO_ELECTROSTATICS
-      charge = ChargeViewType("charge", num_particles);
-#endif
-      id = IdViewType("id", num_particles);
-      type = TypeViewType("type", num_particles);
-#ifdef ESPRESSO_MASS
-      mass = MassViewType("mass", num_particles);
-#endif
       flags = FlagsViewType("flags", num_particles);
-#ifdef ESPRESSO_DIPOLES
-      dipm = DipmViewType("dipm", num_particles);
-#endif
     } else {
       // Reallocation
-#ifdef ESPRESSO_ELECTROSTATICS
-      Kokkos::realloc(charge, num_particles);
-#endif
-      Kokkos::realloc(id, num_particles);
-      Kokkos::realloc(type, num_particles);
-#ifdef ESPRESSO_MASS
-      Kokkos::realloc(mass, num_particles);
-#endif
       Kokkos::realloc(flags, num_particles);
-#ifdef ESPRESSO_DIPOLES
-      Kokkos::realloc(dipm, num_particles);
-#endif
     }
   }
 

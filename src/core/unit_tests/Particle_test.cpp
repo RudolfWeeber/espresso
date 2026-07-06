@@ -96,22 +96,25 @@ BOOST_AUTO_TEST_CASE(serialization) {
   out_ar << p;
 
   boost::archive::text_iarchive in_ar(stream);
+  // Migration phase 5: id (with all other parameters) lives in the store column
+  // and is ferried across the archive via the migration carrier. Deserialize
+  // into a DETACHED q so the carrier value is read back (the assign_row seeding
+  // path), then attach so the column read returns it -- mirrors the state and
+  // momentum carrier round-trips below.
   auto q = Particle();
-  fixture.attach(q);
   in_ar >> q;
 
-  BOOST_CHECK(q.id() == p.id());
+  BOOST_CHECK(q.detached_id() == p.detached_id());
   BOOST_CHECK((*q.bonds().begin() == BondView{bond_id, bond_partners}));
+  fixture.attach(q);
+  BOOST_CHECK(q.id() == p.id());
   // Force/torque ARE serialized via the migration carriers (m_detached_force /
-  // m_detached_torque), so their values survive the archive round-trip. They
-  // are not applied to q's store row here, though: q was attached BEFORE
-  // deserialization, so assign_row seeded row 0 from q's then-zero carrier;
-  // the subsequent load overwrites the carrier but not the (already attached)
-  // column. q.force() therefore reads the store's zero-initialized value.
-  BOOST_TEST(Utils::Vector3d(q.force()) == (Utils::Vector3d{0., 0., 0.}),
+  // m_detached_torque); after attaching q to the fresh store, assign_row seeds
+  // row 0 from those carriers, so the column reads return the ferried values.
+  BOOST_TEST(Utils::Vector3d(q.force()) == (Utils::Vector3d{1., -2., 3.}),
              boost::test_tools::per_element());
 #ifdef ESPRESSO_ROTATION
-  BOOST_TEST(Utils::Vector3d(q.torque()) == (Utils::Vector3d{0., 0., 0.}),
+  BOOST_TEST(Utils::Vector3d(q.torque()) == (Utils::Vector3d{-4., 5., -6.}),
              boost::test_tools::per_element());
 #endif
 }

@@ -112,6 +112,56 @@ public:
 #ifdef ESPRESSO_ROTATION
     auto const angular_velocity = p.omega();
 #endif
+    // Migration phase 5: ALL parameter fields also live in the store now, so
+    // the same stale-carrier problem applies to the head-node fast-path copy.
+    // Capture them through the accessors before the re-attach + re-seed.
+    auto const id = p.id();
+    auto const mol_id = p.mol_id();
+    auto const type = p.type();
+    auto const propagation = p.propagation();
+#ifdef ESPRESSO_ROTATION
+    auto const rotation = p.rotation();
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+    auto const ext_flag = p.fixed();
+    auto const ext_force = Utils::Vector3d(p.ext_force());
+#ifdef ESPRESSO_ROTATION
+    auto const ext_torque = Utils::Vector3d(p.ext_torque());
+#endif
+#endif
+#ifdef ESPRESSO_MASS
+    auto const mass = p.mass();
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+    auto const q = p.q();
+#endif
+#ifdef ESPRESSO_DIPOLES
+    auto const dipm = p.dipm();
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+    auto const rinertia = Utils::Vector3d(p.rinertia());
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+    auto const mu_E = Utils::Vector3d(p.mu_E());
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+    auto const dip_fld = Utils::Vector3d(p.dip_fld());
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+    auto const gamma = p.gamma();
+#ifdef ESPRESSO_ROTATION
+    auto const gamma_rot = p.gamma_rot();
+#endif
+#endif
+#ifdef ESPRESSO_ENGINE
+    auto const swimming = p.swimming();
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+    auto const magnetodynamics = p.magnetodynamics();
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+    auto const vs_relative = p.vs_relative();
+#endif
 
     m_particle = p;
     m_store.begin_rebuild(1u, 0u);
@@ -136,6 +186,53 @@ public:
     m_particle->force() = force;
 #ifdef ESPRESSO_ROTATION
     m_particle->torque() = torque;
+#endif
+    m_particle->id() = id;
+    m_particle->mol_id() = mol_id;
+    m_particle->type() = type;
+    m_particle->propagation() = propagation;
+#ifdef ESPRESSO_ROTATION
+    m_particle->rotation() = rotation;
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+    m_particle->fixed() = ext_flag;
+    m_particle->ext_force() = ext_force;
+#ifdef ESPRESSO_ROTATION
+    m_particle->ext_torque() = ext_torque;
+#endif
+#endif
+#ifdef ESPRESSO_MASS
+    m_particle->mass() = mass;
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+    m_particle->q() = q;
+#endif
+#ifdef ESPRESSO_DIPOLES
+    m_particle->dipm() = dipm;
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+    m_particle->rinertia() = rinertia;
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+    m_particle->mu_E() = mu_E;
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+    m_particle->dip_fld() = dip_fld;
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+    m_particle->gamma() = gamma;
+#ifdef ESPRESSO_ROTATION
+    m_particle->gamma_rot() = gamma_rot;
+#endif
+#endif
+#ifdef ESPRESSO_ENGINE
+    m_particle->swimming() = swimming;
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+    m_particle->magnetodynamics() = magnetodynamics;
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+    m_particle->vs_relative() = vs_relative;
 #endif
   }
 

@@ -596,7 +596,12 @@ private:
     assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
     return column.view_host()(row);
   }
-  // Host sidecar (plain std::vector) element access by row.
+  // Host sidecar (plain std::vector) element access by row. The return type is
+  // deduced from the operator[] on the (possibly const) SidecarVector argument,
+  // so a const sidecar yields `POD const &` and a non-const one yields `POD &`;
+  // this single helper therefore backs BOTH the const and non-const public
+  // sidecar accessors with the correct element constness (the method itself is
+  // const because it only reads the vector handle, never mutates the store).
   template <class SidecarVector>
   auto sidecar_reference(SidecarVector &sidecar, int const row) const
       -> decltype(sidecar[static_cast<std::size_t>(row)]) {

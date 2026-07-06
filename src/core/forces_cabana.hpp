@@ -130,7 +130,7 @@ struct ForcesKernel {
       return;
     auto const dist = std::sqrt(dist_sq);
     auto const &ia_params =
-        nonbonded_ias.get_ia_param(aosoa.type(i), aosoa.type(j));
+        nonbonded_ias.get_ia_param(aosoa.type(row_i), aosoa.type(row_j));
 
     ParticleForce pf{};
 
@@ -211,9 +211,9 @@ struct ForcesKernel {
       // phase 4: velocity aliases the store column; read by *store row*.
       auto const vel1 = aosoa.get_vector_at(aosoa.velocity, row_i);
       auto const vel2 = aosoa.get_vector_at(aosoa.velocity, row_j);
-      auto const force =
-          dpd_pair_force(pos1, vel1, aosoa.id(i), pos2, vel2, aosoa.id(j),
-                         *thermostat.dpd, box_geo, ia_params, d, dist, dist_sq);
+      auto const force = dpd_pair_force(pos1, vel1, aosoa.id(row_i), pos2, vel2,
+                                        aosoa.id(row_j), *thermostat.dpd,
+                                        box_geo, ia_params, d, dist, dist_sq);
       pf += force;
     }
 #endif // ESPRESSO_DPD
@@ -223,8 +223,8 @@ struct ForcesKernel {
     Utils::Vector3d f2_asym{};
     // real-space electrostatic charge-charge interaction
     if (coulomb_kernel != nullptr) {
-      if ((aosoa.charge(i) != 0.) and (aosoa.charge(j) != 0.)) {
-        auto const q1q2 = aosoa.charge(i) * aosoa.charge(j);
+      if ((aosoa.charge(row_i) != 0.) and (aosoa.charge(row_j) != 0.)) {
+        auto const q1q2 = aosoa.charge(row_i) * aosoa.charge(row_j);
 #ifdef ESPRESSO_P3M
         if (p3m) [[likely]] {
           pf.f += p3m->pair_force(q1q2, d, dist);
@@ -252,12 +252,12 @@ struct ForcesKernel {
     // Only call dipole force kernel if active
 #ifdef ESPRESSO_DIPOLES
     if (dipoles_kernel != nullptr) {
-      auto const d1d2 = aosoa.dipm(i) * aosoa.dipm(j);
+      auto const d1d2 = aosoa.dipm(row_i) * aosoa.dipm(row_j);
       if (d1d2 != 0.) {
         auto const dir1 = aosoa.get_vector_at(aosoa.director, row_i);
         auto const dir2 = aosoa.get_vector_at(aosoa.director, row_j);
-        pf += (*dipoles_kernel)(d1d2, aosoa.dipm(i) * dir1,
-                                aosoa.dipm(j) * dir2, d, dist, dist_sq);
+        pf += (*dipoles_kernel)(d1d2, aosoa.dipm(row_i) * dir1,
+                                aosoa.dipm(row_j) * dir2, d, dist, dist_sq);
       }
     }
 #endif // ESPRESSO_DIPOLES

@@ -85,21 +85,23 @@ struct PairBondsKernel {
     //  Consider for bond breakage
     if (has_breakage_specs &&
         bond_breakage.check_and_handle_breakage(
-            aosoa.id(i), {{aosoa.id(j), std::nullopt}}, bond_id, dx.norm())) {
+            aosoa.id(row_i), {{aosoa.id(row_j), std::nullopt}}, bond_id,
+            dx.norm())) {
       return;
     }
 
     if (auto const *iap = std::get_if<ThermalizedBond>(&iaparams)) {
       auto const result = iap->forces(
 #ifdef ESPRESSO_MASS
-          aosoa.mass(i), aosoa.mass(j),
+          // phase 5: mass aliases the store column; read by *store row*.
+          aosoa.mass(row_i), aosoa.mass(row_j),
 #else
           1.0, 1.0,
 #endif
           // phase 4: velocity aliases the store column; read by *store row*.
           aosoa.get_vector_at(aosoa.velocity, row_i),
-          aosoa.get_vector_at(aosoa.velocity, row_j), aosoa.id(i), aosoa.id(j),
-          dx);
+          aosoa.get_vector_at(aosoa.velocity, row_j), aosoa.id(row_i),
+          aosoa.id(row_j), dx);
       if (result) {
         auto const &forces = result.value();
 
@@ -110,20 +112,20 @@ struct PairBondsKernel {
         local_force(j, 1) += std::get<1>(forces)[1];
         local_force(j, 2) += std::get<1>(forces)[2];
       } else {
-        auto partner_id = aosoa.id(j);
-        bond_broken_error(aosoa.id(i), {&partner_id, 1});
+        auto partner_id = aosoa.id(row_j);
+        bond_broken_error(aosoa.id(row_i), {&partner_id, 1});
       }
       return;
     }
 
-    auto const result =
-        calc_bond_pair_force(iaparams, dx,
+    auto const result = calc_bond_pair_force(
+        iaparams, dx,
 #ifdef ESPRESSO_ELECTROSTATICS
-                             aosoa.charge(i) * aosoa.charge(j), coulomb_kernel
+        aosoa.charge(row_i) * aosoa.charge(row_j), coulomb_kernel
 #else
-                             0.0, nullptr
+        0.0, nullptr
 #endif
-        );
+    );
 
     if (result) {
       auto const f = result.value();
@@ -140,8 +142,8 @@ struct PairBondsKernel {
       local_virial(2) += virial[2];
 #endif
     } else {
-      auto partner_id = aosoa.id(j);
-      bond_broken_error(aosoa.id(i), {&partner_id, 1});
+      auto partner_id = aosoa.id(row_j);
+      bond_broken_error(aosoa.id(row_i), {&partner_id, 1});
     }
   }
 };
@@ -185,7 +187,7 @@ struct AngleBondsKernel {
     //  Consider for bond breakage
     if (has_breakage_specs &&
         bond_breakage.check_and_handle_breakage(
-            aosoa.id(i), {{aosoa.id(j), aosoa.id(k)}}, bond_id,
+            aosoa.id(row_i), {{aosoa.id(row_j), aosoa.id(row_k)}}, bond_id,
             box_geo.get_mi_vector(pos2, pos3).norm())) {
       return;
     }
@@ -208,8 +210,8 @@ struct AngleBondsKernel {
       local_force(k, 1) += std::get<2>(forces)[1];
       local_force(k, 2) += std::get<2>(forces)[2];
     } else {
-      std::array<int, 2> pids = {aosoa.id(j), aosoa.id(k)};
-      bond_broken_error(aosoa.id(i), {pids.data(), 2});
+      std::array<int, 2> pids = {aosoa.id(row_j), aosoa.id(row_k)};
+      bond_broken_error(aosoa.id(row_i), {pids.data(), 2});
     }
   }
 };
@@ -272,8 +274,9 @@ struct DihedralBondsKernel {
       local_force(m, 1) += std::get<3>(forces)[1];
       local_force(m, 2) += std::get<3>(forces)[2];
     } else {
-      std::array<int, 3> pids = {aosoa.id(j), aosoa.id(k), aosoa.id(m)};
-      bond_broken_error(aosoa.id(i), {pids.data(), 3});
+      std::array<int, 3> pids = {aosoa.id(row_j), aosoa.id(row_k),
+                                 aosoa.id(row_m)};
+      bond_broken_error(aosoa.id(row_i), {pids.data(), 3});
     }
   }
 };
