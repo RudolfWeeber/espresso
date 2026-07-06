@@ -156,6 +156,30 @@ struct ForceRowContext {
 #endif
 };
 
+/**
+ * @brief Raw column pointers + strides for the mixed-parts MOMENTUM fast path.
+ *
+ * Mirror of PositionRowContext for the velocity/angular-velocity columns.
+ * Captured once per communication from the (clean) ParticleStore's host views
+ * so the generic per-particle MOMENTUM serialization can read/write the
+ * velocity (and, under ROTATION, angular-velocity) columns directly by row
+ * instead of through the per-field accessor proxies. See
+ * make_momentum_row_context() for how it is built and for the applicability
+ * rationale. A row-r component-c element lives at
+ * base + r*row_stride + c*comp_stride (comp_stride==1 and one row contiguous
+ * under the store's LayoutRight).
+ */
+struct MomentumRowContext {
+  double *vel; ///< base of the velocity column (row 0, component 0)
+  std::size_t vel_row_stride;
+  std::size_t vel_comp_stride;
+#ifdef ESPRESSO_ROTATION
+  double *omega; ///< base of the angular-velocity column
+  std::size_t omega_row_stride;
+  std::size_t omega_comp_stride;
+#endif
+};
+
 /** @brief Type of reduction to carry out during serialization. */
 enum class ReductionPolicy {
   /** @brief Reduction for domain-to-domain particle communication. */
@@ -179,7 +203,8 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
                      ReductionPolicy policy, SerializationDirection direction,
                      BoxGeometry const &box_geo,
                      Utils::Vector3d const *ghost_shift,
-                     PositionRowContext const *pos_ctx = nullptr) {
+                     PositionRowContext const *pos_ctx = nullptr,
+                     MomentumRowContext const *mom_ctx = nullptr) {
   if (data_parts & GHOSTTRANS_PROPRTS) {
     ar & p.id() & p.mol_id() & p.type() & p.propagation();
 #ifdef ESPRESSO_ROTATION
@@ -353,9 +378,90 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
 #endif
   }
   if (data_parts & GHOSTTRANS_MOMENTUM) {
-    ar & p.v();
+    /* Momentum (velocity, and angular velocity under ROTATION) has no reduction
+     * policy: like POSITION it is MOVE semantics for BOTH ReductionPolicy
+     * values. Enumerating all four (policy, direction) combinations of the
+     * previous `ar & p.v(); ar & p.omega();`:
+     *   (MOVE,  SAVE): write v (then omega) to the archive.
+     *   (UPDATE,SAVE): identical -- `ar & p.v()` never consulted the policy.
+     *   (MOVE,  LOAD): read v (then omega) FROM the archive, overwriting.
+     *   (UPDATE,LOAD): identical -- overwrite, NO accumulation (no `+=`).
+     * So on LOAD we always write the received value INTO the particle
+     * regardless of policy; on SAVE we always read the value FROM the particle.
+     * Never bind particle-struct memory to the archive directly, so a future
+     * field-storage flip cannot serialize a proxy. Wire layout is
+     * byte-identical to the previous implementation.
+     *
+     * When a MomentumRowContext is present AND the particle is attached
+     * (store_row() >= 0), read/write the velocity (and angular-velocity)
+     * columns directly through the raw column pointers rather than through the
+     * per-field accessor proxies -- this is the mixed-parts hot path. A
+     * detached particle (resort-step fresh ghost) or an absent context falls
+     * back to the accessor. Local copies are still made for/from the archive,
+     * so the assignment semantics are exactly as before. */
+    auto const row = p.store_row();
+    bool const use_ctx = mom_ctx != nullptr and row >= 0;
+#ifndef NDEBUG
+    // When use_ctx is true the particle must belong to the active store: a
+    // stale mom_ctx from a different store generation or a different store
+    // object would silently corrupt the wrong memory region.
+    if (use_ctx) {
+      assert(p.store() == active_particle_store() and
+             "serialize_and_reduce: use_ctx row used but p.store() != active "
+             "store");
+    }
+#endif
+    if (direction == SerializationDirection::LOAD) {
+      Utils::Vector3d velocity;
+      ar & velocity;
+      if (use_ctx) {
+        auto *v = mom_ctx->vel +
+                  static_cast<std::size_t>(row) * mom_ctx->vel_row_stride;
+        v[0 * mom_ctx->vel_comp_stride] = velocity[0];
+        v[1 * mom_ctx->vel_comp_stride] = velocity[1];
+        v[2 * mom_ctx->vel_comp_stride] = velocity[2];
+      } else {
+        p.v() = velocity;
+      }
+    } else {
+      Utils::Vector3d velocity;
+      if (use_ctx) {
+        auto const *v = mom_ctx->vel +
+                        static_cast<std::size_t>(row) * mom_ctx->vel_row_stride;
+        velocity = {v[0 * mom_ctx->vel_comp_stride],
+                    v[1 * mom_ctx->vel_comp_stride],
+                    v[2 * mom_ctx->vel_comp_stride]};
+      } else {
+        velocity = p.v();
+      }
+      ar & velocity;
+    }
 #ifdef ESPRESSO_ROTATION
-    ar & p.omega();
+    if (direction == SerializationDirection::LOAD) {
+      Utils::Vector3d angular_velocity;
+      ar & angular_velocity;
+      if (use_ctx) {
+        auto *w = mom_ctx->omega +
+                  static_cast<std::size_t>(row) * mom_ctx->omega_row_stride;
+        w[0 * mom_ctx->omega_comp_stride] = angular_velocity[0];
+        w[1 * mom_ctx->omega_comp_stride] = angular_velocity[1];
+        w[2 * mom_ctx->omega_comp_stride] = angular_velocity[2];
+      } else {
+        p.omega() = angular_velocity;
+      }
+    } else {
+      Utils::Vector3d angular_velocity;
+      if (use_ctx) {
+        auto const *w = mom_ctx->omega + static_cast<std::size_t>(row) *
+                                             mom_ctx->omega_row_stride;
+        angular_velocity = {w[0 * mom_ctx->omega_comp_stride],
+                            w[1 * mom_ctx->omega_comp_stride],
+                            w[2 * mom_ctx->omega_comp_stride]};
+      } else {
+        angular_velocity = p.omega();
+      }
+      ar & angular_velocity;
+    }
 #endif
   }
   if (data_parts & GHOSTTRANS_FORCE) {
@@ -687,6 +793,57 @@ make_position_row_context_unchecked(ParticleStore &store) {
   return ctx;
 }
 
+/** @brief Build a MomentumRowContext for the current clean store, or
+ *  std::nullopt if there is no store or it is dirty (accessor fallback).
+ *  Mirror of make_position_row_context for the velocity/angular-velocity
+ *  columns; meant for the mixed-parts (POSITION|PROPERTIES|MOMENTUM) per-step
+ *  update.
+ *
+ *  PHASE-4 FLIP GATE: pre-flip, the velocity accessor Particle::v() still reads
+ *  the Particle-struct field m.v (the ParticleStore velocity column is seeded
+ *  to zero from the dormant migration carriers and is NOT kept in sync with
+ *  m.v), so a context that reads/writes the STORE column would diverge from the
+ *  accessor and send stale/zero velocities. The context therefore stays inert
+ *  until the Task-4 flip makes v()/omega() authoritative over the columns; at
+ *  that point the early `return std::nullopt` below is removed and the context
+ *  engages exactly like the POSITION one. All the wiring (serialize_and_reduce
+ *  use_ctx branch, the three call sites, calc_transmit_size masking) is already
+ *  in place, so the flip is a one-line change here. */
+static std::optional<MomentumRowContext> make_momentum_row_context() {
+  // FLIP-GATE: flip to true in the Task-4 velocity/omega flip, at which point
+  // the store velocity/angular-velocity columns become authoritative and this
+  // context reads/writes the same memory as Particle::v()/omega().
+  static constexpr bool velocity_columns_authoritative = false;
+  auto *store = active_particle_store();
+  if (not velocity_columns_authoritative or store == nullptr or
+      store->is_dirty() or store->number_of_particles() == 0u) {
+    return std::nullopt;
+  }
+  MomentumRowContext ctx{};
+  auto vel = store->velocity_view();
+  ctx.vel = &vel(0, 0);
+  ctx.vel_row_stride = vel.stride(0);
+  ctx.vel_comp_stride = vel.stride(1);
+#ifdef ESPRESSO_ROTATION
+  auto omega = store->angular_velocity_view();
+  ctx.omega = &omega(0, 0);
+  ctx.omega_row_stride = omega.stride(0);
+  ctx.omega_comp_stride = omega.stride(1);
+#endif
+  return ctx;
+}
+
+/* No make_momentum_row_context_unchecked / pack_momentum_range /
+ * unpack_momentum_range helpers: the only PURE GHOSTTRANS_MOMENTUM comm is
+ * RATTLE's correct_velocity_shake ghosts_update(DATA_PART_MOMENTUM), a
+ * low-frequency correction loop, not a per-step hot path like the POSITION
+ * distribution or the FORCE reduction that justified their columnar bulk paths
+ * (the measured +49% / +10.6s regressions). The mixed-parts MomentumRowContext
+ * in serialize_and_reduce covers every MOMENTUM comm (pure and mixed) without a
+ * separate whole-communication columnar path; if profiling later flags the
+ * velocity shake, the _unchecked builder + pack/unpack_momentum_range + a
+ * columnar_eligible(GHOSTTRANS_MOMENTUM) branch can be added as for FORCE. */
+
 namespace {
 /** @brief Byte cursor over the CommBuf that packs/unpacks scalars via memcpy,
  *  exactly like the MemcpyArchive. Using memcpy (not a reinterpret_cast +
@@ -878,11 +1035,28 @@ static auto calc_transmit_size(BoxGeometry const &box_geo,
       return force_size + position_size;
     }
   }
+  std::size_t momentum_size = 0ul;
+  if (data_parts & GHOSTTRANS_MOMENTUM) {
+    /* Compositional, compile-time-constant size of the MOMENTUM wire layout:
+     * v (Vector3d, 24 B) [+ omega (Vector3d, 24 B) under ROTATION].
+     * serialize_and_reduce's MOMENTUM branch archives one Vector3d (velocity)
+     * and, under ROTATION, a second (angular velocity); each is 3 tightly
+     * packed doubles, so this constant matches the sizer's accumulation of
+     * sizeof(T) exactly. */
+    momentum_size = 3ul * sizeof(double);
+#ifdef ESPRESSO_ROTATION
+    momentum_size += 3ul * sizeof(double);
+#endif
+    data_parts &= ~static_cast<unsigned>(GHOSTTRANS_MOMENTUM);
+    if (data_parts == 0u) {
+      return force_size + position_size + momentum_size;
+    }
+  }
   SerializationSizeCalculator sizeof_archive;
   Particle p{};
   serialize_and_reduce(sizeof_archive, p, data_parts, ReductionPolicy::MOVE,
                        SerializationDirection::SAVE, box_geo, nullptr);
-  return sizeof_archive.size() + force_size + position_size;
+  return sizeof_archive.size() + force_size + position_size + momentum_size;
 }
 
 static auto calc_transmit_size(GhostCommunication const &ghost_comm,
@@ -962,6 +1136,14 @@ static void prepare_send_buffer(CommBuf &send_buffer,
                            ? make_position_row_context()
                            : std::nullopt;
   auto const *pos_ctx_ptr = pos_ctx.has_value() ? &(*pos_ctx) : nullptr;
+  /* Mixed-parts MOMENTUM fast path: read velocity/omega straight from the
+   * (clean) store columns by row. nullptr when MOMENTUM is absent, the store is
+   * dirty/absent, or the velocity columns are not yet authoritative (pre-flip;
+   * see make_momentum_row_context) -- accessor fallback, per-particle. */
+  auto const mom_ctx = (data_parts & GHOSTTRANS_MOMENTUM)
+                           ? make_momentum_row_context()
+                           : std::nullopt;
+  auto const *mom_ctx_ptr = mom_ctx.has_value() ? &(*mom_ctx) : nullptr;
 
   /* Construct archive that pushes back to the bond buffer */
   namespace io = boost::iostreams;
@@ -979,7 +1161,7 @@ static void prepare_send_buffer(CommBuf &send_buffer,
       for (auto &p : *part_list) {
         serialize_and_reduce(archiver, p, data_parts, ReductionPolicy::MOVE,
                              SerializationDirection::SAVE, box_geo,
-                             &ghost_comm.shift, pos_ctx_ptr);
+                             &ghost_comm.shift, pos_ctx_ptr, mom_ctx_ptr);
         if (data_parts & GHOSTTRANS_BONDS) {
           bond_archiver << p.bonds();
         }
@@ -1055,11 +1237,18 @@ static void put_recv_buffer(CommBuf &recv_buffer,
                              ? make_position_row_context()
                              : std::nullopt;
     auto const *pos_ctx_ptr = pos_ctx.has_value() ? &(*pos_ctx) : nullptr;
+    /* Mixed-parts MOMENTUM fast path (see prepare_send_buffer): write
+     * velocity/omega straight into the (clean) store columns by row.
+     * nullptr => accessor fallback. */
+    auto const mom_ctx = (data_parts & GHOSTTRANS_MOMENTUM)
+                             ? make_momentum_row_context()
+                             : std::nullopt;
+    auto const *mom_ctx_ptr = mom_ctx.has_value() ? &(*mom_ctx) : nullptr;
     for (auto part_list : ghost_comm.part_lists) {
       for (auto &p : *part_list) {
         serialize_and_reduce(archiver, p, data_parts, ReductionPolicy::MOVE,
                              SerializationDirection::LOAD, box_geo, nullptr,
-                             pos_ctx_ptr);
+                             pos_ctx_ptr, mom_ctx_ptr);
       }
     }
     if (data_parts & GHOSTTRANS_BONDS) {
@@ -1297,6 +1486,13 @@ static void cell_cell_transfer(GhostCommunication const &ghost_comm,
                            ? make_position_row_context()
                            : std::nullopt;
   auto const *pos_ctx_ptr = pos_ctx.has_value() ? &(*pos_ctx) : nullptr;
+  /* Mixed-parts MOMENTUM fast path (see prepare_send_buffer): both source and
+   * destination particles read/write velocity/omega through the (clean) store
+   * columns by their own row. nullptr => accessor fallback. */
+  auto const mom_ctx = (data_parts & GHOSTTRANS_MOMENTUM)
+                           ? make_momentum_row_context()
+                           : std::nullopt;
+  auto const *mom_ctx_ptr = mom_ctx.has_value() ? &(*mom_ctx) : nullptr;
   /* transfer data */
   auto const offset = ghost_comm.part_lists.size() / 2;
   for (std::size_t pl = 0; pl < offset; pl++) {
@@ -1317,10 +1513,10 @@ static void cell_cell_transfer(GhostCommunication const &ghost_comm,
         auto &p2 = dst_part.begin()[i];
         serialize_and_reduce(ar_out, p1, data_parts, ReductionPolicy::UPDATE,
                              SerializationDirection::SAVE, box_geo,
-                             &ghost_comm.shift, pos_ctx_ptr);
+                             &ghost_comm.shift, pos_ctx_ptr, mom_ctx_ptr);
         serialize_and_reduce(ar_in, p2, data_parts, ReductionPolicy::UPDATE,
                              SerializationDirection::LOAD, box_geo, nullptr,
-                             pos_ctx_ptr);
+                             pos_ctx_ptr, mom_ctx_ptr);
         if (data_parts & GHOSTTRANS_BONDS) {
           p2.bonds() = p1.bonds();
         }
