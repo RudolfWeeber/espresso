@@ -389,6 +389,14 @@ void System::update_dependent_particles() {
 #ifdef ESPRESSO_ELECTROSTATICS
   if (has_icc_enabled()) {
     rebuild_aosoa();
+    // rebuild_aosoa() (re)allocates the pack-owned, uninitialized pair_charge
+    // column. ICC's iteration drives the P3M gather, which reads pair_charge
+    // pack-indexed, so it must be refreshed from the authoritative store q
+    // column here — exactly as the calc_forces/calc_energy paths do around
+    // their own long-range calls (guarded by an active coulomb solver).
+    if (coulomb.impl->solver) {
+      refresh_pack_charges(*cell_structure);
+    }
     update_icc_particles();
   }
 #endif
