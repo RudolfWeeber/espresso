@@ -27,6 +27,7 @@
 
 BOOST_AUTO_TEST_SUITE(suite)
 
+#ifdef ESPRESSO_DIPOLES
 // Anchor: two identical dipoles m=(1,0,0) separated by d=(1,0,0).
 // Analytically f=(-6,0,0), torque=0 (parallel moments => no torque).
 BOOST_AUTO_TEST_CASE(pair_force_analytic) {
@@ -65,5 +66,6 @@ BOOST_AUTO_TEST_CASE(dipole_field_analytic) {
   BOOST_CHECK_SMALL(h[2], 1e-12);
 }
 #endif // ESPRESSO_DIPOLE_FIELD_TRACKING
+#endif // ESPRESSO_DIPOLES
 
 BOOST_AUTO_TEST_SUITE_END()
