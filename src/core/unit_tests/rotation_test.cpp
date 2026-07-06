@@ -209,6 +209,57 @@ BOOST_AUTO_TEST_CASE(propagate_omega_quat_particle_test) {
   }
 }
 
+BOOST_AUTO_TEST_CASE(propagate_omega_quat_particle_masked_omega_test) {
+  // Regression test: blocked rotation axes must have their omega component
+  // zeroed BEFORE define_Qdd runs, not after. A particle with only axis 2
+  // free and non-zero omega on the blocked axes (0 and 1) must:
+  //   (a) have zero omega on axes 0 and 1 after the call, and
+  //   (b) produce the same quaternion as if the blocked omegas were never set.
+  auto const time_step = 0.01;
+  auto const omega_free = 1.5;    // angular velocity on free axis (2)
+  auto const omega_blocked = 3.0; // non-zero on blocked axes (0, 1)
+
+  // Reference result: only axis 2 active, blocked omegas zero from the start.
+  Utils::Quaternion<double> quat_ref{};
+  {
+    ParticleStoreTestFixture fixture{};
+    auto p = Particle();
+    fixture.attach(p);
+    p.set_cannot_rotate_all_axes();
+    p.set_can_rotate_around(2, true);
+    p.quat() = Utils::Quaternion<double>::identity();
+    p.omega() = {0., 0., omega_free};
+    propagate_omega_quat_particle(p, time_step);
+    quat_ref = Utils::Quaternion<double>(p.quat());
+  }
+
+  // Test: same setup but with non-zero omega on blocked axes.
+  // After the call the blocked components must be zero and the quaternion
+  // must match the reference (masked-omega path).
+  {
+    ParticleStoreTestFixture fixture{};
+    auto p = Particle();
+    fixture.attach(p);
+    p.set_cannot_rotate_all_axes();
+    p.set_can_rotate_around(2, true);
+    p.quat() = Utils::Quaternion<double>::identity();
+    p.omega() = {omega_blocked, omega_blocked, omega_free};
+    propagate_omega_quat_particle(p, time_step);
+
+    // (a) Blocked components must be zeroed.
+    BOOST_TEST(Utils::Vector3d(p.omega())[0] == 0.,
+               boost::test_tools::tolerance(tol));
+    BOOST_TEST(Utils::Vector3d(p.omega())[1] == 0.,
+               boost::test_tools::tolerance(tol));
+
+    // (b) Quaternion must match the reference computed with masked omega.
+    auto const quat_out = Utils::Quaternion<double>(p.quat());
+    for (unsigned int i : {0u, 1u, 2u, 3u}) {
+      BOOST_CHECK_CLOSE(quat_out[i], quat_ref[i], tol);
+    }
+  }
+}
+
 BOOST_AUTO_TEST_CASE(convert_operator_body_to_space_test) {
   auto constexpr sqrt_2_half = std::numbers::sqrt2 / 2.0;
   // rotation around y-axis by pi/2

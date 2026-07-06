@@ -136,8 +136,12 @@ void propagate_omega_quat_particle(Particle &p, double time_step) {
   // Clear rotational velocity for blocked rotation axes. v()/omega() will
   // return a write-through proxy (not an lvalue reference) once velocity moves
   // into the ParticleStore columns, so mutate a local copy and write it back.
+  // The write-back MUST happen before define_Qdd, which reads p.omega()
+  // internally: particles with a blocked axis carrying non-zero omega must
+  // see the zeroed component during quaternion-derivative computation.
   Utils::Vector3d omega = p.omega();
   omega = Utils::mask(p.rotation(), omega);
+  p.omega() = omega;
 
   define_Qdd(p, Qd, Qdd, S, Wd);
 
