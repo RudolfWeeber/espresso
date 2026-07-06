@@ -40,6 +40,24 @@ The 5% budget for all configurations is re-tightened at the phase-5
 checkpoint. The phase-0 baseline was re-recorded 2026-07-05 from a rebuilt
 phase-0 binary (machine-state drift ~3-4%; see baselines/machine-info).
 
+**Amendment (2026-07-06, user-approved):** the phase-5 checkpoint re-tightening
+did not hold for the `--particles_per_core 1000` LJ configurations. Final gate
+(3 reps, quiet machine): lj-1rank 1.113, lj-4rank 1.103, lj-omp 1.044,
+p3m-1rank 0.991, p3m-4rank 1.051, p3m-omp 1.027. A perf-recovery round
+(pack-contiguous type cache, solver-gated packed charge/dipm, integrator
+accessor hoists) recovered p3m-4rank fully (interleaved A/B: 4.4% FASTER than
+phase 4; its 1.051 gate reading is cross-run baseline drift) but left an
+lj residual that sub-slot wall-timer instrumentation shows is diffuse SoA
+multi-stream cost (per-column PROPRTS ghost serialization, integrator
+half-step, pair/pack cache streams) with no single recoverable hot spot —
+re-confirming the phase-3.5 finding of an inherent ~6-11% columnar penalty at
+1000 particles/rank on this host. Amended bar from phase 5 onward: the
+`--particles_per_core 1000` configurations are allowed up to 12% cumulative
+regression; the `--particles_per_core 4000` configurations stay at 5%. The
+1000-ppc budget is re-evaluated at the phase-7 checkpoint, where the Particle
+struct, migration carriers, and accessor attached/detached branches are
+removed.
+
 ## Non-goals
 
 - No change to the Python user interface or its semantics.
