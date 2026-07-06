@@ -180,6 +180,94 @@ struct MomentumRowContext {
 #endif
 };
 
+/**
+ * @brief Raw column pointers + strides (and a store handle for the cold PODs)
+ *        for the mixed-parts PROPERTIES value path.
+ *
+ * Mirror of MomentumRowContext, but for the parameter group. Captured once per
+ * communication from the (clean) ParticleStore so the generic per-particle
+ * PROPERTIES serialization can read/write the hot parameter columns directly by
+ * row instead of through the per-field accessor proxies, and read/write the
+ * three cold parameter PODs through the store's host sidecars by row.
+ *
+ * The scalar columns (id/mol_id/type/propagation, and the ifdef-gated uint8
+ * bitfields rotation/ext_flag and doubles mass/q/dipm) are 1-D DualViews: a
+ * row-r element lives at base + r (stride 1). The Vector3d columns
+ * (rinertia/mu_E/gamma/gamma_rot/ext_force/ext_torque) are 2-D LayoutRight
+ * columns, so a row-r component-c element lives at base + r*row_stride +
+ * c*comp_stride (comp_stride==1 and one row contiguous). The gamma/gamma_rot
+ * columns are scalar (double) when ESPRESSO_PARTICLE_ANISOTROPY is off and 2-D
+ * Vector3d columns when it is on; the pointer + optional strides follow the
+ * GammaColumn typedef switch, exactly like the accessor.
+ *
+ * The cold PODs (swim/magnetodynamics/vs_relative) are NOT Kokkos columns; they
+ * live in host std::vector sidecars indexed by store row. The context therefore
+ * carries the ParticleStore* and reads/writes them via the by-row sidecar
+ * accessors (store->swimming(row) etc.).
+ *
+ * Wired like MomentumRowContext: built per communication (only when the store
+ * is present and clean, WITHOUT the data_parts==POSITION restriction of
+ * columnar_eligible), passed to serialize_and_reduce as an optional pointer
+ * (nullptr = accessor fallback), and consulted only when p.store_row() >= 0.
+ * Kept INERT behind parameter_columns_authoritative == false until the Task-4
+ * flip makes the parameter accessors authoritative over the columns/sidecars
+ * (same staging as the phase-4 velocity context).
+ */
+struct ParameterRowContext {
+  ParticleStore *store; ///< sidecar access for the cold PODs, by row
+  int *id;
+  int *mol_id;
+  int *type;
+  int *propagation;
+#ifdef ESPRESSO_ROTATION
+  std::uint8_t *rotation;
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  double *rinertia;
+  std::size_t rinertia_row_stride;
+  std::size_t rinertia_comp_stride;
+#endif
+#endif
+#ifdef ESPRESSO_MASS
+  double *mass;
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  double *q;
+#endif
+#ifdef ESPRESSO_DIPOLES
+  double *dipm;
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+  double *mu_E;
+  std::size_t mu_E_row_stride;
+  std::size_t mu_E_comp_stride;
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+  double *gamma;
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  std::size_t gamma_row_stride;
+  std::size_t gamma_comp_stride;
+#endif
+#ifdef ESPRESSO_ROTATION
+  double *gamma_rot;
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  std::size_t gamma_rot_row_stride;
+  std::size_t gamma_rot_comp_stride;
+#endif
+#endif
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  std::uint8_t *ext_flag;
+  double *ext_force;
+  std::size_t ext_force_row_stride;
+  std::size_t ext_force_comp_stride;
+#ifdef ESPRESSO_ROTATION
+  double *ext_torque;
+  std::size_t ext_torque_row_stride;
+  std::size_t ext_torque_comp_stride;
+#endif
+#endif
+};
+
 /* Forward declaration: used by debug assertions inside serialize_and_reduce
  * (defined below with the columnar machinery). */
 static ParticleStore *active_particle_store();
@@ -208,45 +296,338 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
                      BoxGeometry const &box_geo,
                      Utils::Vector3d const *ghost_shift,
                      PositionRowContext const *pos_ctx = nullptr,
-                     MomentumRowContext const *mom_ctx = nullptr) {
+                     MomentumRowContext const *mom_ctx = nullptr,
+                     ParameterRowContext const *param_ctx = nullptr) {
   if (data_parts & GHOSTTRANS_PROPRTS) {
-    ar & p.id() & p.mol_id() & p.type() & p.propagation();
+    /* Properties have no reduction policy: like POSITION/MOMENTUM this group is
+     * MOVE semantics for BOTH ReductionPolicy values. Enumerating all four
+     * (policy, direction) combinations of the previous policy-blind
+     * `ar & p.id() & ...`:
+     *   (MOVE,  SAVE): write each field to the archive from the particle.
+     *   (UPDATE,SAVE): identical -- the old `ar & ...` never consulted policy.
+     *   (MOVE,  LOAD): read each field FROM the archive, overwriting.
+     *   (UPDATE,LOAD): identical -- overwrite, NO accumulation (no `+=`).
+     * So on LOAD we always write the received value INTO the particle
+     * regardless of policy; on SAVE we always read the value FROM the particle.
+     * Never bind particle-struct memory to the archive directly, so a future
+     * field-storage flip cannot serialize a proxy. Local copies are made
+     * for/from the archive, so the assignment semantics are exactly as before,
+     * and the wire layout is byte-identical (same field order, same ifdef
+     * structure, same tightly packed field sizes: the three PODs are
+     * bitwise-serializable, so each is packed whole as sizeof(T)).
+     *
+     * When a ParameterRowContext is present AND the particle is attached
+     * (store_row() >= 0), read/write the hot parameter columns and the cold POD
+     * sidecars directly by row rather than through the per-field accessor
+     * proxies -- this is the mixed-parts hot path. A detached particle
+     * (resort-step fresh ghost) or an absent context falls back to the
+     * accessor, which uses the migration carriers / struct. See
+     * make_parameter_row_context for the pre-flip inertness gate. */
+    auto const row = p.store_row();
+    bool const use_ctx = param_ctx != nullptr and row >= 0;
+    auto const urow = static_cast<std::size_t>(row);
+#ifndef NDEBUG
+    // When use_ctx is true the particle must belong to the active store: a
+    // stale param_ctx from a different store generation or a different store
+    // object would silently corrupt the wrong memory region.
+    if (use_ctx) {
+      assert(p.store() == active_particle_store() and
+             "serialize_and_reduce: use_ctx row used but p.store() != active "
+             "store");
+    }
+#endif
+    if (direction == SerializationDirection::LOAD) {
+      int id, mol_id, type, propagation;
+      ar & id & mol_id & type & propagation;
+      if (use_ctx) {
+        param_ctx->id[urow] = id;
+        param_ctx->mol_id[urow] = mol_id;
+        param_ctx->type[urow] = type;
+        param_ctx->propagation[urow] = propagation;
+      } else {
+        p.id() = id;
+        p.mol_id() = mol_id;
+        p.type() = type;
+        p.propagation() = propagation;
+      }
+    } else {
+      int id, mol_id, type, propagation;
+      if (use_ctx) {
+        id = param_ctx->id[urow];
+        mol_id = param_ctx->mol_id[urow];
+        type = param_ctx->type[urow];
+        propagation = param_ctx->propagation[urow];
+      } else {
+        id = p.id();
+        mol_id = p.mol_id();
+        type = p.type();
+        propagation = p.propagation();
+      }
+      ar & id & mol_id & type & propagation;
+    }
 #ifdef ESPRESSO_ROTATION
-    ar & p.rotation();
+    if (direction == SerializationDirection::LOAD) {
+      std::uint8_t rotation;
+      ar & rotation;
+      if (use_ctx) {
+        param_ctx->rotation[urow] = rotation;
+      } else {
+        p.rotation() = rotation;
+      }
+    } else {
+      std::uint8_t rotation =
+          use_ctx ? param_ctx->rotation[urow] : p.rotation();
+      ar & rotation;
+    }
 #ifdef ESPRESSO_ROTATIONAL_INERTIA
-    ar & p.rinertia();
+    if (direction == SerializationDirection::LOAD) {
+      Utils::Vector3d rinertia;
+      ar & rinertia;
+      if (use_ctx) {
+        auto *r = param_ctx->rinertia + urow * param_ctx->rinertia_row_stride;
+        r[0] = rinertia[0];
+        r[param_ctx->rinertia_comp_stride] = rinertia[1];
+        r[2u * param_ctx->rinertia_comp_stride] = rinertia[2];
+      } else {
+        p.rinertia() = rinertia;
+      }
+    } else {
+      Utils::Vector3d rinertia;
+      if (use_ctx) {
+        auto const *r =
+            param_ctx->rinertia + urow * param_ctx->rinertia_row_stride;
+        rinertia = {r[0], r[param_ctx->rinertia_comp_stride],
+                    r[2u * param_ctx->rinertia_comp_stride]};
+      } else {
+        rinertia = p.rinertia();
+      }
+      ar & rinertia;
+    }
 #endif
 #endif
 #ifdef ESPRESSO_MASS
-    ar & p.mass();
+    if (direction == SerializationDirection::LOAD) {
+      double mass;
+      ar & mass;
+      if (use_ctx) {
+        param_ctx->mass[urow] = mass;
+      } else {
+        p.mass() = mass;
+      }
+    } else {
+      double mass = use_ctx ? param_ctx->mass[urow] : p.mass();
+      ar & mass;
+    }
 #endif
 #ifdef ESPRESSO_ELECTROSTATICS
-    ar & p.q();
+    if (direction == SerializationDirection::LOAD) {
+      double q;
+      ar & q;
+      if (use_ctx) {
+        param_ctx->q[urow] = q;
+      } else {
+        p.q() = q;
+      }
+    } else {
+      double q = use_ctx ? param_ctx->q[urow] : p.q();
+      ar & q;
+    }
 #endif
 #ifdef ESPRESSO_DIPOLES
-    ar & p.dipm();
+    if (direction == SerializationDirection::LOAD) {
+      double dipm;
+      ar & dipm;
+      if (use_ctx) {
+        param_ctx->dipm[urow] = dipm;
+      } else {
+        p.dipm() = dipm;
+      }
+    } else {
+      double dipm = use_ctx ? param_ctx->dipm[urow] : p.dipm();
+      ar & dipm;
+    }
 #endif
 #ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
-    ar & p.mu_E();
+    if (direction == SerializationDirection::LOAD) {
+      Utils::Vector3d mu_E;
+      ar & mu_E;
+      if (use_ctx) {
+        auto *m = param_ctx->mu_E + urow * param_ctx->mu_E_row_stride;
+        m[0] = mu_E[0];
+        m[param_ctx->mu_E_comp_stride] = mu_E[1];
+        m[2u * param_ctx->mu_E_comp_stride] = mu_E[2];
+      } else {
+        p.mu_E() = mu_E;
+      }
+    } else {
+      Utils::Vector3d mu_E;
+      if (use_ctx) {
+        auto const *m = param_ctx->mu_E + urow * param_ctx->mu_E_row_stride;
+        mu_E = {m[0], m[param_ctx->mu_E_comp_stride],
+                m[2u * param_ctx->mu_E_comp_stride]};
+      } else {
+        mu_E = p.mu_E();
+      }
+      ar & mu_E;
+    }
 #endif
 #ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
-    ar & p.vs_relative();
+    if (direction == SerializationDirection::LOAD) {
+      VirtualSitesRelativeParameters vs_relative;
+      ar & vs_relative;
+      if (use_ctx) {
+        param_ctx->store->vs_relative(row) = vs_relative;
+      } else {
+        p.vs_relative() = vs_relative;
+      }
+    } else {
+      VirtualSitesRelativeParameters vs_relative =
+          use_ctx ? param_ctx->store->vs_relative(row) : p.vs_relative();
+      ar & vs_relative;
+    }
 #endif
 #ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-    ar & p.gamma();
+    if (direction == SerializationDirection::LOAD) {
+      ParticleStore::GammaValue gamma;
+      ar & gamma;
+      if (use_ctx) {
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+        auto *g = param_ctx->gamma + urow * param_ctx->gamma_row_stride;
+        g[0] = gamma[0];
+        g[param_ctx->gamma_comp_stride] = gamma[1];
+        g[2u * param_ctx->gamma_comp_stride] = gamma[2];
+#else
+        param_ctx->gamma[urow] = gamma;
+#endif
+      } else {
+        p.gamma() = gamma;
+      }
+    } else {
+      ParticleStore::GammaValue gamma;
+      if (use_ctx) {
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+        auto const *g = param_ctx->gamma + urow * param_ctx->gamma_row_stride;
+        gamma = {g[0], g[param_ctx->gamma_comp_stride],
+                 g[2u * param_ctx->gamma_comp_stride]};
+#else
+        gamma = param_ctx->gamma[urow];
+#endif
+      } else {
+        gamma = p.gamma();
+      }
+      ar & gamma;
+    }
 #ifdef ESPRESSO_ROTATION
-    ar & p.gamma_rot();
+    if (direction == SerializationDirection::LOAD) {
+      ParticleStore::GammaValue gamma_rot;
+      ar & gamma_rot;
+      if (use_ctx) {
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+        auto *g = param_ctx->gamma_rot + urow * param_ctx->gamma_rot_row_stride;
+        g[0] = gamma_rot[0];
+        g[param_ctx->gamma_rot_comp_stride] = gamma_rot[1];
+        g[2u * param_ctx->gamma_rot_comp_stride] = gamma_rot[2];
+#else
+        param_ctx->gamma_rot[urow] = gamma_rot;
+#endif
+      } else {
+        p.gamma_rot() = gamma_rot;
+      }
+    } else {
+      ParticleStore::GammaValue gamma_rot;
+      if (use_ctx) {
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+        auto const *g =
+            param_ctx->gamma_rot + urow * param_ctx->gamma_rot_row_stride;
+        gamma_rot = {g[0], g[param_ctx->gamma_rot_comp_stride],
+                     g[2u * param_ctx->gamma_rot_comp_stride]};
+#else
+        gamma_rot = param_ctx->gamma_rot[urow];
+#endif
+      } else {
+        gamma_rot = p.gamma_rot();
+      }
+      ar & gamma_rot;
+    }
 #endif
 #endif
 #ifdef ESPRESSO_EXTERNAL_FORCES
-    ar & p.fixed();
-    ar & p.ext_force();
+    if (direction == SerializationDirection::LOAD) {
+      std::uint8_t ext_flag;
+      ar & ext_flag;
+      if (use_ctx) {
+        param_ctx->ext_flag[urow] = ext_flag;
+      } else {
+        p.fixed() = ext_flag;
+      }
+    } else {
+      std::uint8_t ext_flag = use_ctx ? param_ctx->ext_flag[urow] : p.fixed();
+      ar & ext_flag;
+    }
+    if (direction == SerializationDirection::LOAD) {
+      Utils::Vector3d ext_force;
+      ar & ext_force;
+      if (use_ctx) {
+        auto *f = param_ctx->ext_force + urow * param_ctx->ext_force_row_stride;
+        f[0] = ext_force[0];
+        f[param_ctx->ext_force_comp_stride] = ext_force[1];
+        f[2u * param_ctx->ext_force_comp_stride] = ext_force[2];
+      } else {
+        p.ext_force() = ext_force;
+      }
+    } else {
+      Utils::Vector3d ext_force;
+      if (use_ctx) {
+        auto const *f =
+            param_ctx->ext_force + urow * param_ctx->ext_force_row_stride;
+        ext_force = {f[0], f[param_ctx->ext_force_comp_stride],
+                     f[2u * param_ctx->ext_force_comp_stride]};
+      } else {
+        ext_force = p.ext_force();
+      }
+      ar & ext_force;
+    }
 #ifdef ESPRESSO_ROTATION
-    ar & p.ext_torque();
+    if (direction == SerializationDirection::LOAD) {
+      Utils::Vector3d ext_torque;
+      ar & ext_torque;
+      if (use_ctx) {
+        auto *t =
+            param_ctx->ext_torque + urow * param_ctx->ext_torque_row_stride;
+        t[0] = ext_torque[0];
+        t[param_ctx->ext_torque_comp_stride] = ext_torque[1];
+        t[2u * param_ctx->ext_torque_comp_stride] = ext_torque[2];
+      } else {
+        p.ext_torque() = ext_torque;
+      }
+    } else {
+      Utils::Vector3d ext_torque;
+      if (use_ctx) {
+        auto const *t =
+            param_ctx->ext_torque + urow * param_ctx->ext_torque_row_stride;
+        ext_torque = {t[0], t[param_ctx->ext_torque_comp_stride],
+                      t[2u * param_ctx->ext_torque_comp_stride]};
+      } else {
+        ext_torque = p.ext_torque();
+      }
+      ar & ext_torque;
+    }
 #endif
 #endif
 #ifdef ESPRESSO_ENGINE
-    ar & p.swimming();
+    if (direction == SerializationDirection::LOAD) {
+      ParticleParametersSwimming swimming;
+      ar & swimming;
+      if (use_ctx) {
+        param_ctx->store->swimming(row) = swimming;
+      } else {
+        p.swimming() = swimming;
+      }
+    } else {
+      ParticleParametersSwimming swimming =
+          use_ctx ? param_ctx->store->swimming(row) : p.swimming();
+      ar & swimming;
+    }
 #endif
   }
   if (data_parts & GHOSTTRANS_POSITION) {
@@ -839,6 +1220,100 @@ static std::optional<MomentumRowContext> make_momentum_row_context() {
   return ctx;
 }
 
+/** @brief Build a ParameterRowContext for the current clean store, or
+ *  std::nullopt if there is no store or it is dirty (accessor fallback).
+ *  Mirror of make_momentum_row_context for the PROPERTIES group: the hot
+ *  parameter columns (raw base pointers + strides) and a ParticleStore* for the
+ *  cold POD sidecars. Meant for the mixed-parts (POSITION|PROPERTIES|MOMENTUM)
+ *  per-step update and the resort-driven / reaction-driven PROPERTIES comms.
+ *
+ *  PHASE-4 FLIP GATE: pre-flip, the parameter accessors (p.id(), p.type(),
+ *  p.mass(), ..., and the cold-POD accessors) still read/write the
+ *  ParticleProperties struct member `p`; the ParticleStore parameter columns
+ *  and host sidecars are seeded to defaults/carriers and are NOT kept in sync
+ *  with the struct, so a context that read/wrote the STORE would diverge from
+ *  the accessor and ship stale/default parameters. The context therefore stays
+ *  inert until the Task-4 flip makes the parameter accessors authoritative over
+ *  the columns/sidecars; at that point the early `return std::nullopt` guarded
+ *  by parameter_columns_authoritative is removed and the context engages
+ * exactly like the POSITION/MOMENTUM ones. All the wiring (serialize_and_reduce
+ * use_ctx branch, the three call sites, calc_transmit_size masking) is already
+ * in place, so the flip is a one-line change here. */
+static std::optional<ParameterRowContext> make_parameter_row_context() {
+  // Pre-flip inertness gate (see the phase-4 velocity context precedent). The
+  // parameter columns/sidecars are not authoritative until the Task-4 flip.
+  static constexpr bool parameter_columns_authoritative = false;
+  auto *store = active_particle_store();
+  if (not parameter_columns_authoritative or store == nullptr or
+      store->is_dirty() or store->number_of_particles() == 0u) {
+    return std::nullopt;
+  }
+  ParameterRowContext ctx{};
+  ctx.store = store;
+  ctx.id = &store->id_view()(0);
+  ctx.mol_id = &store->mol_id_view()(0);
+  ctx.type = &store->type_view()(0);
+  ctx.propagation = &store->propagation_view()(0);
+#ifdef ESPRESSO_ROTATION
+  ctx.rotation = &store->rotation_view()(0);
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  auto rinertia = store->rinertia_view();
+  ctx.rinertia = &rinertia(0, 0);
+  ctx.rinertia_row_stride = rinertia.stride(0);
+  ctx.rinertia_comp_stride = rinertia.stride(1);
+#endif
+#endif
+#ifdef ESPRESSO_MASS
+  ctx.mass = &store->mass_view()(0);
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  ctx.q = &store->q_view()(0);
+#endif
+#ifdef ESPRESSO_DIPOLES
+  ctx.dipm = &store->dipm_view()(0);
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+  auto mu_E = store->mu_E_view();
+  ctx.mu_E = &mu_E(0, 0);
+  ctx.mu_E_row_stride = mu_E.stride(0);
+  ctx.mu_E_comp_stride = mu_E.stride(1);
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+  auto gamma = store->gamma_view();
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  ctx.gamma = &gamma(0, 0);
+  ctx.gamma_row_stride = gamma.stride(0);
+  ctx.gamma_comp_stride = gamma.stride(1);
+#else
+  ctx.gamma = &gamma(0);
+#endif
+#ifdef ESPRESSO_ROTATION
+  auto gamma_rot = store->gamma_rot_view();
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  ctx.gamma_rot = &gamma_rot(0, 0);
+  ctx.gamma_rot_row_stride = gamma_rot.stride(0);
+  ctx.gamma_rot_comp_stride = gamma_rot.stride(1);
+#else
+  ctx.gamma_rot = &gamma_rot(0);
+#endif
+#endif
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  ctx.ext_flag = &store->ext_flag_view()(0);
+  auto ext_force = store->ext_force_view();
+  ctx.ext_force = &ext_force(0, 0);
+  ctx.ext_force_row_stride = ext_force.stride(0);
+  ctx.ext_force_comp_stride = ext_force.stride(1);
+#ifdef ESPRESSO_ROTATION
+  auto ext_torque = store->ext_torque_view();
+  ctx.ext_torque = &ext_torque(0, 0);
+  ctx.ext_torque_row_stride = ext_torque.stride(0);
+  ctx.ext_torque_comp_stride = ext_torque.stride(1);
+#endif
+#endif
+  return ctx;
+}
+
 /* No make_momentum_row_context_unchecked / pack_momentum_range /
  * unpack_momentum_range helpers: the only PURE GHOSTTRANS_MOMENTUM comm is
  * RATTLE's correct_velocity_shake ghosts_update(DATA_PART_MOMENTUM), a
@@ -1008,6 +1483,63 @@ static char const *unpack_force_range(char const *in,
 
 static auto calc_transmit_size(BoxGeometry const &box_geo,
                                unsigned data_parts) {
+  std::size_t properties_size = 0ul;
+  if (data_parts & GHOSTTRANS_PROPRTS) {
+    /* Compositional, compile-time-constant size of the PROPERTIES wire layout,
+     * matching the field order/ifdef structure of serialize_and_reduce's
+     * PROPERTIES branch exactly. Each `ar & <field>` packs sizeof(field)
+     * tightly (the MemcpyArchive uses memcpy for trivially/bitwise-serializable
+     * types, no alignment padding between fields), and
+     * SerializationSizeCalculator likewise accumulates sizeof(T), so this
+     * constant matches the sizer output byte-for-byte. The three cold PODs are
+     * bitwise-serializable, so each is packed whole as sizeof(T) INCLUDING
+     * internal struct padding (e.g. VirtualSitesRelativeParameters is 80 B: int
+     * + 4 B pad + double + 2 quaternions, NOT 76). dip_fld and magnetodynamics
+     * are NOT part of the PROPERTIES ghost group (see the branch), so they are
+     * excluded here too. */
+    properties_size = 4ul * sizeof(int); // id, mol_id, type, propagation
+#ifdef ESPRESSO_ROTATION
+    properties_size += sizeof(std::uint8_t); // rotation
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+    properties_size += sizeof(Utils::Vector3d); // rinertia
+#endif
+#endif
+#ifdef ESPRESSO_MASS
+    properties_size += sizeof(double); // mass
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+    properties_size += sizeof(double); // q
+#endif
+#ifdef ESPRESSO_DIPOLES
+    properties_size += sizeof(double); // dipm
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+    properties_size += sizeof(Utils::Vector3d); // mu_E
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+    properties_size += sizeof(VirtualSitesRelativeParameters); // vs_relative
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+    properties_size += sizeof(ParticleStore::GammaValue); // gamma
+#ifdef ESPRESSO_ROTATION
+    properties_size += sizeof(ParticleStore::GammaValue); // gamma_rot
+#endif
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+    properties_size += sizeof(std::uint8_t);    // ext_flag / fixed
+    properties_size += sizeof(Utils::Vector3d); // ext_force
+#ifdef ESPRESSO_ROTATION
+    properties_size += sizeof(Utils::Vector3d); // ext_torque
+#endif
+#endif
+#ifdef ESPRESSO_ENGINE
+    properties_size += sizeof(ParticleParametersSwimming); // swimming
+#endif
+    data_parts &= ~static_cast<unsigned>(GHOSTTRANS_PROPRTS);
+    if (data_parts == 0u) {
+      return properties_size;
+    }
+  }
   std::size_t force_size = 0ul;
   if (data_parts & GHOSTTRANS_FORCE) {
 #ifdef ESPRESSO_ROTATION
@@ -1017,7 +1549,7 @@ static auto calc_transmit_size(BoxGeometry const &box_geo,
 #endif
     data_parts &= ~static_cast<unsigned>(GHOSTTRANS_FORCE);
     if (data_parts == 0u) {
-      return force_size;
+      return properties_size + force_size;
     }
   }
   std::size_t position_size = 0ul;
@@ -1038,7 +1570,7 @@ static auto calc_transmit_size(BoxGeometry const &box_geo,
 #endif
     data_parts &= ~static_cast<unsigned>(GHOSTTRANS_POSITION);
     if (data_parts == 0u) {
-      return force_size + position_size;
+      return properties_size + force_size + position_size;
     }
   }
   std::size_t momentum_size = 0ul;
@@ -1055,14 +1587,22 @@ static auto calc_transmit_size(BoxGeometry const &box_geo,
 #endif
     data_parts &= ~static_cast<unsigned>(GHOSTTRANS_MOMENTUM);
     if (data_parts == 0u) {
-      return force_size + position_size + momentum_size;
+      return properties_size + force_size + position_size + momentum_size;
     }
   }
+  /* Only GHOSTTRANS_RATTLE (under ESPRESSO_BOND_CONSTRAINT) can still reach the
+   * generic sizer here: PROPRTS/FORCE/POSITION/MOMENTUM are masked above,
+   * PARTNUM is handled in the ghost_comm overload, and BONDS travels in the
+   * separate bond buffer. The RATTLE branch archives one Utils::Vector3d
+   * (rattle_correction) on MOVE/SAVE, so this sizer call returns 24 B for it.
+   * Left intact rather than inlined so the fallback keeps working if any future
+   * field group is added without a dedicated constant. */
   SerializationSizeCalculator sizeof_archive;
   Particle p{};
   serialize_and_reduce(sizeof_archive, p, data_parts, ReductionPolicy::MOVE,
                        SerializationDirection::SAVE, box_geo, nullptr);
-  return sizeof_archive.size() + force_size + position_size + momentum_size;
+  return sizeof_archive.size() + properties_size + force_size + position_size +
+         momentum_size;
 }
 
 static auto calc_transmit_size(GhostCommunication const &ghost_comm,
@@ -1150,6 +1690,15 @@ static void prepare_send_buffer(CommBuf &send_buffer,
                            ? make_momentum_row_context()
                            : std::nullopt;
   auto const *mom_ctx_ptr = mom_ctx.has_value() ? &(*mom_ctx) : nullptr;
+  /* Mixed-parts PROPERTIES fast path: read the parameter columns/POD sidecars
+   * straight from the (clean) store by row. nullptr when PROPERTIES is absent,
+   * the store is dirty/absent, or the parameter columns are not yet
+   * authoritative (pre-flip; see make_parameter_row_context) -- accessor
+   * fallback, per-particle. */
+  auto const param_ctx = (data_parts & GHOSTTRANS_PROPRTS)
+                             ? make_parameter_row_context()
+                             : std::nullopt;
+  auto const *param_ctx_ptr = param_ctx.has_value() ? &(*param_ctx) : nullptr;
 
   /* Construct archive that pushes back to the bond buffer */
   namespace io = boost::iostreams;
@@ -1167,7 +1716,8 @@ static void prepare_send_buffer(CommBuf &send_buffer,
       for (auto &p : *part_list) {
         serialize_and_reduce(archiver, p, data_parts, ReductionPolicy::MOVE,
                              SerializationDirection::SAVE, box_geo,
-                             &ghost_comm.shift, pos_ctx_ptr, mom_ctx_ptr);
+                             &ghost_comm.shift, pos_ctx_ptr, mom_ctx_ptr,
+                             param_ctx_ptr);
         if (data_parts & GHOSTTRANS_BONDS) {
           bond_archiver << p.bonds();
         }
@@ -1250,11 +1800,18 @@ static void put_recv_buffer(CommBuf &recv_buffer,
                              ? make_momentum_row_context()
                              : std::nullopt;
     auto const *mom_ctx_ptr = mom_ctx.has_value() ? &(*mom_ctx) : nullptr;
+    /* Mixed-parts PROPERTIES fast path (see prepare_send_buffer): write the
+     * parameter columns/POD sidecars straight into the (clean) store by row.
+     * nullptr => accessor fallback. */
+    auto const param_ctx = (data_parts & GHOSTTRANS_PROPRTS)
+                               ? make_parameter_row_context()
+                               : std::nullopt;
+    auto const *param_ctx_ptr = param_ctx.has_value() ? &(*param_ctx) : nullptr;
     for (auto part_list : ghost_comm.part_lists) {
       for (auto &p : *part_list) {
         serialize_and_reduce(archiver, p, data_parts, ReductionPolicy::MOVE,
                              SerializationDirection::LOAD, box_geo, nullptr,
-                             pos_ctx_ptr, mom_ctx_ptr);
+                             pos_ctx_ptr, mom_ctx_ptr, param_ctx_ptr);
       }
     }
     if (data_parts & GHOSTTRANS_BONDS) {
@@ -1499,6 +2056,13 @@ static void cell_cell_transfer(GhostCommunication const &ghost_comm,
                            ? make_momentum_row_context()
                            : std::nullopt;
   auto const *mom_ctx_ptr = mom_ctx.has_value() ? &(*mom_ctx) : nullptr;
+  /* Mixed-parts PROPERTIES fast path (see prepare_send_buffer): both source and
+   * destination particles read/write the parameter columns/POD sidecars through
+   * the (clean) store by their own row. nullptr => accessor fallback. */
+  auto const param_ctx = (data_parts & GHOSTTRANS_PROPRTS)
+                             ? make_parameter_row_context()
+                             : std::nullopt;
+  auto const *param_ctx_ptr = param_ctx.has_value() ? &(*param_ctx) : nullptr;
   /* transfer data */
   auto const offset = ghost_comm.part_lists.size() / 2;
   for (std::size_t pl = 0; pl < offset; pl++) {
@@ -1519,10 +2083,11 @@ static void cell_cell_transfer(GhostCommunication const &ghost_comm,
         auto &p2 = dst_part.begin()[i];
         serialize_and_reduce(ar_out, p1, data_parts, ReductionPolicy::UPDATE,
                              SerializationDirection::SAVE, box_geo,
-                             &ghost_comm.shift, pos_ctx_ptr, mom_ctx_ptr);
+                             &ghost_comm.shift, pos_ctx_ptr, mom_ctx_ptr,
+                             param_ctx_ptr);
         serialize_and_reduce(ar_in, p2, data_parts, ReductionPolicy::UPDATE,
                              SerializationDirection::LOAD, box_geo, nullptr,
-                             pos_ctx_ptr, mom_ctx_ptr);
+                             pos_ctx_ptr, mom_ctx_ptr, param_ctx_ptr);
         if (data_parts & GHOSTTRANS_BONDS) {
           p2.bonds() = p1.bonds();
         }
