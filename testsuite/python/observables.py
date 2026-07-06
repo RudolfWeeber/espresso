@@ -242,11 +242,7 @@ class Observables(ut.TestCase):
             espressomd.observables.TotalForce(ids=id_list).calculate())
 
     def test_lb_velocity_profile_optional_defaults(self):
-        # The optional sampling/offset/allow_empty_bins parameters are
-        # documented as having defaults (sampling_delta_*=1.0,
-        # sampling_offset_*=0.0, allow_empty_bins=False). Relying on the
-        # documented API by omitting them must succeed and the read-only
-        # getters must report exactly those defaults.
+        # check default arguments
         required = dict(
             n_x_bins=10, n_y_bins=10, n_z_bins=10,
             min_x=0., max_x=10., min_y=0., max_y=10., min_z=0., max_z=10.)
@@ -259,7 +255,7 @@ class Observables(ut.TestCase):
         self.assertEqual(observable.sampling_offset_z, 0.0)
         self.assertFalse(observable.allow_empty_bins)
 
-        # Explicitly supplied optional values must still round-trip.
+        # explicitly supplied optional values must round-trip
         observable = espressomd.observables.LBVelocityProfile(
             sampling_delta_x=0.5, sampling_delta_y=0.25, sampling_delta_z=2.0,
             sampling_offset_x=0.1, sampling_offset_y=0.2, sampling_offset_z=0.3,

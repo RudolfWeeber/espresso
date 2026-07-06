@@ -92,10 +92,6 @@ public:
 
   void do_construct(VariantMap const &params) override {
     ObjectHandle::context()->parallel_try_catch([&]() {
-      // The sampling/offset/allow_empty_bins parameters are documented as
-      // optional with concrete defaults; honor them via get_value_or so that
-      // relying on the documented API does not raise a missing-parameter error
-      // (matching the convention used by the cylindrical profile observables).
       m_observable = std::make_shared<CoreLBObs>(
           get_value_or<double>(params, "sampling_delta_x", 1.),
           get_value_or<double>(params, "sampling_delta_y", 1.),
