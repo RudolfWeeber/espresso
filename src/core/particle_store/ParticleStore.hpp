@@ -119,6 +119,10 @@ public:
 #endif
     m_lees_edwards_offset = ScalarColumn{};
     m_lees_edwards_flag = ShortColumn{};
+    m_velocity = Column{};
+#ifdef ESPRESSO_ROTATION
+    m_angular_velocity = Column{};
+#endif
     m_old_force = Column{};
 #ifdef ESPRESSO_ROTATION
     m_old_torque = Column{};
@@ -134,6 +138,10 @@ public:
 #endif
     m_old_lees_edwards_offset = ScalarColumn{};
     m_old_lees_edwards_flag = ShortColumn{};
+    m_old_velocity = Column{};
+#ifdef ESPRESSO_ROTATION
+    m_old_angular_velocity = Column{};
+#endif
     m_number_of_local_particles = 0u;
     m_number_of_ghost_particles = 0u;
     m_old_number_of_particles = 0u;
@@ -225,6 +233,24 @@ public:
   auto lees_edwards_offset_view() { return m_lees_edwards_offset.view_host(); }
   auto lees_edwards_flag_view() { return m_lees_edwards_flag.view_host(); }
 
+  // -- momentum columns (phase 4) -------------------------------------------
+  VectorReference velocity_reference(int const row) {
+    return column_reference(m_velocity, row);
+  }
+  Utils::Vector3d velocity_value(int const row) const {
+    return column_value(m_velocity, row);
+  }
+  auto velocity_view() { return m_velocity.view_host(); }
+#ifdef ESPRESSO_ROTATION
+  VectorReference angular_velocity_reference(int const row) {
+    return column_reference(m_angular_velocity, row);
+  }
+  Utils::Vector3d angular_velocity_value(int const row) const {
+    return column_value(m_angular_velocity, row);
+  }
+  auto angular_velocity_view() { return m_angular_velocity.view_host(); }
+#endif
+
 private:
   // -- proxy factories for the various column kinds -------------------------
   VectorReference column_reference(Column &column, int const row) {
@@ -306,6 +332,10 @@ private:
 #endif
   ScalarColumn m_lees_edwards_offset;
   ShortColumn m_lees_edwards_flag;
+  Column m_velocity;
+#ifdef ESPRESSO_ROTATION
+  Column m_angular_velocity;
+#endif
 
   // -- spare (previous-generation) columns ----------------------------------
   // Capacity-cached double buffering (phase 3.5): these are kept alive across
@@ -327,6 +357,10 @@ private:
 #endif
   ScalarColumn m_old_lees_edwards_offset;
   ShortColumn m_old_lees_edwards_flag;
+  Column m_old_velocity;
+#ifdef ESPRESSO_ROTATION
+  Column m_old_angular_velocity;
+#endif
 
   std::size_t m_old_number_of_particles = 0u;
 };

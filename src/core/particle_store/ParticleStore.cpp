@@ -116,6 +116,10 @@ void ParticleStore::begin_rebuild(std::size_t const number_of_local_particles,
 #endif
   swap(m_lees_edwards_offset, m_old_lees_edwards_offset);
   swap(m_lees_edwards_flag, m_old_lees_edwards_flag);
+  swap(m_velocity, m_old_velocity);
+#ifdef ESPRESSO_ROTATION
+  swap(m_angular_velocity, m_old_angular_velocity);
+#endif
 
   m_old_number_of_particles =
       m_number_of_local_particles + m_number_of_ghost_particles;
@@ -146,6 +150,11 @@ void ParticleStore::begin_rebuild(std::size_t const number_of_local_particles,
                     "particle_store::lees_edwards_offset");
   grow_without_init(m_lees_edwards_flag, total,
                     "particle_store::lees_edwards_flag");
+  grow_without_init(m_velocity, total, "particle_store::velocity");
+#ifdef ESPRESSO_ROTATION
+  grow_without_init(m_angular_velocity, total,
+                    "particle_store::angular_velocity");
+#endif
 }
 
 void ParticleStore::assign_row(Particle &particle, int const row) {
@@ -200,6 +209,16 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
   preserve_or_seed_scalar(m_lees_edwards_flag, m_old_lees_edwards_flag, row,
                           old_row, preserve,
                           particle.migration_lees_edwards_flag());
+
+  // Momentum columns (phase 4). Genuinely-new rows default to zero velocity,
+  // matching Particle's ParticleMomentum member defaults (m.v = {0,0,0},
+  // m.omega = {0,0,0}).
+  preserve_or_seed<3u>(m_velocity, m_old_velocity, row, old_row, preserve,
+                       particle.migration_velocity());
+#ifdef ESPRESSO_ROTATION
+  preserve_or_seed<3u>(m_angular_velocity, m_old_angular_velocity, row, old_row,
+                       preserve, particle.migration_angular_velocity());
+#endif
 
   particle.attach_to_store(*this, row);
 }

@@ -165,6 +165,7 @@ BOOST_AUTO_TEST_CASE(rebuild_seeds_migrated_particle_force_from_carrier) {
 // Phase-3 state columns: a rank-local rebuild that shuffles the row order must
 // preserve each particle's state (position, image box, quaternion, and the
 // Lees-Edwards offset) by old row, exactly as the force column does.
+// Phase-4 velocity columns are verified alongside.
 BOOST_AUTO_TEST_CASE(rebuild_preserves_state_columns_by_old_row) {
   ParticleStore store{};
   Particle p0{}, p1{};
@@ -185,11 +186,17 @@ BOOST_AUTO_TEST_CASE(rebuild_preserves_state_columns_by_old_row) {
   store.lees_edwards_offset(p1.store_row()) = -2.5;
   store.lees_edwards_flag(p0.store_row()) = static_cast<short>(3);
   store.lees_edwards_flag(p1.store_row()) = static_cast<short>(-4);
+  store.velocity_reference(p0.store_row()) = Utils::Vector3d{1.1, 2.2, 3.3};
+  store.velocity_reference(p1.store_row()) = Utils::Vector3d{-4.4, 5.5, -6.6};
 #ifdef ESPRESSO_ROTATION
   auto const q0 = Utils::Quaternion<double>{{0.5, 0.5, 0.5, 0.5}};
   auto const q1 = Utils::Quaternion<double>{{0., 1., 0., 0.}};
   store.quaternion_reference(p0.store_row()) = q0;
   store.quaternion_reference(p1.store_row()) = q1;
+  store.angular_velocity_reference(p0.store_row()) =
+      Utils::Vector3d{0.1, 0.2, 0.3};
+  store.angular_velocity_reference(p1.store_row()) =
+      Utils::Vector3d{-0.4, 0.5, -0.6};
 #endif
 
   // resort that swaps the two particles' order and appends a new one
@@ -218,6 +225,13 @@ BOOST_AUTO_TEST_CASE(rebuild_preserves_state_columns_by_old_row) {
                     static_cast<short>(-4));
   BOOST_CHECK_EQUAL(store.lees_edwards_flag(p0.store_row()),
                     static_cast<short>(3));
+  // Phase-4: velocity preserved by old row; new row zeroed.
+  Utils::Vector3d const vel_p1 = store.velocity_value(p1.store_row());
+  Utils::Vector3d const vel_p0 = store.velocity_value(p0.store_row());
+  Utils::Vector3d const vel_p2 = store.velocity_value(p2.store_row());
+  BOOST_CHECK_EQUAL(vel_p1[0], -4.4);
+  BOOST_CHECK_EQUAL(vel_p0[2], 3.3);
+  BOOST_CHECK_EQUAL(vel_p2.norm2(), 0.);
 #ifdef ESPRESSO_ROTATION
   Utils::Quaternion<double> const quat_p1 =
       store.quaternion_value(p1.store_row());
@@ -225,6 +239,13 @@ BOOST_AUTO_TEST_CASE(rebuild_preserves_state_columns_by_old_row) {
       store.quaternion_value(p0.store_row());
   BOOST_CHECK_EQUAL(quat_p1[1], 1.);
   BOOST_CHECK_EQUAL(quat_p0[3], 0.5);
+  // Phase-4: angular velocity preserved by old row; new row zeroed.
+  Utils::Vector3d const av_p1 = store.angular_velocity_value(p1.store_row());
+  Utils::Vector3d const av_p0 = store.angular_velocity_value(p0.store_row());
+  Utils::Vector3d const av_p2 = store.angular_velocity_value(p2.store_row());
+  BOOST_CHECK_EQUAL(av_p1[1], 0.5);
+  BOOST_CHECK_EQUAL(av_p0[2], 0.3);
+  BOOST_CHECK_EQUAL(av_p2.norm2(), 0.);
 #endif
 }
 
@@ -232,6 +253,7 @@ BOOST_AUTO_TEST_CASE(rebuild_preserves_state_columns_by_old_row) {
 // the column) must default to sensible values that match Particle's member
 // defaults. The quaternion in particular must be the IDENTITY (1,0,0,0), NOT
 // the Kokkos zero-init (0,0,0,0) which is an invalid quaternion.
+// Phase-4: velocity and angular velocity must default to zero.
 BOOST_AUTO_TEST_CASE(new_row_state_defaults) {
   ParticleStore store{};
   Particle p{};
@@ -248,12 +270,49 @@ BOOST_AUTO_TEST_CASE(new_row_state_defaults) {
   BOOST_CHECK_EQUAL(store.lees_edwards_offset(p.store_row()), 0.);
   BOOST_CHECK_EQUAL(store.lees_edwards_flag(p.store_row()),
                     static_cast<short>(0));
+  // Phase-4: velocity defaults to zero (from migration carrier default
+  // {0,0,0}).
+  Utils::Vector3d const vel = store.velocity_value(p.store_row());
+  BOOST_CHECK_EQUAL(vel.norm2(), 0.);
 #ifdef ESPRESSO_ROTATION
   Utils::Quaternion<double> const quat = store.quaternion_value(p.store_row());
   BOOST_CHECK_EQUAL(quat[0], 1.); // identity, not zero
   BOOST_CHECK_EQUAL(quat[1], 0.);
   BOOST_CHECK_EQUAL(quat[2], 0.);
   BOOST_CHECK_EQUAL(quat[3], 0.);
+  // Phase-4: angular velocity defaults to zero.
+  Utils::Vector3d const av = store.angular_velocity_value(p.store_row());
+  BOOST_CHECK_EQUAL(av.norm2(), 0.);
+#endif
+}
+
+// Phase-4: velocity columns are seeded from the migration carrier on
+// assign_row. Pre-flip the carrier is always zero (serialization not wired
+// yet), so a detached particle produces zero velocity columns for new rows.
+// This guards that assign_row seeds the velocity column (not skip it) and that
+// the default is exactly zero (not garbage from WithoutInitializing).
+BOOST_AUTO_TEST_CASE(rebuild_seeds_velocity_from_carrier) {
+  // detached particle — migration carriers at their default {0,0,0}
+  Particle p{};
+  BOOST_REQUIRE(p.store() == nullptr);
+  BOOST_CHECK_EQUAL(p.migration_velocity()[0], 0.);
+  BOOST_CHECK_EQUAL(p.migration_velocity()[2], 0.);
+
+  ParticleStore store{};
+  store.begin_rebuild(1u, 0u);
+  store.assign_row(p, 0);
+  store.finish_rebuild();
+
+  Utils::Vector3d const vel = store.velocity_value(p.store_row());
+  BOOST_CHECK_EQUAL(vel[0], 0.);
+  BOOST_CHECK_EQUAL(vel[1], 0.);
+  BOOST_CHECK_EQUAL(vel[2], 0.);
+#ifdef ESPRESSO_ROTATION
+  BOOST_CHECK_EQUAL(p.migration_angular_velocity()[0], 0.);
+  Utils::Vector3d const av = store.angular_velocity_value(p.store_row());
+  BOOST_CHECK_EQUAL(av[0], 0.);
+  BOOST_CHECK_EQUAL(av[1], 0.);
+  BOOST_CHECK_EQUAL(av[2], 0.);
 #endif
 }
 
@@ -328,6 +387,14 @@ BOOST_AUTO_TEST_CASE(rebuild_seeds_migrated_particle_state_from_carrier) {
       target.position_last_time_step_value(p.store_row());
   BOOST_CHECK_EQUAL(plast[0], -1.);
   BOOST_CHECK_EQUAL(plast[2], -3.);
+#endif
+  // Phase-4: velocity carrier is not serialized yet (pre-flip); column seeds
+  // to zero from the default carrier.
+  Utils::Vector3d const vel = target.velocity_value(p.store_row());
+  BOOST_CHECK_EQUAL(vel.norm2(), 0.);
+#ifdef ESPRESSO_ROTATION
+  Utils::Vector3d const av = target.angular_velocity_value(p.store_row());
+  BOOST_CHECK_EQUAL(av.norm2(), 0.);
 #endif
 }
 
