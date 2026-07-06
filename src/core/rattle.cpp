@@ -72,7 +72,9 @@ void save_old_position(const ParticleRange &particles,
  */
 static void init_correction_vector(const ParticleRange &particles,
                                    const ParticleRange &ghost_particles) {
-  auto reset_force = [](Particle &p) { p.rattle_params().correction.fill(0); };
+  auto reset_force = [](Particle &p) {
+    p.rattle_correction() = Utils::Vector3d{0., 0., 0.};
+  };
 
   boost::for_each(particles, reset_force);
   boost::for_each(ghost_particles, reset_force);
@@ -103,8 +105,8 @@ static bool calculate_positional_correction(RigidBond const &ia_params,
         0.50 * (ia_params.d2 - r_ij2) / r_ij_dot / (p1.mass() + p2.mass());
 
     auto const pos_corr = G * r_ij_t;
-    p1.rattle_params().correction += pos_corr * p2.mass();
-    p2.rattle_params().correction -= pos_corr * p1.mass();
+    p1.rattle_correction() += pos_corr * p2.mass();
+    p2.rattle_correction() -= pos_corr * p1.mass();
 
     return true;
   }
@@ -151,8 +153,8 @@ static bool compute_correction_vector(CellStructure &cs,
  */
 static void apply_positional_correction(const ParticleRange &particles) {
   boost::for_each(particles, [](Particle &p) {
-    p.pos() += p.rattle_params().correction;
-    p.v() += p.rattle_params().correction;
+    p.pos() += Utils::Vector3d(p.rattle_correction());
+    p.v() += Utils::Vector3d(p.rattle_correction());
   });
 }
 
@@ -210,8 +212,8 @@ static bool calculate_velocity_correction(RigidBond const &ia_params,
 
     auto const vel_corr = K * r_ij;
 
-    p1.rattle_params().correction -= vel_corr * p2.mass();
-    p2.rattle_params().correction += vel_corr * p1.mass();
+    p1.rattle_correction() -= vel_corr * p2.mass();
+    p2.rattle_correction() += vel_corr * p1.mass();
 
     return true;
   }
@@ -225,8 +227,9 @@ static bool calculate_velocity_correction(RigidBond const &ia_params,
  * @param particles particle range
  */
 static void apply_velocity_correction(ParticleRange const &particles) {
-  boost::for_each(particles,
-                  [](Particle &p) { p.v() += p.rattle_params().correction; });
+  boost::for_each(particles, [](Particle &p) {
+    p.v() += Utils::Vector3d(p.rattle_correction());
+  });
 }
 
 void correct_velocity_shake(CellStructure &cs, BoxGeometry const &box_geo,

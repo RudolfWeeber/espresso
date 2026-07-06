@@ -336,60 +336,11 @@ BOOST_AUTO_TEST_CASE(force_constructors) {
   }
 }
 
-#ifdef ESPRESSO_BOND_CONSTRAINT
-
-void check_particle_rattle(ParticleRattle const &out,
-                           ParticleRattle const &ref) {
-  BOOST_TEST(out.correction == ref.correction,
-             boost::test_tools::per_element());
-}
-
-BOOST_AUTO_TEST_CASE(rattle_serialization) {
-  auto const expected_size =
-      Utils::MemcpyOArchive::packing_size<ParticleRattle>();
-
-  BOOST_CHECK_LE(expected_size, sizeof(ParticleRattle));
-
-  std::vector<char> buf(expected_size);
-
-  auto pr = ParticleRattle{{1, 2, 3}};
-
-  {
-    auto oa = Utils::MemcpyOArchive{buf};
-
-    oa << pr;
-
-    BOOST_CHECK_EQUAL(oa.bytes_written(), expected_size);
-  }
-
-  {
-    auto ia = Utils::MemcpyIArchive{buf};
-    ParticleRattle out;
-
-    ia >> out;
-
-    BOOST_CHECK_EQUAL(ia.bytes_read(), expected_size);
-    check_particle_rattle(out, pr);
-  }
-}
-
-BOOST_AUTO_TEST_CASE(rattle_constructors) {
-  auto pr = ParticleRattle{{1, 2, 3}};
-
-  // check copy constructor
-  {
-    ParticleRattle out(pr);
-    check_particle_rattle(out, pr);
-  }
-
-  // check copy assignment operator
-  {
-    ParticleRattle out; // avoid copy elision
-    out = pr;
-    check_particle_rattle(out, pr);
-  }
-}
-#endif // ESPRESSO_BOND_CONSTRAINT
+// Migration phase 6: ParticleRattle no longer carries the correction Vector3d
+// (evicted to a ParticleStore observable column); the struct is now an empty
+// type anchor. Its standalone serialization/constructor unit tests are removed
+// -- the correction round-trip is exercised by the store column tests
+// (ParticleStore_test.cpp) and the RATTLE ghost path.
 
 #ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
 

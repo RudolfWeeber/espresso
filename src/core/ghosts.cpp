@@ -879,13 +879,32 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
   }
 #ifdef ESPRESSO_BOND_CONSTRAINT
   if (data_parts & GHOSTTRANS_RATTLE) {
+    // rattle_correction() is now a ParticleStore column accessor (returns a
+    // VectorReference / value proxy, not a raw Vector3d&), so a local Vector3d
+    // is used for/from the archive -- never bind the proxy to the archive
+    // (mirrors the FORCE branch above). Wire layout is one Utils::Vector3d,
+    // byte-identical to the previous implementation.
     if (policy == ReductionPolicy::UPDATE and
         direction == SerializationDirection::LOAD) {
       Utils::Vector3d correction;
       ar & correction;
       p.rattle_correction() += correction;
+    } else if (direction == SerializationDirection::LOAD) {
+      Utils::Vector3d correction;
+      ar & correction;
+      p.rattle_correction() = correction;
     } else {
-      ar & p.rattle_correction();
+      // SAVE. rattle_correction() asserts an attached particle (it is a
+      // column-only observable, no detached carrier -- like force()). The only
+      // caller that reaches here with a DETACHED particle is the
+      // SerializationSizeCalculator (a throwaway Particle p{}), which cares
+      // only about the byte count; a zero placeholder there is correct because
+      // the sizer never inspects the value. Real ghost packs always run on
+      // attached particles, so the live column value is written.
+      Utils::Vector3d correction = (p.store() != nullptr)
+                                       ? Utils::Vector3d(p.rattle_correction())
+                                       : Utils::Vector3d{0., 0., 0.};
+      ar & correction;
     }
   }
 #endif
@@ -1843,9 +1862,13 @@ add_rattle_correction_from_recv_buffer(CommBuf &recv_buffer,
   auto archiver = Utils::MemcpyIArchive{recv_buffer.make_span()};
   for (auto &part_list : ghost_comm.part_lists) {
     for (Particle &part : *part_list) {
-      ParticleRattle pr;
-      archiver >> pr;
-      part.rattle_params() += pr;
+      // The RATTLE correction is now a ParticleStore column (phase 6); the
+      // wire carries one Utils::Vector3d (byte-identical to the previous
+      // ParticleRattle payload, which held only the correction Vector3d).
+      // Reduce it into the local column through the accessor.
+      Utils::Vector3d correction;
+      archiver >> correction;
+      part.rattle_correction() += correction;
     }
   }
 }

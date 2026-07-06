@@ -322,38 +322,45 @@ struct ParticleLocal {
 };
 
 #ifdef ESPRESSO_BOND_CONSTRAINT
-struct ParticleRattle {
-  /** position/velocity correction */
-  Utils::Vector3d correction = {0., 0., 0.};
-
-  friend ParticleRattle operator+(ParticleRattle const &lhs,
-                                  ParticleRattle const &rhs) {
-    return {lhs.correction + rhs.correction};
-  }
-
-  ParticleRattle &operator+=(ParticleRattle const &rhs) {
-    return *this = *this + rhs;
-  }
-
-  template <class Archive> void serialize(Archive &ar, long int /* version */) {
-    ar & correction;
-  }
-};
+/** Migration phase 6: the position/velocity RATTLE correction has left this
+ *  struct; it lives only in a @ref ParticleStore observable column (single
+ *  ownership, spec section 4). The struct is retained (empty) purely as a type
+ *  anchor for the @ref GHOSTTRANS_RATTLE documentation reference in ghosts.hpp;
+ *  it is no longer a member of @ref Particle nor part of @ref Particle
+ *  serialization (it was never serialized), and the RATTLE ghost wire now
+ *  archives one @ref Utils::Vector3d directly via @ref
+ * Particle::rattle_correction().
+ */
+struct ParticleRattle {};
 #endif
 
 /** Struct holding all information for one particle. */
 struct Particle { // NOLINT(bugprone-exception-escape)
 private:
   ParticleLocal l;
-#ifdef ESPRESSO_BOND_CONSTRAINT
-  ParticleRattle rattle;
-#endif
-  BondList bl;
+
+  /** Transitional (migration phase 6): dual-role bonds/exclusions storage.
+   *  These were the owned @c bl / @c el members; phase 6 evicts the
+   *  authoritative copy into the @ref ParticleStore ragged host sidecars
+   *  (single ownership, spec section 4). The struct members survive with the
+   *  @c m_migration_ prefix in their SECOND role: they are the DETACHED storage
+   *  (returned by @ref bonds() / @ref exclusions() when the particle is not
+   *  attached to a store) AND the migration/fetch envelope carried by @ref
+   *  Particle::serialize across the boost-serialized inter-rank exchange (which
+   *  carries neither Kokkos columns nor host sidecars). The @c detached_*()
+   *  getters read the sidecar when attached and the member when detached; @ref
+   *  Particle::serialize syncs the members from them on SAVE so the envelope
+   *  ferries the LIVE value, and @ref ParticleStore::assign_row seeds a
+   *  new/migrated row's sidecar from the member via @ref migration_bonds() /
+   *  @ref migration_exclusions(). Removed in phase 7 when the inter-rank
+   *  exchange switches to per-field packing. */
+  BondList m_migration_bonds;
 #ifdef ESPRESSO_EXCLUSIONS
   /** list of particles, with which this particle has no non-bonded
-   *  interactions
+   *  interactions (dual-role: detached storage + migration envelope, see
+   *  @c m_migration_bonds above)
    */
-  Utils::compact_vector<int> el;
+  Utils::compact_vector<int> m_migration_exclusions;
 #endif
 
   /** Transitional (migration phase 2): row of this particle in the
@@ -758,21 +765,36 @@ public:
   }
 #endif
 
-  /** @brief Phase-6 RAGGED migration seed getters (DORMANT).
+  /** @brief Phase-6 RAGGED migration seed / detached getters (now LIVE).
    *
-   *  Bonds/exclusions are the last owned non-POD members; they are evicted into
-   *  ParticleStore ragged sidecars in phase 6. Unlike the POD carriers, no
-   *  separate carrier member is introduced (the dual-role design of exploration
-   *  finding 3 keeps the struct members themselves as the detached storage /
-   * the migration envelope once the flip lands). While DORMANT, these getters
-   * read the @c bl / @c el members directly so @ref ParticleStore::assign_row
-   * can seed a new/migrated row's sidecar from them, mirroring how the phase-5
-   *  dormant carriers read their sub-struct members. Getter-only; the members
-   *  stay the source of truth until THE FLIP (Task 3).
+   *  Bonds/exclusions are the last owned non-POD members; phase 6 evicts the
+   *  authoritative copy into ParticleStore ragged sidecars. Unlike the POD
+   *  carriers, no separate carrier member is introduced (the dual-role design
+   *  of exploration finding 3 keeps the struct members themselves as the
+   *  detached storage / the migration envelope). The @c detached_*() getters
+   *  return the CURRENT value whether attached (read the sidecar) or detached
+   *  (read the member); @ref Particle::serialize fills the members from them on
+   *  SAVE. The @c migration_*() getters return the raw member that @ref
+   *  ParticleStore::assign_row seeds a new/migrated row's sidecar from (never
+   *  touches a sidecar, so it is safe on a detached particle whose store row is
+   *  invalid). Removed in phase 7 when the inter-rank exchange switches to
+   *  per-field packing.
    *  @{ */
-  BondList const &migration_bonds() const { return bl; }
+  BondList detached_bonds() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->bonds_sidecar_reference(m_store_row)
+               : m_migration_bonds;
+  }
+  BondList const &migration_bonds() const { return m_migration_bonds; }
 #ifdef ESPRESSO_EXCLUSIONS
-  Utils::compact_vector<int> const &migration_exclusions() const { return el; }
+  Utils::compact_vector<int> detached_exclusions() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->exclusions_sidecar_reference(m_store_row)
+               : m_migration_exclusions;
+  }
+  Utils::compact_vector<int> const &migration_exclusions() const {
+    return m_migration_exclusions;
+  }
 #endif
   /** @} */
 
@@ -816,8 +838,16 @@ public:
 
   bool operator!=(Particle const &rhs) const { return id() != rhs.id(); }
 
-  auto const &bonds() const { return bl; }
-  auto &bonds() { return bl; }
+  BondList const &bonds() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->bonds_sidecar_reference(m_store_row)
+               : m_migration_bonds;
+  }
+  BondList &bonds() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->bonds_sidecar_reference(m_store_row)
+               : m_migration_bonds;
+  }
 
   Utils::Vector3d pos() const {
     return (m_particle_store != nullptr)
@@ -1234,17 +1264,34 @@ public:
                : VectorReference(m_migration_position_last_time_step.data(),
                                  1u);
   }
-  auto const &rattle_params() const { return rattle; }
-  auto &rattle_params() { return rattle; }
-  auto const &rattle_correction() const { return rattle.correction; }
-  auto &rattle_correction() { return rattle.correction; }
+  // RATTLE/SHAKE correction (phase 6): evicted to a ParticleStore observable
+  // column (structurally like force). It is per-iteration SHAKE scratch --
+  // never persisted, never migrated, never checkpointed -- so there is no
+  // migration carrier and the accessor is attached-only (asserts a store),
+  // exactly like force().
+  VectorReference rattle_correction() {
+    assert(m_particle_store != nullptr);
+    return m_particle_store->rattle_correction_reference(m_store_row);
+  }
+  Utils::Vector3d rattle_correction() const {
+    assert(m_particle_store != nullptr);
+    return m_particle_store->rattle_correction_value(m_store_row);
+  }
 #endif
 
 #ifdef ESPRESSO_EXCLUSIONS
-  Utils::compact_vector<int> &exclusions() { return el; }
-  Utils::compact_vector<int> const &exclusions() const { return el; }
+  Utils::compact_vector<int> &exclusions() {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->exclusions_sidecar_reference(m_store_row)
+               : m_migration_exclusions;
+  }
+  Utils::compact_vector<int> const &exclusions() const {
+    return (m_particle_store != nullptr)
+               ? m_particle_store->exclusions_sidecar_reference(m_store_row)
+               : m_migration_exclusions;
+  }
   bool has_exclusion(int pid) const {
-    return std::ranges::find(el, pid) != el.end();
+    return std::ranges::find(exclusions(), pid) != exclusions().end();
   }
 #endif
 
@@ -1252,9 +1299,23 @@ private:
   friend boost::serialization::access;
   template <class Archive> void serialize(Archive &ar, long int /* version */) {
     ar & l;
-    ar & bl;
+    // Migration phase 6: bonds/exclusions live authoritatively in the
+    // ParticleStore ragged host sidecars when the particle is attached. The
+    // struct members are dual-role (detached storage + migration/fetch
+    // envelope). On SAVE, sync the members from the sidecar (detached_*() reads
+    // the sidecar when attached) BEFORE serializing them, so the envelope
+    // carries the LIVE value -- this must run before these legs, unlike the
+    // other carriers whose legs sit after the shared is_saving block below. The
+    // leg form/order is byte-identical to the pre-flip `ar & bl` / `ar & el`.
+    if (Archive::is_saving::value) {
+      m_migration_bonds = detached_bonds();
 #ifdef ESPRESSO_EXCLUSIONS
-    ar & el;
+      m_migration_exclusions = detached_exclusions();
+#endif
+    }
+    ar & m_migration_bonds;
+#ifdef ESPRESSO_EXCLUSIONS
+    ar & m_migration_exclusions;
 #endif
     // Migration phases 2, 3, 4 & 5: force/torque (phase 2), the STATE fields
     // (position, image box, quaternion, position-at-last-verlet-update,
