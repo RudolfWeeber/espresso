@@ -89,7 +89,13 @@ public:
   bool &only_positive() { return m_only_positive; }
   bool &penetrable() { return m_penetrable; }
   int &type() { return part_rep.type(); }
-  Utils::Vector3d &velocity() { return part_rep.v(); }
+  // v() returns a write-through proxy (not an lvalue reference) once velocity
+  // moves into the ParticleStore columns, so expose value get/set instead of a
+  // bound reference (mirrors the ParticleHandle proxy accessors).
+  Utils::Vector3d velocity() const { return part_rep.v(); }
+  void set_velocity(Utils::Vector3d const &velocity) {
+    part_rep.v() = velocity;
+  }
 
   void set_type(int type);
 

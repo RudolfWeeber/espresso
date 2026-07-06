@@ -30,18 +30,17 @@
  *  v(t+0.5 \Delta t) \f]
  */
 inline void velocity_verlet_propagator_1(Particle &p, double time_step) {
-  auto &vel = p.v();
   auto pos = p.pos();
   auto const force = p.force();
   auto const mass = p.mass();
   for (unsigned int j = 0; j < 3; j++) {
     if (!p.is_fixed_along(j)) {
       /* Propagate velocities: v(t+0.5*dt) = v(t) + 0.5 * dt * a(t) */
-      vel[j] += 0.5 * time_step * force[j] / mass;
+      p.v()[j] += 0.5 * time_step * force[j] / mass;
 
       /* Propagate positions (only NVT): p(t + dt)   = p(t) + dt *
        * v(t+0.5*dt) */
-      pos[j] += time_step * vel[j];
+      pos[j] += time_step * p.v()[j];
     }
   }
 }
@@ -50,13 +49,12 @@ inline void velocity_verlet_propagator_1(Particle &p, double time_step) {
  *  \f[ v(t+\Delta t) = v(t+0.5 \Delta t) + 0.5 \Delta t f(t+\Delta t)/m \f]
  */
 inline void velocity_verlet_propagator_2(Particle &p, double time_step) {
-  auto &vel = p.v();
   auto const force = p.force();
   auto const mass = p.mass();
   for (unsigned int j = 0; j < 3; j++) {
     if (!p.is_fixed_along(j)) {
       /* Propagate velocity: v(t+dt) = v(t+0.5*dt) + 0.5*dt * a(t+dt) */
-      vel[j] += 0.5 * time_step * force[j] / mass;
+      p.v()[j] += 0.5 * time_step * force[j] / mass;
     }
   }
 }

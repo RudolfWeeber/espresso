@@ -93,15 +93,14 @@ inline void velocity_verlet_npt_propagate_vel_final(
 
   npt_inst_pressure.p_vel = {};
   for (auto &p : particles) {
-    auto &vel = p.v();
     auto const force = p.force();
     auto const mass = p.mass();
     for (auto j = 0u; j < 3u; ++j) {
       if (!p.is_fixed_along(j)) {
         if (nptiso.geometry & NptIsoParameters::nptgeom_dir[j]) {
-          npt_inst_pressure.p_vel[j] += Utils::sqr(vel[j]) * mass;
+          npt_inst_pressure.p_vel[j] += Utils::sqr(p.v()[j]) * mass;
         }
-        vel[j] += force[j] * time_step / (2. * mass);
+        p.v()[j] += force[j] * time_step / (2. * mass);
       }
     }
   }
@@ -117,14 +116,13 @@ inline void velocity_verlet_npt_propagate_vel(
   npt_inst_pressure.p_vel = {};
 
   for (auto &p : particles) {
-    auto &vel = p.v();
     auto const force = p.force();
     auto const mass = p.mass();
     for (auto j = 0u; j < 3u; ++j) {
       if (!p.is_fixed_along(j)) {
-        vel[j] += force[j] * time_step / (2. * mass);
+        p.v()[j] += force[j] * time_step / (2. * mass);
         if (nptiso.geometry & NptIsoParameters::nptgeom_dir[j]) {
-          npt_inst_pressure.p_vel[j] += Utils::sqr(vel[j]) * mass;
+          npt_inst_pressure.p_vel[j] += Utils::sqr(p.v()[j]) * mass;
         }
       }
     }

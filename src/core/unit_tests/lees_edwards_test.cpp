@@ -104,7 +104,7 @@ BOOST_AUTO_TEST_CASE(test_push) {
     p.image_box() = image_box;
   }
   BOOST_CHECK_SMALL((Utils::Vector3d(p.pos()) - expected_pos).norm(), eps);
-  BOOST_CHECK_SMALL((p.v() - expected_vel).norm(), eps);
+  BOOST_CHECK_SMALL((Utils::Vector3d(p.v()) - expected_vel).norm(), eps);
   BOOST_CHECK_CLOSE(p.lees_edwards_offset(), expected_offset, tol);
 
   // Test transition in the other direction
@@ -119,7 +119,7 @@ BOOST_AUTO_TEST_CASE(test_push) {
   expected_vel = old_vel;
   expected_offset = old_offset;
   BOOST_CHECK_SMALL((Utils::Vector3d(p.pos()) - expected_pos).norm(), eps);
-  BOOST_CHECK_SMALL((p.v() - expected_vel).norm(), eps);
+  BOOST_CHECK_SMALL((Utils::Vector3d(p.v()) - expected_vel).norm(), eps);
   BOOST_CHECK_CLOSE(p.lees_edwards_offset(), expected_offset, tol);
 }
 

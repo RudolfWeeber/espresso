@@ -199,7 +199,7 @@ BOOST_AUTO_TEST_CASE(test_langevin_dynamics) {
     p.v() = {1.0, 2.0, 3.0};
     auto const noise = Random::noise_uniform<RNGSalt::LANGEVIN>(0, 0, 0);
     auto const pref = sqrt(prefactor_squared * langevin.gamma);
-    auto const ref = hadamard_product(-langevin.gamma, p.v()) +
+    auto const ref = hadamard_product(-langevin.gamma, Utils::Vector3d(p.v())) +
                      hadamard_product(pref, noise);
     auto const out = friction_thermo_langevin(langevin, p, time_step, kT);
     BOOST_CHECK_CLOSE(out[0], ref[0], tol);
@@ -214,8 +214,9 @@ BOOST_AUTO_TEST_CASE(test_langevin_dynamics) {
     p.omega() = {1.0, 2.0, 3.0};
     auto const noise = Random::noise_uniform<RNGSalt::LANGEVIN_ROT>(0, 0, 0);
     auto const pref = sqrt(prefactor_squared * langevin.gamma_rotation);
-    auto const ref = hadamard_product(-langevin.gamma_rotation, p.omega()) +
-                     hadamard_product(pref, noise);
+    auto const ref =
+        hadamard_product(-langevin.gamma_rotation, Utils::Vector3d(p.omega())) +
+        hadamard_product(pref, noise);
     auto const out =
         friction_thermo_langevin_rotation(langevin, p, time_step, kT);
     BOOST_CHECK_CLOSE(out[0], ref[0], tol);

@@ -252,7 +252,8 @@ void mpi_mpiio_common_write(std::string const &prefix, unsigned fields,
       pos_it += 3u;
     }
     if (fields & MPIIO_OUT_VEL) {
-      std::copy_n(std::begin(p.v()), 3u, vel_it);
+      auto const vel_p = Utils::Vector3d(p.v());
+      std::copy_n(std::begin(vel_p), 3u, vel_it);
       vel_it += 3u;
     }
     if (fields & MPIIO_OUT_TYP) {
@@ -492,7 +493,7 @@ void mpi_mpiio_common_read(const std::string &prefix, unsigned fields,
                              3ul * pref, MPI_DOUBLE);
 
     for (auto &p : particles) {
-      std::copy_n(vel_it, 3u, std::begin(p.v()));
+      p.v() = Utils::Vector3d{vel_it[0], vel_it[1], vel_it[2]};
       vel_it += 3u;
     }
   }

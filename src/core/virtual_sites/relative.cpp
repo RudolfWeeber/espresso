@@ -70,7 +70,7 @@ static Utils::Vector3d velocity(Particle const &p_ref, Particle const &p_vs) {
   auto const omega_space_frame =
       convert_vector_body_to_space(p_ref, p_ref.omega());
   // Obtain velocity from v = v_real particle + omega_real_particle * director
-  return vector_product(omega_space_frame, d) + p_ref.v();
+  return vector_product(omega_space_frame, d) + Utils::Vector3d(p_ref.v());
 }
 
 Particle *get_reference_particle(CellStructure &cell_structure,

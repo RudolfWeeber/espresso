@@ -94,7 +94,7 @@ Galilei::calc_system_cms_velocity(System::System const &system) const {
   for (auto const &p : system.cell_structure->local_particles()) {
     if (not p.is_virtual()) {
       total_mass += p.mass();
-      cms_vel += p.mass() * p.v();
+      cms_vel += p.mass() * Utils::Vector3d(p.v());
     }
   }
   total_mass = boost::mpi::all_reduce(comm_cart, total_mass, std::plus<>());

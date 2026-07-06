@@ -153,7 +153,7 @@ Utils::Vector3d calc_linear_momentum(System::System const &system,
     momentum = reduce_over_local_particles<Utils::Vector3d>(
         *(system.cell_structure),
         [](Utils::Vector3d &acc, Particle const &p) {
-          acc += p.mass() * p.v();
+          acc += p.mass() * Utils::Vector3d(p.v());
         },
         [](Utils::Vector3d &acc, Utils::Vector3d const &v) { acc = acc + v; });
   }
@@ -199,7 +199,7 @@ Utils::Vector3d angular_momentum(System::System const &system, int p_type) {
   for (auto const &p : cell_structure.local_particles()) {
     if ((p.type() == p_type or p_type == -1) and not p.is_virtual()) {
       auto const pos = box_geo.unfolded_position(p.pos(), p.image_box());
-      am += p.mass() * vector_product(pos, p.v());
+      am += p.mass() * vector_product(pos, Utils::Vector3d(p.v()));
     }
   }
   return am;

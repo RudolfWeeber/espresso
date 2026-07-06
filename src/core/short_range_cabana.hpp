@@ -63,7 +63,7 @@ commit_particle(Particle const &p, auto const index,
 #ifdef ESPRESSO_ELECTROSTATICS
   aosoa.charge(index) = p.q();
 #endif
-  aosoa.set_vector_at(aosoa.velocity, index, p.v());
+  aosoa.set_vector_at(aosoa.velocity, index, Utils::Vector3d(p.v()));
 #ifdef ESPRESSO_DIPOLES
   aosoa.dipm(index) = p.dipm();
 #endif

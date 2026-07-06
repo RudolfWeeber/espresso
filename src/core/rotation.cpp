@@ -63,7 +63,7 @@ static void define_Qdd(Particle const &p, Utils::Quaternion<double> &Qd,
   /* calculate the first derivative of the quaternion */
   /* Eq. (4) @cite sonnenschein85a */
   auto const quaternion = Utils::Quaternion<double>(p.quat());
-  auto const &omega = p.omega();
+  Utils::Vector3d const omega = p.omega();
   auto const &rinertia = p.rinertia();
   Qd[0] = 0.5 * (-quaternion[1] * omega[0] - quaternion[2] * omega[1] -
                  quaternion[3] * omega[2]);
@@ -133,8 +133,10 @@ void propagate_omega_quat_particle(Particle &p, double time_step) {
   Utils::Quaternion<double> Qd{}, Qdd{};
   Utils::Vector3d S{}, Wd{};
 
-  // Clear rotational velocity for blocked rotation axes.
-  auto &omega = p.omega();
+  // Clear rotational velocity for blocked rotation axes. v()/omega() will
+  // return a write-through proxy (not an lvalue reference) once velocity moves
+  // into the ParticleStore columns, so mutate a local copy and write it back.
+  Utils::Vector3d omega = p.omega();
   omega = Utils::mask(p.rotation(), omega);
 
   define_Qdd(p, Qd, Qdd, S, Wd);
@@ -151,6 +153,7 @@ void propagate_omega_quat_particle(Particle &p, double time_step) {
   auto const lambda = 1 - S[0] * 0.5 * time_step_squared - sqrt(square);
 
   omega += time_step_half * Wd;
+  p.omega() = omega;
   auto quat = p.quat();
   auto const quaternion_old = Utils::Quaternion<double>(quat);
   quat += time_step * (Qd + time_step_half * Qdd) - lambda * quaternion_old;
@@ -168,8 +171,10 @@ void convert_torque_propagate_omega(Particle &p, double time_step) {
   assert(p.can_rotate());
   convert_torque_to_body_frame_apply_fix(p);
 
-  // Propagation of angular velocities
-  auto &omega = p.omega();
+  // Propagation of angular velocities. omega() will return a write-through
+  // proxy (not an lvalue reference) once velocity moves into the ParticleStore
+  // columns, so mutate a local copy and write it back at the end.
+  Utils::Vector3d omega = p.omega();
   auto const &rinertia = p.rinertia();
   omega += hadamard_division(0.5 * time_step * Utils::Vector3d(p.torque()),
                              rinertia);
@@ -194,6 +199,7 @@ void convert_torque_propagate_omega(Particle &p, double time_step) {
 
     omega = omega_0 + (0.5 * time_step) * Wd;
   }
+  p.omega() = omega;
 }
 
 void convert_initial_torques(const ParticleRange &particles) {

@@ -67,8 +67,10 @@ std::shared_ptr<Observable_stat> System::calculate_pressure() {
   auto const kinetic = reduce_over_local_particles<Utils::Matrix<double, 3, 3>>(
       *cell_structure,
       [](Utils::Matrix<double, 3, 3> &acc, Particle const &p) {
-        if (!p.is_virtual())
-          acc += Utils::tensor_product(p.v(), p.mass() * p.v());
+        if (!p.is_virtual()) {
+          auto const vel = Utils::Vector3d(p.v());
+          acc += Utils::tensor_product(vel, p.mass() * vel);
+        }
       },
       [](auto &a, auto const &b) { a += b; });
   std::ranges::copy(Utils::flatten(kinetic), obs_pressure.kinetic_lin.begin());

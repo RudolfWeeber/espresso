@@ -520,7 +520,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
         if (rank == 0) {
           auto &p = *p_opt;
           p.v() += 0.5 * time_step * Utils::Vector3d(p.force()) / p.mass();
-          p.pos() += time_step * p.v();
+          p.pos() += time_step * Utils::Vector3d(p.v());
           expected[pid] = p.pos();
         }
       }

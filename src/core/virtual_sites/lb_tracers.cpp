@@ -84,11 +84,10 @@ void lb_tracers_propagate(CellStructure &cell_structure, LB::Solver const &lb,
     if (!LB::is_tracer(p))
       continue;
     auto pos = p.pos();
-    auto &vel = p.v();
-    vel = lb.get_coupling_interpolated_velocity(pos);
+    p.v() = lb.get_coupling_interpolated_velocity(pos);
     for (auto i = 0u; i < 3u; i++) {
       if (!p.is_fixed_along(i)) {
-        pos[i] += vel[i] * time_step;
+        pos[i] += p.v()[i] * time_step;
       }
     }
     // Verlet list update check

@@ -170,7 +170,7 @@ BOOST_FIXTURE_TEST_CASE(ReactionAlgorithm_test, ParticleFactory) {
       auto const ref_old_vel = ref_positions[pid].second;
       if (auto const p = cell_structure.get_local_particle(pid)) {
         Utils::Vector3d const new_pos = p->pos();
-        auto const &new_vel = p->v();
+        Utils::Vector3d const new_vel = p->v();
         BOOST_CHECK_EQUAL(old_pos, ref_old_pos);
         BOOST_CHECK_EQUAL(old_vel, ref_old_vel);
         BOOST_CHECK_GE(new_pos, Utils::Vector3d::broadcast(0.));

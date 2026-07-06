@@ -31,11 +31,10 @@ inline void brownian_dynamics_propagator(BrownianThermostat const &brownian,
                                          Particle &p, double time_step,
                                          double kT) {
   auto pos = p.pos();
-  auto &vel = p.v();
   pos += bd_drag(brownian.gamma, p, time_step);
-  vel = bd_drag_vel(brownian.gamma, p);
+  p.v() = bd_drag_vel(brownian.gamma, p);
   pos += bd_random_walk(brownian, p, time_step, kT);
-  vel += bd_random_walk_vel(brownian, p);
+  p.v() += bd_random_walk_vel(brownian, p);
 }
 
 #ifdef ESPRESSO_ROTATION
@@ -46,10 +45,9 @@ inline void brownian_dynamics_rotator(BrownianThermostat const &brownian,
     return;
   convert_torque_to_body_frame_apply_fix(p);
   auto quat = p.quat();
-  auto &omega = p.omega();
   quat = bd_drag_rot(brownian.gamma_rotation, p, time_step);
-  omega = bd_drag_vel_rot(brownian.gamma_rotation, p);
+  p.omega() = bd_drag_vel_rot(brownian.gamma_rotation, p);
   quat = bd_random_walk_rot(brownian, p, time_step, kT);
-  omega += bd_random_walk_vel_rot(brownian, p);
+  p.omega() += bd_random_walk_vel_rot(brownian, p);
 }
 #endif // ESPRESSO_ROTATION

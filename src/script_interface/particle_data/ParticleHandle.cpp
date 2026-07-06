@@ -243,7 +243,11 @@ ParticleHandle::ParticleHandle() {
        }},
       {"v",
        [this](Variant const &value) {
-         set_particle_property(&Particle::v, value);
+         // v() returns a write-through proxy (not an lvalue reference),
+         // so assign through it explicitly instead of via a member setter.
+         set_particle_property([&value](Particle &p) {
+           p.v() = get_value<Utils::Vector3d>(value);
+         });
        },
        [this]() { return get_particle_data(m_pid).v(); }},
       {"f",
@@ -372,7 +376,11 @@ ParticleHandle::ParticleHandle() {
        [this]() { return quat2vector(get_particle_data(m_pid).quat()); }},
       {"omega_body",
        [this](Variant const &value) {
-         set_particle_property(&Particle::omega, value);
+         // omega() returns a write-through proxy (not an lvalue reference),
+         // so assign through it explicitly instead of via a member setter.
+         set_particle_property([&value](Particle &p) {
+           p.omega() = get_value<Utils::Vector3d>(value);
+         });
        },
        [this]() { return get_particle_data(m_pid).omega(); }},
       {"rotation",

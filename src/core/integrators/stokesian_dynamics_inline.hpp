@@ -35,9 +35,9 @@ inline void stokesian_dynamics_step_1(ParticleRangeStokesian const &particles,
 
   for (auto &p : particles) {
     // translate
-    p.pos() += p.v() * time_step;
+    p.pos() += Utils::Vector3d(p.v()) * time_step;
     // rotate
-    auto const omega = p.omega();
+    Utils::Vector3d const omega = p.omega();
     auto const norm = omega.norm();
     if (norm != 0.) {
       auto const omega_unit = (1. / norm) * omega;

@@ -71,7 +71,7 @@ static Utils::Vector3d lb_drag_force(Particle const &p, double lb_gamma,
   auto const gamma = lb_handle_particle_anisotropy(p, lb_gamma);
 
   /* calculate viscous force (eq. (9) @cite ahlrichs99a) */
-  return Utils::hadamard_product(gamma, v_drift - p.v());
+  return Utils::hadamard_product(gamma, v_drift - Utils::Vector3d(p.v()));
 }
 
 Utils::Vector3d lb_drag_force(LB::Solver const &lb, double lb_gamma,

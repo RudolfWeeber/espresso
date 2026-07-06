@@ -200,7 +200,7 @@ void correct_position_shake(CellStructure &cs, BoxGeometry const &box_geo,
 static bool calculate_velocity_correction(RigidBond const &ia_params,
                                           BoxGeometry const &box_geo,
                                           Particle &p1, Particle &p2) {
-  auto const v_ij = p1.v() - p2.v();
+  auto const v_ij = Utils::Vector3d(p1.v()) - Utils::Vector3d(p2.v());
   auto const r_ij = box_geo.get_mi_vector(Utils::Vector3d(p1.pos()),
                                           Utils::Vector3d(p2.pos()));
 

@@ -71,7 +71,7 @@ BOOST_AUTO_TEST_CASE(test_make_kokkos_reduction) {
 
   auto const kernel = [&cells](int i, Utils::Vector3d &res) {
     for (auto const &p : cells[i]->particles()) {
-      res += p.mass() * p.v();
+      res += p.mass() * Utils::Vector3d(p.v());
     }
   };
   auto const reducer =
@@ -94,9 +94,9 @@ BOOST_AUTO_TEST_CASE(test_reduce_over_local_particles) {
   assert(p);
 
   auto const kernel = [](Utils::Vector3d &acc, Particle const &p) {
-    acc += p.mass() * p.v();
+    acc += p.mass() * Utils::Vector3d(p.v());
   };
-  auto const ref = p->mass() * p->v();
+  auto const ref = p->mass() * Utils::Vector3d(p->v());
   auto const res = reduce_over_local_particles<Utils::Vector3d>(
       cell_structure, kernel, reduce_op);
   BOOST_CHECK_EQUAL(res, ref);

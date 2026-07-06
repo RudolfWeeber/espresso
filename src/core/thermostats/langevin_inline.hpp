@@ -69,13 +69,13 @@ friction_thermo_langevin(LangevinThermostat const &langevin, Particle const &p,
     // rotation matrix shared between the friction and noise terms.
     auto const O = rotation_matrix(Utils::Quaternion<double>(p.quat()));
     auto const Ot = O.transposed();
-    auto const v_body = Ot * p.v();
+    auto const v_body = Ot * Utils::Vector3d(p.v());
     auto const noise_body = Ot * noise;
     return O * (hadamard_product(pref_friction, v_body) +
                 hadamard_product(pref_noise, noise_body));
   }
 #endif
-  return hadamard_product(pref_friction, p.v()) +
+  return hadamard_product(pref_friction, Utils::Vector3d(p.v())) +
          hadamard_product(pref_noise, noise);
 }
 
@@ -104,7 +104,7 @@ friction_thermo_langevin_rotation(LangevinThermostat const &langevin,
 
   auto const noise = Random::noise_uniform<RNGSalt::LANGEVIN_ROT>(
       langevin.rng_counter(), langevin.rng_seed(), p.id());
-  return -hadamard_product(pref_friction, p.omega()) +
+  return -hadamard_product(pref_friction, Utils::Vector3d(p.omega())) +
          hadamard_product(pref_noise, noise);
 }
 #endif // ESPRESSO_ROTATION
