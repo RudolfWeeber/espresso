@@ -180,6 +180,10 @@ struct MomentumRowContext {
 #endif
 };
 
+/* Forward declaration: used by debug assertions inside serialize_and_reduce
+ * (defined below with the columnar machinery). */
+static ParticleStore *active_particle_store();
+
 /** @brief Type of reduction to carry out during serialization. */
 enum class ReductionPolicy {
   /** @brief Reduction for domain-to-domain particle communication. */
