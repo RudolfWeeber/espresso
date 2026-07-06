@@ -1245,10 +1245,9 @@ static std::optional<ParameterRowContext> make_parameter_row_context() {
   // this context reads/writes the same memory as the accessors. The PROPERTIES
   // ghost value path may therefore route through the columnar row-context when
   // the store is clean and attached, exactly like the POSITION/MOMENTUM paths.
-  static constexpr bool parameter_columns_authoritative = true;
   auto *store = active_particle_store();
-  if (not parameter_columns_authoritative or store == nullptr or
-      store->is_dirty() or store->number_of_particles() == 0u) {
+  if (store == nullptr or store->is_dirty() or
+      store->number_of_particles() == 0u) {
     return std::nullopt;
   }
   ParameterRowContext ctx{};

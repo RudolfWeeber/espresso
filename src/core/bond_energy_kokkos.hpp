@@ -85,7 +85,8 @@ struct PairBondsEnergyKernel {
     std::optional<double> energy = calc_pair_bonded_energy(
         iaparams, dx, pos1, pos2,
 #ifdef ESPRESSO_ELECTROSTATICS
-        aosoa.charge(i) * aosoa.charge(j), coulomb_u_kernel
+        // phase 5: charge aliases the store column; read by *store row*.
+        aosoa.charge(row_i) * aosoa.charge(row_j), coulomb_u_kernel
 #else
         0.0, nullptr
 #endif
@@ -94,8 +95,8 @@ struct PairBondsEnergyKernel {
     if (energy) {
       local_energy(thread_id, layout.bonded_idx(bond_id)) += energy.value();
     } else {
-      auto partner_id = aosoa.id(j);
-      bond_broken_error(aosoa.id(i), {&partner_id, 1});
+      auto partner_id = aosoa.id(row_j);
+      bond_broken_error(aosoa.id(row_i), {&partner_id, 1});
     }
   }
 };
@@ -145,8 +146,8 @@ struct AngleBondsEnergyKernel {
     if (energy) {
       local_energy(thread_id, layout.bonded_idx(bond_id)) += energy.value();
     } else {
-      std::array<int, 2> pids = {aosoa.id(j), aosoa.id(k)};
-      bond_broken_error(aosoa.id(i), {pids.data(), 2});
+      std::array<int, 2> pids = {aosoa.id(row_j), aosoa.id(row_k)};
+      bond_broken_error(aosoa.id(row_i), {pids.data(), 2});
     }
   }
 };
@@ -200,8 +201,9 @@ struct DihedralBondsEnergyKernel {
     if (energy) {
       local_energy(thread_id, layout.bonded_idx(bond_id)) += energy.value();
     } else {
-      std::array<int, 3> pids = {aosoa.id(j), aosoa.id(k), aosoa.id(m)};
-      bond_broken_error(aosoa.id(i), {pids.data(), 3});
+      std::array<int, 3> pids = {aosoa.id(row_j), aosoa.id(row_k),
+                                 aosoa.id(row_m)};
+      bond_broken_error(aosoa.id(row_i), {pids.data(), 3});
     }
   }
 };

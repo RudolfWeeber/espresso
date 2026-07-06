@@ -83,12 +83,14 @@ struct PairBondsPressureKernel {
     auto const pos2 = aosoa.get_vector_at(aosoa.position, row_j);
 
     std::optional<Utils::Matrix<double, 3, 3>> pressure =
-        calc_bonded_virial_pressure_tensor(iaparams, pos1, pos2, box_geo,
-                                           coulomb_f_kernel,
+        calc_bonded_virial_pressure_tensor(
+            iaparams, pos1, pos2, box_geo, coulomb_f_kernel,
 #ifdef ESPRESSO_ELECTROSTATICS
-                                           aosoa.charge(i) * aosoa.charge(j)
+            // phase 5: charge aliases the store
+            // column; read by *store row*.
+            aosoa.charge(row_i) * aosoa.charge(row_j)
 #else
-                                           0.0
+            0.0
 #endif
         );
 
@@ -99,8 +101,8 @@ struct PairBondsPressureKernel {
                        layout.tensor_offset(layout.bonded_idx(bond_id), k)) +=
             flat[k];
     } else {
-      auto partner_id = aosoa.id(j);
-      bond_broken_error(aosoa.id(i), {&partner_id, 1});
+      auto partner_id = aosoa.id(row_j);
+      bond_broken_error(aosoa.id(row_i), {&partner_id, 1});
     }
   }
 };
@@ -153,8 +155,8 @@ struct AngleBondsPressureKernel {
                        layout.tensor_offset(layout.bonded_idx(bond_id), k2)) +=
             flat[k2];
     } else {
-      std::array<int, 2> pids = {aosoa.id(j), aosoa.id(k)};
-      bond_broken_error(aosoa.id(i), {pids.data(), 2});
+      std::array<int, 2> pids = {aosoa.id(row_j), aosoa.id(row_k)};
+      bond_broken_error(aosoa.id(row_i), {pids.data(), 2});
     }
   }
 };
@@ -210,8 +212,9 @@ struct DihedralBondsPressureKernel {
                        layout.tensor_offset(layout.bonded_idx(bond_id), k3)) +=
             flat[k3];
     } else {
-      std::array<int, 3> pids = {aosoa.id(j), aosoa.id(k), aosoa.id(m)};
-      bond_broken_error(aosoa.id(i), {pids.data(), 3});
+      std::array<int, 3> pids = {aosoa.id(row_j), aosoa.id(row_k),
+                                 aosoa.id(row_m)};
+      bond_broken_error(aosoa.id(row_i), {pids.data(), 3});
     }
   }
 };

@@ -343,14 +343,13 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
 #endif
 
   // Parameter columns (phase 5). Genuinely-new rows are seeded from the
-  // migration carriers, whose defaults match ParticleProperties' member
+  // migration carriers, whose defaults match the old ParticleProperties member
   // defaults (id -1, mol_id 0, type 0, propagation SYSTEM_DEFAULT, bitfields 0,
   // mass 1, rinertia {1,1,1}, q/dipm 0, mu_E/dip_fld/ext_force/ext_torque zero,
-  // gamma/gamma_rot -1 or {-1,-1,-1}). The dormant carriers are NOT serialized
-  // yet (pre-flip the ParticleProperties members are authoritative and the
-  // migration_*() getters read them), so a migrated particle's parameters are
-  // still carried by the boost-serialized ParticleProperties member p; the
-  // carriers reproduce the same values for seeding.
+  // gamma/gamma_rot -1 or {-1,-1,-1}). Post-flip the migration carriers are the
+  // authoritative parameter store for a detached particle and are serialized
+  // with it (like the state/momentum carriers), so a migrated particle carries
+  // its parameters through the carriers and this seed reproduces them.
   preserve_or_seed_scalar(m_id, m_old_id, row, old_row, preserve,
                           particle.migration_id());
   preserve_or_seed_scalar(m_mol_id, m_old_mol_id, row, old_row, preserve,

@@ -682,8 +682,7 @@ public:
 #endif
 #ifdef ESPRESSO_ROTATIONAL_INERTIA
   Utils::Vector3d detached_rinertia() const {
-    return (m_particle_store != nullptr) ? Utils::Vector3d(rinertia())
-                                         : m_migration_rinertia;
+    return (m_particle_store != nullptr) ? rinertia() : m_migration_rinertia;
   }
   Utils::Vector3d const &migration_rinertia() const {
     return m_migration_rinertia;
@@ -691,15 +690,13 @@ public:
 #endif
 #ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
   Utils::Vector3d detached_mu_E() const {
-    return (m_particle_store != nullptr) ? Utils::Vector3d(mu_E())
-                                         : m_migration_mu_E;
+    return (m_particle_store != nullptr) ? mu_E() : m_migration_mu_E;
   }
   Utils::Vector3d const &migration_mu_E() const { return m_migration_mu_E; }
 #endif
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
   Utils::Vector3d detached_dip_fld() const {
-    return (m_particle_store != nullptr) ? Utils::Vector3d(dip_fld())
-                                         : m_migration_dip_fld;
+    return (m_particle_store != nullptr) ? dip_fld() : m_migration_dip_fld;
   }
   Utils::Vector3d const &migration_dip_fld() const {
     return m_migration_dip_fld;
@@ -707,15 +704,14 @@ public:
 #endif
 #ifdef ESPRESSO_EXTERNAL_FORCES
   Utils::Vector3d detached_ext_force() const {
-    return (m_particle_store != nullptr) ? Utils::Vector3d(ext_force())
-                                         : m_migration_ext_force;
+    return (m_particle_store != nullptr) ? ext_force() : m_migration_ext_force;
   }
   Utils::Vector3d const &migration_ext_force() const {
     return m_migration_ext_force;
   }
 #ifdef ESPRESSO_ROTATION
   Utils::Vector3d detached_ext_torque() const {
-    return (m_particle_store != nullptr) ? Utils::Vector3d(ext_torque())
+    return (m_particle_store != nullptr) ? ext_torque()
                                          : m_migration_ext_torque;
   }
   Utils::Vector3d const &migration_ext_torque() const {
