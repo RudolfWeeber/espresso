@@ -21,6 +21,7 @@
 
 #pragma once
 
+#include "cell_system/MigrationStaging.hpp"
 #include "cell_system/ParticleDecomposition.hpp"
 #include "cell_system/ParticleListOperations.hpp"
 
@@ -354,6 +355,11 @@ private:
    * otherwise grows the pool by one constructed view. Advances
    * @ref m_view_pool_fill and returns the (address-stable) slot.
    */
+  /** @brief Grow the migration staging store to hold at least @p needed rows,
+   *  preserving already-staged rows (phase 7b). Shared by @ref stage_row and
+   *  @ref reserve_staging_rows. */
+  void ensure_staging_capacity(std::size_t needed);
+
   Particle *acquire_view_slot(int row) {
     if (m_view_pool_fill < m_view_pool.size()) {
       m_view_pool[m_view_pool_fill].attach_to_store(m_particle_store, row);
@@ -961,6 +967,28 @@ public:
    * migration flip will use; it is not called by any production path yet.
    */
   int stage_row(int live_row);
+  /**
+   * @brief Reserve @p count fresh, uninitialized staging rows (phase 7b flip).
+   *
+   * Grows the staging store (doubling, preserving already-staged rows) so that
+   * @p count consecutive rows starting at the returned index are valid store
+   * rows, and advances the row counter past them. Used by the migration
+   * `receive` path: the decomposition reserves the rows, then
+   * @ref MigrationPack::unpack_rows writes the wire buffer into them. Returns
+   * the first reserved row index (== the previous @ref staged_row_count).
+   */
+  int reserve_staging_rows(int count);
+  /**
+   * @brief Lift a staging-store row into a detached, carrier-laden Particle
+   * (phase 7b flip).
+   *
+   * The migration `deliver` helper: a received/extracted particle held in a
+   * staging row is snapshotted into a self-contained @c Particle that the
+   * decomposition can hand to @ref CellParticleStorage::insert_particle (the
+   * pending/staged commit path). Preserves the exact cell-staging semantics
+   * (and therefore the row-assignment order) of the pre-flip Bag path.
+   */
+  Particle snapshot_staging_row(int staging_row);
   /** @brief Drop all staged rows (row counter back to zero). The columns are
    *  retained as reusable capacity; @ref release_staging_store frees them. */
   void clear_staging_store() { m_staging_store_next_row = 0; }
@@ -970,6 +998,25 @@ public:
     m_staging_store.release_columns();
     m_staging_store_next_row = 0;
     m_staging_store_capacity = 0u;
+  }
+
+  /** @brief Build the migration staging handle a decomposition uses to route
+   *  migrating particles through this store's staging store (phase 7b flip).
+   *  The @c store pointer is the address-stable staging-store MEMBER (its
+   *  internals may swap out on growth, but the member address is fixed), so a
+   *  decomposition holding it always packs from the current columns. */
+  MigrationStaging make_migration_staging() {
+    MigrationStaging staging;
+    staging.store = &m_staging_store;
+    staging.stage_row = [this](int live_row) { return stage_row(live_row); };
+    staging.reserve_rows = [this](int count) {
+      return reserve_staging_rows(count);
+    };
+    staging.snapshot_row = [this](int staging_row) {
+      return snapshot_staging_row(staging_row);
+    };
+    staging.clear = [this]() { clear_staging_store(); };
+    return staging;
   }
 
   [[nodiscard]] auto is_verlet_list_cabana_rebuild_needed() const {

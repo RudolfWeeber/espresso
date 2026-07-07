@@ -95,6 +95,15 @@ public:
     m_commit_store = std::move(commit);
   }
 
+  /** @brief Install the migration staging handle (phase 7b flip) and propagate
+   *  it to the two child decompositions, which run the actual wire exchange in
+   *  their @c resort. The shared staging store is reset at the start and end of
+   *  each child resort, so back-to-back child resorts do not collide. */
+  void set_migration_staging(MigrationStaging staging) {
+    m_regular_decomposition.set_migration_staging(staging);
+    m_n_square.set_migration_staging(std::move(staging));
+  }
+
   auto get_cell_grid() const { return m_regular_decomposition.cell_grid; }
 
   auto get_cell_size() const { return m_regular_decomposition.cell_size; }

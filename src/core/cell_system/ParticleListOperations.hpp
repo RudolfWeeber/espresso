@@ -92,6 +92,25 @@ inline Particle extract_row(Cell &cell, std::size_t index) {
   return snapshot;
 }
 
+/**
+ * @brief Drop the committed row at bag position @p index from a cell (phase
+ * 7b).
+ *
+ * The removal half of @ref extract_row, WITHOUT snapshotting the row into a
+ * carrier-laden @c Particle: the migration flip copies the live row into a
+ * staging store (@ref CellStructure::stage_row) and then only needs the cell's
+ * row-index bag entry removed. Uses the identical constant-time swap-with-back
+ * erase as @ref extract_row (so the row-bag churn is bitwise-equivalent to the
+ * pre-flip Bag erase). The store row itself is dropped by the next rebuild; the
+ * caller must mark the store dirty. @p index refers to a position in
+ * @ref Cell::rows (0-based).
+ */
+inline void drop_row(Cell &cell, std::size_t index) {
+  auto &rows = cell.rows();
+  assert(index < rows.size());
+  rows.erase(rows.begin() + static_cast<std::ptrdiff_t>(index));
+}
+
 /** @brief Remove all committed rows and staged particles from a cell. */
 inline void clear_particles(Cell &cell) {
   cell.rows().clear();

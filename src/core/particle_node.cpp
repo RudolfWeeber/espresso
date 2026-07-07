@@ -27,13 +27,13 @@
 #include "cells.hpp"
 #include "communication.hpp"
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
+#include "particle_store/MigrationPack.hpp"
 #include "particle_store/ParticleStore.hpp"
 #include "rotation.hpp"
 #include "system/System.hpp"
 
 #include <utils/Cache.hpp>
 #include <utils/Vector.hpp>
-#include <utils/mpi/gatherv.hpp>
 
 #include <boost/mpi/collectives/all_gather.hpp>
 #include <boost/mpi/collectives/all_reduce.hpp>
@@ -42,8 +42,11 @@
 #include <boost/mpi/collectives/scatter.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -241,46 +244,88 @@ void build_fetch_cache_store() {
 }
 
 /**
- * @brief Attach a just-cached particle to @ref fetch_cache_store.
+ * @brief Cache a fetched particle by unpacking its per-field buffer into
+ * @ref fetch_cache_store (phase 7b flip).
  *
  * Grows nothing: the store is a fixed-capacity snapshot for the current
  * invalidation epoch (see the store's doc comment). Builds the store lazily on
- * first use, then hands out one monotonic row per call, seeded from @p p's
- * migration carriers. If the store is exhausted mid-epoch, drops the cache and
- * store and starts a fresh epoch — the caller has already put @p p into the
- * cache, so we ferry it through a copy whose carriers hold the current values
- * (store binding intact), re-insert it into the cleared cache, and attach the
- * re-inserted copy to row 0 of the fresh store.
+ * first use, then hands out one monotonic row per call. The wire @p buffer
+ * (produced by @ref mpi_send_particle_data_local's per-field pack) is unpacked
+ * DIRECTLY into that store row -- no whole-Particle boost envelope, no
+ * migration carriers -- and a VIEW over the row is put into the cache. If the
+ * store is exhausted mid-epoch, drops the cache and store and starts a fresh
+ * epoch, then unpacks into row 0 of the new store. The returned pointer aliases
+ * the cache's view entry and stays valid until the cache/store are next
+ * invalidated (the pre-flip pointer-stability contract).
  *
- * @param p   the (mutable) particle living inside the fetch cache.
- * @returns   a pointer to the now-attached particle in the cache. This is @p p
- *            itself in the common case, but on the exhaustion path the cache is
- *            cleared and @p p is re-inserted, so the returned pointer differs
- *            and callers MUST use it instead of their prior cache pointer.
+ * @param p_id    the fetched particle's id (the cache key).
+ * @param buffer  the per-field packed row (exactly one row).
+ * @returns       a pointer to the cached view (accessors read the store row).
  */
-Particle const *attach_cached_particle(Particle &p) {
+Particle const *cache_fetched_particle(int p_id,
+                                       std::vector<char> const &buffer) {
   auto const exhausted = fetch_cache_store_next_row >= 0 and
                          static_cast<std::size_t>(fetch_cache_store_next_row) >=
                              fetch_cache_store_capacity;
   if (exhausted) {
-    // Dropping the cache is always safe (it is a cache); it also drops @p p, so
-    // ferry it through a detached copy (its carriers hold the values) and
-    // re-insert into the freshly cleared cache before rebuilding the store.
-    Particle kept = p;
-    auto const kept_id = kept.id();
+    // Dropping the cache is always safe (it is a cache).
     particle_fetch_cache.invalidate();
     reset_fetch_cache_store();
-    auto const reinserted = particle_fetch_cache.put(kept_id, std::move(kept));
-    build_fetch_cache_store();
-    fetch_cache_store.assign_row(const_cast<Particle &>(*reinserted),
-                                 fetch_cache_store_next_row++);
-    return reinserted;
   }
   if (fetch_cache_store_next_row < 0) {
     build_fetch_cache_store();
   }
-  fetch_cache_store.assign_row(p, fetch_cache_store_next_row++);
-  return &p;
+  auto const row = fetch_cache_store_next_row++;
+  MigrationPack::unpack_rows(fetch_cache_store, row, buffer);
+  // Cache a VIEW over the freshly unpacked store row: its accessors read the
+  // columns directly, so callers see the full particle without any carrier.
+  auto const cached =
+      particle_fetch_cache.put(p_id, fetch_cache_store.make_view(row));
+  return cached;
+}
+
+/**
+ * @brief Cache a MULTI-row per-field buffer into @ref fetch_cache_store
+ * (phase 7b flip bulk path).
+ *
+ * Unpacks a buffer of @c n rows (produced by @ref mpi_get_particles_local's
+ * per-field pack) into consecutive fetch-cache-store rows and caches a view per
+ * row, keyed by the row's own id (read back from the store). Handles store
+ * exhaustion the same way as @ref cache_fetched_particle (drop the cache/store
+ * and start a fresh epoch). The caller (prefetch) never requests more ids than
+ * the cache capacity, so one epoch always suffices; the exhaustion guard is
+ * defensive.
+ */
+void cache_fetched_rows(std::vector<char> const &buffer) {
+  if (buffer.empty()) {
+    return;
+  }
+  std::uint64_t count = 0u;
+  std::memcpy(&count, buffer.data(), sizeof(count));
+  if (count == 0u) {
+    return;
+  }
+  auto const would_exhaust = [&]() {
+    return fetch_cache_store_next_row >= 0 and
+           static_cast<std::size_t>(fetch_cache_store_next_row) +
+                   static_cast<std::size_t>(count) >
+               fetch_cache_store_capacity;
+  };
+  if (would_exhaust()) {
+    particle_fetch_cache.invalidate();
+    reset_fetch_cache_store();
+  }
+  if (fetch_cache_store_next_row < 0) {
+    build_fetch_cache_store();
+  }
+  auto const first_row = fetch_cache_store_next_row;
+  MigrationPack::unpack_rows(fetch_cache_store, first_row, buffer);
+  fetch_cache_store_next_row += static_cast<int>(count);
+  for (int k = 0; k < static_cast<int>(count); ++k) {
+    auto const row = first_row + k;
+    auto const id = fetch_cache_store.id(row);
+    particle_fetch_cache.put(id, fetch_cache_store.make_view(row));
+  }
 }
 } // namespace
 
@@ -293,8 +338,9 @@ void invalidate_fetch_cache() {
 std::size_t fetch_cache_max_size() { return particle_fetch_cache.max_size(); }
 
 static void mpi_send_particle_data_local(int p_id) {
-  // Owner-side serialize reads the particle's accessors to fill the migration
-  // carriers, so the owning rank's store must be clean first. O(1) when clean.
+  // Owner-side per-field pack (phase 7b flip): read the particle's LIVE store
+  // row directly into a byte buffer, no whole-Particle boost envelope. The
+  // owning rank's store must be clean so the row is valid. O(1) when clean.
   get_cell_structure().ensure_particle_store_synchronized();
   auto const p = get_cell_structure().get_local_particle(p_id);
   auto const found = p and not p->is_ghost();
@@ -302,7 +348,10 @@ static void mpi_send_particle_data_local(int p_id) {
                                      std::plus<>()) &&
          "Particle not found");
   if (found) {
-    ::comm_cart.send(0, 42, *p);
+    std::array<int, 1> const rows{{p->store_row()}};
+    std::vector<char> buffer;
+    MigrationPack::pack_rows(*p->store(), rows, buffer);
+    ::comm_cart.send(0, 42, buffer);
   }
 }
 
@@ -329,17 +378,12 @@ const Particle &get_particle_data(int p_id) {
   /* Cache miss, fetch the particle,
    * put it into the cache and return a pointer into the cache. */
   Communication::mpiCallbacks().call_all(mpi_send_particle_data_local, p_id);
-  Particle result{};
-  ::comm_cart.recv(boost::mpi::any_source, boost::mpi::any_tag, result);
-  auto const p_cached = particle_fetch_cache.put(p_id, std::move(result));
-  // Attach the just-cached (detached) copy to the head-node snapshot store so
-  // its accessors keep reading valid rows after the phase-8 flip. The cache
-  // value is const-qualified; attaching only sets the particle's store row (a
-  // rank-local, transitional book-keeping field), so mutating through the cast
-  // is intentional and confined here. On the exhaustion path the cache is
-  // cleared and the particle re-inserted, so we return the pointer that attach
-  // reports (which may differ from p_cached).
-  return *attach_cached_particle(const_cast<Particle &>(*p_cached));
+  // Receive the owner's per-field packed row (phase 7b flip) and unpack it
+  // straight into the head-node fetch-cache store; the cached value is a view
+  // over that row, so its accessors read the full particle with no carrier.
+  std::vector<char> buffer;
+  ::comm_cart.recv(boost::mpi::any_source, boost::mpi::any_tag, buffer);
+  return *cache_fetched_particle(p_id, buffer);
 }
 
 static auto
@@ -391,32 +435,37 @@ static void mpi_get_particles_local() {
   std::vector<int> local_ids;
   boost::mpi::scatter(comm_cart, local_ids, 0);
 
-  std::vector<Particle> parts(local_ids.size());
-  std::ranges::transform(local_ids, parts.begin(), [](int p_id) {
-    auto const p = get_cell_structure().get_local_particle(p_id);
+  // Per-field pack (phase 7b flip) of the requested LIVE store rows into one
+  // byte buffer; gathered to the head as a per-rank buffer.
+  auto &cell_structure = get_cell_structure();
+  std::vector<int> rows;
+  rows.reserve(local_ids.size());
+  for (auto const p_id : local_ids) {
+    auto const p = cell_structure.get_local_particle(p_id);
     assert(p != nullptr);
-    return *p;
-  });
-
-  Utils::Mpi::gatherv(comm_cart, parts.data(), static_cast<int>(parts.size()),
-                      0);
+    rows.push_back(p->store_row());
+  }
+  std::vector<char> buffer;
+  MigrationPack::pack_rows(cell_structure.particle_store(), rows, buffer);
+  boost::mpi::gather(comm_cart, buffer, 0);
 }
 
 REGISTER_CALLBACK(mpi_get_particles_local)
 
 /**
- * @brief Get multiple particles at once.
+ * @brief Fetch multiple particles into the head-node fetch cache at once
+ * (phase 7b flip).
  *
- * *WARNING* Particles are returned in an arbitrary order.
+ * Groups the requested ids per owning rank, scatters the id lists, and gathers
+ * one per-field packed buffer per rank; each buffer is unpacked straight into
+ * @ref fetch_cache_store (a view per row is cached, keyed by the row's id).
+ * Particles are cached in an arbitrary (per-rank) order; every caller reads the
+ * cache by id afterwards, so the order does not matter.
  *
- * @param ids The ids of the particles that should be returned.
- *
- * @returns The particle list.
+ * @param ids The ids of the particles that should be fetched (none local).
  */
-static std::vector<Particle> mpi_get_particles(std::span<const int> ids) {
+static void mpi_get_particles(std::span<const int> ids) {
   Communication::mpiCallbacks().call(mpi_get_particles_local);
-  /* Return value */
-  std::vector<Particle> parts(ids.size());
 
   /* Group ids per node */
   static std::vector<std::vector<int>> node_ids(comm_cart.size());
@@ -438,15 +487,14 @@ static std::vector<Particle> mpi_get_particles(std::span<const int> ids) {
     assert(ignore.empty());
   }
 
-  static std::vector<int> node_sizes(comm_cart.size());
-  // cannot use range-based transform with GCC 13 + ASAN
-  std::transform(node_ids.begin(), node_ids.end(), node_sizes.begin(),
-                 std::size<std::vector<int>>);
-
-  Utils::Mpi::gatherv(comm_cart, parts.data(), static_cast<int>(parts.size()),
-                      parts.data(), node_sizes.data(), 0);
-
-  return parts;
+  // Gather one per-field packed buffer per rank and unpack each into the fetch
+  // cache. The head's own buffer is empty (it requests nothing of itself).
+  std::vector<std::vector<char>> node_buffers(comm_cart.size());
+  std::vector<char> const empty_buffer;
+  boost::mpi::gather(comm_cart, empty_buffer, node_buffers, 0);
+  for (auto const &buffer : node_buffers) {
+    cache_fetched_rows(buffer);
+  }
 }
 
 void prefetch_particle_data(std::span<const int> in_ids) {
@@ -468,14 +516,8 @@ void prefetch_particle_data(std::span<const int> in_ids) {
   if (ids.size() > particle_fetch_cache.max_size())
     ids.resize(particle_fetch_cache.max_size());
 
-  /* Fetch the particles... */
-  for (auto &p : mpi_get_particles(ids)) {
-    auto id = p.id();
-    auto const p_cached = particle_fetch_cache.put(id, std::move(p));
-    // Attach the just-cached (detached) copy to the snapshot store; see the
-    // matching call and const_cast rationale in get_particle_data.
-    attach_cached_particle(const_cast<Particle &>(*p_cached));
-  }
+  /* Fetch the particles (unpacked directly into the fetch cache). */
+  mpi_get_particles(ids);
 }
 
 static void mpi_who_has_local() {

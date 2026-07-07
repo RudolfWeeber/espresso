@@ -23,12 +23,16 @@
 
 #include "cell_system/Cell.hpp"
 #include "cell_system/ParticleListOperations.hpp"
+#include "particle_store/MigrationPack.hpp"
 
 #include <utils/Vector.hpp>
 
 #include <boost/mpi/collectives/all_to_all.hpp>
 
+#include <cassert>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -123,34 +127,66 @@ void AtomDecomposition::resort(bool global_flag,
     return;
   }
 
-  /* Sort displaced particles by the node they belong to (phase 7a: iterate the
-   * committed rows by position; extract_row snapshots and removes the row via
-   * swap-with-back, so re-examine the swapped-in position). */
-  std::vector<std::vector<Particle>> send_buf(m_comm.size());
+  // Phase 7b flip: a mis-owned particle is copied out of the live store into a
+  // staging-store row (stage_row); its staging-row index goes into the target
+  // rank's per-rank bucket, which is then packed per-field
+  // (MigrationPack::pack_rows) and exchanged as a byte buffer via all_to_all.
+  assert(m_migration_staging && "migration staging store not installed");
+  auto &staging = *m_migration_staging.store;
+  m_migration_staging.clear();
+
+  // Sort displaced particles into per-rank staging-row buckets (iterate the
+  // committed rows by position; drop_row removes the row via swap-with-back, so
+  // re-examine the swapped-in position).
+  std::vector<std::vector<int>> send_rows(m_comm.size());
   for (std::size_t index = 0u; index < local().rows().size();) {
-    auto const id = store.id(local().rows().begin()[index]);
+    auto const live_row = local().rows().begin()[index];
+    auto const id = store.id(live_row);
     auto const target_node = id_to_rank(id);
     if (target_node != m_comm.rank()) {
       diff.emplace_back(RemovedParticle{id});
-      auto extracted = CellParticleStorage::extract_row(local(), index);
-      send_buf.at(target_node).emplace_back(std::move(extracted));
+      send_rows.at(target_node)
+          .push_back(m_migration_staging.stage_row(live_row));
+      CellParticleStorage::drop_row(local(), index);
     } else {
       ++index;
     }
   }
 
-  /* Exchange particles */
-  std::vector<std::vector<Particle>> recv_buf(m_comm.size());
+  // Pack each rank's bucket into a byte buffer and exchange.
+  std::vector<std::vector<char>> send_buf(m_comm.size());
+  for (int n = 0; n < m_comm.size(); ++n) {
+    MigrationPack::pack_rows(staging, send_rows[static_cast<std::size_t>(n)],
+                             send_buf[static_cast<std::size_t>(n)]);
+  }
+  std::vector<std::vector<char>> recv_buf(m_comm.size());
   boost::mpi::all_to_all(m_comm, send_buf, recv_buf);
 
   diff.emplace_back(ModifiedList{local().rows()});
 
-  /* Add new particles belonging to this node (staged; committed by rebuild). */
-  for (auto &parts : recv_buf) {
-    for (auto &p : parts) {
-      CellParticleStorage::insert_particle(local(), std::move(p));
+  // Unpack the received buffers (in rank order, matching the pre-flip recv_buf
+  // iteration) into fresh staging rows, then stage each into the local cell --
+  // the pre-flip cell staging path, so the rebuild commits them in the same
+  // order.
+  for (auto const &buffer : recv_buf) {
+    if (buffer.empty()) {
+      continue;
+    }
+    std::uint64_t count = 0u;
+    std::memcpy(&count, buffer.data(), sizeof(count));
+    if (count == 0u) {
+      continue;
+    }
+    auto const first_row =
+        m_migration_staging.reserve_rows(static_cast<int>(count));
+    MigrationPack::unpack_rows(staging, first_row, buffer);
+    for (int k = 0; k < static_cast<int>(count); ++k) {
+      CellParticleStorage::insert_particle(
+          local(), m_migration_staging.snapshot_row(first_row + k));
     }
   }
+
+  m_migration_staging.clear();
 }
 
 AtomDecomposition::AtomDecomposition(BoxGeometry const &box_geo)

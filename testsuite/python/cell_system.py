@@ -94,6 +94,68 @@ class CellSystem(ut.TestCase):
             n_square_types={1}, cutoff_regular=0)
         self.check_node_grid()
 
+    @utx.skipIfMissingFeatures(["LENNARD_JONES"])
+    def test_force_survives_migration(self):
+        """
+        Phase 7b flip regression: a particle that MIGRATES during a global
+        resort must carry its force through the per-field migration pack (the
+        FORCE leg). We compute a non-trivial pair force, move a particle far
+        enough to leave its cell (and, on a multi-rank run, its subdomain --
+        a true inter-rank migration), then trigger a global resort WITHOUT
+        recomputing forces (cell_system.resort()). The migrated particle's force
+        must be exactly the pre-migration value -- which holds only if the pack
+        ferried the FORCE leg across the resort. Exercised for all three
+        decompositions.
+        """
+        system = self.system
+        system.part.clear()
+        system.time_step = 0.01
+        system.cell_system.skin = 0.1
+        box_l = system.box_l[0]
+        # cutoff (1.5) + skin (0.1) = 1.6 <= half box (2.5), so a regular
+        # decomposition on one rank has a valid cell grid.
+        system.non_bonded_inter[0, 0].lennard_jones.set_params(
+            epsilon=1.0, sigma=1.0, cutoff=1.5, shift="auto")
+
+        decompositions = [
+            ("regular_decomposition", {}),
+            ("n_square", {}),
+            ("hybrid_decomposition",
+             {"n_square_types": set(), "cutoff_regular": 1.5}),
+        ]
+        for name, kwargs in decompositions:
+            with self.subTest(decomposition=name):
+                system.part.clear()
+                getattr(system.cell_system, f"set_{name}")(**kwargs)
+                # A close-interacting pair so both feel a non-trivial force.
+                p0 = system.part.add(pos=[0.5 * box_l, 0.5 * box_l,
+                                          0.5 * box_l], type=0)
+                p1 = system.part.add(pos=[0.5 * box_l + 1.1, 0.5 * box_l,
+                                          0.5 * box_l], type=0)
+                system.integrator.run(0)
+                f0_before = np.copy(p0.f)
+                f1_before = np.copy(p1.f)
+                self.assertGreater(np.linalg.norm(f0_before), 1e-6)
+
+                # Move p1 far across the box (and thus across any subdomain
+                # boundary on a multi-rank run) so a global resort MIGRATES it.
+                p1.pos = np.array([0.5 * box_l + 1.1, 0.5 * box_l,
+                                   0.5 * box_l]) + np.array([0., 0., box_l / 2.])
+                # Global resort MIGRATES the particle through the per-field pack
+                # but does NOT recompute forces. The force each particle carries
+                # must therefore be exactly its pre-migration value -- only true
+                # if the pack ferried the FORCE leg (and the local wrong-cell
+                # path preserved it too).
+                system.cell_system.resort()
+                np.testing.assert_allclose(np.copy(p0.f), f0_before, atol=1e-12,
+                                           err_msg=f"{name}: p0 force lost")
+                np.testing.assert_allclose(np.copy(p1.f), f1_before, atol=1e-12,
+                                           err_msg=f"{name}: p1 force lost")
+
+        system.part.clear()
+        system.non_bonded_inter[0, 0].lennard_jones.set_params(
+            epsilon=0., sigma=0., cutoff=0., shift=0.)
+
     @utx.skipIfMissingFeatures(["WCA"])
     @ut.skipIf(espressomd.has_features("FPE"),
                "cannot run with FPE instrumentation")

@@ -529,32 +529,49 @@ void CellStructure::ensure_particle_store_synchronized() {
 #endif
 }
 
-int CellStructure::stage_row(int const live_row) {
-  // Grow the staging store when the next row would overflow its capacity. The
-  // staging store's own rows must survive the growth, so a fresh larger store
-  // is built and every already-staged row is copied into it via copy_row (the
-  // same machinery the flip uses); the small store is then swapped in. Capacity
+void CellStructure::ensure_staging_capacity(std::size_t const needed) {
+  // Grow the staging store when it cannot hold @p needed rows. The staging
+  // store's own rows must survive the growth, so a fresh larger store is built
+  // and every already-staged row is copied into it via copy_row (the same
+  // machinery the flip uses); the small store is then swapped in. Capacity
   // doubles (min 8) to amortize the copies over a batch of stages.
-  auto const needed = static_cast<std::size_t>(m_staging_store_next_row) + 1u;
-  if (needed > m_staging_store_capacity) {
-    auto new_capacity =
-        std::max<std::size_t>(m_staging_store_capacity * 2u, 8u);
-    while (new_capacity < needed) {
-      new_capacity *= 2u;
-    }
-    ParticleStore grown{};
-    grown.begin_rebuild(new_capacity, 0u);
-    grown.finish_rebuild();
-    for (int r = 0; r < m_staging_store_next_row; ++r) {
-      grown.copy_row(m_staging_store, r, r);
-    }
-    using std::swap;
-    swap(m_staging_store, grown);
-    m_staging_store_capacity = new_capacity;
+  if (needed <= m_staging_store_capacity) {
+    return;
   }
+  auto new_capacity = std::max<std::size_t>(m_staging_store_capacity * 2u, 8u);
+  while (new_capacity < needed) {
+    new_capacity *= 2u;
+  }
+  ParticleStore grown{};
+  grown.begin_rebuild(new_capacity, 0u);
+  grown.finish_rebuild();
+  for (int r = 0; r < m_staging_store_next_row; ++r) {
+    grown.copy_row(m_staging_store, r, r);
+  }
+  using std::swap;
+  swap(m_staging_store, grown);
+  m_staging_store_capacity = new_capacity;
+}
+
+int CellStructure::stage_row(int const live_row) {
+  ensure_staging_capacity(static_cast<std::size_t>(m_staging_store_next_row) +
+                          1u);
   auto const staging_row = m_staging_store_next_row++;
   m_staging_store.copy_row(m_particle_store, live_row, staging_row);
   return staging_row;
+}
+
+int CellStructure::reserve_staging_rows(int const count) {
+  assert(count >= 0);
+  ensure_staging_capacity(static_cast<std::size_t>(m_staging_store_next_row) +
+                          static_cast<std::size_t>(count));
+  auto const first_row = m_staging_store_next_row;
+  m_staging_store_next_row += count;
+  return first_row;
+}
+
+Particle CellStructure::snapshot_staging_row(int const staging_row) {
+  return m_staging_store.snapshot_row(staging_row);
 }
 
 void CellStructure::rebuild_particle_index() {
@@ -900,8 +917,12 @@ void CellStructure::set_atom_decomposition() {
   auto &system = get_system();
   auto &local_geo = *system.local_geo;
   auto const &box_geo = *system.box_geo;
-  set_particle_decomposition(
-      std::make_unique<AtomDecomposition>(::comm_cart, box_geo));
+  auto atom = std::make_unique<AtomDecomposition>(::comm_cart, box_geo);
+  // Install the per-field migration staging handle (phase 7b flip): the
+  // decomposition's resort routes migrating particles through this store's
+  // staging store instead of boost-serializing whole Particles.
+  atom->set_migration_staging(make_migration_staging());
+  set_particle_decomposition(std::move(atom));
   m_type = CellStructureType::NSQUARE;
   local_geo.set_cell_structure_type(m_type);
   system.on_cell_structure_change();
@@ -912,8 +933,10 @@ void CellStructure::set_regular_decomposition(
   auto &system = get_system();
   auto &local_geo = *system.local_geo;
   auto const &box_geo = *system.box_geo;
-  set_particle_decomposition(std::make_unique<RegularDecomposition>(
-      ::comm_cart, range, box_geo, local_geo, fully_connected_boundary));
+  auto regular = std::make_unique<RegularDecomposition>(
+      ::comm_cart, range, box_geo, local_geo, fully_connected_boundary);
+  regular->set_migration_staging(make_migration_staging());
+  set_particle_decomposition(std::move(regular));
   m_type = CellStructureType::REGULAR;
   local_geo.set_cell_structure_type(m_type);
   system.on_cell_structure_change();
@@ -939,6 +962,9 @@ void CellStructure::set_hybrid_decomposition(double cutoff_regular,
     mark_particle_store_dirty();
     ensure_particle_store_synchronized();
   });
+  // Install the per-field migration staging handle (phase 7b flip); the hybrid
+  // propagates it to its two child decompositions, which run the wire exchange.
+  hybrid->set_migration_staging(make_migration_staging());
   set_particle_decomposition(std::move(hybrid));
   m_type = CellStructureType::HYBRID;
   local_geo.set_cell_structure_type(m_type);
