@@ -972,25 +972,24 @@ static ParticleStore *active_particle_store() {
  * caller reads/writes a column) and a contiguity/attachment violation asserts
  * with a clear message. */
 static std::optional<std::pair<int, std::size_t>>
-contiguous_store_rows(ParticleList const &part_list) {
-  auto const size = part_list.size();
+contiguous_store_rows(Cell const &cell) {
+  // Phase 7a: the cell's row bag directly holds its committed store rows in
+  // order, so the range is read from it with no particle dereference. An empty
+  // bag (or a not-yet-synchronized cell) yields nullopt. Committed rows are >=
+  // 0 by construction on a clean store.
+  auto const &rows = cell.rows();
+  auto const size = rows.size();
   if (size == 0u) {
     return std::nullopt;
   }
-  auto const first = part_list.begin();
-  if (first->store() == nullptr) {
-    return std::nullopt;
-  }
-  auto const first_row = first->store_row();
+  auto const first_row = rows.begin()[0];
   if (first_row < 0) {
     return std::nullopt;
   }
 #ifndef NDEBUG
   for (std::size_t i = 0u; i < size; ++i) {
-    auto const &p = first[i];
-    if (p.store() == nullptr or
-        p.store_row() != first_row + static_cast<int>(i)) {
-      assert(false and "ghost part_list store rows are not contiguous");
+    if (rows.begin()[i] != first_row + static_cast<int>(i)) {
+      assert(false and "ghost cell store rows are not contiguous");
     }
   }
 #endif
@@ -1029,7 +1028,7 @@ columnar_resolve_ranges(GhostCommunication const &ghost_comm,
     for (auto part_list : ghost_comm.part_lists) {
       auto const range = contiguous_store_rows(*part_list);
       if (not range.has_value()) {
-        if (part_list->empty()) {
+        if (part_list->rows().empty()) {
           check_ranges.emplace_back(0, 0u);
           continue;
         }
@@ -1051,11 +1050,11 @@ columnar_resolve_ranges(GhostCommunication const &ghost_comm,
   for (auto part_list : ghost_comm.part_lists) {
     auto const range = contiguous_store_rows(*part_list);
     if (not range.has_value()) {
-      if (part_list->empty()) {
+      if (part_list->rows().empty()) {
         ranges.emplace_back(0, 0u);
         continue;
       }
-      return nullptr; // detached first particle: fall back before mutating
+      return nullptr; // empty/unsynced cell: fall back before mutating
     }
     ranges.push_back(*range);
   }
@@ -1632,10 +1631,10 @@ static auto calc_transmit_size(GhostCommunication const &ghost_comm,
   if (data_parts & GHOSTTRANS_PARTNUM)
     return sizeof(unsigned int) * ghost_comm.part_lists.size();
 
-  auto const n_part = boost::accumulate(
-      ghost_comm.part_lists, std::size_t{0},
-      [](std::size_t sum, auto part_list) { return sum + part_list->size(); });
-
+  auto const n_part = boost::accumulate(ghost_comm.part_lists, std::size_t{0},
+                                        [](std::size_t sum, auto part_list) {
+                                          return sum + part_list->rows().size();
+                                        });
   return n_part * calc_transmit_size(box_geo, data_parts);
 }
 
@@ -1730,11 +1729,14 @@ static void prepare_send_buffer(CommBuf &send_buffer,
   /* put in data */
   for (auto part_list : ghost_comm.part_lists) {
     if (data_parts & GHOSTTRANS_PARTNUM) {
+      // Total count (committed rows + staged): a source cell resized earlier in
+      // this pass as a ghost destination has its ghosts staged, not yet
+      // committed (phase 7a). The receiver resizes to this pending count.
       assert(part_list->size() <= std::numeric_limits<unsigned int>::max());
       auto np = static_cast<unsigned int>(part_list->size());
       archiver << np;
     } else {
-      for (auto &p : *part_list) {
+      for (auto &p : part_list->particles()) {
         serialize_and_reduce(archiver, p, data_parts, ReductionPolicy::MOVE,
                              SerializationDirection::SAVE, box_geo,
                              &ghost_comm.shift, pos_ctx_ptr, mom_ctx_ptr,
@@ -1829,7 +1831,7 @@ static void put_recv_buffer(CommBuf &recv_buffer,
                                : std::nullopt;
     auto const *param_ctx_ptr = param_ctx.has_value() ? &(*param_ctx) : nullptr;
     for (auto part_list : ghost_comm.part_lists) {
-      for (auto &p : *part_list) {
+      for (auto &p : part_list->particles()) {
         serialize_and_reduce(archiver, p, data_parts, ReductionPolicy::MOVE,
                              SerializationDirection::LOAD, box_geo, nullptr,
                              pos_ctx_ptr, mom_ctx_ptr, param_ctx_ptr);
@@ -1842,7 +1844,7 @@ static void put_recv_buffer(CommBuf &recv_buffer,
       boost::archive::binary_iarchive bond_archiver(bond_stream);
 
       for (auto part_list : ghost_comm.part_lists) {
-        for (auto &p : *part_list) {
+        for (auto &p : part_list->particles()) {
           bond_archiver >> p.bonds();
         }
       }
@@ -1861,7 +1863,7 @@ add_rattle_correction_from_recv_buffer(CommBuf &recv_buffer,
   /* put back data */
   auto archiver = Utils::MemcpyIArchive{recv_buffer.make_span()};
   for (auto &part_list : ghost_comm.part_lists) {
-    for (Particle &part : *part_list) {
+    for (Particle &part : part_list->particles()) {
       // The RATTLE correction is now a ParticleStore column (phase 6); the
       // wire carries one Utils::Vector3d (byte-identical to the previous
       // ParticleRattle payload, which held only the correction Vector3d).
@@ -1911,7 +1913,7 @@ static void add_forces_from_recv_buffer(CommBuf &recv_buffer,
   /* put back data */
   auto archiver = Utils::MemcpyIArchive{recv_buffer.make_span()};
   for (auto &part_list : ghost_comm.part_lists) {
-    for (Particle &part : *part_list) {
+    for (Particle &part : part_list->particles()) {
       Utils::Vector3d force;
       archiver >> force;
       part.force() += force;
@@ -2013,8 +2015,8 @@ static bool columnar_cell_cell_transfer(GhostCommunication const &ghost_comm,
   for (std::size_t pl = 0; pl < offset; pl++) {
     auto *src_list = ghost_comm.part_lists[pl];
     auto *dst_list = ghost_comm.part_lists[pl + offset];
-    assert(src_list->size() == dst_list->size());
-    if (src_list->empty()) {
+    assert(src_list->rows().size() == dst_list->rows().size());
+    if (src_list->rows().empty()) {
       pairs.emplace_back(0, 0);
       sizes.push_back(0u);
       continue;
@@ -2095,17 +2097,23 @@ static void cell_cell_transfer(GhostCommunication const &ghost_comm,
     auto *dst_list = ghost_comm.part_lists[pl + offset];
 
     if (data_parts & GHOSTTRANS_PARTNUM) {
+      // Use the total count (committed rows + staged) of the source: within a
+      // single PARTNUM pass a cell resized earlier as a ghost destination has
+      // its new ghosts STAGED (not yet committed to rows), and a downstream
+      // ghost layer reading it as a source must see that pending size.
       CellParticleStorage::resize_ghost_storage(*dst_list, src_list->size());
     } else {
-      auto &src_part = *src_list;
-      auto &dst_part = *dst_list;
-      assert(src_part.size() == dst_part.size());
+      auto const &src_rows = src_list->rows();
+      auto const &dst_rows = dst_list->rows();
+      assert(src_rows.size() == dst_rows.size());
+      auto &store = *active_particle_store();
 
-      for (std::size_t i = 0; i < src_part.size(); i++) {
+      for (std::size_t i = 0; i < src_rows.size(); i++) {
         auto ar_out = Utils::MemcpyOArchive{buffer.make_span()};
         auto ar_in = Utils::MemcpyIArchive{buffer.make_span()};
-        auto &p1 = src_part.begin()[i];
-        auto &p2 = dst_part.begin()[i];
+        // Views over the source and destination store rows (phase 7a).
+        auto p1 = store.make_view(src_rows.begin()[i]);
+        auto p2 = store.make_view(dst_rows.begin()[i]);
         serialize_and_reduce(ar_out, p1, data_parts, ReductionPolicy::UPDATE,
                              SerializationDirection::SAVE, box_geo,
                              &ghost_comm.shift, pos_ctx_ptr, mom_ctx_ptr,

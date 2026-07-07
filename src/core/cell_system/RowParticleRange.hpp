@@ -63,6 +63,10 @@ class RowParticleIterator
   Particle m_view;
 
 public:
+  /** @brief Default (singular) iterator, needed by @ref ParticleIterator's
+   *  end/singular states. Never dereferenced. */
+  RowParticleIterator() : m_row(nullptr), m_store(nullptr) {}
+
   /** @brief Iterator at @p row over @p store. */
   RowParticleIterator(CellRows::const_iterator row, ParticleStore &store)
       : m_row(row), m_store(&store) {}

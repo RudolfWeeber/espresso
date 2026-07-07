@@ -20,80 +20,100 @@
 #pragma once
 
 #include "Particle.hpp"
-#include "ParticleList.hpp"
+#include "cell_system/Cell.hpp"
 
+#include <cassert>
 #include <cstddef>
 #include <utility>
 
 /**
- * @brief Primitives for mutating the particle storage of cells.
+ * @brief Primitives for mutating the particle storage of cells (phase 7a).
  *
- * Every insertion, removal, or move of a @ref Particle in *cell storage*
- * (a @ref ParticleList owned by a @ref Cell, including ghost cells) MUST
- * go through these functions. They are the single hook point for
- * mirroring rows into the ParticleStore in later migration phases; see
- * docs/superpowers/specs/2026-07-03-array-based-particle-storage-design.md
- * section 3, phase 1.
+ * Since the cell flip, a @ref Cell no longer owns @c Particle objects: it owns
+ * @ref ParticleStore ROW INDICES (@ref Cell::rows) for its committed particles
+ * plus a small staging buffer (@ref Cell::staged) of not-yet-committed detached
+ * particles. Every insertion, removal, or move of a particle in *cell storage*
+ * (including ghost cells) MUST go through these functions. They are the single
+ * choke point that keeps the store's row bookkeeping consistent; the actual
+ * column data is (re)materialized by the next store rebuild
+ * (@ref CellStructure::ensure_particle_store_synchronized), so all of these
+ * mutations only stage/unstage rows and mark the store dirty -- the caller is
+ * responsible for the dirty mark (via @ref CellStructure::mark_particle_store_
+ * dirty) and for triggering the rebuild before the changes become visible
+ * through @ref Cell::particles().
  *
- * Plain communication buffers (send/receive @ref ParticleList instances
- * that do not belong to a cell) are exempt and use the @ref Utils::Bag
- * API directly.
+ * Plain communication buffers (send/receive @ref ParticleList instances that
+ * do not belong to a cell) are exempt and use the @ref Utils::Bag API directly.
  *
  * Exception (decomposition swap/teardown): @ref
- * CellStructure::set_particle_decomposition re-inserts particles into the
- * new decomposition through the routed @ref CellStructure::add_particle,
- * then destroys the old @ref ParticleDecomposition wholesale. The old
- * cells' particle lists are torn down by their destructors, which never
- * touch these primitives. This bulk teardown is deliberately outside the
- * hook: migration phase 2 handles it by rebuilding the whole ParticleStore
- * (mark-dirty), not by per-row hooks.
+ * CellStructure::set_particle_decomposition re-inserts particles into the new
+ * decomposition through the routed @ref CellStructure::add_particle, then
+ * destroys the old @ref ParticleDecomposition wholesale. The old cells are torn
+ * down by their destructors, which never touch these primitives; the whole
+ * store is rebuilt (mark-dirty), not per-row.
  *
  * maintainer/CI/check_cell_storage_mutations.sh enforces this rule.
  */
 namespace CellParticleStorage {
 
 /**
- * @brief Insert a particle into a cell's particle storage.
- * May reallocate the storage, invalidating pointers and iterators into it.
- * @return Reference to the stored particle.
+ * @brief Stage a particle for insertion into a cell.
+ *
+ * The incoming detached, carrier-laden @p particle is appended to the cell's
+ * staging buffer; it becomes a committed row (with a store row and live
+ * columns seeded from its carriers) only at the next store rebuild. The caller
+ * must mark the store dirty. Returns a reference to the staged particle (valid
+ * until the buffer reallocates or the rebuild consumes it).
  */
-inline Particle &insert_particle(ParticleList &storage, Particle &&particle) {
-  return storage.insert(std::move(particle));
+inline Particle &insert_particle(Cell &cell, Particle &&particle) {
+  cell.staged().push_back(std::move(particle));
+  return cell.staged().back();
 }
 
 /**
- * @brief Move a particle out of a cell's particle storage.
- * Swap-with-back removal: element order is not preserved.
- * @return The extracted particle and the iterator past the removed element.
+ * @brief Snapshot the committed row at bag position @p index out of a cell.
+ *
+ * Returns a detached, carrier-laden @c Particle (via @ref
+ * ParticleStore::snapshot_row) holding the row's current column/sidecar values,
+ * and removes that row index from the cell's row bag (constant-time
+ * swap-with-back, so row-bag order is not preserved -- the surviving rows are
+ * renumbered on the next rebuild anyway). The store row itself is dropped by
+ * the next rebuild; the caller must mark the store dirty. @p index refers to a
+ * position in @ref Cell::rows (0-based).
  */
-inline std::pair<Particle, ParticleList::iterator>
-extract_particle(ParticleList &storage, ParticleList::iterator position) {
-  auto particle = std::move(*position);
-  auto next = storage.erase(position);
-  return {std::move(particle), next};
+inline Particle extract_row(Cell &cell, std::size_t index) {
+  auto &rows = cell.rows();
+  assert(index < rows.size());
+  auto const row = rows.begin()[index];
+  auto snapshot = cell.store().snapshot_row(row);
+  // Constant-time swap-with-back removal of the row index (mirrors the pre-flip
+  // Bag<Particle> erase: element order not preserved).
+  rows.erase(rows.begin() + static_cast<std::ptrdiff_t>(index));
+  return snapshot;
+}
+
+/** @brief Remove all committed rows and staged particles from a cell. */
+inline void clear_particles(Cell &cell) {
+  cell.rows().clear();
+  cell.staged().clear();
 }
 
 /**
- * @brief Erase a particle from a cell's particle storage, destroying it.
- * Swap-with-back removal: element order is not preserved.
- * @return Iterator past the removed element.
+ * @brief Resize a ghost cell to exactly @p count particles (phase 7a).
+ *
+ * Drops the cell's committed rows and staging buffer and stages @p count
+ * default-constructed ghost particles; the next store rebuild commits them as
+ * fresh ghost rows. All staged particles are marked as ghosts. The caller must
+ * mark the store dirty. (Pre-flip this resized the cell's @ref ParticleList in
+ * place; the staging + rebuild reproduces the same "count default ghosts"
+ * outcome for the row-based cell.)
  */
-inline ParticleList::iterator erase_particle(ParticleList &storage,
-                                             ParticleList::iterator position) {
-  return storage.erase(position);
-}
-
-/** @brief Remove all particles from a cell's particle storage. */
-inline void clear_particles(ParticleList &storage) { storage.clear(); }
-
-/**
- * @brief Resize ghost-cell storage to exactly @p count particles.
- * Newly created particles are default-constructed; all particles in the
- * storage are (re)marked as ghosts.
- */
-inline void resize_ghost_storage(ParticleList &storage, std::size_t count) {
-  storage.resize(count);
-  for (auto &particle : storage) {
+inline void resize_ghost_storage(Cell &cell, std::size_t count) {
+  cell.rows().clear();
+  auto &staged = cell.staged();
+  staged.clear();
+  staged.resize(count);
+  for (auto &particle : staged) {
     particle.set_ghost(true);
   }
 }

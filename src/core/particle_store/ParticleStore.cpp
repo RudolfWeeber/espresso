@@ -511,6 +511,18 @@ Particle ParticleStore::make_view(int const row) {
   return view;
 }
 
+Particle ParticleStore::snapshot_row(int const row) {
+  assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
+  Particle snapshot;
+  // Attach so the detached_*() getters read THIS store's columns/sidecars at
+  // `row`, sync those live values into the carriers, then detach so the result
+  // owns its data (all accessors read the carriers). Also carries the ghost
+  // flag (stored in `l`, not a column) forward from the view.
+  snapshot.attach_to_store(*this, row);
+  snapshot.detach_from_store();
+  return snapshot;
+}
+
 void ParticleStore::finish_rebuild() {
   ++m_generation;
   // Keep the old-generation columns alive as the spare buffer for the next

@@ -17,15 +17,33 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+// Phase 7a: cells hold ParticleStore ROW indices + a staging buffer, not a
+// Bag<Particle>. The CellParticleStorage choke points therefore operate on a
+// Cell (staging inserts, snapshot+remove extracts, clear, ghost resize) rather
+// than on a ParticleList. These tests pin that row/staging behaviour with a
+// hand-built store and cell (no MPI / decomposition).
+
 #define BOOST_TEST_MODULE ParticleListOperations test
 #define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
 
 #include "Particle.hpp"
-#include "ParticleList.hpp"
+#include "cell_system/Cell.hpp"
 #include "cell_system/ParticleListOperations.hpp"
+#include "particle_store/ParticleStore.hpp"
 
-#include <utility>
+#include <Kokkos_Core.hpp>
+
+#include <cstddef>
+#include <vector>
+
+// ParticleStore allocates Kokkos Views, which requires an initialized runtime.
+struct GlobalConfig {
+  GlobalConfig() { Kokkos::initialize(); }
+  ~GlobalConfig() { Kokkos::finalize(); }
+};
+
+BOOST_TEST_GLOBAL_CONFIGURATION(GlobalConfig);
 
 static Particle make_particle(int id) {
   Particle p{};
@@ -33,75 +51,98 @@ static Particle make_particle(int id) {
   return p;
 }
 
-BOOST_AUTO_TEST_CASE(insert_particle_appends_and_returns_reference) {
-  ParticleList storage;
-  auto &stored =
-      CellParticleStorage::insert_particle(storage, make_particle(7));
-  BOOST_CHECK_EQUAL(storage.size(), 1ul);
-  BOOST_CHECK_EQUAL(stored.id(), 7);
+namespace {
+// Commit a cell's staged particles into store rows, exactly as
+// ensure_particle_store_synchronized does for a single-cell system: assign one
+// row per staged particle (seeded from carriers) and record it in the row bag.
+void commit(Cell &cell, ParticleStore &store) {
+  auto const n = cell.staged().size();
+  store.mark_dirty();
+  store.begin_rebuild(n, 0u);
+  int row = 0;
+  cell.rows().clear();
+  for (auto &p : cell.staged()) {
+    store.assign_row(p, row);
+    cell.rows().insert(row);
+    ++row;
+  }
+  store.finish_rebuild();
+  cell.staged().clear();
+  cell.set_store(store);
+}
+} // namespace
+
+BOOST_AUTO_TEST_CASE(insert_particle_stages_and_returns_reference) {
+  Cell cell;
+  auto &staged = CellParticleStorage::insert_particle(cell, make_particle(7));
+  // Not committed yet: no rows, one staged particle.
+  BOOST_CHECK_EQUAL(cell.rows().size(), 0ul);
+  BOOST_CHECK_EQUAL(cell.staged().size(), 1ul);
+  BOOST_CHECK_EQUAL(staged.id(), 7);
 }
 
-BOOST_AUTO_TEST_CASE(extract_particle_moves_out_with_swap_with_back) {
-  ParticleList storage;
-  CellParticleStorage::insert_particle(storage, make_particle(1));
-  CellParticleStorage::insert_particle(storage, make_particle(2));
-  CellParticleStorage::insert_particle(storage, make_particle(3));
+BOOST_AUTO_TEST_CASE(extract_row_snapshots_and_removes_with_swap_with_back) {
+  ParticleStore store{};
+  Cell cell;
+  CellParticleStorage::insert_particle(cell, make_particle(1));
+  CellParticleStorage::insert_particle(cell, make_particle(2));
+  CellParticleStorage::insert_particle(cell, make_particle(3));
+  commit(cell, store);
+  BOOST_REQUIRE_EQUAL(cell.rows().size(), 3ul);
 
-  auto [extracted, next] =
-      CellParticleStorage::extract_particle(storage, storage.begin());
+  auto extracted = CellParticleStorage::extract_row(cell, 0u);
   BOOST_CHECK_EQUAL(extracted.id(), 1);
-  BOOST_CHECK_EQUAL(storage.size(), 2ul);
-  // swap-with-back: the last element (id 3) now occupies the freed slot
-  BOOST_CHECK_EQUAL(next->id(), 3);
+  BOOST_CHECK_EQUAL(cell.rows().size(), 2ul);
+  // The snapshot is detached and carries the row's data via its carriers.
+  BOOST_CHECK(extracted.store() == nullptr);
+  // swap-with-back: the row bag's freed position now holds the last row.
+  BOOST_CHECK_EQUAL(store.id(cell.rows().begin()[0]),
+                    store.id(2)); // row 2 held id 3
 }
 
-BOOST_AUTO_TEST_CASE(extract_particle_on_single_element_returns_end) {
-  ParticleList storage;
-  CellParticleStorage::insert_particle(storage, make_particle(42));
+BOOST_AUTO_TEST_CASE(extract_row_on_single_element_empties_row_bag) {
+  ParticleStore store{};
+  Cell cell;
+  CellParticleStorage::insert_particle(cell, make_particle(42));
+  commit(cell, store);
 
-  auto [extracted, next] =
-      CellParticleStorage::extract_particle(storage, storage.begin());
-  // erase-last path of the underlying Bag: nothing to swap in
+  auto extracted = CellParticleStorage::extract_row(cell, 0u);
   BOOST_CHECK_EQUAL(extracted.id(), 42);
-  BOOST_CHECK_EQUAL(storage.size(), 0ul);
-  BOOST_CHECK(next == storage.end());
+  BOOST_CHECK_EQUAL(cell.rows().size(), 0ul);
 }
 
-BOOST_AUTO_TEST_CASE(erase_particle_destroys_element) {
-  ParticleList storage;
-  CellParticleStorage::insert_particle(storage, make_particle(1));
-  CellParticleStorage::insert_particle(storage, make_particle(2));
-  auto it = CellParticleStorage::erase_particle(storage, storage.begin());
-  BOOST_CHECK_EQUAL(storage.size(), 1ul);
-  BOOST_CHECK_EQUAL(it->id(), 2);
+BOOST_AUTO_TEST_CASE(clear_particles_empties_rows_and_staging) {
+  ParticleStore store{};
+  Cell cell;
+  CellParticleStorage::insert_particle(cell, make_particle(1));
+  commit(cell, store);
+  CellParticleStorage::insert_particle(cell, make_particle(2)); // staged
+  CellParticleStorage::clear_particles(cell);
+  BOOST_CHECK_EQUAL(cell.rows().size(), 0ul);
+  BOOST_CHECK_EQUAL(cell.staged().size(), 0ul);
 }
 
-BOOST_AUTO_TEST_CASE(clear_particles_empties_storage) {
-  ParticleList storage;
-  CellParticleStorage::insert_particle(storage, make_particle(1));
-  CellParticleStorage::clear_particles(storage);
-  BOOST_CHECK_EQUAL(storage.size(), 0ul);
-}
-
-BOOST_AUTO_TEST_CASE(resize_ghost_storage_marks_all_particles_as_ghosts) {
-  ParticleList storage;
-  CellParticleStorage::insert_particle(storage, make_particle(1));
-  CellParticleStorage::resize_ghost_storage(storage, 3ul);
-  BOOST_CHECK_EQUAL(storage.size(), 3ul);
-  for (auto const &p : storage) {
+BOOST_AUTO_TEST_CASE(resize_ghost_storage_stages_ghosts) {
+  Cell cell;
+  CellParticleStorage::insert_particle(cell, make_particle(1));
+  CellParticleStorage::resize_ghost_storage(cell, 3ul);
+  // Stages exactly `count` default ghost particles; drops any prior content.
+  BOOST_CHECK_EQUAL(cell.rows().size(), 0ul);
+  BOOST_CHECK_EQUAL(cell.staged().size(), 3ul);
+  for (auto const &p : cell.staged()) {
     BOOST_CHECK(p.is_ghost());
   }
 }
 
-BOOST_AUTO_TEST_CASE(resize_ghost_storage_shrinks_and_marks_remaining_ghost) {
-  ParticleList storage;
-  CellParticleStorage::insert_particle(storage, make_particle(1));
-  CellParticleStorage::insert_particle(storage, make_particle(2));
-  CellParticleStorage::insert_particle(storage, make_particle(3));
+BOOST_AUTO_TEST_CASE(resize_ghost_storage_shrinks) {
+  Cell cell;
+  CellParticleStorage::insert_particle(cell, make_particle(1));
+  CellParticleStorage::insert_particle(cell, make_particle(2));
+  CellParticleStorage::insert_particle(cell, make_particle(3));
 
-  CellParticleStorage::resize_ghost_storage(storage, 1ul);
-  BOOST_CHECK_EQUAL(storage.size(), 1ul);
-  for (auto const &p : storage) {
+  CellParticleStorage::resize_ghost_storage(cell, 1ul);
+  BOOST_CHECK_EQUAL(cell.staged().size(), 1ul);
+  for (auto const &p : cell.staged()) {
     BOOST_CHECK(p.is_ghost());
   }
 }

@@ -78,6 +78,12 @@ int main(int argc, char **argv) {
   system.set_cell_structure_topology(CellStructureType::REGULAR);
 
   auto const res = boost::unit_test::unit_test_main(init_unit_test, argc, argv);
+  // Tear the System (and its CellStructure/ParticleStore) down HERE, while the
+  // Kokkos runtime is still alive: phase 7a's add_particle eagerly commits new
+  // particles into store columns, so leaving the global System to
+  // static-destruction would release those Kokkos columns after
+  // Kokkos::finalize and abort.
+  ::System::reset_system();
   ::communication_environment.reset();
   return res;
 }

@@ -223,7 +223,11 @@ T image_sum(InputIterator begin, InputIterator end, InputIterator it,
 static auto gather_particle_data(BoxGeometry const &box_geo,
                                  ParticleRange const &particles) {
   auto const &comm = ::comm_cart;
-  std::vector<Particle *> local_particles;
+  // Phase 7a: store VIEW COPIES, not pointers into the transient cached views
+  // the range hands out (those dangle after the loop increment). A view copy
+  // still aliases the store row, so the force/torque write-back below lands in
+  // the columns.
+  std::vector<Particle> local_particles;
   std::vector<PosMom> local_posmom;
   std::vector<PosMom> all_posmom;
   std::vector<boost::mpi::request> reqs;
@@ -233,7 +237,7 @@ static auto gather_particle_data(BoxGeometry const &box_geo,
 
   for (auto &p : particles) {
     if (p.dipm() != 0.0) {
-      local_particles.emplace_back(&p);
+      local_particles.push_back(p);
       local_posmom.emplace_back(
           PosMom{box_geo.folded_position(p.pos()), p.calc_dip()});
     }
@@ -338,12 +342,12 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
       });
 
       fi += fij;
-      (*q)->force() += prefactor * fji.f;
-      (*q)->torque() += prefactor * fji.torque;
+      (*q).force() += prefactor * fji.f;
+      (*q).torque() += prefactor * fji.torque;
     }
 
-    (*p)->force() += prefactor * fi.f;
-    (*p)->torque() += prefactor * fi.torque;
+    (*p).force() += prefactor * fi.f;
+    (*p).torque() += prefactor * fi.torque;
   }
 
   /* Wait for the rest of the data to arrive */
@@ -369,8 +373,8 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
                       return pair_force(rn, it->m, mj);
                     });
 
-    (*p)->force() += prefactor * fi.f;
-    (*p)->torque() += prefactor * fi.torque;
+    (*p).force() += prefactor * fi.f;
+    (*p).torque() += prefactor * fi.torque;
   }
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
   if (not m_is_gpu) {
@@ -451,7 +455,7 @@ void DipolarDirectSum::dipole_field_at_part_cpu() const {
         u_init, [](Utils::Vector3d const &rn, Utils::Vector3d const &mj) {
           return dipole_field(rn, mj);
         });
-    (*p)->dip_fld() = prefactor * u;
+    (*p).dip_fld() = prefactor * u;
   }
 }
 #endif

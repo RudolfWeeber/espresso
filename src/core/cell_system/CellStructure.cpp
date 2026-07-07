@@ -283,64 +283,51 @@ void CellStructure::set_index_map() {
 #ifdef ESPRESSO_CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif
+  // Phase 7a: cells hand out row VIEWS (transient cached objects), so
+  // m_unique_particles can no longer hold pointers into cell iteration. Instead
+  // it points into the stable view pool (m_view_pool, rebuilt by
+  // rebuild_particle_index): its local prefix is store rows [0, n_local) in row
+  // order (== the pack order, so pack index i == store row i on the local
+  // prefix) and its tail is the deduped ghosts (first occurrence of each id not
+  // owned by a local) -- exactly the point set and order this function built
+  // before. Rebuilding those pointers here is a wholesale refresh over the pool
+  // the store rebuild just produced.
+  assert(not m_particle_store.is_dirty());
   auto &unique_particles = m_unique_particles;
   unique_particles.clear();
-  unique_particles.resize(count_local_particles());
-  std::unordered_set<int> registered_index{};
-  using execution_space = Kokkos::DefaultExecutionSpace;
-  int n_threads = execution_space().concurrency();
-  std::vector<int> max_ids(n_threads);
-
+  auto const n_local = count_local_particles();
+  unique_particles.reserve(m_view_pool.size());
+  int max_id = -1;
+  int pair_count = 0;
+  int angle_count = 0;
+  int dihedral_count = 0;
   m_bond_state->reset_counts();
-  std::vector<int> pair_counts(n_threads, 0);
-  std::vector<int> angle_counts(n_threads, 0);
-  std::vector<int> dihedral_counts(n_threads, 0);
-
-  enumerate_local_particles(
-      *this, [&unique_particles, &max_ids, &pair_counts, &angle_counts,
-              &dihedral_counts](std::size_t index, Particle &p) {
-        unique_particles[index] = &p;
-        auto const thread_num = omp_get_thread_num();
-        max_ids[thread_num] = std::max(p.id(), max_ids[thread_num]);
-        for (auto const bond : p.bonds()) {
-          if (not bond.partner_ids().empty()) {
-            auto const partner_ids = bond.partner_ids();
-            if (partner_ids.size() == 1u) {
-              pair_counts[thread_num] += 1;
-            } else if (partner_ids.size() == 2u) {
-              angle_counts[thread_num] += 1;
-            } else if (partner_ids.size() == 3u) {
-              dihedral_counts[thread_num] += 1;
-            }
-          }
+  // Iterate the stable view pool: local prefix (pool positions [0, n_local))
+  // then the deduped ghost tail. Count bonds only on the local prefix (matching
+  // the pre-flip enumerate_local_particles pass, which never walked ghosts).
+  std::size_t pool_index = 0u;
+  for (auto &p : m_view_pool) {
+    unique_particles.emplace_back(std::addressof(p));
+    max_id = std::max(p.id(), max_id);
+    if (pool_index < n_local) {
+      for (auto const bond : p.bonds()) {
+        auto const partner_ids = bond.partner_ids();
+        if (partner_ids.empty()) {
+          continue;
         }
-      });
-  Kokkos::fence();
-  int pair_count = std::reduce(std::begin(pair_counts), std::end(pair_counts));
-  int angle_count =
-      std::reduce(std::begin(angle_counts), std::end(angle_counts));
-  int dihedral_count =
-      std::reduce(std::begin(dihedral_counts), std::end(dihedral_counts));
+        if (partner_ids.size() == 1u) {
+          ++pair_count;
+        } else if (partner_ids.size() == 2u) {
+          ++angle_count;
+        } else if (partner_ids.size() == 3u) {
+          ++dihedral_count;
+        }
+      }
+    }
+    ++pool_index;
+  }
   set_local_bond_numbers(pair_count, angle_count, dihedral_count);
   m_bond_state->allocate();
-
-  int max_id = *(std::max_element(max_ids.begin(), max_ids.end()));
-  for (auto &p : ghost_particles()) {
-    auto const *local_particle = get_local_particle(p.id());
-    if (not local_particle) {
-      continue;
-    }
-    if (not local_particle->is_ghost()) {
-      continue;
-    }
-    if (registered_index.contains(p.id())) {
-      continue;
-    }
-    registered_index.insert(p.id());
-    unique_particles.emplace_back(&p);
-    max_id = std::max(p.id(), max_id);
-  }
-  registered_index.clear();
   m_cached_max_local_particle_id = max_id;
   m_num_local_particles_cached = unique_particles.size();
 
@@ -357,7 +344,6 @@ void CellStructure::set_index_map() {
         Kokkos::ViewAllocateWithoutInitializing("pack_index_to_store_row"),
         n_unique);
   }
-  auto const n_local = count_local_particles();
   for (std::size_t i = 0u; i < n_unique; ++i) {
     m_pack_index_to_store_row(i) = unique_particles[i]->store_row();
     // local prefix must be the identity (see comment above)
@@ -431,63 +417,147 @@ void CellStructure::ensure_particle_store_synchronized() {
   if (not m_particle_store.is_dirty()) {
     return;
   }
-  auto const n_local = count_local_particles();
-  std::size_t n_ghost = 0u;
-  for (auto const &p : ghost_particles()) {
-    static_cast<void>(p);
-    ++n_ghost;
-  }
-  m_particle_store.begin_rebuild(n_local, n_ghost);
-  int row = 0;
-  // Iterate cells directly (not the flattened particle ranges) so each cell's
-  // parallel row-index bag (phase 7a, dormant) can be refilled as rows are
-  // assigned: cleared at the start of the cell's block, then one int appended
-  // per particle in ParticleList order. This preserves the row-assignment
-  // order (local cells then ghost cells, particles in Bag order) exactly.
-  auto assign_cell_rows = [this, &row](std::span<Cell *const> cells) {
+  // Wire every cell to the store (cheap; idempotent) so that Cell::particles()
+  // and Cell::store() work throughout the rebuild and the following step.
+  auto wire_stores = [this](std::span<Cell *const> cells) {
     for (auto *cell : cells) {
-      auto &rows = cell->rows();
-      rows.clear();
-      for (auto &p : cell->particles()) {
-        m_particle_store.assign_row(p, row);
-        rows.insert(row);
-        ++row;
-      }
+      cell->set_store(m_particle_store);
     }
   };
-  assign_cell_rows(decomposition().local_cells());
-  assign_cell_rows(decomposition().ghost_cells());
+  wire_stores(decomposition().local_cells());
+  wire_stores(decomposition().ghost_cells());
+
+  // A cell's content after the flip = its surviving committed rows (preserved
+  // by old row) + its staged detached particles (seeded from carriers). Count
+  // both so begin_rebuild sizes the columns for the new generation.
+  auto cell_count = [](Cell const *cell) {
+    return cell->rows().size() + cell->staged().size();
+  };
+  std::size_t n_local = 0u;
+  for (auto const *cell : decomposition().local_cells()) {
+    n_local += cell_count(cell);
+  }
+  std::size_t n_ghost = 0u;
+  for (auto const *cell : decomposition().ghost_cells()) {
+    n_ghost += cell_count(cell);
+  }
+
+  // Snapshot the OLD row bags before begin_rebuild swaps the columns: a
+  // surviving row is assigned by handing assign_row a Particle attached to
+  // THIS store at the OLD row, from which it preserves the (now-spare) column
+  // data; the staged particles are detached, so assign_row seeds them from
+  // their carriers. begin_rebuild resizes to the new count, so we must capture
+  // the old row indices first (a shrink would put them out of the new bounds).
+  m_particle_store.begin_rebuild(n_local, n_ghost);
+  int row = 0;
+  auto assign_cell = [this, &row](Cell *cell,
+                                  std::vector<int> const &old_rows) {
+    auto &rows = cell->rows();
+    rows.clear();
+    // Surviving committed rows: preserve column data by old row.
+    for (int const old_row : old_rows) {
+      Particle survivor;
+      survivor.attach_to_store(m_particle_store, old_row);
+      m_particle_store.assign_row(survivor, row);
+      rows.insert(row);
+      ++row;
+    }
+    // Staged (newly inserted / migrated / fresh ghost) particles: seed from
+    // carriers, then clear the staging area.
+    for (auto &staged : cell->staged()) {
+      m_particle_store.assign_row(staged, row);
+      rows.insert(row);
+      ++row;
+    }
+    cell->staged().clear();
+  };
+  auto assign_cells = [this, &assign_cell](std::span<Cell *const> cells) {
+    for (auto *cell : cells) {
+      // Copy the surviving row indices out of the bag first (assign_cell clears
+      // and refills the bag as it renumbers).
+      auto const &row_bag = cell->rows();
+      std::vector<int> old_rows(row_bag.begin(), row_bag.end());
+      assign_cell(cell, old_rows);
+    }
+  };
+  assign_cells(decomposition().local_cells());
+  assign_cells(decomposition().ghost_cells());
   m_particle_store.finish_rebuild();
 
+  // Refresh the id->view index / stable view pool from the freshly assigned
+  // rows (locals win over ghost copies of the same id).
+  rebuild_particle_index();
+
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
-  // Verify the dormant per-cell row bags match the cell Bag contents: same
-  // length, and the store id at each recorded row equals the particle id at the
-  // same Bag position. Covers both local and ghost cells.
+  // Verify each cell's row bag matches the store: the store id at each recorded
+  // row equals the id of the view at the same position. Covers local + ghost.
   auto check_cell_rows = [this](std::span<Cell *const> cells) {
     for (auto *cell : cells) {
-      auto const &parts = cell->particles();
       auto const &rows = cell->rows();
-      if (rows.size() != parts.size()) {
-        throw std::runtime_error("CellRows size mismatch: bag has " +
-                                 std::to_string(parts.size()) + " parts but " +
-                                 std::to_string(rows.size()) + " rows");
-      }
       std::size_t k = 0u;
-      for (auto const &p : parts) {
+      for (auto const &p : cell->particles()) {
         auto const stored_id = m_particle_store.id(rows.begin()[k]);
         if (stored_id != p.id()) {
           throw std::runtime_error(
               "CellRows id mismatch at position " + std::to_string(k) +
               ": store.id(row) = " + std::to_string(stored_id) +
-              " but bag id = " + std::to_string(p.id()));
+              " but view id = " + std::to_string(p.id()));
         }
         ++k;
+      }
+      if (k != rows.size()) {
+        throw std::runtime_error("CellRows size mismatch");
       }
     }
   };
   check_cell_rows(decomposition().local_cells());
   check_cell_rows(decomposition().ghost_cells());
 #endif
+}
+
+void CellStructure::rebuild_particle_index() {
+  assert(not m_particle_store.is_dirty());
+  m_particle_index.clear();
+  m_view_pool.clear();
+  auto const n_local = m_particle_store.number_of_local_particles();
+  // Index locals (rows [0, n_local)); their id columns are valid.
+  for (std::size_t r = 0u; r < n_local; ++r) {
+    m_view_pool.push_back(m_particle_store.make_view(static_cast<int>(r)));
+    auto &view = m_view_pool.back();
+    update_particle_index(view.id(), std::addressof(view));
+  }
+  // Also index the ALREADY-VALID ghost rows: a bare rebuild (e.g. an
+  // add_particle commit, the clean-store forces.cpp sync, or resort_particles'
+  // end-of-function sync) must not drop the ghost index entries a prior
+  // ghosts_update established, or a ghost-id lookup (LB coupling's
+  // is_ghost_for_local_particle, collision detection) would see nullptr. FRESH
+  // ghost rows just created by resize_ghost_storage carry a default id (-1) and
+  // are skipped by index_ghost_particles; they are picked up by a later
+  // index_ghost_particles once ghosts_update fills their id columns.
+  index_ghost_particles();
+}
+
+void CellStructure::index_ghost_particles() {
+  assert(not m_particle_store.is_dirty());
+  auto const n_total = m_particle_store.number_of_particles();
+  auto const n_local = m_particle_store.number_of_local_particles();
+  // Ghost rows [n_local, n_total): add a pool view + index entry for each ghost
+  // whose id is VALID (>= 0; a freshly resized ghost carries -1 until
+  // ghosts_update fills it) and not already owned by a local (locals win). The
+  // local prefix of the pool is left intact; this appends/extends the ghost
+  // tail. Idempotent: a ghost id already present (from a local or an earlier
+  // ghost of the same id) is skipped, so re-running after ghosts_update only
+  // adds the newly-valid ghosts.
+  for (std::size_t r = n_local; r < n_total; ++r) {
+    auto candidate = m_particle_store.make_view(static_cast<int>(r));
+    auto const id = candidate.id();
+    if (id < 0 or get_local_particle(id) != nullptr) {
+      continue;
+    }
+    m_view_pool.push_back(std::move(candidate));
+    auto &view = m_view_pool.back();
+    update_particle_index(id, std::addressof(view));
+  }
 }
 
 void CellStructure::check_particle_index() const {
@@ -500,18 +570,29 @@ void CellStructure::check_particle_index() const {
       throw std::runtime_error("Particle id out of bounds.");
     }
 
-    if (get_local_particle(id) != &p) {
+    // Phase 7a: particles are views over store rows, so the index entry (a
+    // pointer into the view pool) and the iterated view have DIFFERENT
+    // addresses even for the same particle. Check identity by store row instead
+    // of by address: both must resolve to the same row of the same store.
+    auto const *indexed = get_local_particle(id);
+    if (indexed == nullptr or indexed->store() != p.store() or
+        indexed->store_row() != p.store_row()) {
       throw std::runtime_error("Invalid local particle index entry.");
     }
   }
 
-  /* checks: local particle id */
+  /* checks: local particle id. Phase 7a: the index also holds ghost entries
+   * (for ghost-id lookups), so count only the LOCAL (non-ghost) entries when
+   * comparing against local_particles(). */
   std::size_t local_part_cnt = 0u;
   for (int n = 0; n < get_max_local_particle_id() + 1; n++) {
-    if (get_local_particle(n) != nullptr) {
-      local_part_cnt++;
-      if (get_local_particle(n)->id() != n) {
+    auto const *indexed = get_local_particle(n);
+    if (indexed != nullptr) {
+      if (indexed->id() != n) {
         throw std::runtime_error("local_particles part has corrupted id.");
+      }
+      if (not indexed->is_ghost()) {
+        local_part_cnt++;
       }
     }
   }
@@ -546,15 +627,18 @@ void CellStructure::remove_particle(int id) {
   };
 
   for (auto cell : decomposition().local_cells()) {
-    auto &parts = cell->particles();
-    for (auto it = parts.begin(); it != parts.end();) {
-      if (it->id() == id) {
-        it = CellParticleStorage::erase_particle(parts, it);
-        update_particle_index(id, nullptr);
-        update_particle_index(parts);
+    cell->set_store(m_particle_store);
+    // Iterate the committed rows by position. extract_row removes a row via
+    // swap-with-back (so we re-examine the swapped-in position); a kept
+    // particle has any bond to the removed id stripped (written through the
+    // view into the store's bond sidecar, preserved by the next rebuild).
+    for (std::size_t index = 0u; index < cell->rows().size();) {
+      auto view = m_particle_store.make_view(cell->rows().begin()[index]);
+      if (view.id() == id) {
+        CellParticleStorage::extract_row(*cell, index);
       } else {
-        remove_all_bonds_to(it->bonds());
-        it++;
+        remove_all_bonds_to(view.bonds());
+        ++index;
       }
     }
   }
@@ -564,9 +648,15 @@ void CellStructure::remove_particle(int id) {
 Particle *CellStructure::add_local_particle(Particle &&p) {
   auto const sort_cell = particle_to_cell(p);
   if (sort_cell) {
+    sort_cell->set_store(m_particle_store);
+    auto const id = p.id();
+    append_staged_particle(*sort_cell, std::move(p));
     mark_particle_store_dirty();
-    return std::addressof(
-        append_indexed_particle(sort_cell->particles(), std::move(p)));
+    // Commit immediately so the new particle is live (indexed, iterable,
+    // readable) right after this call -- the pre-flip contract callers rely on.
+    // Return a stable pointer into the view pool (phase 7a).
+    ensure_particle_store_synchronized();
+    return get_local_particle(id);
   }
 
   return {};
@@ -577,14 +667,19 @@ Particle *CellStructure::add_particle(Particle &&p) {
   /* There is always at least one cell, so if the particle
    * does not belong to a cell on this node we can put it there. */
   auto cell = sort_cell ? sort_cell : decomposition().local_cells()[0];
+  cell->set_store(m_particle_store);
 
   /* If the particle isn't local a global resort may be
    * needed, otherwise a local resort if sufficient. */
   set_resort_particles(sort_cell ? Cells::RESORT_LOCAL : Cells::RESORT_GLOBAL);
 
+  auto const id = p.id();
+  append_staged_particle(*cell, std::move(p));
   mark_particle_store_dirty();
-  return std::addressof(
-      append_indexed_particle(cell->particles(), std::move(p)));
+  // Commit immediately so the new particle is live right after this call (the
+  // pre-flip contract). Return a stable view-pool pointer (phase 7a).
+  ensure_particle_store_synchronized();
+  return get_local_particle(id);
 }
 
 int CellStructure::get_max_local_particle_id() const {
@@ -618,10 +713,19 @@ void CellStructure::rebuild_bond_list() { m_bond_state->rebuild(); }
 
 void CellStructure::remove_all_particles() {
   for (auto cell : decomposition().local_cells()) {
-    CellParticleStorage::clear_particles(cell->particles());
+    CellParticleStorage::clear_particles(*cell);
+  }
+  // Also clear the GHOST cells (phase 7a): they hold ghost copies of the
+  // now-deleted particles. If left in place, the next store rebuild would
+  // re-index those stale ghost rows (rebuild_particle_index indexes valid
+  // ghosts), so get_local_particle would still report the deleted ids as
+  // present -- e.g. a fresh add of the same id would wrongly see "already
+  // exists". Emptying them keeps the index consistent with the emptied system.
+  for (auto cell : decomposition().ghost_cells()) {
+    CellParticleStorage::clear_particles(*cell);
   }
 
-  m_particle_index.clear();
+  clear_particle_index();
   clear_bond_properties();
   mark_particle_store_dirty();
 }
@@ -664,24 +768,27 @@ void CellStructure::ghosts_reduce_rattle_correction() {
 }
 #endif
 
-namespace {
-/**
- * @brief Apply a @ref ParticleChange to a particle index.
- */
-struct UpdateParticleIndexVisitor {
-  CellStructure *cs;
-
-  void operator()(RemovedParticle rp) const {
-    cs->update_particle_index(rp.id, nullptr);
-  }
-  void operator()(ModifiedList mp) const { cs->update_particle_index(mp.pl); }
-};
-} // namespace
-
 void CellStructure::resort_particles(bool global_flag) {
-  invalidate_ghosts();
+  // Phase 7a: the id->view index / view pool is rebuilt wholesale from the
+  // store by ensure_particle_store_synchronized after the resort (see
+  // rebuild_particle_index), so the pre-flip incremental index bookkeeping
+  // (invalidate_ghosts + the ModifiedList/RemovedParticle diff visitor) is no
+  // longer needed. The `diff` is still collected (the decomposition contract)
+  // but only for its "cells touched" side effect; index correctness comes from
+  // the rebuild. Clear the stale index now so nothing reads a dangling view
+  // pool pointer in the resort window (get_local_particle is not called there).
+  clear_particle_index();
 
   std::vector<ParticleChange> diff;
+
+  // Ensure every cell knows the store before the decomposition mutates cell
+  // storage (extract_row / insert / ghost resize all need Cell::store()).
+  for (auto *cell : m_decomposition->local_cells()) {
+    cell->set_store(m_particle_store);
+  }
+  for (auto *cell : m_decomposition->ghost_cells()) {
+    cell->set_store(m_particle_store);
+  }
 
   // Mark the store dirty BEFORE the decomposition's resort: the dirty flag must
   // be truthful DURING the resort window. HybridDecomposition runs an internal
@@ -689,10 +796,17 @@ void CellStructure::resort_particles(bool global_flag) {
   // see dirty and fall back to the per-particle path there.
   mark_particle_store_dirty();
   m_decomposition->resort(global_flag, diff);
+  static_cast<void>(diff);
 
-  for (auto d : diff) {
-    std::visit(UpdateParticleIndexVisitor{this}, d);
-  }
+  // Commit the staged (migrated/new) particles into store rows and rebuild the
+  // id->view index NOW (phase 7a): resort cleared the index and staged the
+  // moved particles, so callers reading the index right after resort (e.g. the
+  // ADDITIONAL_CHECKS below, or a direct resort_particles call) must see a
+  // consistent, populated index -- the pre-flip contract. Ghost rows are added
+  // to the index later by update_ghosts_and_resort_particle after
+  // ghosts_update. Rank-local (no MPI), so it does not affect the collective
+  // ordering the caller relies on.
+  ensure_particle_store_synchronized();
 
   auto const &lebc = get_system().box_geo->lees_edwards_bc();
   m_rebuild_verlet_list = true;
@@ -733,10 +847,22 @@ void CellStructure::set_hybrid_decomposition(double cutoff_regular,
   auto &system = get_system();
   auto &local_geo = *system.local_geo;
   auto const &box_geo = *system.box_geo;
-  set_particle_decomposition(std::make_unique<HybridDecomposition>(
+  auto hybrid = std::make_unique<HybridDecomposition>(
       ::comm_cart, cutoff_regular, m_verlet_skin,
       [&system]() { return system.get_global_ghost_flags(); }, box_geo,
-      local_geo, n_square_types));
+      local_geo, n_square_types);
+  // Phase 7a: let the hybrid decomposition commit staged particles to store
+  // rows between its internal resort and ghost communications (see
+  // HybridDecomposition::resort). Mark the store dirty first: the ghost resize
+  // (resize_ghost_storage) stages ghosts WITHOUT marking dirty, so a bare
+  // ensure_particle_store_synchronized would early-return (clean store) and
+  // never commit them; forcing the rebuild guarantees the staged particles
+  // (migrated locals AND freshly resized ghosts) become committed rows.
+  hybrid->set_commit_store([this]() {
+    mark_particle_store_dirty();
+    ensure_particle_store_synchronized();
+  });
+  set_particle_decomposition(std::move(hybrid));
   m_type = CellStructureType::HYBRID;
   local_geo.set_cell_structure_type(m_type);
   system.on_cell_structure_change();
@@ -777,22 +903,29 @@ void CellStructure::update_ghosts_and_resort_particle(unsigned data_parts) {
 
     /* Resort cell system */
     resort_particles(do_global_resort);
+    /* Phase 7a: resort STAGES migrated/new particles into their home cells but
+     * does not commit them to store rows until a rebuild. ghosts_count sizes
+     * every ghost cell from its source (local) cell's COMMITTED row count, so
+     * the local particles must be committed FIRST -- otherwise a source cell
+     * undercounts and a later ghost data transfer sees mismatched src/dst
+     * sizes. Commit locals, then count ghosts, then commit the freshly staged
+     * ghost rows before writing their data. */
+    ensure_particle_store_synchronized();
     ghosts_count();
-    /* Rebuild the store rows NOW: resort_particles/ghosts_count marked the
-     * store dirty, and a dirty store forces the ghost update below onto the
+    /* Rebuild the store rows NOW: ghosts_count marked the store dirty (staged
+     * ghost slots), and a dirty store forces the ghost update below onto the
      * slow per-field accessor path (measured +49% in this slot on lj-4rank).
      * After the rebuild, freshly created ghosts are attached and the update
      * writes their state straight into the columns by row. */
     ensure_particle_store_synchronized();
     ghosts_update(data_parts);
 
-    /* Add the ghost particles to the index if we don't already
-     * have them. */
-    for (auto &p : ghost_particles()) {
-      if (get_local_particle(p.id()) == nullptr) {
-        update_particle_index(p.id(), &p);
-      }
-    }
+    /* Index the ghosts now that ghosts_update has filled their id columns
+     * (phase 7a: the rebuild inside ensure_particle_store_synchronized indexed
+     * only locals, whose ids were valid; freshly created ghost rows carried a
+     * default id until this update). Adds one stable view-pool entry per ghost
+     * whose id is not owned by a local. */
+    index_ghost_particles();
 
     /* Particles are now sorted */
     clear_resort_particles();

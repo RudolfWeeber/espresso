@@ -112,14 +112,17 @@ ResultType reduce_over_local_particles(
         "reduce_on_local_particle", cells.size(), reducer, result);
     return result;
   }
-  // single cell case
-  auto const &particles = cells.front()->particles();
+  // single cell case: parallel over particles, each index building its OWN view
+  // (phase 7a; a shared cached-view iterator would not be thread-safe).
+  auto const &rows = cells.front()->rows();
+  auto &store = cells.front()->store();
   auto reducer = Reduction::make_kokkos_reducer<ResultType>(
-      [&particles, add_partial](std::size_t const p_index, ResultType &res) {
-        add_partial(res, std::as_const(*(particles.begin() + p_index)));
+      [&rows, &store, add_partial](std::size_t const p_index, ResultType &res) {
+        auto const view = store.make_view(rows.begin()[p_index]);
+        add_partial(res, std::as_const(view));
       },
       reduce_op);
   Kokkos::parallel_reduce( // loop over particles
-      "reduce_on_local_particle", particles.size(), reducer, result);
+      "reduce_on_local_particle", rows.size(), reducer, result);
   return result;
 }

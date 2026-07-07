@@ -32,16 +32,23 @@ template <typename Callable>
 inline void
 CellStructure::parallel_for_each_particle_impl(std::span<Cell *const> cells,
                                                Callable &f) const {
+  auto &store = const_cast<ParticleStore &>(m_particle_store);
   if (cells.size() > 1) {
     Kokkos::parallel_for( // loop over cells
         "for_each_local_particle", cells.size(), [&](auto cell_idx) {
+          // One row-range iterator per cell (per thread) reuses its own cached
+          // view across the cell's particles (phase 7a lifetime contract).
           for (auto &p : cells[cell_idx]->particles())
             f(p);
         });
   } else if (cells.size() == 1) {
-    auto &particles = cells.front()->particles();
+    // Single-cell parallel-over-particles: each index gets its OWN view (a
+    // shared cached-view iterator would not be thread-safe here).
+    auto const &rows = cells.front()->rows();
     Kokkos::parallel_for( // loop over particles
-        "for_each_local_particle", particles.size(),
-        [&](auto part_idx) { f(*(particles.begin() + part_idx)); });
+        "for_each_local_particle", rows.size(), [&](auto part_idx) {
+          auto view = store.make_view(rows.begin()[part_idx]);
+          f(view);
+        });
   }
 }

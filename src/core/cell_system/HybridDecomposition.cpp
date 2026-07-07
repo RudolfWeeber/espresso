@@ -97,71 +97,92 @@ void HybridDecomposition::resort(bool global,
                                  std::vector<ParticleChange> &diff) {
   ParticleList displaced_parts;
 
-  /* Check for n_square type particles in regular decomposition */
+  /* Check for n_square type particles in regular decomposition. Phase 7a:
+   * cells are already wired to the store by CellStructure::resort_particles;
+   * iterate committed rows by position and snapshot + remove misplaced
+   * particles (extract_row swaps-with-back, so re-examine the swapped-in
+   * position). Read the type from the store by row. */
   for (auto &cell_rd : m_regular_decomposition.local_cells()) {
-    for (auto it = cell_rd->particles().begin();
-         it != cell_rd->particles().end();) {
+    auto &store = cell_rd->store();
+    for (std::size_t index = 0u; index < cell_rd->rows().size();) {
+      auto const type = store.type(cell_rd->rows().begin()[index]);
       /* Particle is in the right decomposition, i.e. has no n_square type */
-      if (not is_n_square_type(it->type())) {
-        std::advance(it, 1);
+      if (not is_n_square_type(type)) {
+        ++index;
         continue;
       }
 
       /* else remove from current cell ... */
-      auto [p, next] =
-          CellParticleStorage::extract_particle(cell_rd->particles(), it);
-      it = next;
-      diff.emplace_back(ModifiedList{cell_rd->particles()});
+      auto p = CellParticleStorage::extract_row(*cell_rd, index);
+      diff.emplace_back(ModifiedList{cell_rd->rows()});
       diff.emplace_back(RemovedParticle{p.id()});
 
       /* ... and insert into a n_square cell */
       auto const first_local_cell = m_n_square.get_local_cells()[0];
-      CellParticleStorage::insert_particle(first_local_cell->particles(),
-                                           std::move(p));
-      diff.emplace_back(ModifiedList{first_local_cell->particles()});
+      CellParticleStorage::insert_particle(*first_local_cell, std::move(p));
+      diff.emplace_back(ModifiedList{first_local_cell->rows()});
     }
 
     /* Now check for regular decomposition type particles in n_square */
     for (auto &cell_ns : m_n_square.local_cells()) {
-      for (auto it = cell_ns->particles().begin();
-           it != cell_ns->particles().end();) {
+      auto &store = cell_ns->store();
+      for (std::size_t index = 0u; index < cell_ns->rows().size();) {
+        auto const type = store.type(cell_ns->rows().begin()[index]);
         /* Particle is of n_square type */
-        if (is_n_square_type(it->type())) {
-          std::advance(it, 1);
+        if (is_n_square_type(type)) {
+          ++index;
           continue;
         }
 
         /* else remove from current cell ... */
-        auto [p, next] =
-            CellParticleStorage::extract_particle(cell_ns->particles(), it);
-        it = next;
-        diff.emplace_back(ModifiedList{cell_ns->particles()});
+        auto p = CellParticleStorage::extract_row(*cell_ns, index);
+        diff.emplace_back(ModifiedList{cell_ns->rows()});
         diff.emplace_back(RemovedParticle{p.id()});
 
         /* ... and insert in regular decomposition */
         auto const target_cell = particle_to_cell(p);
         /* if particle belongs to this node insert it into correct cell */
         if (target_cell != nullptr) {
-          CellParticleStorage::insert_particle(target_cell->particles(),
-                                               std::move(p));
-          diff.emplace_back(ModifiedList{target_cell->particles()});
+          CellParticleStorage::insert_particle(*target_cell, std::move(p));
+          diff.emplace_back(ModifiedList{target_cell->rows()});
         }
         /* otherwise just put into regular decomposition */
         else {
           auto first_local_cell = m_regular_decomposition.get_local_cells()[0];
-          CellParticleStorage::insert_particle(first_local_cell->particles(),
-                                               std::move(p));
-          diff.emplace_back(ModifiedList{first_local_cell->particles()});
+          CellParticleStorage::insert_particle(*first_local_cell, std::move(p));
+          diff.emplace_back(ModifiedList{first_local_cell->rows()});
         }
       }
     }
+  }
+
+  /* Phase 7a: the type-based moves above STAGED particles into their target
+   * child cells (insert_particle stages; pre-flip it inserted immediately).
+   * Commit now so the child resorts below iterate the correct committed cell
+   * contents -- otherwise a particle moved into a cell would be invisible to
+   * that cell's own resort, changing the final placement/order. */
+  if (m_commit_store) {
+    m_commit_store();
   }
 
   /* now resort into correct cells within the respective decompositions */
   m_regular_decomposition.resort(global, diff);
   m_n_square.resort(global, diff);
 
+  /* Phase 7a: the child resorts staged migrated/new particles into cells but
+   * did not commit them to store rows. Commit now so the internal ghost
+   * communications below see committed rows/columns (the PARTNUM step still
+   * uses Cell::size() = rows+staged for downstream ghost layers, but the DATA
+   * step reads committed views). */
+  if (m_commit_store) {
+    m_commit_store();
+  }
+
   ghost_communicator(exchange_ghosts_comm(), m_box, GHOSTTRANS_PARTNUM);
+  /* Committing the just-staged ghosts before the DATA transfer, same reason. */
+  if (m_commit_store) {
+    m_commit_store();
+  }
   ghost_communicator(exchange_ghosts_comm(), m_box,
                      map_data_parts(m_get_global_ghost_flags()));
 }

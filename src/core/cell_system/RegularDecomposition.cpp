@@ -89,9 +89,8 @@ void RegularDecomposition::move_if_local(
     auto target_cell = position_to_cell(part.pos());
 
     if (target_cell) {
-      CellParticleStorage::insert_particle(target_cell->particles(),
-                                           std::move(part));
-      modified_cells.emplace_back(ModifiedList{target_cell->particles()});
+      CellParticleStorage::insert_particle(*target_cell, std::move(part));
+      modified_cells.emplace_back(ModifiedList{target_cell->rows()});
     } else {
       rest.insert(std::move(part));
     }
@@ -184,21 +183,25 @@ void RegularDecomposition::resort(bool global,
   ParticleList displaced_parts;
 
   for (auto &c : local_cells()) {
-    for (auto it = c->particles().begin(); it != c->particles().end();) {
-      fold_and_reset(*it, m_box);
+    // Iterate the cell's committed rows by position. extract_row removes a row
+    // via swap-with-back (order not preserved, exactly the pre-flip Bag erase),
+    // so on extraction we re-examine the same position (the swapped-in row);
+    // otherwise we advance. fold_and_reset writes through the view into the
+    // store column; the snapshot taken by extract_row carries the folded value.
+    for (std::size_t index = 0u; index < c->rows().size();) {
+      auto view = c->store().make_view(c->rows().begin()[index]);
+      fold_and_reset(view, m_box);
 
-      auto target_cell = particle_to_cell(*it);
+      auto target_cell = particle_to_cell(view);
 
       /* Particle is in place */
       if (target_cell == c) {
-        std::advance(it, 1);
+        ++index;
         continue;
       }
 
-      auto [p, next] =
-          CellParticleStorage::extract_particle(c->particles(), it);
-      it = next;
-      diff.emplace_back(ModifiedList{c->particles()});
+      auto p = CellParticleStorage::extract_row(*c, index);
+      diff.emplace_back(ModifiedList{c->rows()});
 
       /* Particle is not local */
       if (target_cell == nullptr) {
@@ -207,9 +210,8 @@ void RegularDecomposition::resort(bool global,
       }
       /* Particle belongs on this node but is in the wrong cell. */
       else if (target_cell != c) {
-        CellParticleStorage::insert_particle(target_cell->particles(),
-                                             std::move(p));
-        diff.emplace_back(ModifiedList{target_cell->particles()});
+        CellParticleStorage::insert_particle(*target_cell, std::move(p));
+        diff.emplace_back(ModifiedList{target_cell->rows()});
       }
     }
   }
@@ -240,10 +242,9 @@ void RegularDecomposition::resort(bool global,
     for (auto &part : displaced_parts) {
       runtimeErrorMsg() << "Particle " << part.id() << " moved more "
                         << "than one local box length in one timestep";
-      CellParticleStorage::insert_particle(sort_cell->particles(),
-                                           std::move(part));
+      CellParticleStorage::insert_particle(*sort_cell, std::move(part));
 
-      diff.emplace_back(ModifiedList{sort_cell->particles()});
+      diff.emplace_back(ModifiedList{sort_cell->rows()});
     }
   }
 }
@@ -264,7 +265,7 @@ void RegularDecomposition::mark_cells() {
       }
 }
 
-void RegularDecomposition::fill_comm_cell_lists(ParticleList **part_lists,
+void RegularDecomposition::fill_comm_cell_lists(Cell **part_lists,
                                                 Utils::Vector3i const &lc,
                                                 Utils::Vector3i const &hc) {
   for (int o = lc[0]; o <= hc[0]; o++)
@@ -272,7 +273,7 @@ void RegularDecomposition::fill_comm_cell_lists(ParticleList **part_lists,
       for (int m = lc[2]; m <= hc[2]; m++) {
         auto const i = Utils::get_linear_index(o, n, m, ghost_cell_grid);
 
-        *part_lists++ = &(cells.at(i).particles());
+        *part_lists++ = &(cells.at(i));
       }
 }
 

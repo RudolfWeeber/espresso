@@ -25,9 +25,20 @@
 
 #include "Particle.hpp"
 #include "cell_system/Cell.hpp"
+#include "particle_store/ParticleStore.hpp"
+
+#include <Kokkos_Core.hpp>
 
 #include <utility>
 #include <vector>
+
+// ParticleStore allocates Kokkos Views, which requires an initialized runtime.
+struct GlobalConfig {
+  GlobalConfig() { Kokkos::initialize(); }
+  ~GlobalConfig() { Kokkos::finalize(); }
+};
+
+BOOST_TEST_GLOBAL_CONFIGURATION(GlobalConfig);
 
 BOOST_AUTO_TEST_CASE(link_cell) {
   auto const n_cells = 10u;
@@ -36,7 +47,25 @@ BOOST_AUTO_TEST_CASE(link_cell) {
 
   std::vector<Cell> cells(n_cells);
 
-  auto id = 0;
+  // Phase 7a store-attach pattern: cells hold store ROW indices and hand out
+  // views. Build a store with n_part local rows (ids 0..n_part-1 in cell-major
+  // order), wire each cell to it, and give each cell its consecutive row block.
+  ParticleStore store{};
+  {
+    std::vector<Particle> seeds(n_part);
+    store.mark_dirty();
+    store.begin_rebuild(n_part, 0u);
+    int seed_row = 0;
+    for (auto &p : seeds) {
+      store.assign_row(p, seed_row++);
+    }
+    store.finish_rebuild();
+    for (int r = 0; r < static_cast<int>(n_part); ++r) {
+      store.id(r) = r;
+    }
+  }
+
+  int row = 0;
   for (auto &c : cells) {
     std::vector<Cell *> neighbors;
 
@@ -47,10 +76,10 @@ BOOST_AUTO_TEST_CASE(link_cell) {
 
     c.m_neighbors = Neighbors<Cell *>(neighbors, {});
 
-    c.particles().resize(n_part_per_cell);
-
-    for (auto &p : c.particles()) {
-      p.id() = id++;
+    c.set_store(store);
+    c.rows().clear();
+    for (auto i = 0u; i < n_part_per_cell; ++i) {
+      c.rows().insert(row++);
     }
   }
 

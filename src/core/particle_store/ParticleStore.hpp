@@ -131,6 +131,19 @@ public:
    */
   Particle make_view(int row);
 
+  /**
+   * @brief Lift a store row into a detached, carrier-laden @ref Particle.
+   *
+   * Migration phase 7a: builds a view at @p row, snapshots its columns/sidecars
+   * into the returned Particle's migration carriers, and detaches it (store
+   * pointer null, row -1) -- the same choreography @ref Particle::serialize
+   * performs on SAVE. The result is a self-contained value the migration/resort
+   * paths can move into send buffers or a cell's staging area; it does NOT
+   * alias the store. Removing the row from the owning cell and marking the
+   * store dirty is the caller's job (see @ref CellParticleStorage).
+   */
+  Particle snapshot_row(int row);
+
   /** Release all Kokkos-backed columns. Must be called while the Kokkos
    *  runtime is still alive (e.g. before Kokkos::finalize); afterwards the
    *  store is empty and dirty. */

@@ -540,8 +540,14 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
   // check particle resort
   {
     auto constexpr global_resort = true;
-    auto const resort_is_needed = comm.size() > 1;
     auto &cs = *system.cell_structure;
+    // Phase 7a: the id->view index is rebuilt wholesale from the ParticleStore
+    // on every store sync (which every topology-changing operation triggers),
+    // so it is CONSISTENT with the cells at all observation points -- unlike
+    // the pre-flip incremental (diff-based) index, which could be transiently
+    // stale between a cross-rank migration and its bookkeeping.
+    // check_particle_index therefore does not throw here (pre-resort) on any
+    // rank count.
     auto error_thrown_local = false;
     try {
       cs.check_particle_index();
@@ -550,8 +556,8 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
     }
     auto const error_thrown = boost::mpi::all_reduce(comm, error_thrown_local,
                                                      std::logical_or<bool>());
-    BOOST_CHECK_EQUAL(error_thrown, resort_is_needed);
-    // no exception is thrown after resort
+    BOOST_CHECK_EQUAL(error_thrown, false);
+    // no exception is thrown after resort either
     cs.resort_particles(global_resort);
     cs.check_particle_index();
   }

@@ -1,35 +1,40 @@
 #!/usr/bin/env bash
 # Guard for the ParticleStore migration (see docs/superpowers/specs/
-# 2026-07-03-array-based-particle-storage-design.md, section 3, phase 1):
+# 2026-07-03-array-based-particle-storage-design.md, section 3):
 # cell particle storage may only be mutated through the primitives in
 # src/core/cell_system/ParticleListOperations.hpp. This script fails if a
 # direct mutation pattern reappears in src/core (unit tests excluded:
 # they construct fixtures directly).
 #
+# Phase 7a: cells no longer own a Bag<Particle>; a Cell holds ParticleStore ROW
+# indices (Cell::rows()) plus a staging buffer of not-yet-committed detached
+# particles (Cell::staged()). The choke points now stage inserts, snapshot +
+# remove rows on extract, clear both, and stage ghost slots on resize. Direct
+# mutation of rows()/staged() (and, defensively, the legacy particles()) outside
+# the choke points and the sanctioned store rebuild is the out-of-band-mutation
+# hazard this guard catches.
+#
 # The scan is delegated to an embedded Python program because the mutation
 # call can be split across several physical lines by clang-format, e.g.
 #     object.get_local_cells()[index]
-#         ->particles()
-#         .insert(std::move(p));
+#         ->rows()
+#         .insert(row);
 # A line-based grep misses this; the Python scanner reads each file as one
 # string and matches the pattern across newlines.
 #
 # ALIAS LIMITATION: this check cannot see mutations performed through a
 # local reference to a cell's storage, e.g.
-#     auto &parts = cell->particles();
-#     parts.erase(it);
-# because the mutating call no longer names particles(). A green run is a
-# tripwire that catches the common, direct form; it is NOT a proof that no
-# direct cell-storage mutation exists. Reviewers must still watch for
-# aliased mutations by hand.
+#     auto &rows = cell->rows();
+#     rows.erase(it);
+# because the mutating call no longer names rows(). A green run is a tripwire
+# that catches the common, direct form; it is NOT a proof that no direct
+# cell-storage mutation exists. Reviewers must still watch for aliased mutations
+# by hand.
 #
-# EXCEPTION (decomposition swap/teardown): CellStructure::set_particle_
-# decomposition re-inserts particles through the routed add_particle and
-# then destroys the old ParticleDecomposition wholesale; the old cells'
-# particle lists are torn down by their destructors, not by these
-# primitives. This bulk teardown is deliberately outside the hook and is
-# handled by migration phase 2 via a full-store rebuild (mark-dirty), not
-# per-row hooks. See ParticleListOperations.hpp for details.
+# EXCEPTIONS: (1) ParticleListOperations.hpp defines the choke points.
+# (2) CellStructure.cpp's ensure_particle_store_synchronized owns the store
+# rebuild and legitimately clears + refills every cell's row bag as it renumbers
+# rows. Both files are excluded below.
 set -u
 cd "$(dirname "$0")/../.."
 exec python3 - "$@" << 'PYEOF'
@@ -39,13 +44,26 @@ import sys
 
 ROOT = "src/core"
 EXCLUDED_DIRECTORIES = ("src/core/unit_tests/",)
-EXCLUDED_FILES = ("src/core/cell_system/ParticleListOperations.hpp",)
+# Choke points (ParticleListOperations.hpp) legitimately mutate the row bag /
+# staging area; the store rebuild in CellStructure.cpp legitimately clears and
+# refills every cell's row bag as it renumbers rows. Both are the sanctioned
+# owners of cell storage and are exempt.
+EXCLUDED_FILES = (
+    "src/core/cell_system/ParticleListOperations.hpp",
+    "src/core/cell_system/CellStructure.cpp",
+)
 
-# Match particles() followed by a mutating member call, allowing arbitrary
-# whitespace (including newlines) around the '.' or '->' operator so that
-# clang-format-wrapped calls are caught.
+# Phase 7a: cells hold ParticleStore ROW indices (Cell::rows()) plus a staging
+# buffer of not-yet-committed particles (Cell::staged()); they no longer own a
+# Bag<Particle>. Direct mutation of either -- outside the CellParticleStorage
+# choke points and the store rebuild -- is the new out-of-band-mutation hazard.
+# Match rows()/staged() (and, defensively, the legacy particles()) followed by a
+# mutating member call, allowing arbitrary whitespace (including newlines) around
+# the '.'/'->' operator so clang-format-wrapped calls are caught.
 PATTERN = re.compile(
-    r"particles\(\)\s*(?:->|\.)\s*(?:insert|erase|clear|resize)\s*\(")
+    r"(?:particles|rows|staged)\(\)\s*(?:->|\.)\s*"
+    r"(?:insert|erase|clear|resize|push_back|emplace_back|pop_back|emplace)"
+    r"\s*\(")
 
 
 def normalized(path):

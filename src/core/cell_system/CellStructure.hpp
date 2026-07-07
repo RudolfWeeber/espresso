@@ -56,6 +56,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -175,8 +176,21 @@ public:
                        Cabana::TeamVectorOpTag>;
 
 private:
-  /** The local id-to-particle index */
+  /** The local id-to-particle index. Since the phase-7a flip these are pointers
+   *  into @ref m_view_pool (NOT into cell storage, which no longer holds
+   *  @c Particle objects); an entry stays valid between store rebuilds, exactly
+   *  the pre-flip pointer-stability contract, and is retired for the id->row
+   *  map in phase 7e. */
   std::vector<Particle *> m_particle_index;
+  /** Stable view pool backing @ref m_particle_index (phase 7a transitional).
+   *  One attached @ref Particle view per indexed particle (locals, then the
+   *  ghost copies not shadowed by a local), rebuilt wholesale from the store by
+   *  @ref rebuild_particle_index every store rebuild. A @c std::deque so that
+   *  refilling never relocates already-handed-out element addresses within one
+   *  generation; cleared and refilled (not @c clear + reused) each rebuild.
+   *  Handing @c get_local_particle callers a pointer into this pool preserves
+   *  the "pointer valid until the next topology change" contract. */
+  std::deque<Particle> m_view_pool;
   /** Implementation of the primary particle decomposition */
   std::unique_ptr<ParticleDecomposition> m_decomposition;
   /** Active type in m_decomposition */
@@ -271,54 +285,50 @@ public:
   }
 
   /**
-   * @brief Update local particle index.
-   *
-   * Update the entry for a particle in the local particle
-   * index.
-   *
-   * @param p Pointer to the particle.
+   * @brief Clear the particles index and its backing view pool.
    */
-  void update_particle_index(Particle &p) {
-    update_particle_index(p.id(), std::addressof(p));
+  void clear_particle_index() {
+    m_particle_index.clear();
+    m_view_pool.clear();
   }
-
-  /**
-   * @brief Update local particle index.
-   *
-   * @param pl List of particles whose index entries should be updated.
-   */
-  void update_particle_index(ParticleList &pl) {
-    for (auto &p : pl) {
-      update_particle_index(p.id(), std::addressof(p));
-    }
-  }
-
-  /**
-   * @brief Clear the particles index.
-   */
-  void clear_particle_index() { m_particle_index.clear(); }
 
 private:
   /**
-   * @brief Append a particle to a list and update this
-   *        particle index accordingly.
-   * @param pl List to add the particle to.
-   * @param p Particle to add.
+   * @brief Rebuild the id->view index from the (synchronized) store.
+   *
+   * Phase 7a transitional: refills @ref m_view_pool with one attached view per
+   * indexed particle -- all locals first, then the ghost rows whose id is not
+   * already owned by a local -- and points @ref m_particle_index at the pool
+   * entries. Must run with a clean store (rows assigned). Indexes LOCALS only;
+   * ghost id columns are not valid until ghosts_update runs, so ghosts are
+   * indexed separately by @ref index_ghost_particles afterwards. "Locals win"
+   * over ghost copies of the same id, matching the pre-flip index semantics.
    */
-  Particle &append_indexed_particle(ParticleList &pl, Particle &&p) {
-    /* Check if cell may reallocate, in which case the index
-     * entries for all particles in this cell have to be
-     * updated. */
-    auto const may_reallocate = pl.size() >= pl.capacity();
-    auto &new_part = CellParticleStorage::insert_particle(pl, std::move(p));
+  void rebuild_particle_index();
 
-    if (may_reallocate)
-      update_particle_index(pl);
-    else {
-      update_particle_index(new_part);
-    }
+  /**
+   * @brief Append the ghost rows to the id->view index / view pool.
+   *
+   * Phase 7a: run AFTER ghosts_update has filled the ghost id columns (a fresh
+   * ghost row carries a default id until then). Adds a stable pool view + index
+   * entry for each ghost whose id is not owned by a local.
+   */
+  void index_ghost_particles();
 
-    return new_part;
+  /**
+   * @brief Stage a particle for insertion into a cell (phase 7a).
+   *
+   * The particle is appended to the cell's staging area (not yet committed to a
+   * store row / the index -- see @ref CellParticleStorage::insert_particle);
+   * the returned pointer aliases the staged particle and writes through it land
+   * in its migration carriers, which the next rebuild seeds the row from. The
+   * store must be marked dirty by the caller so the rebuild commits the staged
+   * particle before it is read back through @ref get_local_particle or
+   * @ref Cell::particles.
+   */
+  Particle *append_staged_particle(Cell &cell, Particle &&p) {
+    return std::addressof(
+        CellParticleStorage::insert_particle(cell, std::move(p)));
   }
 
 public:
@@ -373,7 +383,11 @@ public:
   std::size_t count_local_particles() const {
     std::size_t count = 0;
     for (auto const &cell : m_decomposition->local_cells()) {
-      count += cell->particles().size();
+      // Count committed rows directly (phase 7a): avoids requiring the cell's
+      // store pointer to be wired, and is exactly the number of committed
+      // particles (staged-but-uncommitted particles are not counted, matching
+      // the pre-flip Bag size after a sync).
+      count += cell->rows().size();
     }
     return count;
   }
@@ -659,6 +673,13 @@ private:
    */
   template <class Handler>
   void execute_bond_handler(Particle &p, Handler const &handler) {
+    // Debug guard (phase 7a): resolve_bond_partners hands back pointers into
+    // the stable view pool (see rebuild_particle_index). Those references (e.g.
+    // the ImmersedBoundaries `Particle &p2 = *partners[0]` pattern) stay valid
+    // for the duration of the handler call ONLY while the store generation is
+    // unchanged -- a rebuild refreshes the pool. Record the generation on entry
+    // and assert it did not move across each handler call.
+    auto const bond_epoch_generation = m_particle_store.generation();
     for (const BondView bond : p.bonds()) {
       auto const partner_ids = bond.partner_ids();
 
@@ -666,6 +687,8 @@ private:
         auto partners = resolve_bond_partners(partner_ids);
         auto const partners_span = std::span(partners.data(), partners.size());
         auto const bond_broken = handler(p, bond.bond_id(), partners_span);
+        ParticleStoreGuard::assert_generation(m_particle_store,
+                                              bond_epoch_generation);
         if (bond_broken) {
           bond_broken_error(p.id(), partner_ids);
         }
@@ -675,32 +698,60 @@ private:
     }
   }
 
-  /**
-   * @brief Go through ghost cells and remove the ghost entries from the
-   * local particle index.
-   */
-  void invalidate_ghosts() {
-    for (auto const &p : ghost_particles()) {
-      if (get_local_particle(p.id()) == &p) {
-        update_particle_index(p.id(), nullptr);
-      }
-    }
-  }
-
   /** @brief Set the particle decomposition, keeping the particles. */
   void set_particle_decomposition(
       std::unique_ptr<ParticleDecomposition> &&decomposition) {
     clear_particle_index();
 
+    /* Snapshot every particle out of the OLD decomposition into detached,
+     * carrier-laden particles BEFORE the store is rebuilt (phase 7a): the old
+     * cells' rows index into the current store, which the swap + rebuild below
+     * will invalidate. Snapshotting lifts the data out into self-contained
+     * values (like a migration extract) that survive into the new system's
+     * staging. */
+    std::vector<Particle> retained;
+    for (auto *cell : m_decomposition->local_cells()) {
+      cell->set_store(m_particle_store);
+      auto &rows = cell->rows();
+      for (std::size_t i = 0u; i < rows.size(); ++i) {
+        retained.push_back(m_particle_store.snapshot_row(rows.begin()[i]));
+      }
+    }
+
     /* Swap in new cell system */
     std::swap(m_decomposition, decomposition);
 
-    /* Add particles to new system */
-    for (auto &p : Cells::particles(decomposition->local_cells())) {
-      add_particle(std::move(p));
+    /* Wire the new cells to the store and stage the retained particles into
+     * their home cells. Stage directly (NOT via add_particle, which commits
+     * per-add -- that would be O(n^2) here); a single rebuild below commits
+     * them all at once. A particle with no home cell on this node goes to the
+     * first local cell (a global resort will place it), matching add_particle.
+     */
+    for (auto *cell : m_decomposition->local_cells()) {
+      cell->set_store(m_particle_store);
+    }
+    for (auto *cell : m_decomposition->ghost_cells()) {
+      cell->set_store(m_particle_store);
+    }
+    auto const had_retained = not retained.empty();
+    for (auto &p : retained) {
+      auto const sort_cell = particle_to_cell(p);
+      auto cell = sort_cell ? sort_cell : m_decomposition->local_cells()[0];
+      set_resort_particles(sort_cell ? Cells::RESORT_LOCAL
+                                     : Cells::RESORT_GLOBAL);
+      CellParticleStorage::insert_particle(*cell, std::move(p));
     }
 
     mark_particle_store_dirty();
+    // Commit the retained particles into store rows NOW so they are immediately
+    // live (visible to local_particles(), the particle-node bookkeeping, and
+    // get_local_particle) after the decomposition swap -- the pre-flip
+    // contract. Only when there WERE retained particles: an empty initial setup
+    // leaves the store column-free (avoids allocating Kokkos columns that a
+    // System torn down at static destruction would release post-finalize).
+    if (had_retained) {
+      ensure_particle_store_synchronized();
+    }
   }
 
 public:

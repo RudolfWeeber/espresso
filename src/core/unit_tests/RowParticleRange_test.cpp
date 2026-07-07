@@ -72,16 +72,15 @@ void build_store(ParticleStore &store, std::vector<Particle> &seeds,
   }
 }
 
-// Fill a cell's Bag and its parallel row bag exactly as
-// ensure_particle_store_synchronized does: append a view per row, recording the
-// row in the cell's CellRows. `rows` are the store rows assigned to this cell.
+// Fill a cell's row bag and wire its store exactly as
+// ensure_particle_store_synchronized does (phase 7a: the cell no longer holds a
+// Bag<Particle>; it holds row indices + a store pointer, and hands out views).
+// `rows` are the store rows assigned to this cell.
 void fill_cell(Cell &cell, ParticleStore &store, std::vector<int> const &rows) {
-  auto &bag = cell.particles();
+  cell.set_store(store);
   auto &row_bag = cell.rows();
-  bag.clear();
   row_bag.clear();
   for (auto const r : rows) {
-    bag.insert(store.make_view(r));
     row_bag.insert(r);
   }
 }

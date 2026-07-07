@@ -20,12 +20,15 @@
 #pragma once
 
 #include "Particle.hpp"
-#include "ParticleList.hpp"
 #include "cell_system/CellRows.hpp"
+#include "cell_system/RowParticleRange.hpp"
+#include "particle_store/ParticleStore.hpp"
 
 #include <boost/range/iterator_range.hpp>
 
 #include <algorithm>
+#include <cassert>
+#include <cstddef>
 #include <span>
 #include <utility>
 #include <vector>
@@ -97,23 +100,70 @@ private:
 class Cell {
   using neighbors_type = Neighbors<Cell *>;
 
-  ParticleList m_particles;
-
-  /** Store row indices of the particles in @ref m_particles (phase 7a).
-   *  Parallel to @ref m_particles: one entry per particle, in the same
-   *  iteration order, refilled during every store rebuild. DORMANT -- read by
-   *  no production code yet (Task 4 will flip @ref particles() to hand out
-   *  views over these rows). */
+  /** Store row indices of this cell's particles (phase 7a). One entry per
+   *  particle already committed to the @ref ParticleStore, in cell-traversal
+   *  order; refilled during every store rebuild
+   *  (@ref CellStructure::ensure_particle_store_synchronized). Since the flip,
+   *  this -- together with @ref m_staged -- is the cell's authoritative
+   *  particle content: the cell no longer owns @c Particle objects, it owns
+   *  ROW INDICES into the store plus a small buffer of not-yet-committed
+   *  detached particles. */
   CellRows m_rows;
 
-public:
-  /** Particles */
-  auto &particles() { return m_particles; }
-  auto const &particles() const { return m_particles; }
+  /** Not-yet-committed detached particles (phase 7a staging area). A cell
+   *  mutation that ADDS a particle (@ref CellParticleStorage::insert_particle,
+   *  the migration re-insert path, ghost-cell resize) appends the incoming
+   *  detached, carrier-laden @c Particle here and marks the store dirty; the
+   *  next store rebuild seeds a fresh row per staged particle from its carriers
+   *  and clears this buffer. Between the mutation and the rebuild the staged
+   *  particles are part of the cell but have no store row yet, so
+   *  @ref particles() cannot yet see them -- callers that add particles must
+   *  trigger the rebuild (mark-dirty + ensure_particle_store_synchronized)
+   *  before iterating, exactly as before the flip. */
+  std::vector<Particle> m_staged;
 
-  /** @brief Store row indices of this cell's particles (phase 7a, dormant). */
+  /** The store the row indices point into (phase 7a). Wired by
+   *  @ref CellStructure at construction / decomposition swap; used by
+   *  @ref particles() to hand out views. */
+  ParticleStore *m_store = nullptr;
+
+public:
+  /** @brief Bind the @ref ParticleStore this cell's rows index into. */
+  void set_store(ParticleStore &store) { m_store = &store; }
+  /** @brief The store this cell's rows index into (phase 7a). */
+  ParticleStore &store() {
+    assert(m_store != nullptr);
+    return *m_store;
+  }
+
+  /** @brief Particles in this cell as a range of @ref Particle VIEWS over the
+   *  committed store rows (phase 7a). NOT including staged (uncommitted)
+   *  particles -- those become visible only after the next store rebuild. The
+   *  returned range's views alias the store and are invalidated by a rebuild
+   *  (see @ref RowParticleRange). */
+  RowParticleRange particles() {
+    assert(m_store != nullptr);
+    return RowParticleRange(m_rows, *m_store);
+  }
+  RowParticleRange particles() const {
+    assert(m_store != nullptr);
+    return RowParticleRange(m_rows, *m_store);
+  }
+
+  /** @brief Store row indices of this cell's committed particles (phase 7a). */
   auto &rows() { return m_rows; }
   auto const &rows() const { return m_rows; }
+
+  /** @brief The staging area of not-yet-committed detached particles. */
+  auto &staged() { return m_staged; }
+  auto const &staged() const { return m_staged; }
+
+  /** @brief Total particle count = committed rows + staged (phase 7a).
+   *  Ghost-count (PARTNUM) communication uses this so that a cell resized as a
+   *  ghost destination (which STAGES its ghosts, deferring the row commit)
+   *  reports its new size immediately when read as a source for a downstream
+   *  ghost layer within the same communicator pass. */
+  std::size_t size() const { return m_rows.size() + m_staged.size(); }
 
   neighbors_type m_neighbors;
 

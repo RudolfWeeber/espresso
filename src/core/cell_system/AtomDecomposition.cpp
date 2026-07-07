@@ -64,7 +64,7 @@ GhostCommunicator AtomDecomposition::prepare_comm() {
   /* every node has its dedicated comm step */
   for (int n = 0; n < m_comm.size(); n++) {
     ghost_comm.communications[n].part_lists.resize(1);
-    ghost_comm.communications[n].part_lists[0] = &(cells.at(n).particles());
+    ghost_comm.communications[n].part_lists[0] = &(cells.at(n));
     ghost_comm.communications[n].node = n;
   }
 
@@ -106,6 +106,8 @@ void AtomDecomposition::mark_cells() {
 
 void AtomDecomposition::resort(bool global_flag,
                                std::vector<ParticleChange> &diff) {
+  auto &store = local().store();
+  // Fold positions of all committed rows (write-through views).
   for (auto &p : local().particles()) {
     Utils::Vector3d position = p.pos();
     Utils::Vector3i image_box = p.image_box();
@@ -121,19 +123,19 @@ void AtomDecomposition::resort(bool global_flag,
     return;
   }
 
-  /* Sort displaced particles by the node they belong to. */
+  /* Sort displaced particles by the node they belong to (phase 7a: iterate the
+   * committed rows by position; extract_row snapshots and removes the row via
+   * swap-with-back, so re-examine the swapped-in position). */
   std::vector<std::vector<Particle>> send_buf(m_comm.size());
-  for (auto it = local().particles().begin();
-       it != local().particles().end();) {
-    auto const target_node = id_to_rank(it->id());
+  for (std::size_t index = 0u; index < local().rows().size();) {
+    auto const id = store.id(local().rows().begin()[index]);
+    auto const target_node = id_to_rank(id);
     if (target_node != m_comm.rank()) {
-      diff.emplace_back(RemovedParticle{it->id()});
-      auto [extracted, next] =
-          CellParticleStorage::extract_particle(local().particles(), it);
+      diff.emplace_back(RemovedParticle{id});
+      auto extracted = CellParticleStorage::extract_row(local(), index);
       send_buf.at(target_node).emplace_back(std::move(extracted));
-      it = next;
     } else {
-      ++it;
+      ++index;
     }
   }
 
@@ -141,12 +143,12 @@ void AtomDecomposition::resort(bool global_flag,
   std::vector<std::vector<Particle>> recv_buf(m_comm.size());
   boost::mpi::all_to_all(m_comm, send_buf, recv_buf);
 
-  diff.emplace_back(ModifiedList{local().particles()});
+  diff.emplace_back(ModifiedList{local().rows()});
 
-  /* Add new particles belonging to this node */
+  /* Add new particles belonging to this node (staged; committed by rebuild). */
   for (auto &parts : recv_buf) {
     for (auto &p : parts) {
-      CellParticleStorage::insert_particle(local().particles(), std::move(p));
+      CellParticleStorage::insert_particle(local(), std::move(p));
     }
   }
 }

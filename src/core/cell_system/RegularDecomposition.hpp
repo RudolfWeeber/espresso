@@ -142,8 +142,7 @@ private:
    *  \param lc          lower left corner of the subgrid.
    *  \param hc          high up corner of the subgrid.
    */
-  void fill_comm_cell_lists(ParticleList **part_lists,
-                            Utils::Vector3i const &lc,
+  void fill_comm_cell_lists(Cell **part_lists, Utils::Vector3i const &lc,
                             Utils::Vector3i const &hc);
 
   int calc_processor_min_num_cells() const;

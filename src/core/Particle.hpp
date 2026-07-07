@@ -515,6 +515,27 @@ public:
   auto store() const { return m_particle_store; }
   auto store_row() const { return m_store_row; }
 
+  /** @brief Snapshot the column/sidecar values into the migration carriers and
+   *  detach from the store (phase 7a).
+   *
+   *  After this call the particle is a self-contained DETACHED snapshot: its
+   *  carriers hold the values that were live in the columns, its store pointer
+   *  is null and its row is -1, so all accessors read the carriers. This is the
+   *  choreography @ref extract_particle / @ref ParticleStore::snapshot_row use
+   *  to lift a row out of the store into a movable detached Particle (the same
+   *  carrier-sync that @ref serialize performs on SAVE). Idempotent on an
+   *  already-detached particle (the sync reads the carriers back into
+   *  themselves). */
+  void detach_from_store() {
+    // Capture the structural ghost flag into the fallback member BEFORE
+    // dropping the store pointer, so the detached snapshot reports the same
+    // ghost-ness (is_ghost() reads l.ghost when detached).
+    l.ghost = is_ghost();
+    sync_migration_carriers();
+    m_particle_store = nullptr;
+    m_store_row = -1;
+  }
+
   /** @brief Observable force as a plain value, valid whether the particle is
    *  attached to a store (reads the column) or detached (reads the migration
    *  carrier). Used by Particle serialization to capture the value to ferry. */
@@ -878,7 +899,26 @@ public:
     return m_particle_store->force_value(m_store_row);
   }
 
-  bool is_ghost() const { return l.ghost; }
+  /** @brief Whether this is a ghost particle.
+   *
+   *  Phase 7a: for an ATTACHED view the ghost flag is STRUCTURAL -- the store
+   *  lays out local rows [0, n_local) first and ghost rows after, so a view is
+   * a ghost iff its row is in the ghost suffix. Views default-construct with
+   *  @c l.ghost==false, so reading the struct member would misreport every
+   *  attached ghost; derive it from the row instead. A DETACHED particle
+   *  (staged / snapshot / migration envelope) has no row, so it falls back to
+   *  the @c l.ghost member (set by resize_ghost_storage / carried by the
+   *  snapshot's `l`). */
+  bool is_ghost() const {
+    return (m_particle_store != nullptr)
+               ? (static_cast<std::size_t>(m_store_row) >=
+                  m_particle_store->number_of_local_particles())
+               : l.ghost;
+  }
+  /** @brief Set the ghost flag on a DETACHED particle (staged / snapshot). For
+   *  an attached view ghost-ness is structural (derived from the row), so this
+   *  only updates the fallback member; keep it in sync so a later detach
+   * carries the flag. */
   void set_ghost(bool const ghost_flag) { l.ghost = ghost_flag; }
   VectorReference pos_at_last_verlet_update() {
     return (m_particle_store != nullptr)
@@ -1296,22 +1336,104 @@ public:
 #endif
 
 private:
+  /** @brief Copy the current column/sidecar values into the migration carriers
+   *  (phase 7a factoring of the serialize SAVE choreography).
+   *
+   *  For an attached particle each @c detached_*() getter reads the live column
+   *  or sidecar; for a detached particle it reads the carrier back into itself
+   *  (a no-op). Used by @ref serialize on SAVE (so the cross-rank envelope
+   *  carries the live values) and by @ref detach_from_store (so a snapshot
+   *  lifted out of the store owns its data). The set of fields and their order
+   *  is exactly the pre-existing serialize SAVE block. */
+  void sync_migration_carriers() {
+    // Bonds/exclusions first (byte-identical to the pre-flip `ar & bl`/`ar &
+    // el` position; detached_bonds() reads the sidecar when attached).
+    m_migration_bonds = detached_bonds();
+#ifdef ESPRESSO_EXCLUSIONS
+    m_migration_exclusions = detached_exclusions();
+#endif
+    m_detached_force = detached_force();
+#ifdef ESPRESSO_ROTATION
+    m_detached_torque = detached_torque();
+#endif
+    m_migration_position = detached_position();
+    m_migration_image_box = detached_image_box();
+#ifdef ESPRESSO_ROTATION
+    m_migration_quaternion = detached_quaternion();
+#endif
+    m_migration_position_at_last_verlet_update =
+        detached_position_at_last_verlet_update();
+#ifdef ESPRESSO_BOND_CONSTRAINT
+    m_migration_position_last_time_step = detached_position_last_time_step();
+#endif
+    m_migration_lees_edwards_offset = detached_lees_edwards_offset();
+    m_migration_lees_edwards_flag = detached_lees_edwards_flag();
+    m_migration_velocity = detached_velocity();
+#ifdef ESPRESSO_ROTATION
+    m_migration_angular_velocity = detached_angular_velocity();
+#endif
+    m_migration_id = detached_id();
+    m_migration_mol_id = detached_mol_id();
+    m_migration_type = detached_type();
+    m_migration_propagation = detached_propagation();
+#ifdef ESPRESSO_ROTATION
+    m_migration_rotation = detached_rotation();
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+    m_migration_ext_flag = detached_ext_flag();
+#endif
+#ifdef ESPRESSO_MASS
+    m_migration_mass = detached_mass();
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+    m_migration_q = detached_q();
+#endif
+#ifdef ESPRESSO_DIPOLES
+    m_migration_dipm = detached_dipm();
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+    m_migration_rinertia = detached_rinertia();
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+    m_migration_mu_E = detached_mu_E();
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+    m_migration_dip_fld = detached_dip_fld();
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+    m_migration_ext_force = detached_ext_force();
+#ifdef ESPRESSO_ROTATION
+    m_migration_ext_torque = detached_ext_torque();
+#endif
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+    m_migration_gamma = detached_gamma();
+#ifdef ESPRESSO_ROTATION
+    m_migration_gamma_rot = detached_gamma_rot();
+#endif
+#endif
+#ifdef ESPRESSO_ENGINE
+    m_migration_swimming = detached_swimming();
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+    m_migration_magnetodynamics = detached_magnetodynamics();
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+    m_migration_vs_relative = detached_vs_relative();
+#endif
+  }
+
   friend boost::serialization::access;
   template <class Archive> void serialize(Archive &ar, long int /* version */) {
     ar & l;
     // Migration phase 6: bonds/exclusions live authoritatively in the
     // ParticleStore ragged host sidecars when the particle is attached. The
     // struct members are dual-role (detached storage + migration/fetch
-    // envelope). On SAVE, sync the members from the sidecar (detached_*() reads
-    // the sidecar when attached) BEFORE serializing them, so the envelope
-    // carries the LIVE value -- this must run before these legs, unlike the
-    // other carriers whose legs sit after the shared is_saving block below. The
-    // leg form/order is byte-identical to the pre-flip `ar & bl` / `ar & el`.
+    // envelope). On SAVE, sync ALL carriers from the live columns/sidecars
+    // (see sync_migration_carriers) so the envelope carries the LIVE values.
+    // The leg form/order below is byte-identical to the pre-flip serializer.
     if (Archive::is_saving::value) {
-      m_migration_bonds = detached_bonds();
-#ifdef ESPRESSO_EXCLUSIONS
-      m_migration_exclusions = detached_exclusions();
-#endif
+      sync_migration_carriers();
     }
     ar & m_migration_bonds;
 #ifdef ESPRESSO_EXCLUSIONS
@@ -1333,77 +1455,6 @@ private:
     // the rebuilt row. The constexpr-when-disabled fields have no carrier and
     // are not serialized (their static fallback is the only value when the
     // feature is off).
-    if (Archive::is_saving::value) {
-      m_detached_force = detached_force();
-#ifdef ESPRESSO_ROTATION
-      m_detached_torque = detached_torque();
-#endif
-      m_migration_position = detached_position();
-      m_migration_image_box = detached_image_box();
-#ifdef ESPRESSO_ROTATION
-      m_migration_quaternion = detached_quaternion();
-#endif
-      m_migration_position_at_last_verlet_update =
-          detached_position_at_last_verlet_update();
-#ifdef ESPRESSO_BOND_CONSTRAINT
-      m_migration_position_last_time_step = detached_position_last_time_step();
-#endif
-      m_migration_lees_edwards_offset = detached_lees_edwards_offset();
-      m_migration_lees_edwards_flag = detached_lees_edwards_flag();
-      m_migration_velocity = detached_velocity();
-#ifdef ESPRESSO_ROTATION
-      m_migration_angular_velocity = detached_angular_velocity();
-#endif
-      m_migration_id = detached_id();
-      m_migration_mol_id = detached_mol_id();
-      m_migration_type = detached_type();
-      m_migration_propagation = detached_propagation();
-#ifdef ESPRESSO_ROTATION
-      m_migration_rotation = detached_rotation();
-#endif
-#ifdef ESPRESSO_EXTERNAL_FORCES
-      m_migration_ext_flag = detached_ext_flag();
-#endif
-#ifdef ESPRESSO_MASS
-      m_migration_mass = detached_mass();
-#endif
-#ifdef ESPRESSO_ELECTROSTATICS
-      m_migration_q = detached_q();
-#endif
-#ifdef ESPRESSO_DIPOLES
-      m_migration_dipm = detached_dipm();
-#endif
-#ifdef ESPRESSO_ROTATIONAL_INERTIA
-      m_migration_rinertia = detached_rinertia();
-#endif
-#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
-      m_migration_mu_E = detached_mu_E();
-#endif
-#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
-      m_migration_dip_fld = detached_dip_fld();
-#endif
-#ifdef ESPRESSO_EXTERNAL_FORCES
-      m_migration_ext_force = detached_ext_force();
-#ifdef ESPRESSO_ROTATION
-      m_migration_ext_torque = detached_ext_torque();
-#endif
-#endif
-#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-      m_migration_gamma = detached_gamma();
-#ifdef ESPRESSO_ROTATION
-      m_migration_gamma_rot = detached_gamma_rot();
-#endif
-#endif
-#ifdef ESPRESSO_ENGINE
-      m_migration_swimming = detached_swimming();
-#endif
-#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
-      m_migration_magnetodynamics = detached_magnetodynamics();
-#endif
-#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
-      m_migration_vs_relative = detached_vs_relative();
-#endif
-    }
     ar & m_detached_force;
 #ifdef ESPRESSO_ROTATION
     ar & m_detached_torque;

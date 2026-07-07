@@ -25,6 +25,7 @@
 #include "system/System.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <iterator>
 #include <set>
 #include <vector>
@@ -36,12 +37,22 @@
  */
 inline auto fetch_particles(std::vector<int> const &ids) {
   auto const &system = System::get_system();
-  auto const ids_set = std::set<int>{ids.begin(), ids.end()};
-  auto const local_particles = system.cell_structure->local_particles();
+  auto &cell_structure = *system.cell_structure;
   Observables::ParticleReferenceRange local_particle_refs;
-  std::copy_if(local_particles.begin(), local_particles.end(),
-               std::back_inserter(local_particle_refs),
-               [&ids_set](auto const &p) { return ids_set.contains(p.id()); });
+  // Phase 7a: local_particles() hands out transient cached VIEWS, so iterating
+  // + copying references (the pre-flip std::copy_if approach) would store
+  // references to a view that is overwritten on the next increment (the
+  // cached-view multipass hazard). Instead resolve each requested id through
+  // get_local_particle, which returns a pointer into the STABLE view pool --
+  // valid for the observable's lifetime (no rebuild during evaluation). Skip
+  // ids that are not a local (owned) particle here (nullptr or ghost),
+  // preserving the pre-flip filter (only local, non-ghost particles).
+  for (auto const id : ids) {
+    auto const *p = cell_structure.get_local_particle(id);
+    if (p != nullptr and not p->is_ghost()) {
+      local_particle_refs.emplace_back(std::cref(*p));
+    }
+  }
   return local_particle_refs;
 }
 #endif
