@@ -19,6 +19,11 @@
 
 #define BOOST_TEST_MODULE "dipolar direct sum kernels"
 #define BOOST_TEST_DYN_LINK
+
+#include <config/config.hpp>
+
+#ifdef ESPRESSO_DIPOLES
+
 #include <boost/test/unit_test.hpp>
 
 #include "magnetostatics/dipolar_direct_sum_kernels.hpp"
@@ -27,7 +32,6 @@
 
 BOOST_AUTO_TEST_SUITE(suite)
 
-#ifdef ESPRESSO_DIPOLES
 // Anchor: two identical dipoles m=(1,0,0) separated by d=(1,0,0).
 // Analytically f=(-6,0,0), torque=0 (parallel moments => no torque).
 BOOST_AUTO_TEST_CASE(pair_force_analytic) {
@@ -66,6 +70,9 @@ BOOST_AUTO_TEST_CASE(dipole_field_analytic) {
   BOOST_CHECK_SMALL(h[2], 1e-12);
 }
 #endif // ESPRESSO_DIPOLE_FIELD_TRACKING
-#endif // ESPRESSO_DIPOLES
 
 BOOST_AUTO_TEST_SUITE_END()
+
+#else  // ESPRESSO_DIPOLES
+int main(int argc, char **argv) {}
+#endif // ESPRESSO_DIPOLES

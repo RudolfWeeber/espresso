@@ -196,12 +196,11 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
    * (written directly, unique owner, no race); the Newton's-third-law
    * partner-j contributions go through the ScatterView with a per-lane
    * scatter. */
+  Kokkos::RangePolicy<execution_space, Kokkos::Schedule<Kokkos::Dynamic>>
+  policy_local(std::size_t{0}, n_local);
+  policy_local.set_chunk_size(64);
   Kokkos::parallel_for(
-      "dds_local_pairs",
-      Kokkos::RangePolicy<execution_space, Kokkos::Schedule<Kokkos::Dynamic>>(
-          std::size_t{0}, n_local)
-          .set_chunk_size(64),
-      [=](std::size_t const i) {
+      "dds_local_pairs", policy_local, [=](std::size_t const i) {
         auto const gi = offset + i;
         Utils::Vector3d const pos_i = pm[gi].pos;
         Utils::Vector3d const m_i = pm[gi].m;
@@ -243,10 +242,9 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
 
   /* Phase B: remote pairs (red [0, offset) + black [offset + n_local,
    * n_total)), visit-twice, no scatter — accumulate only i. */
+  Kokkos::RangePolicy<execution_space> policy_remote(std::size_t{0}, n_local);
   Kokkos::parallel_for(
-      "dds_remote_pairs",
-      Kokkos::RangePolicy<execution_space>(std::size_t{0}, n_local),
-      [=](std::size_t const i) {
+      "dds_remote_pairs", policy_remote, [=](std::size_t const i) {
         auto const gi = offset + i;
         Utils::Vector3d const pos_i = pm[gi].pos;
         Utils::Vector3d const m_i = pm[gi].m;
@@ -281,10 +279,9 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
   /* Reduce the Newton's-third-law contributions and add to particles. */
   Kokkos::Experimental::contribute(local_force, scatter_force);
   Kokkos::Experimental::contribute(local_torque, scatter_torque);
+  Kokkos::RangePolicy<execution_space> policy_reduce(std::size_t{0}, n_local);
   Kokkos::parallel_for(
-      "dds_reduction",
-      Kokkos::RangePolicy<execution_space>(std::size_t{0}, n_local),
-      [=](std::size_t const i) {
+      "dds_reduction", policy_reduce, [=](std::size_t const i) {
         local_particles_ptr[i]->force() +=
             prefactor_local * Utils::Vector3d{local_force(i, 0),
                                               local_force(i, 1),
@@ -342,11 +339,11 @@ double DipolarDirectSum::long_range_energy_cpu() const {
    * with j in (gi, offset + n_local). Computed from the local SoA slice while
    * the remote data is still in flight. */
   double uA = 0.;
+  Kokkos::RangePolicy<execution_space, Kokkos::Schedule<Kokkos::Dynamic>>
+  policy_local(std::size_t{0}, n_local);
+  policy_local.set_chunk_size(64);
   Kokkos::parallel_reduce(
-      "dds_energy_local",
-      Kokkos::RangePolicy<execution_space, Kokkos::Schedule<Kokkos::Dynamic>>(
-          std::size_t{0}, n_local)
-          .set_chunk_size(64),
+      "dds_energy_local", policy_local,
       [=](std::size_t const i, double &u_local) {
         auto const gi = offset + i;
         Utils::Vector3d const pos_i = pm[gi].pos;
@@ -376,9 +373,9 @@ double DipolarDirectSum::long_range_energy_cpu() const {
   /* Phase B: remote-black sum over j in [offset + n_local, n_total). No self
    * term and no primary exclusion — the range is entirely remote. */
   double uB = 0.;
+  Kokkos::RangePolicy<execution_space> policy_remote(std::size_t{0}, n_local);
   Kokkos::parallel_reduce(
-      "dds_energy_remote",
-      Kokkos::RangePolicy<execution_space>(std::size_t{0}, n_local),
+      "dds_energy_remote", policy_remote,
       [=](std::size_t const i, double &u_local) {
         auto const gi = offset + i;
         Utils::Vector3d const pos_i = pm[gi].pos;
@@ -444,37 +441,34 @@ void DipolarDirectSum::dipole_field_at_part_cpu() const {
   auto const *shifts_ptr = shifts.data();
   auto const n_shifts = shifts.size();
 
-  Kokkos::parallel_for(
-      "dds_dipole_field",
-      Kokkos::RangePolicy<execution_space>(std::size_t{0}, n_local),
-      [=](std::size_t const i) {
-        auto const gi = offset + i;
-        Utils::Vector3d const pos_i = pm[gi].pos;
-        Utils::Vector3d const m_i = pm[gi].m;
-        Utils::Vector3d u{};
+  Kokkos::RangePolicy<execution_space> policy(std::size_t{0}, n_local);
+  Kokkos::parallel_for("dds_dipole_field", policy, [=](std::size_t const i) {
+    auto const gi = offset + i;
+    Utils::Vector3d const pos_i = pm[gi].pos;
+    Utils::Vector3d const m_i = pm[gi].m;
+    Utils::Vector3d u{};
 
-        /* (a) self-image term over shifts[1..] (primary excluded) */
-        for (std::size_t s = 1; s < n_shifts; ++s)
-          u += dipole_field(shifts_ptr[s], m_i);
+    /* (a) self-image term over shifts[1..] (primary excluded) */
+    for (std::size_t s = 1; s < n_shifts; ++s)
+      u += dipole_field(shifts_ptr[s], m_i);
 
-        /* Sweep over all j in [0, n_total), self-primary excluded by splitting
-         * the range into [0, gi) and [gi + 1, n_total). */
-        std::size_t const ranges[2][2] = {{std::size_t{0}, gi},
-                                          {gi + 1, n_total}};
-        for (auto const &range : ranges) {
-          auto const range_begin = range[0];
-          auto const range_end = range[1];
-          for (auto j = range_begin; j < range_end; ++j) {
-            Utils::Vector3d const pos_j = pm[j].pos;
-            Utils::Vector3d const m_j = pm[j].m;
-            auto const d0 = with_replicas ? (pos_i - pos_j)
-                                          : box_geo.get_mi_vector(pos_i, pos_j);
-            for (std::size_t s = 0; s < n_shifts; ++s)
-              u += dipole_field(d0 + shifts_ptr[s], m_j);
-          }
-        }
-        local_particles_ptr[i]->dip_fld() = prefactor_local * u;
-      });
+    /* Sweep over all j in [0, n_total), self-primary excluded by splitting
+     * the range into [0, gi) and [gi + 1, n_total). */
+    std::size_t const ranges[2][2] = {{std::size_t{0}, gi}, {gi + 1, n_total}};
+    for (auto const &range : ranges) {
+      auto const range_begin = range[0];
+      auto const range_end = range[1];
+      for (auto j = range_begin; j < range_end; ++j) {
+        Utils::Vector3d const pos_j = pm[j].pos;
+        Utils::Vector3d const m_j = pm[j].m;
+        auto const d0 = with_replicas ? (pos_i - pos_j)
+                                      : box_geo.get_mi_vector(pos_i, pos_j);
+        for (std::size_t s = 0; s < n_shifts; ++s)
+          u += dipole_field(d0 + shifts_ptr[s], m_j);
+      }
+    }
+    local_particles_ptr[i]->dip_fld() = prefactor_local * u;
+  });
   Kokkos::fence();
 }
 #endif
