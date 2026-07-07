@@ -37,6 +37,7 @@
 #include "custom_verlet_list.hpp"
 #include "ghosts.hpp"
 #include "particle_store/ParticleStore.hpp"
+#include "particle_store/StoreGenerationGuard.hpp"
 #include "system/Leaf.hpp"
 
 #include <utils/Vector.hpp>
@@ -54,6 +55,7 @@
 #include <cassert>
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -185,7 +187,22 @@ private:
   bool m_verlet_skin_set = false;
   bool m_rebuild_verlet_list = true;
   bool m_rebuild_verlet_list_cabana = true;
-  std::vector<std::pair<Particle *, Particle *>> m_verlet_list;
+  /** Interaction pairs as @ref ParticleStore ROW indices (phase 7a). Held
+   *  across integration steps until the next Verlet rebuild. Cells no longer
+   *  own stable @c Particle addresses, so the pairs record the two particles'
+   *  store rows instead of pointers; the pair kernels resolve each row back to
+   *  a view at loop entry (hoisted store pointer, one view per row -- same cost
+   *  shape as the old pointer deref). The rows are only valid for the store
+   *  @ref ParticleStore::generation() they were recorded at (a rebuild
+   *  renumbers rows); that generation is stamped in @ref m_verlet_list_store
+   *  / @ref m_verlet_list_generation and re-checked (debug) before every use
+   *  via @ref ParticleStoreGuard::assert_generation. */
+  std::vector<std::pair<int, int>> m_verlet_list;
+  /** Store identity + generation the rows in @ref m_verlet_list were recorded
+   *  at (phase 7a). Used only by the debug generation guard; a rebuild between
+   *  build and consume without a Verlet rebuild would make the rows stale. */
+  ParticleStore const *m_verlet_list_store = nullptr;
+  std::uint64_t m_verlet_list_generation = 0u;
   double m_le_pos_offset_at_last_resort = 0.;
   /** @brief Verlet list skin. */
   double m_verlet_skin = 0.;
@@ -862,28 +879,53 @@ private:
     if (m_rebuild_verlet_list) {
       m_verlet_list.clear();
 
+      // Record each pair as store ROW indices, not Particle pointers: cells no
+      // longer own stable Particle addresses (phase 7a). The particles handed
+      // out by link_cell are store-attached (the caller ran
+      // ensure_particle_store_synchronized before any force loop), so
+      // store_row() is valid. Rows are only meaningful for the store
+      // generation they were recorded at -- stamp it so the consume branch can
+      // detect (debug) a rebuild that renumbered them without a Verlet rebuild.
       link_cell([&](Particle &p1, Particle &p2, Distance const &d) {
         if (verlet_criterion(p1, p2, d.dist2)) {
-          m_verlet_list.emplace_back(&p1, &p2);
+          m_verlet_list.emplace_back(p1.store_row(), p2.store_row());
           pair_kernel(p1, p2, d);
         }
       });
 
+      m_verlet_list_store = &m_particle_store;
+      m_verlet_list_generation = m_particle_store.generation();
       m_rebuild_verlet_list = false;
       m_rebuild_verlet_list_cabana = true;
     } else {
+      // Debug guard: the stored rows are only valid while the store generation
+      // is unchanged. A rebuild between build and consume (without a Verlet
+      // rebuild) would alias the wrong particle -- fire here in debug. The
+      // production invariant (every generation bump sets m_rebuild_verlet_list)
+      // is enumerated in the phase 7a task-3 report.
+      assert(m_verlet_list_store == &m_particle_store);
+      ParticleStoreGuard::assert_generation(
+          m_particle_store, m_verlet_list_generation, m_verlet_list_store);
+      // Hoist the store pointer once; resolve each row -> view at loop entry,
+      // in the SAME pair order (p1 then p2) as the old pointer derefs, so the
+      // per-pair arithmetic order is byte-for-byte unchanged (identity gate).
+      auto &store = m_particle_store;
       auto const maybe_box = decomposition().minimum_image_distance();
       /* In this case the pair kernel is just run over the verlet list. */
       if (maybe_box) {
         auto const distance_function =
             detail::MinimalImageDistance{decomposition().box()};
-        for (auto const &[p1, p2] : m_verlet_list) {
-          pair_kernel(*p1, *p2, distance_function(*p1, *p2));
+        for (auto const &[row1, row2] : m_verlet_list) {
+          auto p1 = store.make_view(row1);
+          auto p2 = store.make_view(row2);
+          pair_kernel(p1, p2, distance_function(p1, p2));
         }
       } else {
         auto const distance_function = detail::EuclidianDistance{};
-        for (auto const &[p1, p2] : m_verlet_list) {
-          pair_kernel(*p1, *p2, distance_function(*p1, *p2));
+        for (auto const &[row1, row2] : m_verlet_list) {
+          auto p1 = store.make_view(row1);
+          auto p2 = store.make_view(row2);
+          pair_kernel(p1, p2, distance_function(p1, p2));
         }
       }
     }

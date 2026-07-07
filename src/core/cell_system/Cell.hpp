@@ -117,8 +117,14 @@ public:
 
   neighbors_type m_neighbors;
 
-  /** Interaction pairs */
-  std::vector<std::pair<Particle *, Particle *>> m_verlet_list;
+  /** Interaction pairs as @ref ParticleStore ROW indices (phase 7a). Cells no
+   *  longer own stable @c Particle addresses, so pairs are recorded as store
+   *  rows rather than pointers, mirroring @ref CellStructure::m_verlet_list.
+   *  NOTE: this member has no reader or writer anywhere in the code base (the
+   *  live Verlet list is @ref CellStructure::m_verlet_list); the type is kept
+   *  in sync with the pointer-lifetime hardening for consistency and is a
+   *  candidate for removal in a later phase. */
+  std::vector<std::pair<int, int>> m_verlet_list;
 
   /**
    * @brief All neighbors of the cell.
