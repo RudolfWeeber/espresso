@@ -58,6 +58,16 @@ regression; the `--particles_per_core 4000` configurations stay at 5%. The
 struct, migration carriers, and accessor attached/detached branches are
 removed.
 
+**Phase-6 checkpoint (2026-07-07, PASSED amended budget):** lj-1rank 1.112,
+lj-4rank 1.092, lj-omp 1.048, p3m-1rank 0.996, p3m-4rank 1.036, p3m-omp 1.028.
+Phase 6 verified perf-neutral vs phase 5 by order-balanced interleaved A/B
+(lj1 1.000, lj-omp 1.003, p3m1 1.000) after one recovery fix: the has-exclusion
+pack flag became rebuild-cadence and the per-step pack-commit loop — a pure
+no-op once phases 5/6 store-aliased every per-step field — was deleted.
+Metrology note: sub-1% A/B on this host requires ORDER-BALANCED sampling
+(alternate which binary runs first per repetition; the second runner carries a
+consistent thermal bias).
+
 ## Non-goals
 
 - No change to the Python user interface or its semantics.
