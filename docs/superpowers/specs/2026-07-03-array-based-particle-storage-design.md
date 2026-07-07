@@ -68,6 +68,20 @@ Metrology note: sub-1% A/B on this host requires ORDER-BALANCED sampling
 (alternate which binary runs first per repetition; the second runner carries a
 consistent thermal bias).
 
+**Phase-7a/7b checkpoint (2026-07-07, PASSED amended budget):** lj-1rank 1.082,
+lj-4rank 1.014, lj-omp 0.996, p3m-1rank 1.033, p3m-4rank 1.016, p3m-omp 1.014
+vs phase-0 — every configuration also inside the ORIGINAL 5% budget except
+lj-1rank (covered by the 12% amendment). Adjudicated transitional deviation
+(7a): cells hold `Utils::Bag<int>` row indices instead of the spec's
+`(offset,count)` ranges until the phase-7c permutation resort lands (ranges
+cannot support cheap mutation without it). Phase-7b deleted the whole-Particle
+boost migration envelope and every migration carrier: migration and the
+head-node fetch path ship per-field packed buffers (MigrationPack), and
+`Particle` is now a 16-byte non-owning view `{ParticleStore*, row}`. The
+envelope death recovered the phase-7a resort residual and more (lj-4rank
+0.824 vs 7a). Remaining 7 sub-projects: 7e (id→row map), 7c (permutation
+resort + range collapse), 7d (GPU compile-safe shim).
+
 ## Non-goals
 
 - No change to the Python user interface or its semantics.
