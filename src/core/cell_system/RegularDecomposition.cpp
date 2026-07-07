@@ -188,8 +188,14 @@ void RegularDecomposition::resort(bool global,
     // so on extraction we re-examine the same position (the swapped-in row);
     // otherwise we advance. fold_and_reset writes through the view into the
     // store column; the snapshot taken by extract_row carries the folded value.
+    // One cached view reused across this cell's rows, REBOUND per position via
+    // attach_to_store instead of constructing a fresh Particle each iteration
+    // (phase 7a perf fix). extract_row mutates the store (swap-with-back), so
+    // the view is rebound to rows[index] afresh every pass anyway; carriers
+    // stay default and are never read while attached.
+    Particle view;
     for (std::size_t index = 0u; index < c->rows().size();) {
-      auto view = c->store().make_view(c->rows().begin()[index]);
+      view.attach_to_store(c->store(), c->rows().begin()[index]);
       fold_and_reset(view, m_box);
 
       auto target_cell = particle_to_cell(view);

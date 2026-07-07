@@ -61,9 +61,15 @@ inline void enumerate_local_particles(CellStructure const &cs,
           auto &store = cell->store();
           auto const &rows = cell->rows();
           auto const n_part = rows.size();
+          // Reuse one cached view across this cell's rows (this inner loop is
+          // sequential -- one thread per cell -- so a single rebound view is
+          // safe), REBOUND per row via attach_to_store instead of constructing
+          // a fresh Particle per row (phase 7a perf fix). Carriers stay default
+          // and are never read while attached.
+          Particle view;
           for (std::size_t p_index{0}; p_index < n_part; ++p_index) {
             auto global_index = base_offset + p_index;
-            auto view = store.make_view(rows.begin()[p_index]);
+            view.attach_to_store(store, rows.begin()[p_index]);
             kernel(global_index, view);
           }
         });

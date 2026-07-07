@@ -296,17 +296,20 @@ void CellStructure::set_index_map() {
   auto &unique_particles = m_unique_particles;
   unique_particles.clear();
   auto const n_local = count_local_particles();
-  unique_particles.reserve(m_view_pool.size());
+  unique_particles.reserve(m_view_pool_fill);
   int max_id = -1;
   int pair_count = 0;
   int angle_count = 0;
   int dihedral_count = 0;
   m_bond_state->reset_counts();
-  // Iterate the stable view pool: local prefix (pool positions [0, n_local))
-  // then the deduped ghost tail. Count bonds only on the local prefix (matching
-  // the pre-flip enumerate_local_particles pass, which never walked ghosts).
-  std::size_t pool_index = 0u;
-  for (auto &p : m_view_pool) {
+  // Iterate the LIVE view-pool prefix [0, m_view_pool_fill): local prefix (pool
+  // positions [0, n_local)) then the deduped ghost tail. Slots past
+  // m_view_pool_fill are idle reusable capacity (phase 7a perf fix) and must be
+  // skipped. Count bonds only on the local prefix (matching the pre-flip
+  // enumerate_local_particles pass, which never walked ghosts).
+  for (std::size_t pool_index = 0u; pool_index < m_view_pool_fill;
+       ++pool_index) {
+    auto &p = m_view_pool[pool_index];
     unique_particles.emplace_back(std::addressof(p));
     max_id = std::max(p.id(), max_id);
     if (pool_index < n_local) {
@@ -324,7 +327,6 @@ void CellStructure::set_index_map() {
         }
       }
     }
-    ++pool_index;
   }
   set_local_bond_numbers(pair_count, angle_count, dihedral_count);
   m_bond_state->allocate();
@@ -518,13 +520,16 @@ void CellStructure::ensure_particle_store_synchronized() {
 void CellStructure::rebuild_particle_index() {
   assert(not m_particle_store.is_dirty());
   m_particle_index.clear();
-  m_view_pool.clear();
+  // Phase 7a perf fix: rewind the fill cursor and REUSE the pool's constructed
+  // slots (acquire_view_slot rebinds them in place) instead of clear + N-fold
+  // Particle construction. Idle slots past m_view_pool_fill stay as reusable
+  // capacity; they are never read.
+  m_view_pool_fill = 0u;
   auto const n_local = m_particle_store.number_of_local_particles();
   // Index locals (rows [0, n_local)); their id columns are valid.
   for (std::size_t r = 0u; r < n_local; ++r) {
-    m_view_pool.push_back(m_particle_store.make_view(static_cast<int>(r)));
-    auto &view = m_view_pool.back();
-    update_particle_index(view.id(), std::addressof(view));
+    auto *view = acquire_view_slot(static_cast<int>(r));
+    update_particle_index(view->id(), view);
   }
   // Also index the ALREADY-VALID ghost rows: a bare rebuild (e.g. an
   // add_particle commit, the clean-store forces.cpp sync, or resort_particles'
@@ -548,15 +553,26 @@ void CellStructure::index_ghost_particles() {
   // tail. Idempotent: a ghost id already present (from a local or an earlier
   // ghost of the same id) is skipped, so re-running after ghosts_update only
   // adds the newly-valid ghosts.
+  //
+  // Phase 7a perf fix: peek at the next idle slot bound to this row, check its
+  // id, and only COMMIT (advance m_view_pool_fill via acquire_view_slot) if the
+  // ghost is accepted -- a rejected candidate leaves the slot idle for the next
+  // row to reuse, so no Particle is constructed per skipped ghost.
   for (std::size_t r = n_local; r < n_total; ++r) {
-    auto candidate = m_particle_store.make_view(static_cast<int>(r));
-    auto const id = candidate.id();
-    if (id < 0 or get_local_particle(id) != nullptr) {
-      continue;
+    // Bind the next idle slot to row r without advancing the cursor. Grow the
+    // pool by one only if there is no idle slot to rebind.
+    if (m_view_pool_fill >= m_view_pool.size()) {
+      m_view_pool.push_back(m_particle_store.make_view(static_cast<int>(r)));
+    } else {
+      m_view_pool[m_view_pool_fill].attach_to_store(m_particle_store,
+                                                    static_cast<int>(r));
     }
-    m_view_pool.push_back(std::move(candidate));
-    auto &view = m_view_pool.back();
-    update_particle_index(id, std::addressof(view));
+    auto const id = m_view_pool[m_view_pool_fill].id();
+    if (id < 0 or get_local_particle(id) != nullptr) {
+      continue; // leave the slot idle; the next row rebinds it
+    }
+    update_particle_index(id, std::addressof(m_view_pool[m_view_pool_fill]));
+    ++m_view_pool_fill; // commit
   }
 }
 

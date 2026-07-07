@@ -103,8 +103,19 @@ ResultType reduce_over_local_particles(
   if (cells.size() > 1) { // parallel loop over cells
     auto reducer = Reduction::make_kokkos_reducer<ResultType>(
         [&cells, add_partial](std::size_t const c_index, ResultType &res) {
-          for (auto const &p : cells[c_index]->particles()) {
-            add_partial(res, p);
+          // One reused view per cell (per thread), REBOUND per row via
+          // attach_to_store instead of materialising a Particle per cell
+          // through the row-range iterator (phase 7a perf fix). Carriers stay
+          // default and are never read while attached.
+          auto *cell = cells[c_index];
+          auto const &rows = cell->rows();
+          auto const n_part = rows.size();
+          auto const *row_data = rows.begin();
+          auto &store = cell->store();
+          Particle p;
+          for (std::size_t idx = 0u; idx < n_part; ++idx) {
+            p.attach_to_store(store, row_data[idx]);
+            add_partial(res, std::as_const(p));
           }
         },
         reduce_op);

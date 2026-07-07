@@ -184,13 +184,26 @@ private:
   std::vector<Particle *> m_particle_index;
   /** Stable view pool backing @ref m_particle_index (phase 7a transitional).
    *  One attached @ref Particle view per indexed particle (locals, then the
-   *  ghost copies not shadowed by a local), rebuilt wholesale from the store by
+   *  ghost copies not shadowed by a local), refreshed from the store by
    *  @ref rebuild_particle_index every store rebuild. A @c std::deque so that
    *  refilling never relocates already-handed-out element addresses within one
-   *  generation; cleared and refilled (not @c clear + reused) each rebuild.
-   *  Handing @c get_local_particle callers a pointer into this pool preserves
-   *  the "pointer valid until the next topology change" contract. */
+   *  generation. Handing @c get_local_particle callers a pointer into this pool
+   *  preserves the "pointer valid until the next topology change" contract.
+   *
+   *  Phase 7a perf fix: slots are REUSED across rebuilds, not reconstructed. A
+   *  rebuild resets @ref m_view_pool_fill to 0 and REBINDS the first slots via
+   *  @ref acquire_view_slot (each a two-field @ref Particle::attach_to_store,
+   *  no Particle construction), growing the deque only when more views are
+   *  needed than exist. The deque may therefore hold idle slots past
+   *  @ref m_view_pool_fill; those are reusable capacity and MUST NOT be read.
+   *  The only full-pool consumer (@ref set_bond_state_and_unique_particles)
+   *  bounds its walk by @ref m_view_pool_fill. */
   std::deque<Particle> m_view_pool;
+  /** Number of leading @ref m_view_pool slots that are live this generation
+   *  (bound by @ref rebuild_particle_index / @ref index_ghost_particles via
+   *  @ref acquire_view_slot). Slots at [@c m_view_pool_fill, @c size()) are
+   * idle reusable capacity, not live views. */
+  std::size_t m_view_pool_fill = 0u;
   /** Implementation of the primary particle decomposition */
   std::unique_ptr<ParticleDecomposition> m_decomposition;
   /** Active type in m_decomposition */
@@ -289,7 +302,11 @@ public:
    */
   void clear_particle_index() {
     m_particle_index.clear();
-    m_view_pool.clear();
+    // Drop the live views but KEEP the deque's constructed slots as reusable
+    // capacity (phase 7a perf fix): the next rebuild rebinds them in place via
+    // acquire_view_slot rather than reconstructing. Idle slots are never read
+    // (all reads are bounded by m_view_pool_fill).
+    m_view_pool_fill = 0u;
   }
 
 private:
@@ -314,6 +331,23 @@ private:
    * entry for each ghost whose id is not owned by a local.
    */
   void index_ghost_particles();
+
+  /**
+   * @brief Acquire the next view-pool slot bound to @p row (phase 7a perf fix).
+   *
+   * Rebinds the leading idle slot in place (a two-field
+   * @ref Particle::attach_to_store, no Particle construction) if one exists,
+   * otherwise grows the pool by one constructed view. Advances
+   * @ref m_view_pool_fill and returns the (address-stable) slot.
+   */
+  Particle *acquire_view_slot(int row) {
+    if (m_view_pool_fill < m_view_pool.size()) {
+      m_view_pool[m_view_pool_fill].attach_to_store(m_particle_store, row);
+    } else {
+      m_view_pool.push_back(m_particle_store.make_view(row));
+    }
+    return std::addressof(m_view_pool[m_view_pool_fill++]);
+  }
 
   /**
    * @brief Stage a particle for insertion into a cell (phase 7a).
@@ -785,28 +819,67 @@ private:
    *
    * @tparam Kernel Needs to be callable with (Particle, Particle, Distance).
    * @param kernel Pair kernel functor.
+   *
+   * Phase 7a perf fix: iterate the cells' store-ROW bags directly and REBIND
+   * three cached @ref Particle views (p1 + the two partner roles) via
+   * @ref Particle::attach_to_store, instead of driving @ref
+   * Algorithm::link_cell over @ref RowParticleRange iterators. Each such
+   * iterator embeds a Particle by value, so the generic algorithm constructed a
+   * fresh Particle for every
+   * @c std::next(it) copy and every neighbor-range begin()/end() -- tens of
+   * thousands of Particle materialisations per Verlet rebuild (the dominant
+   * cost when the Verlet list rebuilds often). The pair ORDER and the p1/p2
+   * role assignment are byte-for-byte identical to Algorithm::link_cell (cell
+   * self-pairs [i, j>i] then red-neighbour pairs), preserving the identity
+   * gate. The rebound views' migration carriers stay default and are never
+   * read.
    */
   template <class Kernel> void link_cell(Kernel kernel) {
     auto const maybe_box = decomposition().minimum_image_distance();
-    auto const local_cells_span = decomposition().local_cells();
-    auto const first = boost::make_indirect_iterator(local_cells_span.begin());
-    auto const last = boost::make_indirect_iterator(local_cells_span.end());
-
     if (maybe_box) {
-      Algorithm::link_cell(
-          first, last,
-          [&kernel, df = detail::MinimalImageDistance{decomposition().box()}](
-              Particle &p1, Particle &p2) { kernel(p1, p2, df(p1, p2)); });
+      link_cell_rows(detail::MinimalImageDistance{decomposition().box()},
+                     kernel);
     } else {
       if (decomposition().box().type() != BoxType::CUBOID) {
         throw std::runtime_error("Non-cuboid box type is not compatible with a "
                                  "particle decomposition that relies on "
                                  "EuclideanDistance for distance calculation.");
       }
-      Algorithm::link_cell(
-          first, last,
-          [&kernel, df = detail::EuclidianDistance{}](
-              Particle &p1, Particle &p2) { kernel(p1, p2, df(p1, p2)); });
+      link_cell_rows(detail::EuclidianDistance{}, kernel);
+    }
+  }
+
+  /** @brief Row-bag link-cell driver reusing three cached views (phase 7a perf
+   *  fix). See @ref link_cell. */
+  template <class DistanceFunction, class Kernel>
+  void link_cell_rows(DistanceFunction const &df, Kernel &kernel) {
+    auto &store = m_particle_store;
+    // Three reused views rebound per element: p1 (outer), and the two partner
+    // roles (self-cell partner, neighbour partner). Carriers stay default and
+    // are never read while attached.
+    Particle p1, p_self, p_nb;
+    for (auto *cell : decomposition().local_cells()) {
+      auto const &rows = cell->rows();
+      auto const n = rows.size();
+      auto const *row_data = rows.begin();
+      for (std::size_t i = 0u; i < n; ++i) {
+        p1.attach_to_store(store, row_data[i]);
+        // Pairs within this cell (j > i), same order as Algorithm::link_cell.
+        for (std::size_t j = i + 1u; j < n; ++j) {
+          p_self.attach_to_store(store, row_data[j]);
+          kernel(p1, p_self, df(p1, p_self));
+        }
+        // Pairs with the red-partition neighbours, same order.
+        for (auto *neighbor : cell->neighbors().red()) {
+          auto const &nb_rows = neighbor->rows();
+          auto const nb_n = nb_rows.size();
+          auto const *nb_data = nb_rows.begin();
+          for (std::size_t k = 0u; k < nb_n; ++k) {
+            p_nb.attach_to_store(store, nb_data[k]);
+            kernel(p1, p_nb, df(p1, p_nb));
+          }
+        }
+      }
     }
   }
 
@@ -962,20 +1035,28 @@ private:
       // per-pair arithmetic order is byte-for-byte unchanged (identity gate).
       auto &store = m_particle_store;
       auto const maybe_box = decomposition().minimum_image_distance();
+      // Reuse two cached views across the whole pair loop, REBOUND to each
+      // pair's rows via attach_to_store (two handle-field writes), instead of
+      // constructing a fresh Particle per row per pair (phase 7a perf fix,
+      // prior review finding I1). Building views was two full Particle
+      // materialisations per pair here -- hot, since collision detection walks
+      // this branch every step. The carriers stay default and are never read
+      // while attached.
+      Particle p1, p2;
       /* In this case the pair kernel is just run over the verlet list. */
       if (maybe_box) {
         auto const distance_function =
             detail::MinimalImageDistance{decomposition().box()};
         for (auto const &[row1, row2] : m_verlet_list) {
-          auto p1 = store.make_view(row1);
-          auto p2 = store.make_view(row2);
+          p1.attach_to_store(store, row1);
+          p2.attach_to_store(store, row2);
           pair_kernel(p1, p2, distance_function(p1, p2));
         }
       } else {
         auto const distance_function = detail::EuclidianDistance{};
         for (auto const &[row1, row2] : m_verlet_list) {
-          auto p1 = store.make_view(row1);
-          auto p2 = store.make_view(row2);
+          p1.attach_to_store(store, row1);
+          p2.attach_to_store(store, row2);
           pair_kernel(p1, p2, distance_function(p1, p2));
         }
       }

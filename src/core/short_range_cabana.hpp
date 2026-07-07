@@ -101,11 +101,22 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
   // but ghost particles from other ranks may have larger particle ids;
   // -1 is used as a sentinel value for particle ids from other threads
 
+  // Phase 7a perf fix: iterate the cells' store-ROW bags directly and REBIND
+  // two cached views (p1 + partner) per work item via
+  // Particle::attach_to_store, instead of driving RowParticleRange iterators
+  // (each embeds a Particle by value, so std::next(it) and per-neighbour range
+  // begin()/end() would build fresh Particles). One reused view per role per
+  // work item (one cell per Kokkos work item) is thread-safe. Iteration ORDER
+  // is unchanged. Carriers stay default and are never read while attached.
   auto intra_kernel = [&cells, &box_geo, &verlet_criterion, &id_to_index,
                        &intra_operator, max_id](const int i) {
-    auto local_particles = cells[i]->particles();
-    for (auto it = local_particles.begin(); it != local_particles.end(); ++it) {
-      auto const &p1 = *it;
+    auto &store = cells[i]->store();
+    auto const &rows = cells[i]->rows();
+    auto const n = rows.size();
+    auto const *row_data = rows.begin();
+    Particle p1, p2;
+    for (std::size_t a = 0u; a < n; ++a) {
+      p1.attach_to_store(store, row_data[a]);
       if (p1.id() <= max_id) {
         auto const ii = id_to_index(p1.id());
         if (ii >= 0) {
@@ -114,13 +125,14 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
           // outer particle instead of once per pair candidate avoids O(pairs)
           // strided column reads on this hot path.
           auto const p1_pos = Utils::Vector3d(p1.pos());
-          // pairs in this cell
-          for (auto jt = std::next(it); jt != local_particles.end(); ++jt) {
-            if ((*jt).id() <= max_id) {
-              if (verlet_criterion(p1, *jt,
+          // pairs in this cell (j > i), same order as before
+          for (std::size_t b = a + 1u; b < n; ++b) {
+            p2.attach_to_store(store, row_data[b]);
+            if (p2.id() <= max_id) {
+              if (verlet_criterion(p1, p2,
                                    box_geo.get_mi_dist2(
-                                       p1_pos, Utils::Vector3d(jt->pos())))) {
-                auto const jj = id_to_index((*jt).id());
+                                       p1_pos, Utils::Vector3d(p2.pos())))) {
+                auto const jj = id_to_index(p2.id());
                 if (jj >= 0) {
                   intra_operator(ii, jj);
                 }
@@ -134,16 +146,26 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
 
   auto inter_kernel = [&cells, &box_geo, &verlet_criterion, &id_to_index,
                        &inter_operator, max_id](const int i) {
-    auto local_particles = cells[i]->particles();
-    for (auto const &p1 : local_particles) {
+    auto &store = cells[i]->store();
+    auto const &rows = cells[i]->rows();
+    auto const n = rows.size();
+    auto const *row_data = rows.begin();
+    Particle p1, p2;
+    for (std::size_t a = 0u; a < n; ++a) {
+      p1.attach_to_store(store, row_data[a]);
       if (p1.id() <= max_id) {
         auto const ii = id_to_index(p1.id());
         if (ii >= 0) {
           // Hoist p1's position out of the inner loops (see intra_kernel).
           auto const p1_pos = Utils::Vector3d(p1.pos());
-          // pairs with neighboring cells
-          for (auto &neighbor : cells[i]->neighbors().red()) {
-            for (auto const &p2 : neighbor->particles()) {
+          // pairs with neighboring cells, same order as before
+          for (auto *neighbor : cells[i]->neighbors().red()) {
+            auto &nb_store = neighbor->store();
+            auto const &nb_rows = neighbor->rows();
+            auto const nb_n = nb_rows.size();
+            auto const *nb_data = nb_rows.begin();
+            for (std::size_t k = 0u; k < nb_n; ++k) {
+              p2.attach_to_store(nb_store, nb_data[k]);
               if (p2.id() <= max_id) {
                 if (verlet_criterion(p1, p2,
                                      box_geo.get_mi_dist2(

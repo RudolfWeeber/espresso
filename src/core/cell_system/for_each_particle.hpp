@@ -36,10 +36,19 @@ CellStructure::parallel_for_each_particle_impl(std::span<Cell *const> cells,
   if (cells.size() > 1) {
     Kokkos::parallel_for( // loop over cells
         "for_each_local_particle", cells.size(), [&](auto cell_idx) {
-          // One row-range iterator per cell (per thread) reuses its own cached
-          // view across the cell's particles (phase 7a lifetime contract).
-          for (auto &p : cells[cell_idx]->particles())
+          // One reused view per cell (per thread), REBOUND per row via
+          // attach_to_store instead of relying on the row-range iterator to
+          // materialise a Particle per cell (phase 7a perf fix). Iterating the
+          // row bag directly avoids even the one-per-cell shell construction.
+          // Carriers stay default and are never read while attached.
+          auto const &rows = cells[cell_idx]->rows();
+          auto const n_part = rows.size();
+          auto const *row_data = rows.begin();
+          Particle p;
+          for (std::size_t idx = 0u; idx < n_part; ++idx) {
+            p.attach_to_store(store, row_data[idx]);
             f(p);
+          }
         });
   } else if (cells.size() == 1) {
     // Single-cell parallel-over-particles: each index gets its OWN view (a

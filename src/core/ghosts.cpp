@@ -2108,12 +2108,18 @@ static void cell_cell_transfer(GhostCommunication const &ghost_comm,
       assert(src_rows.size() == dst_rows.size());
       auto &store = *active_particle_store();
 
+      // Reuse two cached views across the row loop, REBOUND per row via
+      // attach_to_store (two handle-field writes) instead of constructing a
+      // fresh Particle per row per side (phase 7a perf fix). This loop runs on
+      // every ghost update; the carriers stay default and are never read while
+      // attached.
+      Particle p1, p2;
       for (std::size_t i = 0; i < src_rows.size(); i++) {
         auto ar_out = Utils::MemcpyOArchive{buffer.make_span()};
         auto ar_in = Utils::MemcpyIArchive{buffer.make_span()};
         // Views over the source and destination store rows (phase 7a).
-        auto p1 = store.make_view(src_rows.begin()[i]);
-        auto p2 = store.make_view(dst_rows.begin()[i]);
+        p1.attach_to_store(store, src_rows.begin()[i]);
+        p2.attach_to_store(store, dst_rows.begin()[i]);
         serialize_and_reduce(ar_out, p1, data_parts, ReductionPolicy::UPDATE,
                              SerializationDirection::SAVE, box_geo,
                              &ghost_comm.shift, pos_ctx_ptr, mom_ctx_ptr,
