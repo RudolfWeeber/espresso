@@ -442,6 +442,42 @@ CellStructure::CellStructure(BoxGeometry const &box)
   mark_particle_store_dirty();
 }
 
+// Phase 7c permutation builder (DORMANT). Walks cells in the current rebuild
+// order and emits perm[] (old row per surviving new row, -1 for staged/ghost)
+// + the future (offset, count) per cell. Reproduces the assign_row rebuild
+// order byte-for-byte for a removal-free history: local cells in span order,
+// then ghost cells; per cell surviving rows in bag order, then staged in push
+// order. Must be called BEFORE the assign_row loop mutates the cell bags.
+void CellStructure::build_resort_permutation(
+    std::vector<int> &permutation,
+    std::vector<std::pair<std::size_t, std::size_t>> &cell_ranges) const {
+  permutation.clear();
+  cell_ranges.clear();
+  // The permutation entry for a new row is the OLD store row it survives from
+  // (>= 0), or -1 for a staged / fresh-ghost row that carries no old-generation
+  // data. `next_row` walks the future contiguous store; each cell's future
+  // range is [offset, offset + count).
+  auto emit_cells = [&permutation, &cell_ranges](std::span<Cell *const> cells) {
+    for (auto const *cell : cells) {
+      auto const offset = permutation.size();
+      // Surviving committed rows: preserve by old row, in current bag order.
+      for (int const old_row : cell->rows()) {
+        permutation.push_back(old_row);
+      }
+      // Staged rows (new / migrated / fresh ghost) in push order: no old-
+      // generation row, so a sentinel -1 (the permute rebuild seeds defaults;
+      // the caller copies a staged local's data into the row via copy_row).
+      for (std::size_t k = 0u; k < cell->staged().size(); ++k) {
+        permutation.push_back(-1);
+      }
+      auto const count = permutation.size() - offset;
+      cell_ranges.emplace_back(offset, count);
+    }
+  };
+  emit_cells(decomposition().local_cells());
+  emit_cells(decomposition().ghost_cells());
+}
+
 void CellStructure::ensure_particle_store_synchronized() {
   if (not m_particle_store.is_dirty()) {
     return;
@@ -470,6 +506,44 @@ void CellStructure::ensure_particle_store_synchronized() {
   for (auto const *cell : decomposition().ghost_cells()) {
     n_ghost += cell_count(cell);
   }
+
+#ifdef ESPRESSO_ADDITIONAL_CHECKS
+  // Phase 7c both-paths-in-debug: build the resort permutation the DORMANT
+  // permute_rebuild would consume, and capture the id each new row is EXPECTED
+  // to carry, sourced exactly as the live assign_row path sources it -- a
+  // survivor keeps the current-generation id at its old row; a staged row takes
+  // its source-store id (or the -1 default for a fresh, source-less ghost). The
+  // ids must be captured NOW, before begin_rebuild swaps the generation out.
+  // After the live rebuild, the store id at each new row must match, proving
+  // the builder reproduces the assign_row order row-for-row. Runs alongside
+  // (not instead of) the live rebuild for one release cycle.
+  std::vector<int> debug_permutation;
+  std::vector<std::pair<std::size_t, std::size_t>> debug_cell_ranges;
+  build_resort_permutation(debug_permutation, debug_cell_ranges);
+  std::vector<int> debug_expected_ids;
+  debug_expected_ids.reserve(debug_permutation.size());
+  {
+    // Walk the cells in the SAME order the builder used to line up each new
+    // row's permutation entry with its staged source (the staged entries carry
+    // -1 in the permutation, so their id source is read from the cell here).
+    auto capture_expected =
+        [this, &debug_expected_ids](std::span<Cell *const> cells) {
+          for (auto const *cell : cells) {
+            for (int const old_row : cell->rows()) {
+              debug_expected_ids.push_back(m_particle_store.id(old_row));
+            }
+            for (auto const &staged : cell->staged()) {
+              debug_expected_ids.push_back(
+                  staged.source_store != nullptr
+                      ? staged.source_store->id(staged.source_row)
+                      : -1);
+            }
+          }
+        };
+    capture_expected(decomposition().local_cells());
+    capture_expected(decomposition().ghost_cells());
+  }
+#endif
 
   // Snapshot the OLD row bags before begin_rebuild swaps the columns: a
   // surviving row is assigned by handing assign_row a Particle attached to
@@ -571,6 +645,53 @@ void CellStructure::ensure_particle_store_synchronized() {
   };
   check_cell_rows(decomposition().local_cells());
   check_cell_rows(decomposition().ghost_cells());
+
+  // Phase 7c both-paths-in-debug cross-verification: the builder produced one
+  // permutation entry per new row in the SAME order the live rebuild assigned
+  // them, so the store id at each new row must equal the id we captured from
+  // that entry's source before the swap. A mismatch means the permutation
+  // builder and the live assign_row rebuild disagree on the row order.
+  if (debug_permutation.size() != m_particle_store.number_of_particles()) {
+    throw std::runtime_error(
+        "resort permutation size " + std::to_string(debug_permutation.size()) +
+        " != store row count " +
+        std::to_string(m_particle_store.number_of_particles()));
+  }
+  for (std::size_t new_row = 0u; new_row < debug_permutation.size();
+       ++new_row) {
+    auto const stored_id = m_particle_store.id(static_cast<int>(new_row));
+    if (stored_id != debug_expected_ids[new_row]) {
+      throw std::runtime_error("resort permutation id mismatch at new row " +
+                               std::to_string(new_row) +
+                               ": builder expected id " +
+                               std::to_string(debug_expected_ids[new_row]) +
+                               " but store holds " + std::to_string(stored_id));
+    }
+  }
+  // The (offset, count) ranges must tile [0, n_total) contiguously and match
+  // each cell's assigned row span -- the (offset, count) collapse the Task-3
+  // flip writes back onto Cell.
+  {
+    std::size_t expected_offset = 0u;
+    std::size_t range_index = 0u;
+    auto check_ranges = [this, &debug_cell_ranges, &expected_offset,
+                         &range_index](std::span<Cell *const> cells) {
+      for (auto const *cell : cells) {
+        auto const &[offset, count] = debug_cell_ranges.at(range_index++);
+        // After the rebuild, cell->rows() holds ALL committed rows (survivors
+        // plus the now-committed staged rows), which is exactly the builder's
+        // count (survivors + staged, captured before the staged area cleared).
+        if (offset != expected_offset or count != cell->rows().size()) {
+          throw std::runtime_error(
+              "resort cell range mismatch at cell range index " +
+              std::to_string(range_index - 1u));
+        }
+        expected_offset += count;
+      }
+    };
+    check_ranges(decomposition().local_cells());
+    check_ranges(decomposition().ghost_cells());
+  }
 #endif
 }
 
@@ -1067,8 +1188,8 @@ void CellStructure::update_ghosts_and_resort_particle(unsigned data_parts) {
     /* Index the ghosts now that ghosts_update has filled their id columns
      * (phase 7a: the rebuild inside ensure_particle_store_synchronized indexed
      * only locals, whose ids were valid; freshly created ghost rows carried a
-     * default id until this update). Adds one stable view-pool entry per ghost
-     * whose id is not owned by a local. */
+     * default id until this update). Records the store row for each ghost whose
+     * id is not already owned by a local (phase 7e retired the view pool). */
     index_ghost_particles();
 
     /* Particles are now sorted */

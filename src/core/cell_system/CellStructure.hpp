@@ -344,6 +344,34 @@ private:
    */
   void index_ghost_particles();
 
+  /**
+   * @brief Build the resort permutation over surviving store rows (phase 7c,
+   * DORMANT).
+   *
+   * Walks the cells in the CURRENT rebuild order -- local cells in
+   * @ref ParticleDecomposition::local_cells span order, then ghost cells; per
+   * cell: surviving rows in @c cell->rows() bag order, then staged rows in
+   * @c cell->staged() push order -- and produces:
+   *  - @p permutation : one entry per new row. A surviving row's entry is the
+   *    OLD store row whose data the permute rebuild moves into that new row; a
+   *    staged / fresh-ghost row's entry is -1 (the permute rebuild seeds the
+   *    defaults, the caller overwrites a staged local via copy_row).
+   *  - @p cell_ranges : the future @c (offset, count) of each cell, in the same
+   *    cell order (locals then ghosts). @c offset is the first new row of the
+   *    cell, @c count its surviving + staged row total. This is the (offset,
+   *    count) collapse the Task-3 flip writes back onto @ref Cell.
+   *
+   * MUST reproduce the current assign_row rebuild order byte-for-byte for a
+   * removal-free history: cells in current span order, surviving rows in bag
+   * order, staged in push order. Under @c ESPRESSO_ADDITIONAL_CHECKS the caller
+   * runs this alongside the live assign_row rebuild and cross-verifies row-for-
+   * row id equality (both-paths-in-debug for one release cycle). DORMANT: no
+   * production path drives the resort with it yet (the Task-3 flip does).
+   */
+  void build_resort_permutation(
+      std::vector<int> &permutation,
+      std::vector<std::pair<std::size_t, std::size_t>> &cell_ranges) const;
+
   /** @brief Grow the migration staging store to hold at least @p needed rows,
    *  preserving already-staged rows (phase 7b). Shared by @ref stage_row and
    *  @ref reserve_staging_rows. */

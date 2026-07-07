@@ -35,6 +35,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <type_traits>
 #include <vector>
 
@@ -134,13 +135,49 @@ public:
    * staging store) and `receive` (staging store -> live store) paths: a full,
    * value-preserving row transfer.
    *
-   * The copied field set is IDENTICAL to @ref assign_row's coverage. The two
-   * MUST be kept in sync: any field added to @ref assign_row must be added here
-   * (and vice versa). The maximal-population round-trip unit test enforces
+   * The copied field set is IDENTICAL to @ref assign_row's coverage. All four
+   * per-field consumers MUST be kept in sync: @ref assign_row, this
+   * @ref copy_row, @ref permute_rebuild, and the MigrationPack per-field wire
+   * pack (particle_store/MigrationPack.cpp). Any field added to one must be
+   * added to the others. The maximal-population round-trip unit test enforces
    * this.
    */
   void copy_row(ParticleStore const &source, int source_row,
                 int destination_row);
+
+  /**
+   * @brief Rebuild the store by permuting surviving rows (phase 7c, DORMANT).
+   *
+   * The resort-as-permutation path that replaces the per-particle branchy
+   * @ref assign_row rebuild loop with contiguous, vectorizable per-column
+   * permute kernels (`col_new[new_row] = col_old[perm[new_row]]`). Like
+   * @ref begin_rebuild it swaps the current and spare generations (the retired
+   * generation becomes the permute READ source) and grows the write target to
+   * @p n_local + @p n_ghost rows; unlike the assign_row loop it then, for every
+   * column / POD sidecar / ragged sidecar, moves the data from the old row
+   * named by @p permutation into the new row in one pass per column.
+   *
+   * @p permutation has exactly @p n_local + @p n_ghost entries, one per new
+   * row. `permutation[new_row] >= 0` names the retired-generation row whose
+   * data is moved into @c new_row (a SURVIVING row); it must be a valid index
+   * in the retired generation. `permutation[new_row] < 0` marks a NON-survivor
+   * row -- a staged / brand-new / fresh-ghost row that carries no
+   * retired-generation data: it is seeded to the new-particle defaults here
+   * (@ref seed_default_row). The caller overwrites a staged local afterwards
+   * via @ref copy_row from the source (staging) store; the ghost tail is left
+   * at defaults (ghost exchange re-seeds it). The ghost tail is therefore
+   * freshly seeded to defaults by this call whenever its permutation entries
+   * are negative, matching the fresh-ghost contract of the assign_row rebuild.
+   *
+   * The permuted field set is IDENTICAL to @ref assign_row / @ref copy_row (the
+   * four-way sync note above @ref copy_row applies); the maximal-population
+   * permute unit tests enforce it. On @ref finish_rebuild the generation is
+   * bumped exactly as for an assign_row rebuild.
+   *
+   * DORMANT: no production path calls this yet (the Task-3 flip wires it in).
+   */
+  void permute_rebuild(std::span<int const> permutation, std::size_t n_local,
+                       std::size_t n_ghost);
 
   /**
    * @brief Construct a non-owning view @ref Particle bound to a store row.
@@ -645,6 +682,13 @@ public:
 #endif
 
 private:
+  // Swap current <-> spare generations and grow every column / sidecar write
+  // target to hold @p n_local + @p n_ghost rows. Shared by @ref begin_rebuild
+  // (assign_row loop) and @ref permute_rebuild (per-column permute); both leave
+  // the retired generation in the m_old_* buffers as the preserve/permute read
+  // source and overwrite every logical row before finish_rebuild.
+  void swap_and_grow_generations(std::size_t n_local, std::size_t n_ghost);
+
   // -- proxy factories for the various column kinds -------------------------
   VectorReference column_reference(Column &column, int const row) {
     assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());

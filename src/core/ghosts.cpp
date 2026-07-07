@@ -1610,19 +1610,24 @@ static auto calc_transmit_size(BoxGeometry const &box_geo,
       return properties_size + force_size + position_size + momentum_size;
     }
   }
-  /* Only GHOSTTRANS_RATTLE (under ESPRESSO_BOND_CONSTRAINT) can still reach the
-   * generic sizer here: PROPRTS/FORCE/POSITION/MOMENTUM are masked above,
-   * PARTNUM is handled in the ghost_comm overload, and BONDS travels in the
-   * separate bond buffer. The RATTLE branch archives one Utils::Vector3d
-   * (rattle_correction) on MOVE/SAVE, so this sizer call returns 24 B for it.
-   * Left intact rather than inlined so the fallback keeps working if any future
-   * field group is added without a dedicated constant. */
-  SerializationSizeCalculator sizeof_archive;
-  Particle p{};
-  serialize_and_reduce(sizeof_archive, p, data_parts, ReductionPolicy::MOVE,
-                       SerializationDirection::SAVE, box_geo, nullptr);
-  return sizeof_archive.size() + properties_size + force_size + position_size +
-         momentum_size;
+  /* Only GHOSTTRANS_RATTLE (under ESPRESSO_BOND_CONSTRAINT) can still reach
+   * here: PROPRTS/FORCE/POSITION/MOMENTUM are masked above, PARTNUM is handled
+   * in the ghost_comm overload, and BONDS travels in the separate bond buffer.
+   * The RATTLE branch archives exactly one Utils::Vector3d (rattle_correction)
+   * on MOVE/SAVE, which the MemcpyArchive packs tightly as 3 doubles = 24 B --
+   * the same compositional constant the POSITION/MOMENTUM legs above use, so
+   * the generic SerializationSizeCalculator fallback (and a live Particle) is
+   * no longer needed here (phase 7c carry 7b-M2). */
+  std::size_t rattle_size = 0ul;
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  if (data_parts & GHOSTTRANS_RATTLE) {
+    rattle_size = 3ul * sizeof(double);
+    data_parts &= ~static_cast<unsigned>(GHOSTTRANS_RATTLE);
+  }
+#endif
+  assert(data_parts == 0u);
+  return properties_size + force_size + position_size + momentum_size +
+         rattle_size;
 }
 
 static auto calc_transmit_size(GhostCommunication const &ghost_comm,

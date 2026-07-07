@@ -21,6 +21,8 @@
 #define BOOST_TEST_DYN_LINK
 #include <boost/test/unit_test.hpp>
 
+#include "ParticleStoreMaximalPopulation.hpp"
+
 #include "particle_store/ParticleStore.hpp"
 
 #include "BondList.hpp"
@@ -34,6 +36,8 @@
 
 #include <array>
 #include <cstddef>
+#include <numeric>
+#include <span>
 #include <vector>
 
 // ParticleStore allocates Kokkos Views, which requires an initialized runtime.
@@ -896,4 +900,168 @@ BOOST_AUTO_TEST_CASE(scalar_column_references_write_through) {
   flag_ref = static_cast<short>(-7);
   BOOST_CHECK_EQUAL(store.lees_edwards_flag(p.store_row()),
                     static_cast<short>(-7));
+}
+
+// -- permute_rebuild (phase 7c) -------------------------------------------
+// The permutation rebuild is the resort-as-permutation kernel: new-row data is
+// moved from old_row = permutation[new_row] (a survivor) or seeded to defaults
+// (a negative entry: staged / fresh ghost). These tests use the maximal-
+// population helpers so EVERY ifdef field is exercised field-for-field; a field
+// missing from permute_rebuild's four-way sync list fails here.
+
+using maximal_population::check_row_equal;
+using maximal_population::fill_maximal;
+using maximal_population::make_store;
+
+namespace {
+// Build a store of `count` maximally-populated rows (each row seeded from a
+// distinct sentinel so a mis-permuted row is caught). The data lives in the
+// current generation; permute_rebuild swaps it to the retired generation and
+// permutes from there.
+ParticleStore make_maximal_store(std::size_t const count) {
+  auto store = make_store(count);
+  for (std::size_t r = 0u; r < count; ++r) {
+    fill_maximal(store, static_cast<int>(r), 1000. + 7. * double(r));
+  }
+  return store;
+}
+} // namespace
+
+// Identity permutation: every row survives in place. The permuted store must be
+// field-for-field identical to the reference (the pre-rebuild data). This is
+// the removal-free bitwise-identity contract on the store side.
+BOOST_AUTO_TEST_CASE(permute_rebuild_identity) {
+  constexpr std::size_t n = 5u;
+  auto const reference = make_maximal_store(n);
+  auto store = make_maximal_store(n);
+
+  std::vector<int> perm(n);
+  std::iota(perm.begin(), perm.end(), 0); // 0,1,2,3,4
+  store.permute_rebuild(std::span<int const>{perm}, n, 0u);
+
+  BOOST_CHECK_EQUAL(store.number_of_local_particles(), n);
+  BOOST_CHECK_EQUAL(store.number_of_ghost_particles(), 0u);
+  for (std::size_t r = 0u; r < n; ++r) {
+    check_row_equal(reference, static_cast<int>(r), store, static_cast<int>(r));
+  }
+}
+
+// Reversal permutation: new row r takes old row n-1-r. Verifies the permute
+// kernels read the correct source row (not the identity) for every column and
+// ragged sidecar.
+BOOST_AUTO_TEST_CASE(permute_rebuild_reversal) {
+  constexpr std::size_t n = 6u;
+  auto const reference = make_maximal_store(n);
+  auto store = make_maximal_store(n);
+
+  std::vector<int> perm(n);
+  for (std::size_t r = 0u; r < n; ++r) {
+    perm[r] = static_cast<int>(n - 1u - r);
+  }
+  store.permute_rebuild(std::span<int const>{perm}, n, 0u);
+
+  for (std::size_t r = 0u; r < n; ++r) {
+    check_row_equal(reference, perm[r], store, static_cast<int>(r));
+  }
+}
+
+// Random (arbitrary bijection) permutation: each new row must hold exactly the
+// reference row named by the permutation, incl. ragged contents (bonds moved
+// intact under the move-by-permutation).
+BOOST_AUTO_TEST_CASE(permute_rebuild_random) {
+  constexpr std::size_t n = 8u;
+  auto const reference = make_maximal_store(n);
+  auto store = make_maximal_store(n);
+
+  // A fixed arbitrary bijection of [0, 8).
+  std::vector<int> const perm{3, 0, 7, 1, 6, 2, 5, 4};
+  BOOST_REQUIRE_EQUAL(perm.size(), n);
+  store.permute_rebuild(std::span<int const>{perm}, n, 0u);
+
+  for (std::size_t r = 0u; r < n; ++r) {
+    check_row_equal(reference, perm[r], store, static_cast<int>(r));
+  }
+}
+
+// Ragged contents survive a permutation intact: after a reversal, each new
+// row's bond list matches the reference row's bond list exactly (already
+// covered by check_row_equal, but spelled out for the ragged run explicitly).
+BOOST_AUTO_TEST_CASE(permute_rebuild_ragged_intact) {
+  constexpr std::size_t n = 4u;
+  auto const reference = make_maximal_store(n);
+  auto store = make_maximal_store(n);
+
+  std::vector<int> const perm{2, 3, 0, 1};
+  store.permute_rebuild(std::span<int const>{perm}, n, 0u);
+
+  for (std::size_t r = 0u; r < n; ++r) {
+    using maximal_population::flatten_bonds;
+    BOOST_CHECK(
+        flatten_bonds(reference.bonds_sidecar_reference(perm[r])) ==
+        flatten_bonds(store.bonds_sidecar_reference(static_cast<int>(r))));
+#ifdef ESPRESSO_EXCLUSIONS
+    BOOST_CHECK(reference.exclusions_sidecar_reference(perm[r]) ==
+                store.exclusions_sidecar_reference(static_cast<int>(r)));
+#endif
+  }
+}
+
+// Ghost tail freshly seeded to defaults: negative permutation entries on the
+// ghost suffix must produce the new-particle defaults (id -1, position zero,
+// quaternion identity, mass 1, empty bonds), NOT stale old-generation data.
+// Locals survive by permutation; ghosts are seeded.
+BOOST_AUTO_TEST_CASE(permute_rebuild_ghost_tail_seeded) {
+  constexpr std::size_t n_local = 3u;
+  constexpr std::size_t n_ghost = 2u;
+  auto const reference = make_maximal_store(n_local);
+  // Working store holds n_local + n_ghost maximal rows so the ghost tail has
+  // NON-default data in the retired generation; permute_rebuild must overwrite
+  // it with defaults, not preserve it.
+  auto store = make_maximal_store(n_local + n_ghost);
+
+  // Locals survive in place; ghost tail entries are -1 (seed defaults).
+  std::vector<int> perm(n_local + n_ghost, -1);
+  for (std::size_t r = 0u; r < n_local; ++r) {
+    perm[r] = static_cast<int>(r);
+  }
+  store.permute_rebuild(std::span<int const>{perm}, n_local, n_ghost);
+
+  BOOST_CHECK_EQUAL(store.number_of_local_particles(), n_local);
+  BOOST_CHECK_EQUAL(store.number_of_ghost_particles(), n_ghost);
+
+  // Locals: field-for-field identical to the reference.
+  for (std::size_t r = 0u; r < n_local; ++r) {
+    check_row_equal(reference, static_cast<int>(r), store, static_cast<int>(r));
+  }
+  // Ghost tail: the new-particle defaults (matches seed_default_row).
+  auto const defaults = make_store(1u); // one all-defaults row
+  for (std::size_t r = n_local; r < n_local + n_ghost; ++r) {
+    check_row_equal(defaults, 0, store, static_cast<int>(r));
+  }
+}
+
+// A staged local (negative entry in the LOCAL range) is seeded to defaults by
+// permute_rebuild; the caller overwrites it via copy_row afterwards. Verify the
+// seed-then-copy composition reproduces the source row (the Task-3 flip's
+// staged-local commit path).
+BOOST_AUTO_TEST_CASE(permute_rebuild_staged_local_seed_then_copy) {
+  constexpr std::size_t n = 4u;
+  auto const reference = make_maximal_store(n);
+  auto store = make_maximal_store(n);
+
+  // A separate source store holds the staged particle's data.
+  auto source = make_store(1u);
+  fill_maximal(source, 0, 9999.);
+
+  // New layout: rows 0,1 survive (old 0,1); row 2 is a staged local (-1);
+  // row 3 survives (old 2). n_local = 4, no ghosts.
+  std::vector<int> const perm{0, 1, -1, 2};
+  store.permute_rebuild(std::span<int const>{perm}, n, 0u);
+  // Caller commits the staged local: copy the source row into the seeded slot.
+  store.copy_row(source, 0, 2);
+
+  check_row_equal(reference, 0, store, 0);
+  check_row_equal(reference, 1, store, 1);
+  check_row_equal(source, 0, store, 2);
+  check_row_equal(reference, 2, store, 3);
 }

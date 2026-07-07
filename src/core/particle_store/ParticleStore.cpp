@@ -104,6 +104,77 @@ void preserve_or_move_sidecar(SidecarVector &new_sidecar,
     new_sidecar[static_cast<std::size_t>(row)] = seed;
   }
 }
+
+// -- per-column permute kernels (phase 7c) --------------------------------
+// One column swept in row order: new_view(new_row, .) = old_view(perm[new_row],
+// .) for every SURVIVOR (perm[new_row] >= 0). Non-survivor rows (perm < 0) are
+// left untouched here -- permute_rebuild seeds them once, whole-row, via
+// seed_default_row. @tparam N is the component count (1/3/4). The permutation
+// span length equals the new row count.
+template <std::size_t N, class ColumnType>
+void permute_column(ColumnType &new_column, ColumnType const &old_column,
+                    std::span<int const> permutation) {
+  auto &new_view = new_column.view_host();
+  auto const &old_view = old_column.view_host();
+  for (std::size_t new_row = 0u; new_row < permutation.size(); ++new_row) {
+    int const old_row = permutation[new_row];
+    if (old_row < 0) {
+      continue;
+    }
+    for (std::size_t j = 0u; j < N; ++j) {
+      new_view(new_row, j) = old_view(static_cast<std::size_t>(old_row), j);
+    }
+  }
+}
+
+// Scalar (single-component) counterpart of permute_column.
+template <class ColumnType>
+void permute_column_scalar(ColumnType &new_column, ColumnType const &old_column,
+                           std::span<int const> permutation) {
+  auto &new_view = new_column.view_host();
+  auto const &old_view = old_column.view_host();
+  for (std::size_t new_row = 0u; new_row < permutation.size(); ++new_row) {
+    int const old_row = permutation[new_row];
+    if (old_row < 0) {
+      continue;
+    }
+    new_view(new_row) = old_view(static_cast<std::size_t>(old_row));
+  }
+}
+
+// POD host-sidecar counterpart of permute_column_scalar (whole-POD copy).
+template <class SidecarVector>
+void permute_sidecar(SidecarVector &new_sidecar,
+                     SidecarVector const &old_sidecar,
+                     std::span<int const> permutation) {
+  for (std::size_t new_row = 0u; new_row < permutation.size(); ++new_row) {
+    int const old_row = permutation[new_row];
+    if (old_row < 0) {
+      continue;
+    }
+    new_sidecar[new_row] = old_sidecar[static_cast<std::size_t>(old_row)];
+  }
+}
+
+// Ragged host-sidecar counterpart: a surviving row is MOVED out of the old
+// vector element (transfers the heap buffer -- no deep copy of the ragged run),
+// mirroring assign_row's preserve_or_move_sidecar. The old vector is retired as
+// the spare after the rebuild, so leaving a moved-from element behind is
+// harmless. A permutation is a bijection on survivors, so each old element is
+// moved at most once.
+template <class SidecarVector>
+void permute_ragged_sidecar(SidecarVector &new_sidecar,
+                            SidecarVector &old_sidecar,
+                            std::span<int const> permutation) {
+  for (std::size_t new_row = 0u; new_row < permutation.size(); ++new_row) {
+    int const old_row = permutation[new_row];
+    if (old_row < 0) {
+      continue;
+    }
+    new_sidecar[new_row] =
+        std::move(old_sidecar[static_cast<std::size_t>(old_row)]);
+  }
+}
 } // namespace
 
 namespace {
@@ -136,6 +207,15 @@ void grow_without_init(ColumnType &column, std::size_t const total,
 // mark), never the logical count -- accessors bound by number_of_particles().
 void ParticleStore::begin_rebuild(std::size_t const number_of_local_particles,
                                   std::size_t const number_of_ghost_particles) {
+  swap_and_grow_generations(number_of_local_particles,
+                            number_of_ghost_particles);
+}
+
+// Swap current <-> spare generations and grow the write target. Shared by
+// begin_rebuild (assign_row loop) and permute_rebuild (per-column permute).
+void ParticleStore::swap_and_grow_generations(
+    std::size_t const number_of_local_particles,
+    std::size_t const number_of_ghost_particles) {
   // Swap current <-> spare generations. After the swap, m_old_* holds the
   // just-current data (the read source for surviving rows) and m_* holds the
   // older spare buffer (the write target we grow / overwrite in place).
@@ -326,11 +406,151 @@ void ParticleStore::begin_rebuild(std::size_t const number_of_local_particles,
 #endif
 }
 
-// The per-field coverage below is the CANONICAL field list of the store. Two
+// Phase 7c permutation rebuild. The per-column permute list below is one of the
+// four field-list consumers (four-way sync note above assign_row): every field
+// assign_row / copy_row / MigrationPack touches is permuted here. A new row
+// whose permutation entry is >= 0 is a SURVIVOR: its data is moved from the
+// named retired-generation row, one column at a time (contiguous, vectorizable,
+// no per-row branch on the field kind -- the win over assign_row). A new row
+// whose entry is < 0 is a non-survivor (staged / brand-new / fresh ghost) and
+// is seeded to the new-particle defaults, whole-row, once. The ghost tail is
+// freshly seeded to defaults whenever its entries are negative (ghost exchange
+// re-seeds it after the rebuild), matching the assign_row fresh-ghost contract.
+void ParticleStore::permute_rebuild(std::span<int const> const permutation,
+                                    std::size_t const n_local,
+                                    std::size_t const n_ghost) {
+  auto const total = n_local + n_ghost;
+  assert(permutation.size() == total);
+
+  // Swap current <-> spare and grow the write target: m_old_* now holds the
+  // retired generation (the permute READ source), m_* is the grown-in-place
+  // write target overwritten row-by-row below.
+  swap_and_grow_generations(n_local, n_ghost);
+
+  // Every survivor column/sidecar is permuted from the retired generation.
+  // Field order/coverage IDENTICAL to assign_row (four-way sync).
+  // Observable columns (phase 2).
+  permute_column<3u>(m_force, m_old_force, permutation);
+#ifdef ESPRESSO_ROTATION
+  permute_column<3u>(m_torque, m_old_torque, permutation);
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  permute_column<3u>(m_rattle_correction, m_old_rattle_correction, permutation);
+#endif
+
+  // State columns (phase 3).
+  permute_column<3u>(m_position, m_old_position, permutation);
+  permute_column<3u>(m_image_box, m_old_image_box, permutation);
+#ifdef ESPRESSO_ROTATION
+  permute_column<4u>(m_quaternion, m_old_quaternion, permutation);
+#endif
+  permute_column<3u>(m_position_at_last_verlet_update,
+                     m_old_position_at_last_verlet_update, permutation);
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  permute_column<3u>(m_position_last_time_step, m_old_position_last_time_step,
+                     permutation);
+#endif
+  permute_column_scalar(m_lees_edwards_offset, m_old_lees_edwards_offset,
+                        permutation);
+  permute_column_scalar(m_lees_edwards_flag, m_old_lees_edwards_flag,
+                        permutation);
+
+  // Momentum columns (phase 4).
+  permute_column<3u>(m_velocity, m_old_velocity, permutation);
+#ifdef ESPRESSO_ROTATION
+  permute_column<3u>(m_angular_velocity, m_old_angular_velocity, permutation);
+#endif
+
+  // Parameter columns (phase 5).
+  permute_column_scalar(m_id, m_old_id, permutation);
+  permute_column_scalar(m_mol_id, m_old_mol_id, permutation);
+  permute_column_scalar(m_type, m_old_type, permutation);
+  permute_column_scalar(m_propagation, m_old_propagation, permutation);
+#ifdef ESPRESSO_ROTATION
+  permute_column_scalar(m_rotation, m_old_rotation, permutation);
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  permute_column_scalar(m_ext_flag, m_old_ext_flag, permutation);
+#endif
+#ifdef ESPRESSO_MASS
+  permute_column_scalar(m_mass, m_old_mass, permutation);
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  permute_column_scalar(m_q, m_old_q, permutation);
+#endif
+#ifdef ESPRESSO_DIPOLES
+  permute_column_scalar(m_dipm, m_old_dipm, permutation);
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  permute_column<3u>(m_rinertia, m_old_rinertia, permutation);
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+  permute_column<3u>(m_mu_E, m_old_mu_E, permutation);
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  permute_column<3u>(m_dip_fld, m_old_dip_fld, permutation);
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  permute_column<3u>(m_ext_force, m_old_ext_force, permutation);
+#ifdef ESPRESSO_ROTATION
+  permute_column<3u>(m_ext_torque, m_old_ext_torque, permutation);
+#endif
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  permute_column<3u>(m_gamma, m_old_gamma, permutation);
+#ifdef ESPRESSO_ROTATION
+  permute_column<3u>(m_gamma_rot, m_old_gamma_rot, permutation);
+#endif
+#else // ESPRESSO_PARTICLE_ANISOTROPY
+  permute_column_scalar(m_gamma, m_old_gamma, permutation);
+#ifdef ESPRESSO_ROTATION
+  permute_column_scalar(m_gamma_rot, m_old_gamma_rot, permutation);
+#endif
+#endif // ESPRESSO_PARTICLE_ANISOTROPY
+#endif // ESPRESSO_THERMOSTAT_PER_PARTICLE
+
+  // Host POD sidecars (phase 5): whole-POD move by permutation.
+#ifdef ESPRESSO_ENGINE
+  permute_sidecar(m_swimming, m_old_swimming, permutation);
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+  permute_sidecar(m_magnetodynamics, m_old_magnetodynamics, permutation);
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+  permute_sidecar(m_vs_relative, m_old_vs_relative, permutation);
+#endif
+
+  // Ragged host sidecars (phase 6): surviving element MOVED out of the old
+  // vector (transfers the heap buffer -- no deep copy of the ragged run).
+  permute_ragged_sidecar(m_bonds_sidecar, m_old_bonds_sidecar, permutation);
+#ifdef ESPRESSO_EXCLUSIONS
+  permute_ragged_sidecar(m_exclusions_sidecar, m_old_exclusions_sidecar,
+                         permutation);
+#endif
+
+  // Non-survivor rows (staged / brand-new / fresh ghost): seed the defaults
+  // once, whole-row. seed_default_row covers the SAME field set (four-way
+  // sync), so a seeded row is field-complete. A staged local is overwritten
+  // afterwards by the caller (copy_row from the source store); the ghost tail
+  // is left at defaults for the ghost exchange to re-seed.
+  for (std::size_t new_row = 0u; new_row < total; ++new_row) {
+    if (permutation[new_row] < 0) {
+      seed_default_row(static_cast<int>(new_row));
+    }
+  }
+
+  finish_rebuild();
+}
+
+// The per-field coverage below is the CANONICAL field list of the store. Three
 // consumers must stay in sync with it: (1) ParticleStore::copy_row (row->row
-// full copy, same file), and (2) the MigrationPack per-field wire pack
-// (particle_store/MigrationPack.cpp). Any field added here must be added there
-// (and vice versa); the maximal-population round-trip unit test enforces this.
+// full copy, same file), (2) ParticleStore::permute_rebuild (per-column permute
+// rebuild, same file), and (3) the MigrationPack per-field wire pack
+// (particle_store/MigrationPack.cpp). Any field added here must be added to all
+// three (and vice versa); the maximal-population round-trip unit test enforces
+// this. This is the four-way sync: assign_row <-> copy_row <-> permute_rebuild
+// <-> MigrationPack.
 //
 // Phase 7b (Task 4): the migration envelope is dead, so a Particle can no
 // longer carry data. assign_row therefore only ever PRESERVES a surviving row
