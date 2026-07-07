@@ -452,13 +452,19 @@ void CellStructure::ensure_particle_store_synchronized() {
   // the old row indices first (a shrink would put them out of the new bounds).
   m_particle_store.begin_rebuild(n_local, n_ghost);
   int row = 0;
-  auto assign_cell = [this, &row](Cell *cell,
-                                  std::vector<int> const &old_rows) {
+  // One reused survivor view rebound per old row (phase 7a perf): constructing
+  // a fresh Particle per survivor default-constructs all migration carriers
+  // (heap-owning BondList/exclusion members) every iteration; rebinding the two
+  // store-handle fields via attach_to_store instead costs two writes and never
+  // touches the carriers (assign_row's preserve branch reads only columns by
+  // old row). Reused across all cells (assign_cell is called sequentially).
+  Particle survivor;
+  auto assign_cell = [this, &row, &survivor](Cell *cell,
+                                             std::vector<int> const &old_rows) {
     auto &rows = cell->rows();
     rows.clear();
     // Surviving committed rows: preserve column data by old row.
     for (int const old_row : old_rows) {
-      Particle survivor;
       survivor.attach_to_store(m_particle_store, old_row);
       m_particle_store.assign_row(survivor, row);
       rows.insert(row);
@@ -473,12 +479,16 @@ void CellStructure::ensure_particle_store_synchronized() {
     }
     cell->staged().clear();
   };
-  auto assign_cells = [this, &assign_cell](std::span<Cell *const> cells) {
+  // Reuse ONE scratch buffer across all cells (phase 7a perf): a surviving
+  // cell's row indices must be copied out before assign_cell clears/refills the
+  // bag, but allocating a fresh std::vector per cell (thousands per resort)
+  // churned the heap in the resort hot path. Reusing a single buffer (assign to
+  // clear-and-refill without freeing capacity) removes that per-cell alloc.
+  std::vector<int> old_rows;
+  auto assign_cells = [&assign_cell, &old_rows](std::span<Cell *const> cells) {
     for (auto *cell : cells) {
-      // Copy the surviving row indices out of the bag first (assign_cell clears
-      // and refills the bag as it renumbers).
       auto const &row_bag = cell->rows();
-      std::vector<int> old_rows(row_bag.begin(), row_bag.end());
+      old_rows.assign(row_bag.begin(), row_bag.end());
       assign_cell(cell, old_rows);
     }
   };
@@ -792,7 +802,7 @@ void CellStructure::ghosts_reduce_rattle_correction() {
 }
 #endif
 
-void CellStructure::resort_particles(bool global_flag) {
+void CellStructure::resort_particles(bool global_flag, bool commit) {
   // Phase 7a: the id->view index / view pool is rebuilt wholesale from the
   // store by ensure_particle_store_synchronized after the resort (see
   // rebuild_particle_index), so the pre-flip incremental index bookkeeping
@@ -823,14 +833,21 @@ void CellStructure::resort_particles(bool global_flag) {
   static_cast<void>(diff);
 
   // Commit the staged (migrated/new) particles into store rows and rebuild the
-  // id->view index NOW (phase 7a): resort cleared the index and staged the
-  // moved particles, so callers reading the index right after resort (e.g. the
-  // ADDITIONAL_CHECKS below, or a direct resort_particles call) must see a
-  // consistent, populated index -- the pre-flip contract. Ghost rows are added
-  // to the index later by update_ghosts_and_resort_particle after
-  // ghosts_update. Rank-local (no MPI), so it does not affect the collective
-  // ordering the caller relies on.
-  ensure_particle_store_synchronized();
+  // id->view index (phase 7a): resort cleared the index and staged the moved
+  // particles, so a caller reading the index right after resort (e.g. the
+  // ADDITIONAL_CHECKS below, or a direct/unit-test resort_particles call) must
+  // see a consistent, populated index -- the pre-flip contract. Rank-local (no
+  // MPI), so it does not affect the collective ordering the caller relies on.
+  //
+  // Phase 7a perf: the hot-path caller (update_ghosts_and_resort_particle)
+  // passes commit=false to DEFER this to a single rebuild AFTER ghosts_count,
+  // so locals are not committed here only to be re-copied by a second whole-
+  // store rebuild moments later. ghosts_count sizes ghost cells from the
+  // SOURCE cell's Cell::size (committed rows + staged), so it does not need the
+  // locals committed first; and nothing reads the index in the deferred window.
+  if (commit) {
+    ensure_particle_store_synchronized();
+  }
 
   auto const &lebc = get_system().box_geo->lees_edwards_bc();
   m_rebuild_verlet_list = true;
@@ -838,8 +855,14 @@ void CellStructure::resort_particles(bool global_flag) {
   m_le_pos_offset_at_last_resort = lebc.pos_offset;
 
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
-  check_particle_index();
-  check_particle_sorting();
+  // These checks read the id->view index / sorted store, which only exist after
+  // the commit above; when the commit is deferred, the caller runs its own sync
+  // and the equivalent checks (ensure_particle_store_synchronized's cell-row
+  // validation) after ghosts_count.
+  if (commit) {
+    check_particle_index();
+    check_particle_sorting();
+  }
 #endif
 }
 
@@ -925,22 +948,24 @@ void CellStructure::update_ghosts_and_resort_particle(unsigned data_parts) {
   if (global_resort != Cells::RESORT_NONE) {
     auto const do_global_resort = (global_resort & Cells::RESORT_GLOBAL) != 0;
 
-    /* Resort cell system */
-    resort_particles(do_global_resort);
-    /* Phase 7a: resort STAGES migrated/new particles into their home cells but
-     * does not commit them to store rows until a rebuild. ghosts_count sizes
-     * every ghost cell from its source (local) cell's COMMITTED row count, so
-     * the local particles must be committed FIRST -- otherwise a source cell
-     * undercounts and a later ghost data transfer sees mismatched src/dst
-     * sizes. Commit locals, then count ghosts, then commit the freshly staged
-     * ghost rows before writing their data. */
-    ensure_particle_store_synchronized();
+    /* Resort cell system. Phase 7a perf: defer the local commit (commit=false)
+     * so it is folded into the SINGLE post-ghosts_count store rebuild below,
+     * instead of committing locals here and re-copying every local column a
+     * second time in that rebuild (the phase-7a double-rebuild regression). */
+    resort_particles(do_global_resort, /*commit=*/false);
+    /* Phase 7a: after resort the migrated/new locals are STAGED (not yet
+     * committed to store rows). ghosts_count sizes every ghost cell from its
+     * source (local) cell's Cell::size, which counts committed rows + staged,
+     * so staged locals are counted correctly and do not need committing first.
+     * Count ghosts (stages ghost slots + marks the store dirty), then rebuild
+     * ONCE to commit locals AND the freshly staged ghosts together. */
     ghosts_count();
-    /* Rebuild the store rows NOW: ghosts_count marked the store dirty (staged
-     * ghost slots), and a dirty store forces the ghost update below onto the
-     * slow per-field accessor path (measured +49% in this slot on lj-4rank).
-     * After the rebuild, freshly created ghosts are attached and the update
-     * writes their state straight into the columns by row. */
+    /* Rebuild the store rows NOW: resort staged locals and ghosts_count marked
+     * the store dirty (staged ghost slots); a dirty store forces the ghost
+     * update below onto the slow per-field accessor path (measured +49% in this
+     * slot on lj-4rank). After this single rebuild, locals and freshly created
+     * ghosts are all attached and the update writes their state straight into
+     * the columns by row. */
     ensure_particle_store_synchronized();
     ghosts_update(data_parts);
 

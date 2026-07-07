@@ -646,8 +646,22 @@ public:
 
   /**
    * @brief Resort particles.
+   *
+   * @param global_flag  Whether to do a global (all-to-all) resort.
+   * @param commit  Phase 7a: when true (the default, and the only value used by
+   *   a direct/unit-test caller), the just-migrated local particles are
+   *   committed to store rows and the id->view index rebuilt before returning,
+   *   so the store is clean and the index consistent on return. When false (the
+   *   @ref update_ghosts_and_resort_particle hot path), the commit is DEFERRED:
+   *   the migrated locals stay STAGED (a cell's @ref Cell::size still counts
+   *   them, which is all @ref ghosts_count needs), and a single post-@ref
+   *   ghosts_count @ref ensure_particle_store_synchronized then commits locals
+   *   AND ghosts in ONE store rebuild. This restores the phase-6 single-rebuild
+   *   resort cadence (phase 7a had committed locals here and rebuilt the whole
+   *   store a second time after ghosts_count -- an O(N) double column copy per
+   *   resort). No index is read in the deferred window, so deferring is safe.
    */
-  void resort_particles(bool global_flag);
+  void resort_particles(bool global_flag, bool commit = true);
 
   /** @brief Whether the Verlet skin is set. */
   auto is_verlet_skin_set() const { return m_verlet_skin_set; }
