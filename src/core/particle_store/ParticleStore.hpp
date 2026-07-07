@@ -121,6 +121,28 @@ public:
   void finish_rebuild();
 
   /**
+   * @brief Copy every per-particle field of one store row into another.
+   *
+   * Copies EVERY column, POD sidecar and ragged sidecar (bonds / exclusions,
+   * under matching ifdefs) of @p source_row in @p source into @p
+   * destination_row of THIS store, row-to-row, without going through a @ref
+   * Particle or the migration carriers. @p source and @c *this may be the same
+   * store (a row can be copied within one store) or two different stores. Both
+   * rows must be currently valid indices in their respective stores.
+   *
+   * This is the machinery shared by the migration `extract` (live store ->
+   * staging store) and `receive` (staging store -> live store) paths: a full,
+   * value-preserving row transfer.
+   *
+   * The copied field set is IDENTICAL to @ref assign_row's coverage. The two
+   * MUST be kept in sync: any field added to @ref assign_row must be added here
+   * (and vice versa). The maximal-population round-trip unit test enforces
+   * this.
+   */
+  void copy_row(ParticleStore const &source, int source_row,
+                int destination_row);
+
+  /**
    * @brief Construct a non-owning view @ref Particle bound to a store row.
    *
    * Returns a @ref Particle whose accessors read/write the columns of THIS

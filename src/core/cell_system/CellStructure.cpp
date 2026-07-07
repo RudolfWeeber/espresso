@@ -81,6 +81,8 @@ CellStructure::~CellStructure() {
   // reset below may finalize Kokkos, and leaving the store's Views to
   // member-destruction would free them after Kokkos::finalize.
   m_particle_store.release_columns();
+  // Same Kokkos-lifetime constraint for the (phase 7b) migration staging store.
+  m_staging_store.release_columns();
   // Kokkos handle can only be freed after all Cabana containers have been freed
   m_kokkos_handle.reset();
 }
@@ -525,6 +527,34 @@ void CellStructure::ensure_particle_store_synchronized() {
   check_cell_rows(decomposition().local_cells());
   check_cell_rows(decomposition().ghost_cells());
 #endif
+}
+
+int CellStructure::stage_row(int const live_row) {
+  // Grow the staging store when the next row would overflow its capacity. The
+  // staging store's own rows must survive the growth, so a fresh larger store
+  // is built and every already-staged row is copied into it via copy_row (the
+  // same machinery the flip uses); the small store is then swapped in. Capacity
+  // doubles (min 8) to amortize the copies over a batch of stages.
+  auto const needed = static_cast<std::size_t>(m_staging_store_next_row) + 1u;
+  if (needed > m_staging_store_capacity) {
+    auto new_capacity =
+        std::max<std::size_t>(m_staging_store_capacity * 2u, 8u);
+    while (new_capacity < needed) {
+      new_capacity *= 2u;
+    }
+    ParticleStore grown{};
+    grown.begin_rebuild(new_capacity, 0u);
+    grown.finish_rebuild();
+    for (int r = 0; r < m_staging_store_next_row; ++r) {
+      grown.copy_row(m_staging_store, r, r);
+    }
+    using std::swap;
+    swap(m_staging_store, grown);
+    m_staging_store_capacity = new_capacity;
+  }
+  auto const staging_row = m_staging_store_next_row++;
+  m_staging_store.copy_row(m_particle_store, live_row, staging_row);
+  return staging_row;
 }
 
 void CellStructure::rebuild_particle_index() {

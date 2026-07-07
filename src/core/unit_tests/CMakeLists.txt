@@ -59,6 +59,7 @@ espresso_unit_test(SRC Particle_test.cpp DEPENDS espresso::utils espresso::core
 espresso_unit_test(SRC Particle_serialization_test.cpp DEPENDS espresso::utils
                    espresso::core Boost::serialization Kokkos::kokkos)
 espresso_unit_test(SRC ParticleStore_test.cpp DEPENDS espresso::core)
+espresso_unit_test(SRC MigrationPack_test.cpp DEPENDS espresso::core)
 espresso_unit_test(SRC RowParticleRange_test.cpp DEPENDS espresso::core
                    Kokkos::kokkos)
 espresso_unit_test(SRC VerletListGeneration_test.cpp DEPENDS espresso::core

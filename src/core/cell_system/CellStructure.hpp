@@ -257,6 +257,20 @@ private:
   std::shared_ptr<KokkosHandle> m_kokkos_handle;
   /** Array-based particle storage (migration phase 2). */
   ParticleStore m_particle_store;
+  /** Migration staging store (migration phase 7b, DORMANT until the Task-3
+   *  flip). A second, small @ref ParticleStore holding rows in transit between
+   *  the live store and a remote rank: `extract` copies a live row into a
+   *  staging row (@ref stage_row); a migrating row that a round could not
+   *  deliver locally waits here between exchange rounds; `receive` unpacks into
+   *  staging rows; `rebuild` commits them into the live store. Lazily sized on
+   *  first @ref stage_row and reused (grown, never shrunk) across resorts, like
+   *  the fetch-cache store. Not wired into any production path yet. */
+  ParticleStore m_staging_store;
+  /** Next free row in @ref m_staging_store; the count of currently-staged rows.
+   *  0 while empty; reset by @ref clear_staging_store. */
+  int m_staging_store_next_row = 0;
+  /** Capacity @ref m_staging_store was last (re)built with (phase 7b). */
+  std::size_t m_staging_store_capacity = 0u;
   /** Pack-index -> store-row translation (phase 3.5). Identity on the local
    *  prefix; only the deduped ghost tail is remapped. Rebuilt in
    *  @ref set_index_map. */
@@ -930,6 +944,33 @@ public:
   /** @brief Rebuild the store row assignment if topology changed.
    *  Purely rank-local; O(1) when the store is clean. */
   void ensure_particle_store_synchronized();
+
+  // -- migration staging store (phase 7b, DORMANT) --------------------------
+  /** @brief Direct access to the migration staging store. */
+  auto &staging_store() { return m_staging_store; }
+  auto const &staging_store() const { return m_staging_store; }
+  /** @brief Number of rows currently held in the staging store. */
+  int staged_row_count() const { return m_staging_store_next_row; }
+  /**
+   * @brief Stage a live store row: copy @p live_row of the main store into the
+   * next free staging row and return that staging row.
+   *
+   * Grows the staging store lazily (doubling, preserving already-staged rows)
+   * so an arbitrary number of rows can be staged. This is the row-level
+   * `extract` helper (@ref ParticleStore::copy_row live -> staging) the
+   * migration flip will use; it is not called by any production path yet.
+   */
+  int stage_row(int live_row);
+  /** @brief Drop all staged rows (row counter back to zero). The columns are
+   *  retained as reusable capacity; @ref release_staging_store frees them. */
+  void clear_staging_store() { m_staging_store_next_row = 0; }
+  /** @brief Release the staging store's Kokkos columns (teardown / lock-step
+   *  with the main store; must run while Kokkos is alive). */
+  void release_staging_store() {
+    m_staging_store.release_columns();
+    m_staging_store_next_row = 0;
+    m_staging_store_capacity = 0u;
+  }
 
   [[nodiscard]] auto is_verlet_list_cabana_rebuild_needed() const {
     return m_rebuild_verlet_list_cabana;

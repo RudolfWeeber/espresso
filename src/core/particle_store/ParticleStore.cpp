@@ -326,6 +326,11 @@ void ParticleStore::begin_rebuild(std::size_t const number_of_local_particles,
 #endif
 }
 
+// The per-field coverage below is the CANONICAL field list of the store. Two
+// consumers must stay in sync with it: (1) ParticleStore::copy_row (row->row
+// full copy, same file), and (2) the MigrationPack per-field wire pack
+// (particle_store/MigrationPack.cpp). Any field added here must be added there
+// (and vice versa); the maximal-population round-trip unit test enforces this.
 void ParticleStore::assign_row(Particle &particle, int const row) {
   assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
   auto const old_row = particle.store_row();
@@ -521,6 +526,108 @@ Particle ParticleStore::snapshot_row(int const row) {
   snapshot.attach_to_store(*this, row);
   snapshot.detach_from_store();
   return snapshot;
+}
+
+// Row-to-row full copy. Field coverage IDENTICAL to assign_row (see the sync
+// note above assign_row). Reads each column/sidecar of `source` at `src` by
+// value and writes it into THIS store at `dst` through the element reference.
+// The store owns no ghost flag (that lives in Particle::l, not a column), so
+// there is nothing to copy for it here -- consistent with assign_row, which
+// also never touches a ghost flag.
+void ParticleStore::copy_row(ParticleStore const &source, int const src,
+                             int const dst) {
+  assert(src >= 0 and
+         static_cast<std::size_t>(src) < source.number_of_particles());
+  assert(dst >= 0 and static_cast<std::size_t>(dst) < number_of_particles());
+
+  // Observable columns (phase 2).
+  force_reference(dst) = source.force_value(src);
+#ifdef ESPRESSO_ROTATION
+  torque_reference(dst) = source.torque_value(src);
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  rattle_correction_reference(dst) = source.rattle_correction_value(src);
+#endif
+
+  // State columns (phase 3).
+  position_reference(dst) = source.position_value(src);
+  image_box_reference(dst) = source.image_box_value(src);
+#ifdef ESPRESSO_ROTATION
+  quaternion_reference(dst) = source.quaternion_value(src);
+#endif
+  position_at_last_verlet_update_reference(dst) =
+      source.position_at_last_verlet_update_value(src);
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  position_last_time_step_reference(dst) =
+      source.position_last_time_step_value(src);
+#endif
+  lees_edwards_offset(dst) = source.lees_edwards_offset(src);
+  lees_edwards_flag(dst) = source.lees_edwards_flag(src);
+
+  // Momentum columns (phase 4).
+  velocity_reference(dst) = source.velocity_value(src);
+#ifdef ESPRESSO_ROTATION
+  angular_velocity_reference(dst) = source.angular_velocity_value(src);
+#endif
+
+  // Parameter columns (phase 5).
+  id(dst) = source.id(src);
+  mol_id(dst) = source.mol_id(src);
+  type(dst) = source.type(src);
+  propagation(dst) = source.propagation(src);
+#ifdef ESPRESSO_ROTATION
+  rotation(dst) = source.rotation(src);
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  ext_flag(dst) = source.ext_flag(src);
+#endif
+#ifdef ESPRESSO_MASS
+  mass(dst) = source.mass(src);
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  q(dst) = source.q(src);
+#endif
+#ifdef ESPRESSO_DIPOLES
+  dipm(dst) = source.dipm(src);
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  rinertia_reference(dst) = source.rinertia_value(src);
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+  mu_E_reference(dst) = source.mu_E_value(src);
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  dip_fld_reference(dst) = source.dip_fld_value(src);
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  ext_force_reference(dst) = source.ext_force_value(src);
+#ifdef ESPRESSO_ROTATION
+  ext_torque_reference(dst) = source.ext_torque_value(src);
+#endif
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+  gamma_reference(dst) = source.gamma_value(src);
+#ifdef ESPRESSO_ROTATION
+  gamma_rot_reference(dst) = source.gamma_rot_value(src);
+#endif
+#endif
+
+  // Host POD sidecars (phase 5).
+#ifdef ESPRESSO_ENGINE
+  swimming(dst) = source.swimming(src);
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+  magnetodynamics(dst) = source.magnetodynamics(src);
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+  vs_relative(dst) = source.vs_relative(src);
+#endif
+
+  // Ragged host sidecars (phase 6): copied by value (deep copy of the run).
+  bonds_sidecar_reference(dst) = source.bonds_sidecar_reference(src);
+#ifdef ESPRESSO_EXCLUSIONS
+  exclusions_sidecar_reference(dst) = source.exclusions_sidecar_reference(src);
+#endif
 }
 
 void ParticleStore::finish_rebuild() {
