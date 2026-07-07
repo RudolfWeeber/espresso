@@ -642,6 +642,14 @@ void CellStructure::remove_particle(int id) {
       }
     }
   }
+  // NOTE: deferred id→view reindex. Between this call and the next
+  // ensure_particle_store_synchronized, get_local_particle(id) returns a
+  // pool pointer to the now-orphaned row rather than nullptr.  The window is
+  // benign in every current call path: System::on_particle_change() forces a
+  // resort (which rebuilds the index) before the next force calculation, and
+  // particle_node.cpp erases `id` from the particle_node map immediately after
+  // remove_particle returns, so the orphaned pointer is never reached through
+  // the public API in the interim.
   mark_particle_store_dirty();
 }
 

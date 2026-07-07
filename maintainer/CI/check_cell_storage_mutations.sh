@@ -31,6 +31,15 @@
 # cell-storage mutation exists. Reviewers must still watch for aliased mutations
 # by hand.
 #
+# STORE-DIRECT WRITES OUT OF SCOPE BY DESIGN: this guard protects the
+# cell-storage choke points (rows()/staged()/particles() mutations).  Direct
+# writes to the ParticleStore itself -- e.g. store.assign_row(...) or column
+# writes through a view -- are NOT checked here.  In practice assign_row is
+# only callable inside a begin_rebuild/finish_rebuild bracket and column writes
+# go through Particle views that are only valid during a live generation, so
+# the risk is low; but the "single choke point" guarantee extends to cell
+# storage only, not to the underlying store columns.
+#
 # EXCEPTIONS: (1) ParticleListOperations.hpp defines the choke points.
 # (2) CellStructure.cpp's ensure_particle_store_synchronized owns the store
 # rebuild and legitimately clears + refills every cell's row bag as it renumbers

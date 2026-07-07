@@ -123,11 +123,16 @@ public:
   /**
    * @brief Construct a non-owning view @ref Particle bound to a store row.
    *
-   * Migration phase 7a: returns a @ref Particle whose accessors read/write the
-   * columns of THIS store at @p row (via the phase-2 attach handle). The row
-   * must be a currently-valid index; the returned view aliases the store and is
-   * invalidated by the next rebuild (which may renumber or drop the row).
-   * DORMANT in 7a -- no production code constructs views this way yet.
+   * Returns a @ref Particle whose accessors read/write the columns of THIS
+   * store at @p row (via the phase-2 attach handle).  This is the primary
+   * view factory after the phase-7a flip: @ref RowParticleRange /
+   * @ref RowParticleIterator call it for every element produced by
+   * @ref Cell::particles(), and decomposition resorts, @c for_each, and
+   * reduction kernels all consume views built here.
+   *
+   * The row must be a currently-valid index; the returned view aliases the
+   * store and is invalidated by the next rebuild (which may renumber or drop
+   * the row).
    */
   Particle make_view(int row);
 

@@ -31,12 +31,11 @@
 /**
  * @brief Iterator over a @ref CellRows bag yielding @ref Particle views.
  *
- * Migration phase 7a groundwork (DORMANT). Walks the row indices stored in a
- * @ref CellRows bag and, for each, hands out a @ref Particle view over the
- * paired @ref ParticleStore row (built via @ref ParticleStore::make_view).
- * Its contract mirrors @ref ParticleIterator / @ref ParticleRange so that the
- * flip task (Task 4) can substitute it for the cell-Bag iterator with minimal
- * churn:
+ * The live iterator backing @ref Cell::particles() since the phase-7a flip
+ * (Task 4). Walks the row indices stored in a @ref CellRows bag and, for each,
+ * hands out a @ref Particle view over the paired @ref ParticleStore row (built
+ * via @ref ParticleStore::make_view).  Its contract mirrors
+ * @ref ParticleIterator / @ref ParticleRange:
  *   - @c value_type is @ref Particle and @c reference is @ref Particle& (as in
  *     @ref ParticleIterator, whose @c dereference() returns @c Particle&);
  *   - it is a forward iterator (@c boost::forward_traversal_tag).
@@ -100,10 +99,10 @@ private:
 /**
  * @brief Range of @ref Particle views over a @ref CellRows bag + store.
  *
- * DORMANT phase 7a groundwork. Modelled on @ref ParticleRange (a
- * @c boost::iterator_range with a cached size). Iterating it yields the same
- * particle sequence, in the same order, as iterating the paired cell's
- * @ref ParticleList Bag on a synchronized store.
+ * The live return type of @ref Cell::particles() since the phase-7a flip.
+ * Modelled on @ref ParticleRange (a @c boost::iterator_range with a cached
+ * size). Iterating it yields the cell's particles in cell-traversal order,
+ * each as a live @ref Particle view aliasing the @ref ParticleStore columns.
  */
 class RowParticleRange : public boost::iterator_range<RowParticleIterator> {
   using base_type = boost::iterator_range<RowParticleIterator>;

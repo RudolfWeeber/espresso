@@ -521,11 +521,11 @@ public:
    *  After this call the particle is a self-contained DETACHED snapshot: its
    *  carriers hold the values that were live in the columns, its store pointer
    *  is null and its row is -1, so all accessors read the carriers. This is the
-   *  choreography @ref extract_particle / @ref ParticleStore::snapshot_row use
-   *  to lift a row out of the store into a movable detached Particle (the same
-   *  carrier-sync that @ref serialize performs on SAVE). Idempotent on an
-   *  already-detached particle (the sync reads the carriers back into
-   *  themselves). */
+   *  choreography @ref CellParticleStorage::extract_row /
+   *  @ref ParticleStore::snapshot_row use to lift a row out of the store into a
+   *  movable detached Particle (the same carrier-sync that @ref serialize
+   *  performs on SAVE). Idempotent on an already-detached particle (the sync
+   *  reads the carriers back into themselves). */
   void detach_from_store() {
     // Capture the structural ghost flag into the fallback member BEFORE
     // dropping the store pointer, so the detached snapshot reports the same

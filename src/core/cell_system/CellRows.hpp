@@ -24,18 +24,22 @@
 /**
  * @brief Per-cell container of @ref ParticleStore row indices.
  *
- * Migration phase 7a: each @ref Cell carries a @ref CellRows bag in parallel to
- * its @ref ParticleList, recording the store row assigned to every particle in
- * the cell (one @c int per particle, in @ref ParticleList iteration order).
- * A @ref Utils::Bag is used (rather than a plain @c std::vector) so that the
- * eventual flip (Task 4) can reuse the Bag's constant-time swap-with-back
- * erase to renumber a cell's rows the same way particles are removed today;
- * @c int is trivially swappable/movable so the Bag has no per-element cost.
+ * Each @ref Cell carries a @ref CellRows bag as its authoritative content
+ * (phase 7a flip, Task 4): every particle in the cell is represented by
+ * exactly one row index in this bag (one @c int per particle, in cell-traversal
+ * order). @ref Cell::particles() constructs a @ref RowParticleRange over this
+ * bag and the cell's associated @ref ParticleStore, yielding live @ref Particle
+ * views; it is the primary way to iterate a cell's particles.
  *
- * The bag is DORMANT in phase 7a: it is refilled from scratch during every
- * @ref CellStructure::ensure_particle_store_synchronized rebuild and read by
- * no production code yet (only cross-checked against the @ref ParticleList
- * under @c ESPRESSO_ADDITIONAL_CHECKS). The collapse to a contiguous
- * @c (offset,count) range happens in phase 7c.
+ * A @ref Utils::Bag is used (rather than a plain @c std::vector) so that
+ * @ref CellParticleStorage::extract_row can remove a row via constant-time
+ * swap-with-back erase, renumbering the cell's row sequence the same way the
+ * old @c Bag<Particle> removed particles.  @c int is trivially
+ * swappable/movable so the Bag has no per-element overhead.
+ *
+ * Rebuilt from scratch during every
+ * @ref CellStructure::ensure_particle_store_synchronized; the row-bag churn
+ * during extract is bitwise-equivalent to the pre-flip Bag<Particle> churn.
+ * The collapse to a contiguous @c (offset,count) range is deferred to phase 7c.
  */
 using CellRows = Utils::Bag<int>;
