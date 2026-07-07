@@ -30,29 +30,47 @@
 #include <set>
 #include <vector>
 
+/** Owning result of @ref fetch_particles (phase 7e).
+ *
+ *  Phase 7e: get_local_particle returns by-value @ref Particle views (16-byte
+ *  handles aliasing the store), so the reference range that observables consume
+ *  can no longer point into a persistent view pool -- it must point into an
+ *  owned buffer that lives as long as the range. This struct owns that buffer
+ *  (@ref owned) and exposes the @ref ParticleReferenceRange (@ref refs) that
+ *  references into it. Callers keep the returned object alive for the duration
+ *  of the observable evaluation and pass @c .refs to @c evaluate. */
+struct FetchedParticles {
+  std::vector<Particle> owned;
+  Observables::ParticleReferenceRange refs;
+};
+
 /** Fetch a group of particles.
  *
  *  @param ids particle identifiers
- *  @return array of particle copies, with positions in the current box.
+ *  @return owned particle views (with positions in the current box) plus a
+ *          reference range into them (phase 7e).
  */
-inline auto fetch_particles(std::vector<int> const &ids) {
+inline FetchedParticles fetch_particles(std::vector<int> const &ids) {
   auto const &system = System::get_system();
   auto &cell_structure = *system.cell_structure;
-  Observables::ParticleReferenceRange local_particle_refs;
-  // Phase 7a: local_particles() hands out transient cached VIEWS, so iterating
-  // + copying references (the pre-flip std::copy_if approach) would store
-  // references to a view that is overwritten on the next increment (the
-  // cached-view multipass hazard). Instead resolve each requested id through
-  // get_local_particle, which returns a pointer into the STABLE view pool --
-  // valid for the observable's lifetime (no rebuild during evaluation). Skip
-  // ids that are not a local (owned) particle here (nullptr or ghost),
-  // preserving the pre-flip filter (only local, non-ghost particles).
+  FetchedParticles result;
+  // Reserve so `owned` never reallocates while we take references into it
+  // (ids.size() is the upper bound; ghosts/absent ids are filtered out).
+  result.owned.reserve(ids.size());
+  // Resolve each requested id through get_local_particle, which returns a
+  // by-value view over the store row -- valid for the observable's lifetime (no
+  // rebuild during evaluation). Skip ids that are not a local (owned) particle
+  // here (absent or ghost), preserving the pre-flip filter (only local,
+  // non-ghost particles).
   for (auto const id : ids) {
-    auto const *p = cell_structure.get_local_particle(id);
-    if (p != nullptr and not p->is_ghost()) {
-      local_particle_refs.emplace_back(std::cref(*p));
+    auto const p = cell_structure.get_local_particle(id);
+    if (p and not p->is_ghost()) {
+      result.owned.emplace_back(*p);
     }
   }
-  return local_particle_refs;
+  for (auto const &p : result.owned) {
+    result.refs.emplace_back(std::cref(p));
+  }
+  return result;
 }
 #endif

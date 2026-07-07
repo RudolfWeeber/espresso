@@ -57,7 +57,6 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <deque>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -177,34 +176,25 @@ public:
                        Cabana::TeamVectorOpTag>;
 
 private:
-  /** The local id-to-particle index. Since the phase-7a flip these are pointers
-   *  into @ref m_view_pool (NOT into cell storage, which no longer holds
-   *  @c Particle objects); an entry stays valid between store rebuilds, exactly
-   *  the pre-flip pointer-stability contract, and is retired for the id->row
-   *  map in phase 7e. */
-  std::vector<Particle *> m_particle_index;
-  /** Stable view pool backing @ref m_particle_index (phase 7a transitional).
-   *  One attached @ref Particle view per indexed particle (locals, then the
-   *  ghost copies not shadowed by a local), refreshed from the store by
-   *  @ref rebuild_particle_index every store rebuild. A @c std::deque so that
-   *  refilling never relocates already-handed-out element addresses within one
-   *  generation. Handing @c get_local_particle callers a pointer into this pool
-   *  preserves the "pointer valid until the next topology change" contract.
+  /** The local id -> @ref ParticleStore ROW map (phase 7e). Indexed by particle
+   *  id; the entry is the store row that @ref get_local_particle resolves the
+   * id to, or @ref no_store_row (-1) when the id is not present on this rank.
+   *  Locals win over ghost copies of the same id; among ghost copies the first
+   *  valid row (in store-row order) wins -- exactly the dedup contract the
+   * retired view pool implemented. Rebuilt wholesale from the (synchronized)
+   * store by
+   *  @ref rebuild_particle_index / @ref index_ghost_particles at store-rebuild
+   *  cadence (the single write site). An entry stays valid between store
+   *  rebuilds; a rebuild renumbers rows and refreshes the whole map.
    *
-   *  Phase 7a perf fix: slots are REUSED across rebuilds, not reconstructed. A
-   *  rebuild resets @ref m_view_pool_fill to 0 and REBINDS the first slots via
-   *  @ref acquire_view_slot (each a two-field @ref Particle::attach_to_store,
-   *  no Particle construction), growing the deque only when more views are
-   *  needed than exist. The deque may therefore hold idle slots past
-   *  @ref m_view_pool_fill; those are reusable capacity and MUST NOT be read.
-   *  The only full-pool consumer (@ref set_bond_state_and_unique_particles)
-   *  bounds its walk by @ref m_view_pool_fill. */
-  std::deque<Particle> m_view_pool;
-  /** Number of leading @ref m_view_pool slots that are live this generation
-   *  (bound by @ref rebuild_particle_index / @ref index_ghost_particles via
-   *  @ref acquire_view_slot). Slots at [@c m_view_pool_fill, @c size()) are
-   * idle reusable capacity, not live views. */
-  std::size_t m_view_pool_fill = 0u;
+   *  This replaces the phase-7a @c m_particle_index / @c m_view_pool: instead
+   * of handing out a pointer into a stable view pool, @ref get_local_particle
+   *  resolves the id to a row here and returns a fresh by-value @ref Particle
+   *  view over that row (a 16-byte handle). */
+  std::vector<int> m_id_to_store_row;
+  /** Sentinel stored in @ref m_id_to_store_row for an id absent on this rank.
+   */
+  static constexpr int no_store_row = -1;
   /** Implementation of the primary particle decomposition */
   std::unique_ptr<ParticleDecomposition> m_decomposition;
   /** Active type in m_decomposition */
@@ -253,8 +243,21 @@ private:
   std::unique_ptr<ListType> m_verlet_list_cabana;
   /** particle properties using individual Kokkos Views */
   std::unique_ptr<AoSoA_pack> m_aosoa;
-  /** The local id-to-index for aosoa data */
+  /** Pack-ordered list of the particles that participate in the pack /
+   *  force-scatter kernels: the local prefix (store rows [0, n_local) in row
+   *  order) followed by the deduped ghost tail (first occurrence of each ghost
+   *  id not owned by a local). Consumers (force/energy/pressure/icc reductions,
+   *  the AoSoA commit) index it in pack order. Pointers into
+   *  @ref m_unique_particle_views; rebuilt every @ref set_index_map.
+   *  Retired in 7c once pack index == store row holds on the ghost tail too. */
   std::vector<Particle *> m_unique_particles;
+  /** Owning backing for @ref m_unique_particles (phase 7e). Replaces the
+   * retired view pool as the storage the pack-order pointer list points into:
+   * one by-value @ref Particle view per pack participant, in pack order,
+   * rebuilt wholesale by @ref set_index_map. A @c std::vector reused (grown,
+   * never shrunk) across rebuilds; the pointers in @ref m_unique_particles are
+   * only valid until the next @ref set_index_map. */
+  std::vector<Particle> m_unique_particle_views;
   std::shared_ptr<KokkosHandle> m_kokkos_handle;
   /** Array-based particle storage (migration phase 2). */
   ParticleStore m_particle_store;
@@ -293,81 +296,58 @@ public:
   bool use_verlet_list = true;
 
   /**
-   * @brief Update local particle index.
+   * @brief Set the store-row entry for a particle id (phase 7e).
    *
-   * Update the entry for a particle in the local particle
-   * index.
+   * Records that @p id resolves to store @p row in @ref m_id_to_store_row,
+   * growing the map as needed. The single write site is the store-rebuild
+   * indexing (@ref rebuild_particle_index / @ref index_ghost_particles).
    *
-   * @param id Entry to update.
-   * @param p Pointer to the particle.
+   * @param id  Particle id (>= 0).
+   * @param row Store row the id resolves to.
    */
-  void update_particle_index(int id, Particle *p) {
+  void update_particle_index(int id, int row) {
     assert(id >= 0);
-    // cppcheck-suppress assertWithSideEffect
-    assert(not p or p->id() == id);
+    assert(row >= 0);
 
-    if (static_cast<unsigned int>(id) >= m_particle_index.size())
-      m_particle_index.resize(static_cast<unsigned int>(id + 1));
+    if (static_cast<unsigned int>(id) >= m_id_to_store_row.size())
+      m_id_to_store_row.resize(static_cast<unsigned int>(id + 1), no_store_row);
 
-    m_particle_index[static_cast<unsigned int>(id)] = p;
+    m_id_to_store_row[static_cast<unsigned int>(id)] = row;
   }
 
   /**
-   * @brief Clear the particles index and its backing view pool.
+   * @brief Clear the id -> store-row map (phase 7e).
    */
-  void clear_particle_index() {
-    m_particle_index.clear();
-    // Drop the live views but KEEP the deque's constructed slots as reusable
-    // capacity (phase 7a perf fix): the next rebuild rebinds them in place via
-    // acquire_view_slot rather than reconstructing. Idle slots are never read
-    // (all reads are bounded by m_view_pool_fill).
-    m_view_pool_fill = 0u;
-  }
+  void clear_particle_index() { m_id_to_store_row.clear(); }
 
 private:
   /**
-   * @brief Rebuild the id->view index from the (synchronized) store.
+   * @brief Rebuild the id -> store-row map from the (synchronized) store.
    *
-   * Phase 7a transitional: refills @ref m_view_pool with one attached view per
-   * indexed particle -- all locals first, then the ghost rows whose id is not
-   * already owned by a local -- and points @ref m_particle_index at the pool
-   * entries. Must run with a clean store (rows assigned). Indexes LOCALS only;
-   * ghost id columns are not valid until ghosts_update runs, so ghosts are
-   * indexed separately by @ref index_ghost_particles afterwards. "Locals win"
-   * over ghost copies of the same id, matching the pre-flip index semantics.
+   * Phase 7e: fills @ref m_id_to_store_row with the store row of each indexed
+   * particle -- all locals first, then the ghost rows whose id is not already
+   * owned by a local. Must run with a clean store (rows assigned). Indexes
+   * LOCALS only; ghost id columns are not valid until ghosts_update runs, so
+   * ghosts are indexed separately by @ref index_ghost_particles afterwards.
+   * "Locals win" over ghost copies of the same id, matching the pre-flip index
+   * semantics.
    */
   void rebuild_particle_index();
 
   /**
-   * @brief Append the ghost rows to the id->view index / view pool.
+   * @brief Append the ghost rows to the id -> store-row map.
    *
-   * Phase 7a: run AFTER ghosts_update has filled the ghost id columns (a fresh
-   * ghost row carries a default id until then). Adds a stable pool view + index
-   * entry for each ghost whose id is not owned by a local.
+   * Phase 7e: run AFTER ghosts_update has filled the ghost id columns (a fresh
+   * ghost row carries a default id until then). Records the store row for each
+   * ghost whose id is not owned by a local (or by an earlier ghost of the same
+   * id -- first valid row wins).
    */
   void index_ghost_particles();
 
-  /**
-   * @brief Acquire the next view-pool slot bound to @p row (phase 7a perf fix).
-   *
-   * Rebinds the leading idle slot in place (a two-field
-   * @ref Particle::attach_to_store, no Particle construction) if one exists,
-   * otherwise grows the pool by one constructed view. Advances
-   * @ref m_view_pool_fill and returns the (address-stable) slot.
-   */
   /** @brief Grow the migration staging store to hold at least @p needed rows,
    *  preserving already-staged rows (phase 7b). Shared by @ref stage_row and
    *  @ref reserve_staging_rows. */
   void ensure_staging_capacity(std::size_t needed);
-
-  Particle *acquire_view_slot(int row) {
-    if (m_view_pool_fill < m_view_pool.size()) {
-      m_view_pool[m_view_pool_fill].attach_to_store(m_particle_store, row);
-    } else {
-      m_view_pool.push_back(m_particle_store.make_view(row));
-    }
-    return std::addressof(m_view_pool[m_view_pool_fill++]);
-  }
 
   /**
    * @brief Stage a new particle (built into a staging row) into a cell (phase
@@ -388,29 +368,47 @@ private:
 
 public:
   /**
-   * @brief Get a local particle by id.
+   * @brief Get a local particle by id (phase 7e).
+   *
+   * Resolves @p id to a store row via @ref m_id_to_store_row and returns a
+   * fresh by-value @ref Particle view over that row. The returned view is a
+   * 16-byte handle aliasing the store; it is valid until the next store rebuild
+   * (which renumbers rows), exactly the pre-7e "pointer valid until the next
+   * topology change" contract. An absent id yields an empty optional (the
+   * nullptr equivalent).
    *
    * @param id Particle to get.
-   * @return Pointer to particle if it is local,
-   *         nullptr otherwise.
+   * @return A view of the particle if it is local (or an indexed ghost),
+   *         @c std::nullopt otherwise.
    */
-  Particle *get_local_particle(int id) {
+  std::optional<Particle> get_local_particle(int id) {
     assert(id >= 0);
 
-    if (static_cast<unsigned int>(id) >= m_particle_index.size())
-      return nullptr;
+    if (static_cast<unsigned int>(id) >= m_id_to_store_row.size())
+      return std::nullopt;
 
-    return m_particle_index[static_cast<unsigned int>(id)];
+    auto const row = m_id_to_store_row[static_cast<unsigned int>(id)];
+    if (row == no_store_row)
+      return std::nullopt;
+
+    return m_particle_store.make_view(row);
   }
 
   /** @overload */
-  const Particle *get_local_particle(int id) const {
+  std::optional<const Particle> get_local_particle(int id) const {
     assert(id >= 0);
 
-    if (static_cast<unsigned int>(id) >= m_particle_index.size())
-      return nullptr;
+    if (static_cast<unsigned int>(id) >= m_id_to_store_row.size())
+      return std::nullopt;
 
-    return m_particle_index[static_cast<unsigned int>(id)];
+    auto const row = m_id_to_store_row[static_cast<unsigned int>(id)];
+    if (row == no_store_row)
+      return std::nullopt;
+
+    // const overload: the store is logically const here, but make_view needs a
+    // mutable store to bind the view. The returned view is const, so no
+    // mutation escapes.
+    return const_cast<ParticleStore &>(m_particle_store).make_view(row);
   }
 
   template <class InputRange, class OutputIterator>
@@ -503,10 +501,10 @@ public:
    * it belongs.
    *
    * @param p Particle to add.
-   * @return Pointer to the particle in the cell
-   *         system.
+   * @return A view of the particle in the cell system (phase 7e: a by-value
+   *         @ref Particle view, valid until the next store rebuild).
    */
-  Particle *add_particle(Particle &&p);
+  std::optional<Particle> add_particle(Particle &&p);
 
   /**
    * @brief Add a particle.
@@ -520,10 +518,10 @@ public:
    * the particle in exactly one place.
    *
    * @param p Particle to add.
-   * @return Pointer to particle if it is local, null
-   *         otherwise.
+   * @return A view of the particle if it is local (phase 7e: a by-value
+   *         @ref Particle view), @c std::nullopt otherwise.
    */
-  Particle *add_local_particle(Particle &&p);
+  std::optional<Particle> add_local_particle(Particle &&p);
 
   /**
    * @brief Remove a particle.
@@ -714,17 +712,25 @@ public:
    *         was not found.
    *
    * @param partner_ids Ids to resolve.
-   * @return Vector of Particle pointers.
+   * @return Vector of Particle VIEWS held by value (phase 7e).
+   *
+   * Phase 7e: @ref get_local_particle no longer returns a stable pointer (the
+   * view pool is gone), so the resolved partners are collected as by-value
+   * @ref Particle views (16-byte handles). Callers that need the historical
+   * @c std::span<Particle*> handler contract build a pointer span into this
+   * owned buffer (see @ref execute_bond_handler), which stays valid for as long
+   * as the returned vector lives.
    */
-  auto resolve_bond_partners(std::span<const int> partner_ids) {
-    boost::container::static_vector<Particle *, 4> partners;
-    get_local_particles(partner_ids, std::back_inserter(partners));
-
-    /* Check if id resolution failed for any partner */
-    if (std::ranges::find(partners, nullptr) != partners.end()) {
-      throw BondResolutionError{};
+  boost::container::static_vector<Particle, 4>
+  resolve_bond_partners(std::span<const int> partner_ids) {
+    boost::container::static_vector<Particle, 4> partners;
+    for (auto const id : partner_ids) {
+      auto view = get_local_particle(id);
+      if (not view) {
+        throw BondResolutionError{};
+      }
+      partners.push_back(*view);
     }
-
     return partners;
   }
 
@@ -742,19 +748,28 @@ private:
    */
   template <class Handler>
   void execute_bond_handler(Particle &p, Handler const &handler) {
-    // Debug guard (phase 7a): resolve_bond_partners hands back pointers into
-    // the stable view pool (see rebuild_particle_index). Those references (e.g.
-    // the ImmersedBoundaries `Particle &p2 = *partners[0]` pattern) stay valid
-    // for the duration of the handler call ONLY while the store generation is
-    // unchanged -- a rebuild refreshes the pool. Record the generation on entry
-    // and assert it did not move across each handler call.
+    // Debug guard (phase 7e): resolve_bond_partners hands back by-value
+    // Particle VIEWS (16-byte handles over store rows); the handler contract is
+    // still std::span<Particle*>, so we build a pointer span into the owned
+    // `partners` buffer -- valid for the duration of the handler call. The
+    // views (and thus the rows they alias) are only valid while the store
+    // generation is unchanged: a rebuild renumbers the rows. Record the
+    // generation on entry and assert it did not move across each handler call
+    // (a handler must not mutate topology). The identity gate is blind to a
+    // mis-resolved row (see ParticleStoreGuard), so this debug canary guards
+    // the held views.
     auto const bond_epoch_generation = m_particle_store.generation();
     for (const BondView bond : p.bonds()) {
       auto const partner_ids = bond.partner_ids();
 
       try {
         auto partners = resolve_bond_partners(partner_ids);
-        auto const partners_span = std::span(partners.data(), partners.size());
+        boost::container::static_vector<Particle *, 4> partner_ptrs;
+        for (auto &partner : partners) {
+          partner_ptrs.push_back(std::addressof(partner));
+        }
+        auto const partners_span =
+            std::span(partner_ptrs.data(), partner_ptrs.size());
         auto const bond_broken = handler(p, bond.bond_id(), partners_span);
         ParticleStoreGuard::assert_generation(m_particle_store,
                                               bond_epoch_generation);

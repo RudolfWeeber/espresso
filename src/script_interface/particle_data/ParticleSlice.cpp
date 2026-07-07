@@ -57,7 +57,7 @@ static void set_particles_bonds(
     auto const bonds_partner_ids = all_bonds_partner_ids[i];
     // Remove old bonds
     auto p = cell_structure.get_local_particle(pid);
-    if (p != nullptr and not p->is_ghost()) {
+    if (p and not p->is_ghost()) {
       p->bonds().clear();
     }
     // Add new bonds
@@ -84,7 +84,7 @@ set_particles_exclusions(std::vector<int> const &pids,
       particle_exclusion_sanity_checks(pid, excluded_pid, cell_structure, comm);
     }
     auto p = cell_structure.get_local_particle(pid);
-    if (p != nullptr and not p->is_ghost()) {
+    if (p and not p->is_ghost()) {
       // Remove all excluded ids of this particle
       for (auto const old_excluded_pid : p->exclusions()) {
         local_remove_exclusion(pid, old_excluded_pid, cell_structure);
@@ -119,7 +119,7 @@ static void set_particles_types(std::vector<int> const &pids,
   for (std::size_t i = 0; i < pids.size(); ++i) {
     auto const pid = pids[i];
     auto p = cell_structure.get_local_particle(pid);
-    if (p != nullptr and not p->is_ghost()) {
+    if (p and not p->is_ghost()) {
       auto const old_type = p->type();
       auto const &new_type = types[i];
       if (new_type < 0) {
@@ -140,7 +140,7 @@ static void set_particles_charges(std::vector<int> const &pids,
   for (std::size_t i = 0; i < pids.size(); ++i) {
     auto const pid = pids[i];
     auto p = cell_structure.get_local_particle(pid);
-    if (p != nullptr and not p->is_ghost()) {
+    if (p and not p->is_ghost()) {
       p->q() = charges[i];
     }
   }

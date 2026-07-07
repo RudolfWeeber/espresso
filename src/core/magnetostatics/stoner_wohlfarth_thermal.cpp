@@ -263,7 +263,7 @@ void System::System::integrate_magnetodynamics() {
     if (not p.is_virtual() or not p.stoner_wohlfarth_is_enabled()) {
       return;
     }
-    auto *p_ref = get_reference_particle(*cell_structure, p);
+    auto p_ref = get_reference_particle(*cell_structure, p);
     if (not p_ref) {
       return;
     }

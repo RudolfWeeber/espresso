@@ -35,8 +35,8 @@ PidObservable::operator()(boost::mpi::communicator const &comm) const {
   // rank-local. Observables are invoked directly (not always via
   // on_observable_calc), so the sync belongs on this read path.
   System::get_system().cell_structure->ensure_particle_store_synchronized();
-  auto const &local_particles = fetch_particles(ids());
-  return this->evaluate(comm, local_particles,
+  auto const local_particles = fetch_particles(ids());
+  return this->evaluate(comm, local_particles.refs,
                         ParticleObservables::traits<Particle>{});
 }
 } // namespace Observables

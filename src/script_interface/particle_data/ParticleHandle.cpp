@@ -144,10 +144,10 @@ template <typename T, class F>
 T ParticleHandle::get_particle_property(F const &fun) const {
   auto &cell_structure = get_cell_structure()->get_cell_structure();
   auto const &comm = context()->get_comm();
-  auto const ptr = const_cast<Particle const *>(
-      get_real_particle(comm, m_pid, cell_structure));
+  // Phase 7e: get_real_particle returns a by-value optional view.
+  auto const ptr = get_real_particle(comm, m_pid, cell_structure);
   std::optional<T> ret;
-  if (ptr == nullptr) {
+  if (not ptr) {
     ret = {};
   } else {
     ret = {fun(*ptr)};
@@ -166,8 +166,9 @@ template <class F>
 void ParticleHandle::set_particle_property(F const &fun) const {
   auto &cell_structure = get_cell_structure()->get_cell_structure();
   auto const &comm = context()->get_comm();
-  auto const ptr = get_real_particle(comm, m_pid, cell_structure);
-  if (ptr != nullptr) {
+  // Phase 7e: mutable optional view -- fun() writes through it.
+  auto ptr = get_real_particle(comm, m_pid, cell_structure);
+  if (ptr) {
     fun(*ptr);
   }
   get_system()->on_particle_change();
@@ -410,7 +411,7 @@ ParticleHandle::ParticleHandle() {
          });
        },
        [this]() {
-         auto &p = get_particle_data(m_pid);
+         auto const p = get_particle_data(m_pid);
          return convert_vector_body_to_space(p, p.omega());
        }},
       {"torque_lab",
@@ -788,7 +789,7 @@ Variant ParticleHandle::do_call_method(std::string const &name,
     auto &cell_structure = get_cell_structure()->get_cell_structure();
     auto const p =
         get_real_particle(context()->get_comm(), m_pid, cell_structure);
-    if (p != nullptr) {
+    if (p) {
       return p->has_exclusion(other_pid);
     }
   }
@@ -888,7 +889,7 @@ void ParticleHandle::do_construct(VariantMap const &params) {
     particle_checks(m_pid, pos);
     auto &cell_structure = get_cell_structure()->get_cell_structure();
     auto ptr = cell_structure.get_local_particle(m_pid);
-    if (ptr != nullptr) {
+    if (ptr) {
       throw std::invalid_argument("Particle " + std::to_string(m_pid) +
                                   " already exists");
     }

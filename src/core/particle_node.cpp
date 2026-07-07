@@ -357,15 +357,19 @@ static void mpi_send_particle_data_local(int p_id) {
 
 REGISTER_CALLBACK(mpi_send_particle_data_local)
 
-const Particle &get_particle_data(int p_id) {
+Particle get_particle_data(int p_id) {
   auto const pnode = get_particle_node(p_id);
 
   if (pnode == this_node) {
-    // The local-return path hands out a live particle whose accessor reads need
-    // valid ParticleStore rows. O(1) when the store is clean; rank-local.
+    // The local path hands out a live particle whose accessor reads need valid
+    // ParticleStore rows. O(1) when the store is clean; rank-local. Phase 7e:
+    // get_particle_data returns a by-value Particle VIEW (16-byte handle)
+    // rather than a reference, because get_local_particle no longer hands out a
+    // stable pointer (the view pool is gone); the view aliases the live store
+    // row and is valid for the caller's immediate use.
     get_cell_structure().ensure_particle_store_synchronized();
     auto const p = get_cell_structure().get_local_particle(p_id);
-    assert(p != nullptr);
+    assert(p.has_value());
     return *p;
   }
 
@@ -393,7 +397,7 @@ get_local_particle_property(int p_id,
   // getter reads force/torque. O(1) when the store is clean; rank-local.
   get_cell_structure().ensure_particle_store_synchronized();
   auto const p = get_cell_structure().get_local_particle(p_id);
-  auto const found = (p != nullptr) and not p->is_ghost();
+  auto const found = p and not p->is_ghost();
   assert(1 == boost::mpi::all_reduce(::comm_cart, static_cast<int>(found),
                                      std::plus<>()) &&
          "particle not found exactly once");
@@ -442,7 +446,7 @@ static void mpi_get_particles_local() {
   rows.reserve(local_ids.size());
   for (auto const p_id : local_ids) {
     auto const p = cell_structure.get_local_particle(p_id);
-    assert(p != nullptr);
+    assert(p.has_value());
     rows.push_back(p->store_row());
   }
   std::vector<char> buffer;
@@ -680,7 +684,7 @@ static bool maybe_insert_particle(int p_id, Utils::Vector3d const &pos) {
   new_part.pos() = folded_pos;
   new_part.image_box() = image_box;
 
-  return cell_structure.add_local_particle(std::move(new_part)) != nullptr;
+  return cell_structure.add_local_particle(std::move(new_part)).has_value();
 }
 
 /**
@@ -693,7 +697,7 @@ static bool maybe_move_particle(int p_id, Utils::Vector3d const &pos) {
   auto const &system = System::get_system();
   auto const &box_geo = *system.box_geo;
   auto p = system.cell_structure->get_local_particle(p_id);
-  if (p == nullptr) {
+  if (not p) {
     return false;
   }
   auto folded_pos = pos;
@@ -715,7 +719,7 @@ void remove_particle(int p_id) {
   if (::type_list_enable) {
     auto p = get_cell_structure().get_local_particle(p_id);
     auto p_type = -1;
-    if (p != nullptr and not p->is_ghost()) {
+    if (p and not p->is_ghost()) {
       if (this_node == 0) {
         p_type = p->type();
       } else {

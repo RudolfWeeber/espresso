@@ -73,13 +73,13 @@ static Utils::Vector3d velocity(Particle const &p_ref, Particle const &p_vs) {
   return vector_product(omega_space_frame, d) + Utils::Vector3d(p_ref.v());
 }
 
-Particle *get_reference_particle(CellStructure &cell_structure,
-                                 Particle const &p) {
+std::optional<Particle> get_reference_particle(CellStructure &cell_structure,
+                                               Particle const &p) {
   auto const &vs_rel = p.vs_relative();
   if (vs_rel.to_particle_id == -1) {
     runtimeErrorMsg() << "Particle with id " << p.id()
                       << " is a dangling virtual site";
-    return nullptr;
+    return std::nullopt;
   }
   auto p_ref_ptr = cell_structure.get_local_particle(vs_rel.to_particle_id);
   if (!p_ref_ptr) {
@@ -129,7 +129,7 @@ void vs_relative_update_particles(CellStructure &cell_structure,
       return;
     }
 
-    auto const *p_ref_ptr = get_reference_particle(cell_structure, p);
+    auto const p_ref_ptr = get_reference_particle(cell_structure, p);
     if (!p_ref_ptr)
       return;
 
@@ -179,8 +179,8 @@ void vs_relative_back_transfer_forces_and_torques(
         if (!is_vs(p))
           return;
 
-        auto *p_ref_ptr = get_reference_particle(cell_structure, p);
-        assert(p_ref_ptr != nullptr);
+        auto p_ref_ptr = get_reference_particle(cell_structure, p);
+        assert(p_ref_ptr.has_value());
 
         auto &p_ref = *p_ref_ptr;
         auto ref_torque = p_ref.torque();
@@ -204,7 +204,7 @@ vs_relative_pressure_tensor(CellStructure const &cell_structure) {
 
   for (auto const &p : cell_structure.local_particles()) {
     if (is_vs_relative_trans(p)) {
-      if (auto const *p_ref_ptr = cell_structure.get_local_particle(
+      if (auto const p_ref_ptr = cell_structure.get_local_particle(
               p.vs_relative().to_particle_id)) {
         pressure_tensor += constraint_stress(*p_ref_ptr, p);
       }

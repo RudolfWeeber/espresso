@@ -34,7 +34,7 @@
 
 Utils::Vector3d get_ibm_particle_position(CellStructure const &cell_structure,
                                           int pid) {
-  auto *p = cell_structure.get_local_particle(pid);
+  auto const p = cell_structure.get_local_particle(pid);
   // Phase 7b: a Particle is a non-owning view (its store pointer is meaningless
   // on another rank), so reduce the POSITION VALUE across ranks rather than the
   // whole particle. The owning rank contributes its position; every other rank

@@ -256,23 +256,24 @@ void CellStructure::update_bond_storage(int &pair_count, int &angle_count,
     auto const partner_ids = bond.partner_ids();
     try {
       auto const partners = resolve_bond_partners(partner_ids);
+      // Phase 7e: resolve_bond_partners now yields by-value Particle views.
       if (partners.size() == 1u) { // pair bonds
         auto p_index = Kokkos::atomic_fetch_add(&pair_count, 1);
         pair_list(p_index, 0) = p.id();
-        pair_list(p_index, 1) = partners[0]->id();
+        pair_list(p_index, 1) = partners[0].id();
         pair_ids(p_index) = bond.bond_id();
       } else if (partners.size() == 2u) { // angle bond
         auto a_index = Kokkos::atomic_fetch_add(&angle_count, 1);
         angle_list(a_index, 0) = p.id();
-        angle_list(a_index, 1) = partners[0]->id();
-        angle_list(a_index, 2) = partners[1]->id();
+        angle_list(a_index, 1) = partners[0].id();
+        angle_list(a_index, 2) = partners[1].id();
         angle_ids(a_index) = bond.bond_id();
       } else if (partners.size() == 3u) { // dihedral bond
         auto d_index = Kokkos::atomic_fetch_add(&dihedral_count, 1);
         dihedral_list(d_index, 0) = p.id();
-        dihedral_list(d_index, 1) = partners[0]->id();
-        dihedral_list(d_index, 2) = partners[1]->id();
-        dihedral_list(d_index, 3) = partners[2]->id();
+        dihedral_list(d_index, 1) = partners[0].id();
+        dihedral_list(d_index, 2) = partners[1].id();
+        dihedral_list(d_index, 3) = partners[2].id();
         dihedral_ids(d_index) = bond.bond_id();
       }
     } catch (BondResolutionError const &) {
@@ -285,50 +286,74 @@ void CellStructure::set_index_map() {
 #ifdef ESPRESSO_CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif
-  // Phase 7a: cells hand out row VIEWS (transient cached objects), so
-  // m_unique_particles can no longer hold pointers into cell iteration. Instead
-  // it points into the stable view pool (m_view_pool, rebuilt by
-  // rebuild_particle_index): its local prefix is store rows [0, n_local) in row
-  // order (== the pack order, so pack index i == store row i on the local
-  // prefix) and its tail is the deduped ghosts (first occurrence of each id not
-  // owned by a local) -- exactly the point set and order this function built
-  // before. Rebuilding those pointers here is a wholesale refresh over the pool
-  // the store rebuild just produced.
+  // Phase 7e: the id->view pool is gone; rebuild the pack-order participant
+  // list (m_unique_particles) directly from the synchronized store. The pack
+  // order is the local prefix (store rows [0, n_local) in row order == pack
+  // order, so pack index i == store row i on the local prefix) followed by the
+  // deduped ghost tail (first occurrence of each ghost id not owned by a local,
+  // in store-row order) -- exactly the point set and order the retired view
+  // pool produced. The by-value views are materialized into
+  // m_unique_particle_views (the owning backing) and m_unique_particles points
+  // into it. The dedup reuses the id->store-row map the store rebuild just
+  // built (m_id_to_store_row): "locals win, then first valid ghost row wins" is
+  // precisely what that map resolves each id to.
   assert(not m_particle_store.is_dirty());
   auto &unique_particles = m_unique_particles;
+  auto &unique_particle_views = m_unique_particle_views;
   unique_particles.clear();
-  auto const n_local = count_local_particles();
-  unique_particles.reserve(m_view_pool_fill);
+  unique_particle_views.clear();
+  auto const n_local = m_particle_store.number_of_local_particles();
+  auto const n_total = m_particle_store.number_of_particles();
+  unique_particle_views.reserve(n_total);
   int max_id = -1;
   int pair_count = 0;
   int angle_count = 0;
   int dihedral_count = 0;
   m_bond_state->reset_counts();
-  // Iterate the LIVE view-pool prefix [0, m_view_pool_fill): local prefix (pool
-  // positions [0, n_local)) then the deduped ghost tail. Slots past
-  // m_view_pool_fill are idle reusable capacity (phase 7a perf fix) and must be
-  // skipped. Count bonds only on the local prefix (matching the pre-flip
-  // enumerate_local_particles pass, which never walked ghosts).
-  for (std::size_t pool_index = 0u; pool_index < m_view_pool_fill;
-       ++pool_index) {
-    auto &p = m_view_pool[pool_index];
-    unique_particles.emplace_back(std::addressof(p));
+  // Local prefix: every local row participates, in row order.
+  for (std::size_t r = 0u; r < n_local; ++r) {
+    auto const &p = unique_particle_views.emplace_back(
+        m_particle_store.make_view(static_cast<int>(r)));
     max_id = std::max(p.id(), max_id);
-    if (pool_index < n_local) {
-      for (auto const bond : p.bonds()) {
-        auto const partner_ids = bond.partner_ids();
-        if (partner_ids.empty()) {
-          continue;
-        }
-        if (partner_ids.size() == 1u) {
-          ++pair_count;
-        } else if (partner_ids.size() == 2u) {
-          ++angle_count;
-        } else if (partner_ids.size() == 3u) {
-          ++dihedral_count;
-        }
+    // Count bonds only on the local prefix (matching the pre-flip
+    // enumerate_local_particles pass, which never walked ghosts).
+    for (auto const bond : p.bonds()) {
+      auto const partner_ids = bond.partner_ids();
+      if (partner_ids.empty()) {
+        continue;
+      }
+      if (partner_ids.size() == 1u) {
+        ++pair_count;
+      } else if (partner_ids.size() == 2u) {
+        ++angle_count;
+      } else if (partner_ids.size() == 3u) {
+        ++dihedral_count;
       }
     }
+  }
+  // Ghost tail: the deduped ghosts, in store-row order. A ghost row
+  // participates iff its id resolves (in m_id_to_store_row) back to THIS row --
+  // i.e. it is the winning (first, not-shadowed-by-a-local) copy of that id.
+  for (std::size_t r = n_local; r < n_total; ++r) {
+    auto const id = m_particle_store.id(static_cast<int>(r));
+    if (id < 0) {
+      continue;
+    }
+    auto const resolved =
+        (static_cast<unsigned int>(id) < m_id_to_store_row.size())
+            ? m_id_to_store_row[static_cast<unsigned int>(id)]
+            : no_store_row;
+    if (resolved != static_cast<int>(r)) {
+      continue; // shadowed by a local or by an earlier ghost of the same id
+    }
+    auto const &p = unique_particle_views.emplace_back(
+        m_particle_store.make_view(static_cast<int>(r)));
+    max_id = std::max(p.id(), max_id);
+  }
+  // The backing buffer is now final-sized: take stable pointers into it.
+  unique_particles.reserve(unique_particle_views.size());
+  for (auto &p : unique_particle_views) {
+    unique_particles.emplace_back(std::addressof(p));
   }
   set_local_bond_numbers(pair_count, angle_count, dihedral_count);
   m_bond_state->allocate();
@@ -598,23 +623,20 @@ Particle CellStructure::make_new_particle_view() {
 
 void CellStructure::rebuild_particle_index() {
   assert(not m_particle_store.is_dirty());
-  m_particle_index.clear();
-  // Phase 7a perf fix: rewind the fill cursor and REUSE the pool's constructed
-  // slots (acquire_view_slot rebinds them in place) instead of clear + N-fold
-  // Particle construction. Idle slots past m_view_pool_fill stay as reusable
-  // capacity; they are never read.
-  m_view_pool_fill = 0u;
+  // Phase 7e: rebuild the id -> store-row map wholesale from the (synchronized)
+  // store. This is the single write site of m_id_to_store_row.
+  m_id_to_store_row.clear();
   auto const n_local = m_particle_store.number_of_local_particles();
   // Index locals (rows [0, n_local)); their id columns are valid.
   for (std::size_t r = 0u; r < n_local; ++r) {
-    auto *view = acquire_view_slot(static_cast<int>(r));
-    update_particle_index(view->id(), view);
+    update_particle_index(m_particle_store.id(static_cast<int>(r)),
+                          static_cast<int>(r));
   }
   // Also index the ALREADY-VALID ghost rows: a bare rebuild (e.g. an
   // add_particle commit, the clean-store forces.cpp sync, or resort_particles'
   // end-of-function sync) must not drop the ghost index entries a prior
   // ghosts_update established, or a ghost-id lookup (LB coupling's
-  // is_ghost_for_local_particle, collision detection) would see nullptr. FRESH
+  // is_ghost_for_local_particle, collision detection) would see no row. FRESH
   // ghost rows just created by resize_ghost_storage carry a default id (-1) and
   // are skipped by index_ghost_particles; they are picked up by a later
   // index_ghost_particles once ghosts_update fills their id columns.
@@ -625,33 +647,19 @@ void CellStructure::index_ghost_particles() {
   assert(not m_particle_store.is_dirty());
   auto const n_total = m_particle_store.number_of_particles();
   auto const n_local = m_particle_store.number_of_local_particles();
-  // Ghost rows [n_local, n_total): add a pool view + index entry for each ghost
-  // whose id is VALID (>= 0; a freshly resized ghost carries -1 until
-  // ghosts_update fills it) and not already owned by a local (locals win). The
-  // local prefix of the pool is left intact; this appends/extends the ghost
-  // tail. Idempotent: a ghost id already present (from a local or an earlier
-  // ghost of the same id) is skipped, so re-running after ghosts_update only
-  // adds the newly-valid ghosts.
-  //
-  // Phase 7a perf fix: peek at the next idle slot bound to this row, check its
-  // id, and only COMMIT (advance m_view_pool_fill via acquire_view_slot) if the
-  // ghost is accepted -- a rejected candidate leaves the slot idle for the next
-  // row to reuse, so no Particle is constructed per skipped ghost.
+  // Ghost rows [n_local, n_total): record the store row for each ghost whose id
+  // is VALID (>= 0; a freshly resized ghost carries -1 until ghosts_update
+  // fills it) and not already mapped by a local (locals win) or by an earlier
+  // ghost of the same id (first valid row wins). The local prefix of the map is
+  // left intact; this appends the ghost tail. Idempotent: a ghost id already
+  // present is skipped, so re-running after ghosts_update only adds the
+  // newly-valid ghosts.
   for (std::size_t r = n_local; r < n_total; ++r) {
-    // Bind the next idle slot to row r without advancing the cursor. Grow the
-    // pool by one only if there is no idle slot to rebind.
-    if (m_view_pool_fill >= m_view_pool.size()) {
-      m_view_pool.push_back(m_particle_store.make_view(static_cast<int>(r)));
-    } else {
-      m_view_pool[m_view_pool_fill].attach_to_store(m_particle_store,
-                                                    static_cast<int>(r));
+    auto const id = m_particle_store.id(static_cast<int>(r));
+    if (id < 0 or get_local_particle(id).has_value()) {
+      continue;
     }
-    auto const id = m_view_pool[m_view_pool_fill].id();
-    if (id < 0 or get_local_particle(id) != nullptr) {
-      continue; // leave the slot idle; the next row rebinds it
-    }
-    update_particle_index(id, std::addressof(m_view_pool[m_view_pool_fill]));
-    ++m_view_pool_fill; // commit
+    update_particle_index(id, static_cast<int>(r));
   }
 }
 
@@ -665,24 +673,24 @@ void CellStructure::check_particle_index() const {
       throw std::runtime_error("Particle id out of bounds.");
     }
 
-    // Phase 7a: particles are views over store rows, so the index entry (a
-    // pointer into the view pool) and the iterated view have DIFFERENT
-    // addresses even for the same particle. Check identity by store row instead
-    // of by address: both must resolve to the same row of the same store.
-    auto const *indexed = get_local_particle(id);
-    if (indexed == nullptr or indexed->store() != p.store() or
+    // Phase 7e: particles are by-value views over store rows, so the resolved
+    // view and the iterated view have DIFFERENT addresses even for the same
+    // particle. Check identity by store row instead of by address: both must
+    // resolve to the same row of the same store.
+    auto const indexed = get_local_particle(id);
+    if (not indexed or indexed->store() != p.store() or
         indexed->store_row() != p.store_row()) {
       throw std::runtime_error("Invalid local particle index entry.");
     }
   }
 
-  /* checks: local particle id. Phase 7a: the index also holds ghost entries
+  /* checks: local particle id. Phase 7e: the map also holds ghost entries
    * (for ghost-id lookups), so count only the LOCAL (non-ghost) entries when
    * comparing against local_particles(). */
   std::size_t local_part_cnt = 0u;
   for (int n = 0; n < get_max_local_particle_id() + 1; n++) {
-    auto const *indexed = get_local_particle(n);
-    if (indexed != nullptr) {
+    auto const indexed = get_local_particle(n);
+    if (indexed) {
       if (indexed->id() != n) {
         throw std::runtime_error("local_particles part has corrupted id.");
       }
@@ -737,18 +745,20 @@ void CellStructure::remove_particle(int id) {
       }
     }
   }
-  // NOTE: deferred id→view reindex. Between this call and the next
-  // ensure_particle_store_synchronized, get_local_particle(id) returns a
-  // pool pointer to the now-orphaned row rather than nullptr.  The window is
-  // benign in every current call path: System::on_particle_change() forces a
-  // resort (which rebuilds the index) before the next force calculation, and
-  // particle_node.cpp erases `id` from the particle_node map immediately after
-  // remove_particle returns, so the orphaned pointer is never reached through
-  // the public API in the interim.
+  // Phase 7e: eagerly invalidate the id -> store-row entry so no stale row is
+  // readable through get_local_particle before the next store rebuild. The full
+  // map is still rebuilt wholesale at the next
+  // ensure_particle_store_synchronized (which renumbers every row); this just
+  // closes the intervening window (the pre-7e code left an orphaned view-pool
+  // pointer readable here, relying on the resort that on_particle_change forces
+  // before the next force calculation).
+  if (id >= 0 and static_cast<unsigned int>(id) < m_id_to_store_row.size()) {
+    m_id_to_store_row[static_cast<unsigned int>(id)] = no_store_row;
+  }
   mark_particle_store_dirty();
 }
 
-Particle *CellStructure::add_local_particle(Particle &&p) {
+std::optional<Particle> CellStructure::add_local_particle(Particle &&p) {
   auto const sort_cell = particle_to_cell(p);
   if (sort_cell) {
     sort_cell->set_store(m_particle_store);
@@ -757,15 +767,16 @@ Particle *CellStructure::add_local_particle(Particle &&p) {
     mark_particle_store_dirty();
     // Commit immediately so the new particle is live (indexed, iterable,
     // readable) right after this call -- the pre-flip contract callers rely on.
-    // Return a stable pointer into the view pool (phase 7a).
+    // Phase 7e: return a fresh by-value view resolved via the id->store-row
+    // map.
     ensure_particle_store_synchronized();
     return get_local_particle(id);
   }
 
-  return {};
+  return std::nullopt;
 }
 
-Particle *CellStructure::add_particle(Particle &&p) {
+std::optional<Particle> CellStructure::add_particle(Particle &&p) {
   auto const sort_cell = particle_to_cell(p);
   /* There is always at least one cell, so if the particle
    * does not belong to a cell on this node we can put it there. */
@@ -780,16 +791,22 @@ Particle *CellStructure::add_particle(Particle &&p) {
   append_staged_particle(*cell, std::move(p));
   mark_particle_store_dirty();
   // Commit immediately so the new particle is live right after this call (the
-  // pre-flip contract). Return a stable view-pool pointer (phase 7a).
+  // pre-flip contract). Phase 7e: return a fresh by-value view resolved via the
+  // id->store-row map.
   ensure_particle_store_synchronized();
   return get_local_particle(id);
 }
 
 int CellStructure::get_max_local_particle_id() const {
-  auto it = std::ranges::find_if(std::ranges::views::reverse(m_particle_index),
-                                 [](auto const *p) { return p != nullptr; });
+  // Phase 7e: the id -> store-row map is indexed by id; the highest id present
+  // on this rank is the highest index carrying a valid (non-sentinel) row.
+  auto const it =
+      std::ranges::find_if(std::ranges::views::reverse(m_id_to_store_row),
+                           [](int const row) { return row != no_store_row; });
 
-  return (it != m_particle_index.rend()) ? (*it)->id() : -1;
+  return (it != m_id_to_store_row.rend())
+             ? static_cast<int>(m_id_to_store_row.rend() - it) - 1
+             : -1;
 }
 
 int CellStructure::get_local_pair_bond_numbers() const {

@@ -345,13 +345,13 @@ void ReactionAlgorithm::check_exclusion_range(int p_id, int p_type) {
     system.on_observable_calc();
     auto const local_ids =
         get_short_range_neighbors(system, p_id, m_max_exclusion_range);
-    assert(p1_ptr == nullptr or !!local_ids);
+    assert(not p1_ptr or !!local_ids);
     if (local_ids) {
       particle_ids = std::move(*local_ids);
     }
   }
 
-  if (p1_ptr != nullptr) {
+  if (p1_ptr) {
     auto &p1 = *p1_ptr;
     auto const &system = System::get_system();
     auto const &box_geo = *system.box_geo;
@@ -639,25 +639,33 @@ double ReactionAlgorithm::calculate_potential_energy() const {
   return pot;
 }
 
-Particle *ReactionAlgorithm::get_real_particle(int p_id) const {
+std::optional<Particle> ReactionAlgorithm::get_real_particle(int p_id) const {
   assert(p_id >= 0);
   auto const &system = System::get_system();
+  // Phase 7e: resolve against a synchronized store. get_local_particle now
+  // returns a live-store view whose is_ghost() reads number_of_local_particles;
+  // on a dirty store (e.g. after a type/charge change scheduled a resort) that
+  // read -- and thus the ownership decision below -- could diverge across ranks
+  // and break the collective all_reduce count check.
+  system.cell_structure->ensure_particle_store_synchronized();
   auto ptr = system.cell_structure->get_local_particle(p_id);
-  if (ptr != nullptr and ptr->is_ghost()) {
-    ptr = nullptr;
+  if (ptr and ptr->is_ghost()) {
+    ptr = std::nullopt;
   }
-  assert(boost::mpi::all_reduce(m_comm, static_cast<int>(ptr != nullptr),
+  assert(boost::mpi::all_reduce(m_comm, static_cast<int>(ptr.has_value()),
                                 std::plus<>()) == 1);
   return ptr;
 }
 
-Particle *ReactionAlgorithm::get_local_particle(int p_id) const {
+std::optional<Particle> ReactionAlgorithm::get_local_particle(int p_id) const {
   assert(p_id >= 0);
   auto const &system = System::get_system();
+  // Phase 7e: resolve against a synchronized store (see get_real_particle).
+  system.cell_structure->ensure_particle_store_synchronized();
   auto ptr = system.cell_structure->get_local_particle(p_id);
-  assert(boost::mpi::all_reduce(
-             m_comm, static_cast<int>(ptr != nullptr and not ptr->is_ghost()),
-             std::plus<>()) == 1);
+  assert(boost::mpi::all_reduce(m_comm,
+                                static_cast<int>(ptr and not ptr->is_ghost()),
+                                std::plus<>()) == 1);
   return ptr;
 }
 

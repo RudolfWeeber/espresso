@@ -271,8 +271,10 @@ private:
   double m_slab_end_z = -10.0;
   double m_max_exclusion_range = 0.;
 
-  Particle *get_real_particle(int p_id) const;
-  Particle *get_local_particle(int p_id) const;
+  // Phase 7e: return by-value views (optional); the cell structure no longer
+  // hands out stable pointers.
+  std::optional<Particle> get_real_particle(int p_id) const;
+  std::optional<Particle> get_local_particle(int p_id) const;
 
 protected:
   Utils::Vector3d get_random_position_in_box();
