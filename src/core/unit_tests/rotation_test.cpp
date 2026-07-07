@@ -128,7 +128,9 @@ BOOST_AUTO_TEST_CASE(convert_torque_to_body_frame_apply_fix_test) {
 }
 
 BOOST_AUTO_TEST_CASE(rotate_particle_body_test) {
+  ParticleStoreTestFixture fixture{};
   auto p = Particle();
+  fixture.attach(p);
   p.quat() = {1., 2., 3., 4.};
   {
     // fixed particles are unaffected, quaternion is identical to original
@@ -297,7 +299,9 @@ BOOST_AUTO_TEST_CASE(convert_dip_to_quat_test) {
   auto const quat_to_vector4d = [](Utils::Quaternion<double> const &quat) {
     return Utils::Vector4d{quat.data(), quat.data() + 4};
   };
+  ParticleStoreTestFixture fixture{};
   auto p = Particle();
+  fixture.attach(p);
   p.quat() = {1., 2., 3., 4.};
   {
     auto const dipm = 0.8;
@@ -348,7 +352,9 @@ BOOST_AUTO_TEST_CASE(stoner_wohlfarth_no_field_test) {
   auto const quat_ref_up = convert_director_to_quaternion(sat_mag * e_k);
   auto const quat_ref_down = convert_director_to_quaternion(-sat_mag * e_k);
   auto const dipm_ref = (sat_mag * e_k).norm();
+  ParticleStoreTestFixture fixture{};
   auto p = Particle();
+  fixture.attach(p);
   p.magnetic_anisotropy_energy() = 1.;
   p.stoner_wohlfarth_tau0_inv() = 1.;
   p.stoner_wohlfarth_dt_incr() = 1.;

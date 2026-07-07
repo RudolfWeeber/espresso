@@ -32,12 +32,8 @@
 
 #include <Kokkos_Core.hpp>
 
-#include <boost/archive/text_iarchive.hpp>
-#include <boost/archive/text_oarchive.hpp>
-
 #include <array>
 #include <cstddef>
-#include <sstream>
 #include <vector>
 
 // ParticleStore allocates Kokkos Views, which requires an initialized runtime.
@@ -110,56 +106,37 @@ BOOST_AUTO_TEST_CASE(ghost_rows_follow_locals) {
 }
 
 // Regression guard (phase-2 hybrid/n_square 4-rank force bug): force/torque
-// live only in the store columns, which are not carried by the boost
-// serialization used for cross-rank particle migration. A particle that
-// migrates to another rank arrives detached from this store; its force must be
-// ferried through the Particle serialization carrier and seeded into the new
-// row by assign_row. Otherwise a global resort followed by a force-reusing
-// integrator step would report a zeroed force (the original bug).
+// live only in the store columns. A particle that migrates to another rank must
+// carry its force across. Phase 7b (Task 4): the migration envelope is dead;
+// the cross-rank transfer is now a row-to-row ParticleStore::copy_row from the
+// sending rank's (staging) store into a fresh row on the receiving rank's
+// store. This models that copy and asserts the force (and torque) survive it.
 BOOST_AUTO_TEST_CASE(rebuild_seeds_migrated_particle_force_from_carrier) {
-  // 1) A particle attached to a source store with a known force (models the
-  //    sending rank right before a global resort).
+  // 1) A row in a source store with a known force (models the sending rank
+  //    right before a global resort).
   ParticleStore source{};
-  Particle p{};
-  p.id() = 7;
   source.begin_rebuild(1u, 0u);
-  source.assign_row(p, 0);
+  source.seed_default_row(0);
   source.finish_rebuild();
   auto const f_ref = Utils::Vector3d{-1.5, 2.25, -3.75};
-  source.force_reference(p.store_row()) = f_ref;
+  source.force_reference(0) = f_ref;
 #ifdef ESPRESSO_ROTATION
   auto const t_ref = Utils::Vector3d{4.5, -5.5, 6.5};
-  source.torque_reference(p.store_row()) = t_ref;
+  source.torque_reference(0) = t_ref;
 #endif
 
-  // 2) Serialize and deserialize the particle, exactly as the cross-rank
-  //    migration does. The receiving particle is detached (no store).
-  std::stringstream stream;
-  {
-    boost::archive::text_oarchive oa{stream};
-    oa << p;
-  }
-  Particle received{};
-  {
-    boost::archive::text_iarchive ia{stream};
-    ia >> received;
-  }
-  BOOST_REQUIRE(received.store() == nullptr);
-  BOOST_CHECK_EQUAL(received.migration_force()[0], f_ref[0]);
-  BOOST_CHECK_EQUAL(received.migration_force()[2], f_ref[2]);
-
-  // 3) The receiving rank's store rebuild must seed the new row from the
-  //    carrier so the force survives the migration.
+  // 2) The receiving rank's store copies the source row into a fresh row, so
+  //    the force survives the migration.
   ParticleStore target{};
   target.begin_rebuild(1u, 0u);
-  target.assign_row(received, 0);
+  target.copy_row(source, 0, 0);
   target.finish_rebuild();
-  auto const f_new = target.force_value(received.store_row());
+  auto const f_new = target.force_value(0);
   BOOST_CHECK_EQUAL(f_new[0], f_ref[0]);
   BOOST_CHECK_EQUAL(f_new[1], f_ref[1]);
   BOOST_CHECK_EQUAL(f_new[2], f_ref[2]);
 #ifdef ESPRESSO_ROTATION
-  auto const t_new = target.torque_value(received.store_row());
+  auto const t_new = target.torque_value(0);
   BOOST_CHECK_EQUAL(t_new[0], t_ref[0]);
   BOOST_CHECK_EQUAL(t_new[2], t_ref[2]);
 #endif
@@ -289,17 +266,14 @@ BOOST_AUTO_TEST_CASE(new_row_state_defaults) {
 #endif
 }
 
-// Phase-4: velocity columns are seeded from the migration carrier on
-// assign_row. Pre-flip the carrier is always zero (serialization not wired
-// yet), so a detached particle produces zero velocity columns for new rows.
+// Phase 7b (Task 4): a genuinely-new row's velocity column is seeded to the
+// default (zero) by assign_row's not-preserve branch (via seed_default_row).
 // This guards that assign_row seeds the velocity column (not skip it) and that
 // the default is exactly zero (not garbage from WithoutInitializing).
 BOOST_AUTO_TEST_CASE(rebuild_seeds_velocity_from_carrier) {
-  // detached particle — migration carriers at their default {0,0,0}
+  // Fresh (detached) particle -> assign_row seeds the defaults.
   Particle p{};
   BOOST_REQUIRE(p.store() == nullptr);
-  BOOST_CHECK_EQUAL(p.migration_velocity()[0], 0.);
-  BOOST_CHECK_EQUAL(p.migration_velocity()[2], 0.);
 
   ParticleStore store{};
   store.begin_rebuild(1u, 0u);
@@ -311,7 +285,6 @@ BOOST_AUTO_TEST_CASE(rebuild_seeds_velocity_from_carrier) {
   BOOST_CHECK_EQUAL(vel[1], 0.);
   BOOST_CHECK_EQUAL(vel[2], 0.);
 #ifdef ESPRESSO_ROTATION
-  BOOST_CHECK_EQUAL(p.migration_angular_velocity()[0], 0.);
   Utils::Vector3d const av = store.angular_velocity_value(p.store_row());
   BOOST_CHECK_EQUAL(av[0], 0.);
   BOOST_CHECK_EQUAL(av[1], 0.);
@@ -319,153 +292,106 @@ BOOST_AUTO_TEST_CASE(rebuild_seeds_velocity_from_carrier) {
 #endif
 }
 
-// A detached particle with its migration carriers populated must have all its
-// state columns seeded from those carriers on assign_row (models a particle
-// that just migrated in from another rank). Post-flip (phase 3) the state
-// fields live only in the store columns, so a detached particle's carriers are
-// populated the way a real migration does: set the values on an attached
-// source particle, serialize it out (SAVE fills the carriers from the columns),
-// and deserialize into a detached receiver (LOAD lands them in its carriers).
+// A row that migrates in from another rank must have all its state columns
+// carried across. Phase 7b (Task 4): the cross-rank transfer is a row-to-row
+// ParticleStore::copy_row from the sending rank's (staging) store into a fresh
+// row on the receiving rank's store. Set known state on a source row, copy it
+// into a target store row, and confirm every state field survives the copy.
 BOOST_AUTO_TEST_CASE(rebuild_seeds_migrated_particle_state_from_carrier) {
   ParticleStore source{};
-  Particle src{};
-  src.id() = 11;
   source.begin_rebuild(1u, 0u);
-  source.assign_row(src, 0);
+  source.seed_default_row(0);
   source.finish_rebuild();
-  source.position_reference(src.store_row()) = Utils::Vector3d{1.5, -2.5, 3.5};
-  source.image_box_reference(src.store_row()) = Utils::Vector3i{4, -5, 6};
-  source.position_at_last_verlet_update_reference(src.store_row()) =
+  source.id(0) = 11;
+  source.position_reference(0) = Utils::Vector3d{1.5, -2.5, 3.5};
+  source.image_box_reference(0) = Utils::Vector3i{4, -5, 6};
+  source.position_at_last_verlet_update_reference(0) =
       Utils::Vector3d{7.5, 8.5, 9.5};
-  source.lees_edwards_offset(src.store_row()) = 12.75;
-  source.lees_edwards_flag(src.store_row()) = static_cast<short>(2);
+  source.lees_edwards_offset(0) = 12.75;
+  source.lees_edwards_flag(0) = static_cast<short>(2);
 #ifdef ESPRESSO_ROTATION
-  source.quaternion_reference(src.store_row()) =
-      Utils::Quaternion<double>{{0., 0., 1., 0.}};
+  source.quaternion_reference(0) = Utils::Quaternion<double>{{0., 0., 1., 0.}};
 #endif
 #ifdef ESPRESSO_BOND_CONSTRAINT
-  source.position_last_time_step_reference(src.store_row()) =
-      Utils::Vector3d{-1., -2., -3.};
+  source.position_last_time_step_reference(0) = Utils::Vector3d{-1., -2., -3.};
 #endif
-
-  std::stringstream stream;
-  {
-    boost::archive::text_oarchive oa{stream};
-    oa << src;
-  }
-  Particle p{};
-  {
-    boost::archive::text_iarchive ia{stream};
-    ia >> p;
-  }
-  BOOST_REQUIRE(p.store() == nullptr);
-  BOOST_CHECK_EQUAL(p.migration_position()[0], 1.5);
-  BOOST_CHECK_EQUAL(p.migration_image_box()[2], 6);
 
   ParticleStore target{};
   target.begin_rebuild(1u, 0u);
-  target.assign_row(p, 0);
+  target.copy_row(source, 0, 0);
   target.finish_rebuild();
 
-  Utils::Vector3d const pos = target.position_value(p.store_row());
+  BOOST_CHECK_EQUAL(target.id(0), 11);
+  Utils::Vector3d const pos = target.position_value(0);
   BOOST_CHECK_EQUAL(pos[0], 1.5);
   BOOST_CHECK_EQUAL(pos[1], -2.5);
   BOOST_CHECK_EQUAL(pos[2], 3.5);
-  Utils::Vector3i const img = target.image_box_value(p.store_row());
+  Utils::Vector3i const img = target.image_box_value(0);
   BOOST_CHECK_EQUAL(img[0], 4);
   BOOST_CHECK_EQUAL(img[2], 6);
-  Utils::Vector3d const pold =
-      target.position_at_last_verlet_update_value(p.store_row());
+  Utils::Vector3d const pold = target.position_at_last_verlet_update_value(0);
   BOOST_CHECK_EQUAL(pold[1], 8.5);
-  BOOST_CHECK_EQUAL(target.lees_edwards_offset(p.store_row()), 12.75);
-  BOOST_CHECK_EQUAL(target.lees_edwards_flag(p.store_row()),
-                    static_cast<short>(2));
+  BOOST_CHECK_EQUAL(target.lees_edwards_offset(0), 12.75);
+  BOOST_CHECK_EQUAL(target.lees_edwards_flag(0), static_cast<short>(2));
 #ifdef ESPRESSO_ROTATION
-  Utils::Quaternion<double> const quat = target.quaternion_value(p.store_row());
+  Utils::Quaternion<double> const quat = target.quaternion_value(0);
   BOOST_CHECK_EQUAL(quat[2], 1.);
   BOOST_CHECK_EQUAL(quat[0], 0.);
 #endif
 #ifdef ESPRESSO_BOND_CONSTRAINT
-  Utils::Vector3d const plast =
-      target.position_last_time_step_value(p.store_row());
+  Utils::Vector3d const plast = target.position_last_time_step_value(0);
   BOOST_CHECK_EQUAL(plast[0], -1.);
   BOOST_CHECK_EQUAL(plast[2], -3.);
 #endif
-  // Phase-4: velocity carrier is not serialized yet (pre-flip); column seeds
-  // to zero from the default carrier.
-  Utils::Vector3d const vel = target.velocity_value(p.store_row());
-  BOOST_CHECK_EQUAL(vel.norm2(), 0.);
-#ifdef ESPRESSO_ROTATION
-  Utils::Vector3d const av = target.angular_velocity_value(p.store_row());
-  BOOST_CHECK_EQUAL(av.norm2(), 0.);
-#endif
 }
 
-// Head-node fetch-cache SNAPSHOT-STORE pattern (migration phase 3): detached
-// particles (as they arrive from a worker rank, carriers holding their values)
-// are attached to a FIXED-capacity store built once per invalidation epoch,
-// with rows handed out monotonically. This mirrors attach_cached_particle in
-// particle_node.cpp without needing MPI: build a small store once, attach a
-// batch of detached particles to consecutive rows, and check each keeps its own
-// carrier-seeded state (never another particle's row). The head-node cache
-// itself is exercised end-to-end by the multi-rank python gates.
+// Head-node fetch-cache SNAPSHOT-STORE pattern: a batch of rows fetched from a
+// worker rank is materialized into a FIXED-capacity store built once per
+// invalidation epoch, with rows handed out monotonically. Phase 7b (Task 4):
+// the transfer is a row-to-row ParticleStore::copy_row, not a detached-particle
+// attach. Build a source store holding a batch of known rows, copy each into a
+// consecutive target-store row, and check each keeps its own data (never
+// another row's). The head-node cache itself is exercised end-to-end by the
+// multi-rank python gates.
 BOOST_AUTO_TEST_CASE(snapshot_store_attaches_batch_of_detached_particles) {
   constexpr std::size_t capacity = 4u;
-  ParticleStore store{};
-  store.begin_rebuild(capacity, 0u);
-  store.finish_rebuild();
 
-  // Each detached particle's carriers are populated the way a real fetch does:
-  // an attached source particle is serialized out (SAVE fills the carriers from
-  // its columns) and deserialized into a detached receiver (LOAD lands them in
-  // its carriers).
-  auto const make_detached = [](int id, Utils::Vector3d const &pos,
-                                Utils::Vector3i const &image_box) {
-    ParticleStore src_store{};
-    Particle src{};
-    src.id() = id;
-    src_store.begin_rebuild(1u, 0u);
-    src_store.assign_row(src, 0);
-    src_store.finish_rebuild();
-    src_store.position_reference(src.store_row()) = pos;
-    src_store.image_box_reference(src.store_row()) = image_box;
-    std::stringstream stream;
-    {
-      boost::archive::text_oarchive oa{stream};
-      oa << src;
-    }
-    Particle received{};
-    {
-      boost::archive::text_iarchive ia{stream};
-      ia >> received;
-    }
-    return received;
-  };
-
-  std::vector<Particle> parts(capacity);
-  int next_row = 0;
+  // Source store with `capacity` rows of known, per-row data.
+  ParticleStore source{};
+  source.begin_rebuild(capacity, 0u);
   for (std::size_t i = 0u; i < capacity; ++i) {
-    parts[i] = make_detached(
-        static_cast<int>(i),
-        Utils::Vector3d{double(i), double(i) + 0.5, double(i) + 0.25},
-        Utils::Vector3i{int(i), -int(i), 2 * int(i)});
-    auto &p = parts[i];
-    BOOST_REQUIRE(p.store() ==
-                  nullptr);          // detached, like a freshly-fetched copy
-    store.assign_row(p, next_row++); // seeds the row from the carriers
+    source.seed_default_row(static_cast<int>(i));
+  }
+  source.finish_rebuild();
+  for (std::size_t i = 0u; i < capacity; ++i) {
+    auto const row = static_cast<int>(i);
+    source.id(row) = row;
+    source.position_reference(row) =
+        Utils::Vector3d{double(i), double(i) + 0.5, double(i) + 0.25};
+    source.image_box_reference(row) =
+        Utils::Vector3i{int(i), -int(i), 2 * int(i)};
   }
 
+  // Target store: copy each source row into a consecutive target row.
+  ParticleStore store{};
+  store.begin_rebuild(capacity, 0u);
+  int next_row = 0;
   for (std::size_t i = 0u; i < capacity; ++i) {
-    auto const &p = parts[i];
-    BOOST_CHECK_EQUAL(p.store_row(), static_cast<int>(i));
-    auto const pos = store.position_value(p.store_row());
+    store.copy_row(source, static_cast<int>(i), next_row++);
+  }
+  store.finish_rebuild();
+
+  for (std::size_t i = 0u; i < capacity; ++i) {
+    auto const row = static_cast<int>(i);
+    BOOST_CHECK_EQUAL(store.id(row), row);
+    auto const pos = store.position_value(row);
     BOOST_CHECK_EQUAL(pos[0], double(i));
     BOOST_CHECK_EQUAL(pos[1], double(i) + 0.5);
-    auto const img = store.image_box_value(p.store_row());
+    auto const img = store.image_box_value(row);
     BOOST_CHECK_EQUAL(img[0], int(i));
     BOOST_CHECK_EQUAL(img[2], 2 * int(i));
-    // Reading through the (now-attached) particle accessor matches the column.
-    BOOST_CHECK_EQUAL(p.pos()[0], double(i));
+    // Reading through a view over the row matches the column.
+    BOOST_CHECK_EQUAL(store.make_view(row).pos()[0], double(i));
   }
 }
 
@@ -794,35 +720,36 @@ BOOST_AUTO_TEST_CASE(exclusions_sidecar_preserve_moves_intact_and_default) {
 }
 #endif // ESPRESSO_EXCLUSIONS
 
-// Phase-6: a genuinely new / migrated row seeds its ragged sidecars from the
-// dormant migration getters, which read the Particle's bl/el members directly.
-// Set them on a detached particle, attach it, and verify the sidecar rows.
+// Phase 7b (Task 4): a row that migrates in carries its ragged sidecars (bond
+// list, exclusion list) via the row-to-row ParticleStore::copy_row transfer.
+// Set non-empty sidecars on a source row, copy it into a target store row, and
+// verify the sidecar contents survive.
 BOOST_AUTO_TEST_CASE(rebuild_seeds_ragged_sidecars_from_carrier) {
-  Particle p{};
-  BOOST_REQUIRE(p.store() == nullptr);
+  ParticleStore source{};
+  source.begin_rebuild(1u, 0u);
+  source.seed_default_row(0);
+  source.finish_rebuild();
   {
     std::array<int, 1> const partners{99};
-    p.bonds().insert(BondView{2, partners});
+    source.bonds_sidecar_reference(0).insert(BondView{2, partners});
   }
-  BOOST_REQUIRE_EQUAL(p.migration_bonds().size(), 1u);
 #ifdef ESPRESSO_EXCLUSIONS
-  p.exclusions().push_back(55);
-  BOOST_REQUIRE_EQUAL(p.migration_exclusions().size(), 1u);
+  source.exclusions_sidecar_reference(0).push_back(55);
 #endif
 
   ParticleStore store{};
   store.begin_rebuild(1u, 0u);
-  store.assign_row(p, 0);
+  store.copy_row(source, 0, 0);
   store.finish_rebuild();
 
-  auto const &seeded_bonds = store.bonds_sidecar_reference(p.store_row());
+  auto const &seeded_bonds = store.bonds_sidecar_reference(0);
   BOOST_REQUIRE_EQUAL(seeded_bonds.size(), 1u);
   auto const bond = *seeded_bonds.begin();
   BOOST_CHECK_EQUAL(bond.bond_id(), 2);
   BOOST_REQUIRE_EQUAL(bond.partner_ids().size(), 1u);
   BOOST_CHECK_EQUAL(bond.partner_ids()[0], 99);
 #ifdef ESPRESSO_EXCLUSIONS
-  auto const &seeded_excl = store.exclusions_sidecar_reference(p.store_row());
+  auto const &seeded_excl = store.exclusions_sidecar_reference(0);
   BOOST_REQUIRE_EQUAL(seeded_excl.size(), 1u);
   BOOST_CHECK_EQUAL(seeded_excl[0], 55);
 #endif
@@ -876,37 +803,36 @@ BOOST_AUTO_TEST_CASE(new_row_parameter_defaults) {
 #endif
 }
 
-// Phase-5: a detached particle (freshly constructed) carries its parameters in
-// the ParticleProperties member; assign_row seeds the columns/sidecars from the
-// dormant migration carriers (which read those struct fields pre-flip). Set the
-// values on the detached particle, then attach it and verify the columns.
+// Phase 7b (Task 4): a row that migrates in carries its parameter columns and
+// POD sidecars via the row-to-row ParticleStore::copy_row transfer. Set known
+// parameters on a source row, copy it into a target store row, and verify they
+// survive.
 BOOST_AUTO_TEST_CASE(rebuild_seeds_parameters_from_carrier) {
-  Particle p{};
-  BOOST_REQUIRE(p.store() == nullptr);
-  p.id() = 42;
-  p.type() = 5;
+  ParticleStore source{};
+  source.begin_rebuild(1u, 0u);
+  source.seed_default_row(0);
+  source.finish_rebuild();
+  source.id(0) = 42;
+  source.type(0) = 5;
 #ifdef ESPRESSO_MASS
-  p.mass() = 3.5;
+  source.mass(0) = 3.5;
 #endif
 #ifdef ESPRESSO_ENGINE
-  p.swimming().f_swim = 9.5;
+  source.swimming(0).f_swim = 9.5;
 #endif
-  // The dormant carriers read the struct fields directly.
-  BOOST_CHECK_EQUAL(p.migration_id(), 42);
-  BOOST_CHECK_EQUAL(p.migration_type(), 5);
 
   ParticleStore store{};
   store.begin_rebuild(1u, 0u);
-  store.assign_row(p, 0);
+  store.copy_row(source, 0, 0);
   store.finish_rebuild();
 
-  BOOST_CHECK_EQUAL(store.id(p.store_row()), 42);
-  BOOST_CHECK_EQUAL(store.type(p.store_row()), 5);
+  BOOST_CHECK_EQUAL(store.id(0), 42);
+  BOOST_CHECK_EQUAL(store.type(0), 5);
 #ifdef ESPRESSO_MASS
-  BOOST_CHECK_EQUAL(store.mass(p.store_row()), 3.5);
+  BOOST_CHECK_EQUAL(store.mass(0), 3.5);
 #endif
 #ifdef ESPRESSO_ENGINE
-  BOOST_CHECK_EQUAL(store.swimming(p.store_row()).f_swim, 9.5);
+  BOOST_CHECK_EQUAL(store.swimming(0).f_swim, 9.5);
 #endif
 }
 

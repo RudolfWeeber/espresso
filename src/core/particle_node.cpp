@@ -670,13 +670,17 @@ static bool maybe_insert_particle(int p_id, Utils::Vector3d const &pos) {
   auto image_box = Utils::Vector3i{};
   box_geo.fold_position(folded_pos, image_box);
 
-  Particle new_part;
+  // Phase 7b: build the new particle into a staging-store row via a view (there
+  // is no detached, data-carrying Particle any more), then hand it to
+  // add_local_particle, which stages the underlying staging row into the home
+  // cell.
+  auto &cell_structure = get_cell_structure();
+  auto new_part = cell_structure.make_new_particle_view();
   new_part.id() = p_id;
   new_part.pos() = folded_pos;
   new_part.image_box() = image_box;
 
-  return get_cell_structure().add_local_particle(std::move(new_part)) !=
-         nullptr;
+  return cell_structure.add_local_particle(std::move(new_part)) != nullptr;
 }
 
 /**

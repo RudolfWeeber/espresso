@@ -23,6 +23,7 @@
 namespace utf = boost::unit_test;
 
 #include "ParticleFactory.hpp"
+#include "ParticleStoreTestFixture.hpp"
 #include "particle_management.hpp"
 
 #include "EspressoCoreGlobalConfig.hpp"
@@ -176,7 +177,11 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
         particle_range.emplace_back(*p);
       }
     }
-    Particle p{};
+    // phase 7b: id/position/image live in the ParticleStore; attach this
+    // extra hand-made particle (not part of the cell structure) to a
+    // standalone store. It must outlive the particle_range that references it.
+    ParticleStoreTestFixture fx;
+    auto p = fx.make();
     p.id() = pid5;
     p.pos() = {1., 1., 1.};
     p.image_box() = {1, -1, 0};
@@ -710,7 +715,14 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
     } else {
       get_particle_node_parallel(12345);
     }
-    std::vector<Particle> plist(5u);
+    // phase 7b: bonded kernels read q/pos/v/image through the ParticleStore;
+    // attach every hand-made particle to a standalone store.
+    ParticleStoreTestFixture fx{8u};
+    std::vector<Particle> plist{};
+    plist.reserve(5u);
+    for (std::size_t i = 0u; i < 5u; ++i) {
+      plist.emplace_back(fx.make());
+    }
     std::vector<Particle *> plist_ptr{};
     for (auto &p : plist) {
       plist_ptr.emplace_back(&p);

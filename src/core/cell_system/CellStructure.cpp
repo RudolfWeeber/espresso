@@ -472,10 +472,18 @@ void CellStructure::ensure_particle_store_synchronized() {
       rows.insert(row);
       ++row;
     }
-    // Staged (newly inserted / migrated / fresh ghost) particles: seed from
-    // carriers, then clear the staging area.
-    for (auto &staged : cell->staged()) {
-      m_particle_store.assign_row(staged, row);
+    // Staged (newly inserted / migrated / fresh ghost) row references
+    // (phase 7b): copy the referenced SOURCE-store row into the fresh committed
+    // row, or seed defaults for a fresh-default (ghost/new) entry. Then clear
+    // the staging area. A staged copy commits AFTER the surviving rows in the
+    // exact same [surviving..., staged...] order as the pre-flip Bag path, so
+    // the final row-assignment order is identical -> identity is preserved.
+    for (auto const &staged : cell->staged()) {
+      if (staged.source_store != nullptr) {
+        m_particle_store.copy_row(*staged.source_store, staged.source_row, row);
+      } else {
+        m_particle_store.seed_default_row(row);
+      }
       rows.insert(row);
       ++row;
     }
@@ -497,6 +505,18 @@ void CellStructure::ensure_particle_store_synchronized() {
   assign_cells(decomposition().local_cells());
   assign_cells(decomposition().ghost_cells());
   m_particle_store.finish_rebuild();
+
+  // Phase 7b: every staged row reference has now been copied into a committed
+  // row (copy_row above), so the staging store's rows are consumed. Reset its
+  // row counter here -- NOT in the decompositions' resort -- because a staged
+  // {staging_store, row} reference must stay valid from the moment it is staged
+  // until THIS commit reads it. Clearing at resort end (the crashed-agent plan)
+  // would recycle staging rows that the two hybrid children, or the deferred
+  // commit=false hot path, still reference. Clearing at commit makes the
+  // staging counter monotonic across a resort cycle and reset exactly when the
+  // referenced data is consumed. (Fresh-default staged entries carry a null
+  // source store and reference no staging row, so this is harmless for ghosts.)
+  clear_staging_store();
 
   // Refresh the id->view index / stable view pool from the freshly assigned
   // rows (locals win over ghost copies of the same id).
@@ -570,8 +590,10 @@ int CellStructure::reserve_staging_rows(int const count) {
   return first_row;
 }
 
-Particle CellStructure::snapshot_staging_row(int const staging_row) {
-  return m_staging_store.snapshot_row(staging_row);
+Particle CellStructure::make_new_particle_view() {
+  auto const staging_row = reserve_staging_rows(1);
+  m_staging_store.seed_default_row(staging_row);
+  return m_staging_store.make_view(staging_row);
 }
 
 void CellStructure::rebuild_particle_index() {
@@ -708,7 +730,7 @@ void CellStructure::remove_particle(int id) {
     for (std::size_t index = 0u; index < cell->rows().size();) {
       auto view = m_particle_store.make_view(cell->rows().begin()[index]);
       if (view.id() == id) {
-        CellParticleStorage::extract_row(*cell, index);
+        CellParticleStorage::drop_row(*cell, index);
       } else {
         remove_all_bonds_to(view.bonds());
         ++index;

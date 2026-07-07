@@ -331,182 +331,262 @@ void ParticleStore::begin_rebuild(std::size_t const number_of_local_particles,
 // full copy, same file), and (2) the MigrationPack per-field wire pack
 // (particle_store/MigrationPack.cpp). Any field added here must be added there
 // (and vice versa); the maximal-population round-trip unit test enforces this.
+//
+// Phase 7b (Task 4): the migration envelope is dead, so a Particle can no
+// longer carry data. assign_row therefore only ever PRESERVES a surviving row
+// (copy old row -> new row, rank-local rebuild); a non-surviving row is a
+// genuinely-new / fresh-ghost particle and is seeded to the DEFAULTS (the exact
+// values the deleted migration carriers held) via seed_default_row. Migration
+// and the new-particle creation path deliver data by copying a source (staging)
+// store row into the target row (copy_row), never through assign_row.
 void ParticleStore::assign_row(Particle &particle, int const row) {
   assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
   auto const old_row = particle.store_row();
   // A row "survives" a rank-local rebuild when the particle was already
   // attached to THIS store and its old row is within the previous generation.
-  // Otherwise the particle is detached (brand-new or just migrated from
-  // another rank): its columns are seeded from the migration carriers, which
-  // hold the values ferried through Particle serialization (see Particle.hpp).
-  // Reading a raw carrier never touches the fresh columns (allocated
-  // WithoutInitializing; every row is written by assign_row before
-  // finish_rebuild).
   bool const preserve =
       particle.store() == this and old_row >= 0 and
       static_cast<std::size_t>(old_row) < m_old_number_of_particles;
 
+  if (not preserve) {
+    // Genuinely-new / fresh-ghost row: seed the defaults.
+    seed_default_row(row);
+    particle.attach_to_store(*this, row);
+    return;
+  }
+
+  // Surviving row: copy every field from the retired generation at old_row.
   // Observable columns (phase 2).
   preserve_or_seed<3u>(m_force, m_old_force, row, old_row, preserve,
-                       particle.migration_force());
+                       Utils::Vector3d{0., 0., 0.});
 #ifdef ESPRESSO_ROTATION
   preserve_or_seed<3u>(m_torque, m_old_torque, row, old_row, preserve,
-                       particle.migration_torque());
+                       Utils::Vector3d{0., 0., 0.});
 #endif
-
-  // RATTLE correction observable column (phase 6). Preserve-by-old-row for
-  // uniformity with the other observables (SHAKE zeroes it each iteration, so a
-  // preserved value is never actually relied upon); a genuinely-new row
-  // defaults to zero. There is NO migration carrier -- the correction is a
-  // per-iteration scratch that is never persisted nor migrated -- so the seed
-  // is a literal zero vector, not a carrier read.
 #ifdef ESPRESSO_BOND_CONSTRAINT
   preserve_or_seed<3u>(m_rattle_correction, m_old_rattle_correction, row,
                        old_row, preserve, Utils::Vector3d{0., 0., 0.});
 #endif
 
-  // State columns (phase 3). Genuinely-new rows (detached, carriers at their
-  // defaults) must match Particle's member defaults: position/p_old zero,
-  // image box zero, quaternion IDENTITY (1,0,0,0), Lees-Edwards offset/flag 0.
-  // The migration carriers return exactly those defaults for a freshly
-  // constructed Particle, so seeding from them yields the correct new-row
-  // values (in particular an identity quaternion, never the zero-init).
+  // State columns (phase 3).
   preserve_or_seed<3u>(m_position, m_old_position, row, old_row, preserve,
-                       particle.migration_position());
+                       Utils::Vector3d{0., 0., 0.});
   preserve_or_seed<3u>(m_image_box, m_old_image_box, row, old_row, preserve,
-                       particle.migration_image_box());
+                       Utils::Vector3i{0, 0, 0});
 #ifdef ESPRESSO_ROTATION
   preserve_or_seed<4u>(m_quaternion, m_old_quaternion, row, old_row, preserve,
-                       particle.migration_quaternion());
+                       Utils::Quaternion<double>::identity());
 #endif
   preserve_or_seed<3u>(m_position_at_last_verlet_update,
                        m_old_position_at_last_verlet_update, row, old_row,
-                       preserve,
-                       particle.migration_position_at_last_verlet_update());
+                       preserve, Utils::Vector3d{0., 0., 0.});
 #ifdef ESPRESSO_BOND_CONSTRAINT
   preserve_or_seed<3u>(m_position_last_time_step, m_old_position_last_time_step,
-                       row, old_row, preserve,
-                       particle.migration_position_last_time_step());
+                       row, old_row, preserve, Utils::Vector3d{0., 0., 0.});
 #endif
   preserve_or_seed_scalar(m_lees_edwards_offset, m_old_lees_edwards_offset, row,
-                          old_row, preserve,
-                          particle.migration_lees_edwards_offset());
+                          old_row, preserve, 0.);
   preserve_or_seed_scalar(m_lees_edwards_flag, m_old_lees_edwards_flag, row,
-                          old_row, preserve,
-                          particle.migration_lees_edwards_flag());
+                          old_row, preserve, short{0});
 
-  // Momentum columns (phase 4). Genuinely-new rows default to zero velocity,
-  // matching Particle's ParticleMomentum member defaults (m.v = {0,0,0},
-  // m.omega = {0,0,0}).
+  // Momentum columns (phase 4).
   preserve_or_seed<3u>(m_velocity, m_old_velocity, row, old_row, preserve,
-                       particle.migration_velocity());
+                       Utils::Vector3d{0., 0., 0.});
 #ifdef ESPRESSO_ROTATION
   preserve_or_seed<3u>(m_angular_velocity, m_old_angular_velocity, row, old_row,
-                       preserve, particle.migration_angular_velocity());
+                       preserve, Utils::Vector3d{0., 0., 0.});
 #endif
 
-  // Parameter columns (phase 5). Genuinely-new rows are seeded from the
-  // migration carriers, whose defaults match the old ParticleProperties member
-  // defaults (id -1, mol_id 0, type 0, propagation SYSTEM_DEFAULT, bitfields 0,
-  // mass 1, rinertia {1,1,1}, q/dipm 0, mu_E/dip_fld/ext_force/ext_torque zero,
-  // gamma/gamma_rot -1 or {-1,-1,-1}). Post-flip the migration carriers are the
-  // authoritative parameter store for a detached particle and are serialized
-  // with it (like the state/momentum carriers), so a migrated particle carries
-  // its parameters through the carriers and this seed reproduces them.
-  preserve_or_seed_scalar(m_id, m_old_id, row, old_row, preserve,
-                          particle.migration_id());
-  preserve_or_seed_scalar(m_mol_id, m_old_mol_id, row, old_row, preserve,
-                          particle.migration_mol_id());
-  preserve_or_seed_scalar(m_type, m_old_type, row, old_row, preserve,
-                          particle.migration_type());
+  // Parameter columns (phase 5).
+  preserve_or_seed_scalar(m_id, m_old_id, row, old_row, preserve, -1);
+  preserve_or_seed_scalar(m_mol_id, m_old_mol_id, row, old_row, preserve, 0);
+  preserve_or_seed_scalar(m_type, m_old_type, row, old_row, preserve, 0);
   preserve_or_seed_scalar(m_propagation, m_old_propagation, row, old_row,
-                          preserve, particle.migration_propagation());
+                          preserve,
+                          static_cast<int>(PropagationMode::SYSTEM_DEFAULT));
 #ifdef ESPRESSO_ROTATION
   preserve_or_seed_scalar(m_rotation, m_old_rotation, row, old_row, preserve,
-                          particle.migration_rotation());
+                          static_cast<std::uint8_t>(0b000u));
 #endif
 #ifdef ESPRESSO_EXTERNAL_FORCES
   preserve_or_seed_scalar(m_ext_flag, m_old_ext_flag, row, old_row, preserve,
-                          particle.migration_ext_flag());
+                          static_cast<std::uint8_t>(0b000u));
 #endif
 #ifdef ESPRESSO_MASS
-  preserve_or_seed_scalar(m_mass, m_old_mass, row, old_row, preserve,
-                          particle.migration_mass());
+  preserve_or_seed_scalar(m_mass, m_old_mass, row, old_row, preserve, 1.0);
 #endif
 #ifdef ESPRESSO_ELECTROSTATICS
-  preserve_or_seed_scalar(m_q, m_old_q, row, old_row, preserve,
-                          particle.migration_q());
+  preserve_or_seed_scalar(m_q, m_old_q, row, old_row, preserve, 0.0);
 #endif
 #ifdef ESPRESSO_DIPOLES
-  preserve_or_seed_scalar(m_dipm, m_old_dipm, row, old_row, preserve,
-                          particle.migration_dipm());
+  preserve_or_seed_scalar(m_dipm, m_old_dipm, row, old_row, preserve, 0.0);
 #endif
 #ifdef ESPRESSO_ROTATIONAL_INERTIA
   preserve_or_seed<3u>(m_rinertia, m_old_rinertia, row, old_row, preserve,
-                       particle.migration_rinertia());
+                       Utils::Vector3d{1., 1., 1.});
 #endif
 #ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
   preserve_or_seed<3u>(m_mu_E, m_old_mu_E, row, old_row, preserve,
-                       particle.migration_mu_E());
+                       Utils::Vector3d{0., 0., 0.});
 #endif
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
   preserve_or_seed<3u>(m_dip_fld, m_old_dip_fld, row, old_row, preserve,
-                       particle.migration_dip_fld());
+                       Utils::Vector3d{0., 0., 0.});
 #endif
 #ifdef ESPRESSO_EXTERNAL_FORCES
   preserve_or_seed<3u>(m_ext_force, m_old_ext_force, row, old_row, preserve,
-                       particle.migration_ext_force());
+                       Utils::Vector3d{0., 0., 0.});
 #ifdef ESPRESSO_ROTATION
   preserve_or_seed<3u>(m_ext_torque, m_old_ext_torque, row, old_row, preserve,
-                       particle.migration_ext_torque());
+                       Utils::Vector3d{0., 0., 0.});
 #endif
 #endif
 #ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
 #ifdef ESPRESSO_PARTICLE_ANISOTROPY
   preserve_or_seed<3u>(m_gamma, m_old_gamma, row, old_row, preserve,
-                       particle.migration_gamma());
+                       Utils::Vector3d{-1., -1., -1.});
 #ifdef ESPRESSO_ROTATION
   preserve_or_seed<3u>(m_gamma_rot, m_old_gamma_rot, row, old_row, preserve,
-                       particle.migration_gamma_rot());
+                       Utils::Vector3d{-1., -1., -1.});
 #endif
 #else // ESPRESSO_PARTICLE_ANISOTROPY
-  preserve_or_seed_scalar(m_gamma, m_old_gamma, row, old_row, preserve,
-                          particle.migration_gamma());
+  preserve_or_seed_scalar(m_gamma, m_old_gamma, row, old_row, preserve, -1.);
 #ifdef ESPRESSO_ROTATION
   preserve_or_seed_scalar(m_gamma_rot, m_old_gamma_rot, row, old_row, preserve,
-                          particle.migration_gamma_rot());
+                          -1.);
 #endif
 #endif // ESPRESSO_PARTICLE_ANISOTROPY
 #endif // ESPRESSO_THERMOSTAT_PER_PARTICLE
 
-  // Host sidecars (phase 5): whole-POD preserve-by-old-row / seed-from-carrier.
+  // Host sidecars (phase 5): whole-POD preserve-by-old-row.
 #ifdef ESPRESSO_ENGINE
   preserve_or_seed_sidecar(m_swimming, m_old_swimming, row, old_row, preserve,
-                           particle.migration_swimming());
+                           ParticleParametersSwimming{});
 #endif
 #ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
   preserve_or_seed_sidecar(m_magnetodynamics, m_old_magnetodynamics, row,
                            old_row, preserve,
-                           particle.migration_magnetodynamics());
+                           ThermalStonerWohlfarthParameters{});
 #endif
 #ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
   preserve_or_seed_sidecar(m_vs_relative, m_old_vs_relative, row, old_row,
-                           preserve, particle.migration_vs_relative());
+                           preserve, VirtualSitesRelativeParameters{});
 #endif
 
   // Ragged host sidecars (phase 6): a surviving row is MOVED out of the old
   // vector element (transfers the heap buffer -- no deep copy of the ragged
-  // run); a genuinely-new / migrated row is seeded (copied) from the migration
-  // carrier, which for the dormant phase reads the Particle's bl/el members
-  // directly (empty for a fresh ghost). Nothing reads these sidecars yet.
+  // run).
   preserve_or_move_sidecar(m_bonds_sidecar, m_old_bonds_sidecar, row, old_row,
-                           preserve, particle.migration_bonds());
+                           preserve, BondList{});
 #ifdef ESPRESSO_EXCLUSIONS
   preserve_or_move_sidecar(m_exclusions_sidecar, m_old_exclusions_sidecar, row,
-                           old_row, preserve, particle.migration_exclusions());
+                           old_row, preserve, Utils::compact_vector<int>{});
 #endif
 
   particle.attach_to_store(*this, row);
+}
+
+// Seed @p row with the default new-particle values (the exact defaults the
+// deleted migration carriers held). Field coverage IDENTICAL to assign_row /
+// copy_row (see the sync note above assign_row). Writes directly through the
+// element references (the row must already be a valid index; begin_rebuild
+// allocated it). Also clears the ragged bond/exclusion sidecars.
+void ParticleStore::seed_default_row(int const row) {
+  assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
+
+  // Observable columns (phase 2).
+  force_reference(row) = Utils::Vector3d{0., 0., 0.};
+#ifdef ESPRESSO_ROTATION
+  torque_reference(row) = Utils::Vector3d{0., 0., 0.};
+#endif
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  rattle_correction_reference(row) = Utils::Vector3d{0., 0., 0.};
+#endif
+
+  // State columns (phase 3). Quaternion seeds to IDENTITY (1,0,0,0).
+  position_reference(row) = Utils::Vector3d{0., 0., 0.};
+  image_box_reference(row) = Utils::Vector3i{0, 0, 0};
+#ifdef ESPRESSO_ROTATION
+  quaternion_reference(row) = Utils::Quaternion<double>::identity();
+#endif
+  position_at_last_verlet_update_reference(row) = Utils::Vector3d{0., 0., 0.};
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  position_last_time_step_reference(row) = Utils::Vector3d{0., 0., 0.};
+#endif
+  lees_edwards_offset(row) = 0.;
+  lees_edwards_flag(row) = short{0};
+
+  // Momentum columns (phase 4).
+  velocity_reference(row) = Utils::Vector3d{0., 0., 0.};
+#ifdef ESPRESSO_ROTATION
+  angular_velocity_reference(row) = Utils::Vector3d{0., 0., 0.};
+#endif
+
+  // Parameter columns (phase 5).
+  id(row) = -1;
+  mol_id(row) = 0;
+  type(row) = 0;
+  propagation(row) = static_cast<int>(PropagationMode::SYSTEM_DEFAULT);
+#ifdef ESPRESSO_ROTATION
+  rotation(row) = static_cast<std::uint8_t>(0b000u);
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  ext_flag(row) = static_cast<std::uint8_t>(0b000u);
+#endif
+#ifdef ESPRESSO_MASS
+  mass(row) = 1.0;
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  q(row) = 0.0;
+#endif
+#ifdef ESPRESSO_DIPOLES
+  dipm(row) = 0.0;
+#endif
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  rinertia_reference(row) = Utils::Vector3d{1., 1., 1.};
+#endif
+#ifdef ESPRESSO_LB_ELECTROHYDRODYNAMICS
+  mu_E_reference(row) = Utils::Vector3d{0., 0., 0.};
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  dip_fld_reference(row) = Utils::Vector3d{0., 0., 0.};
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  ext_force_reference(row) = Utils::Vector3d{0., 0., 0.};
+#ifdef ESPRESSO_ROTATION
+  ext_torque_reference(row) = Utils::Vector3d{0., 0., 0.};
+#endif
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  gamma_reference(row) = Utils::Vector3d{-1., -1., -1.};
+#ifdef ESPRESSO_ROTATION
+  gamma_rot_reference(row) = Utils::Vector3d{-1., -1., -1.};
+#endif
+#else // ESPRESSO_PARTICLE_ANISOTROPY
+  gamma_reference(row) = -1.;
+#ifdef ESPRESSO_ROTATION
+  gamma_rot_reference(row) = -1.;
+#endif
+#endif // ESPRESSO_PARTICLE_ANISOTROPY
+#endif // ESPRESSO_THERMOSTAT_PER_PARTICLE
+
+  // Host POD sidecars (phase 5): default-constructed.
+#ifdef ESPRESSO_ENGINE
+  swimming(row) = ParticleParametersSwimming{};
+#endif
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+  magnetodynamics(row) = ThermalStonerWohlfarthParameters{};
+#endif
+#ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
+  vs_relative(row) = VirtualSitesRelativeParameters{};
+#endif
+
+  // Ragged host sidecars (phase 6): empty.
+  bonds_sidecar_reference(row).clear();
+#ifdef ESPRESSO_EXCLUSIONS
+  exclusions_sidecar_reference(row).clear();
+#endif
 }
 
 Particle ParticleStore::make_view(int const row) {
@@ -514,18 +594,6 @@ Particle ParticleStore::make_view(int const row) {
   Particle view;
   view.attach_to_store(*this, row);
   return view;
-}
-
-Particle ParticleStore::snapshot_row(int const row) {
-  assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
-  Particle snapshot;
-  // Attach so the detached_*() getters read THIS store's columns/sidecars at
-  // `row`, sync those live values into the carriers, then detach so the result
-  // owns its data (all accessors read the carriers). Also carries the ghost
-  // flag (stored in `l`, not a column) forward from the view.
-  snapshot.attach_to_store(*this, row);
-  snapshot.detach_from_store();
-  return snapshot;
 }
 
 // Row-to-row full copy. Field coverage IDENTICAL to assign_row (see the sync

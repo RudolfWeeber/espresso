@@ -96,11 +96,12 @@ void RegularDecomposition::move_if_local(
     auto target_cell = position_to_cell(staging.position_value(staging_row));
 
     if (target_cell) {
-      // Lift the staging row into a detached, carrier-laden Particle and stage
-      // it into the target cell -- the pre-flip cell staging path, so the next
-      // store rebuild commits it in the SAME [surviving..., staged...] order.
-      CellParticleStorage::insert_particle(
-          *target_cell, m_migration_staging.snapshot_row(staging_row));
+      // Stage the staging row into the target cell as a row reference (phase
+      // 7b): the next store rebuild copies it into a committed row, in the SAME
+      // [surviving..., staged...] order as the pre-flip cell staging path. The
+      // staging row stays valid until CellStructure commits it.
+      CellParticleStorage::insert_staged_row(*target_cell, staging,
+                                             staging_row);
       modified_cells.emplace_back(ModifiedList{target_cell->rows()});
     } else {
       // Undeliverable this round: keep the staging row for the next round's
@@ -240,20 +241,23 @@ static void fold_and_reset(Particle &p, BoxGeometry const &box_geo) {
 
 void RegularDecomposition::resort(bool global,
                                   std::vector<ParticleChange> &diff) {
-  // Phase 7b flip: a mis-celled non-local particle is copied out of the live
-  // store into a staging-store row (stage_row); `displaced_rows` holds those
-  // staging-row indices. A wrong-cell-but-local particle keeps the pre-flip
-  // extract_row -> insert_particle staging path. The staging store is reset at
-  // the start so its row numbering starts fresh for this resort.
+  // Phase 7b flip: both a mis-celled NON-local particle (routed through the
+  // exchange rounds) and a wrong-cell-but-LOCAL particle are copied out of the
+  // live store into a staging-store row (stage_row) and then dropped from their
+  // cell; `displaced_rows` holds the non-local staging-row indices. The staging
+  // store is NOT cleared here: it is reset by CellStructure once it has
+  // committed the staged rows (ensure_particle_store_synchronized). Clearing at
+  // resort start/end would recycle rows that the deferred commit=false hot path
+  // (and the hybrid children sharing this staging store) still reference.
   assert(m_migration_staging && "migration staging store not installed");
-  m_migration_staging.clear();
+  auto &staging = *m_migration_staging.store;
   std::vector<int> displaced_rows;
 
   for (auto &c : local_cells()) {
-    // Iterate the cell's committed rows by position. extract_row / drop_row
-    // remove a row via swap-with-back (order not preserved, exactly the
-    // pre-flip Bag erase), so on extraction we re-examine the same position
-    // (the swapped-in row); otherwise we advance. fold_and_reset writes through
+    // Iterate the cell's committed rows by position. drop_row removes a row via
+    // swap-with-back (order not preserved, exactly the pre-flip Bag erase), so
+    // on removal we re-examine the same position (the swapped-in row);
+    // otherwise we advance. fold_and_reset writes through
     // the view into the store column BEFORE the row is copied to staging, so
     // the staged copy carries the folded value. One cached view reused across
     // this cell's rows, REBOUND per position via attach_to_store (phase 7a perf
@@ -282,11 +286,18 @@ void RegularDecomposition::resort(bool global,
         CellParticleStorage::drop_row(*c, index);
         diff.emplace_back(ModifiedList{c->rows()});
       }
-      /* Particle belongs on this node but is in the wrong cell. */
+      /* Particle belongs on this node but is in the wrong cell. Copy the
+       * (folded) live row into the staging store, drop it from this cell, and
+       * stage a reference to that staging row in the target cell -- the next
+       * store rebuild copies it into a committed row (same [surviving...,
+       * staged...] order as the pre-flip extract_row -> insert_particle path).
+       */
       else {
-        auto p = CellParticleStorage::extract_row(*c, index);
+        auto const staging_row = m_migration_staging.stage_row(live_row);
+        CellParticleStorage::drop_row(*c, index);
         diff.emplace_back(ModifiedList{c->rows()});
-        CellParticleStorage::insert_particle(*target_cell, std::move(p));
+        CellParticleStorage::insert_staged_row(*target_cell, staging,
+                                               staging_row);
         diff.emplace_back(ModifiedList{target_cell->rows()});
       }
     }
@@ -316,18 +327,18 @@ void RegularDecomposition::resort(bool global,
     auto sort_cell = local_cells()[0];
 
     for (auto const staging_row : displaced_rows) {
-      auto part = m_migration_staging.snapshot_row(staging_row);
-      runtimeErrorMsg() << "Particle " << part.id() << " moved more "
-                        << "than one local box length in one timestep";
-      CellParticleStorage::insert_particle(*sort_cell, std::move(part));
+      runtimeErrorMsg() << "Particle " << staging.id(staging_row) << " moved "
+                        << "more than one local box length in one timestep";
+      CellParticleStorage::insert_staged_row(*sort_cell, staging, staging_row);
 
       diff.emplace_back(ModifiedList{sort_cell->rows()});
     }
   }
 
-  // The staging store's rows are now either committed (staged into a cell,
-  // to be materialized by the next store rebuild) or dropped; release them.
-  m_migration_staging.clear();
+  // The staging store is NOT cleared here: any staged row references (delivered
+  // above, or staged by wrong-cell-local moves) must survive until
+  // CellStructure commits them (ensure_particle_store_synchronized resets the
+  // staging store).
 }
 
 void RegularDecomposition::mark_cells() {

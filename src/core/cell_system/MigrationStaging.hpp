@@ -33,33 +33,34 @@
  * INDICES; per direction those rows are @ref MigrationPack "packed" into a flat
  * byte buffer; received buffers are unpacked into fresh reserved staging rows
  * (@ref reserve_staging_rows); and a received row that belongs on this node is
- * lifted back into a detached @c Particle (@ref snapshot_staging_row) and
- * handed to @ref CellParticleStorage::insert_particle -- exactly the pre-flip
- * cell staging path, so the final store row-assignment order is unchanged.
+ * staged into its home cell as a reference to that staging row
+ * (@ref CellParticleStorage::insert_staged_row) -- the next store rebuild
+ * copies it into a committed row, exactly the pre-flip cell staging path, so
+ * the final store row-assignment order is unchanged.
  *
  * @ref CellStructure owns the staging store and installs this handle on the
  * decomposition (like @c set_commit_store); the function objects wrap the
  * @ref CellStructure staging helpers. @c store points at the address-stable
  * staging-store MEMBER of @ref CellStructure (its internals may be swapped out
  * when it grows, but the member address does not change), so packing reads the
- * current columns through it.
+ * current columns through it AND a staged row reference into a cell always
+ * names the current staging-store address.
  */
 
 #include <functional>
 
-class Particle;
 class ParticleStore;
 
 struct MigrationStaging {
-  /** The staging store to pack from / unpack into (address-stable). */
+  /** The staging store to pack from / unpack into (address-stable). It is also
+   *  the source store a received/moved staging row is staged into a cell FROM
+   *  (@ref CellParticleStorage::insert_staged_row). */
   ParticleStore *store = nullptr;
   /** Copy a live store row into a fresh staging row; returns the staging row.
    */
   std::function<int(int live_row)> stage_row;
   /** Reserve @p count fresh staging rows; returns the first reserved index. */
   std::function<int(int count)> reserve_rows;
-  /** Lift a staging row into a detached, carrier-laden @c Particle. */
-  std::function<Particle(int staging_row)> snapshot_row;
   /** Drop all staged rows (reset the row counter to zero). */
   std::function<void()> clear;
 

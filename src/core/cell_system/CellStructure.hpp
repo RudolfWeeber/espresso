@@ -370,19 +370,20 @@ private:
   }
 
   /**
-   * @brief Stage a particle for insertion into a cell (phase 7a).
+   * @brief Stage a new particle (built into a staging row) into a cell (phase
+   * 7b, Task 4).
    *
-   * The particle is appended to the cell's staging area (not yet committed to a
-   * store row / the index -- see @ref CellParticleStorage::insert_particle);
-   * the returned pointer aliases the staged particle and writes through it land
-   * in its migration carriers, which the next rebuild seeds the row from. The
-   * store must be marked dirty by the caller so the rebuild commits the staged
-   * particle before it is read back through @ref get_local_particle or
-   * @ref Cell::particles.
+   * @p p is a VIEW over a row of the creation staging store (built by
+   * @ref make_new_particle_view, then populated by the caller). The referenced
+   * staging row is staged into @p cell (@ref
+   * CellParticleStorage::insert_staged_row); the next rebuild copies it into a
+   * committed row. The staging store must stay valid until the rebuild runs
+   * (the caller commits immediately via ensure_particle_store_synchronized).
+   * The caller must mark the store dirty.
    */
-  Particle *append_staged_particle(Cell &cell, Particle &&p) {
-    return std::addressof(
-        CellParticleStorage::insert_particle(cell, std::move(p)));
+  void append_staged_particle(Cell &cell, Particle &&p) {
+    assert(p.store() != nullptr);
+    CellParticleStorage::insert_staged_row(cell, *p.store(), p.store_row());
   }
 
 public:
@@ -771,43 +772,50 @@ private:
       std::unique_ptr<ParticleDecomposition> &&decomposition) {
     clear_particle_index();
 
-    /* Snapshot every particle out of the OLD decomposition into detached,
-     * carrier-laden particles BEFORE the store is rebuilt (phase 7a): the old
-     * cells' rows index into the current store, which the swap + rebuild below
-     * will invalidate. Snapshotting lifts the data out into self-contained
-     * values (like a migration extract) that survive into the new system's
-     * staging. */
-    std::vector<Particle> retained;
+    /* Copy every particle out of the OLD decomposition into staging-store rows
+     * BEFORE the store is rebuilt (phase 7b): the old cells' rows index into
+     * the current main store, which the swap + rebuild below will invalidate.
+     * The staging store is an independent store, so its rows survive the main
+     * store's rebuild and can seed the retained particles into the new system.
+     */
+    clear_staging_store();
+    std::vector<int> retained_staging_rows;
     for (auto *cell : m_decomposition->local_cells()) {
       cell->set_store(m_particle_store);
       auto &rows = cell->rows();
       for (std::size_t i = 0u; i < rows.size(); ++i) {
-        retained.push_back(m_particle_store.snapshot_row(rows.begin()[i]));
+        retained_staging_rows.push_back(stage_row(rows.begin()[i]));
       }
     }
 
     /* Swap in new cell system */
     std::swap(m_decomposition, decomposition);
 
-    /* Wire the new cells to the store and stage the retained particles into
-     * their home cells. Stage directly (NOT via add_particle, which commits
-     * per-add -- that would be O(n^2) here); a single rebuild below commits
-     * them all at once. A particle with no home cell on this node goes to the
-     * first local cell (a global resort will place it), matching add_particle.
-     */
+    /* Wire the new cells to the store and stage the retained rows into their
+     * home cells. Stage directly (NOT via add_particle, which commits per-add
+     * -- that would be O(n^2) here); a single rebuild below commits them all at
+     * once. A particle with no home cell on this node goes to the first local
+     * cell (a global resort will place it), matching add_particle. The home
+     * cell is decided from the staged row's position (read from the staging
+     * store). */
     for (auto *cell : m_decomposition->local_cells()) {
       cell->set_store(m_particle_store);
     }
     for (auto *cell : m_decomposition->ghost_cells()) {
       cell->set_store(m_particle_store);
     }
-    auto const had_retained = not retained.empty();
-    for (auto &p : retained) {
-      auto const sort_cell = particle_to_cell(p);
+    auto const had_retained = not retained_staging_rows.empty();
+    for (auto const staging_row : retained_staging_rows) {
+      auto const view = m_staging_store.make_view(staging_row);
+      // NB: the `decomposition` PARAMETER (now holding the OLD, swapped-out
+      // decomposition) shadows the `decomposition()` accessor here; route
+      // through the NEW decomposition via m_decomposition explicitly.
+      auto const sort_cell = m_decomposition->particle_to_cell(view);
       auto cell = sort_cell ? sort_cell : m_decomposition->local_cells()[0];
       set_resort_particles(sort_cell ? Cells::RESORT_LOCAL
                                      : Cells::RESORT_GLOBAL);
-      CellParticleStorage::insert_particle(*cell, std::move(p));
+      CellParticleStorage::insert_staged_row(*cell, m_staging_store,
+                                             staging_row);
     }
 
     mark_particle_store_dirty();
@@ -979,16 +987,18 @@ public:
    */
   int reserve_staging_rows(int count);
   /**
-   * @brief Lift a staging-store row into a detached, carrier-laden Particle
-   * (phase 7b flip).
+   * @brief Build a fresh, default-seeded new-particle VIEW (phase 7b, Task 4).
    *
-   * The migration `deliver` helper: a received/extracted particle held in a
-   * staging row is snapshotted into a self-contained @c Particle that the
-   * decomposition can hand to @ref CellParticleStorage::insert_particle (the
-   * pending/staged commit path). Preserves the exact cell-staging semantics
-   * (and therefore the row-assignment order) of the pre-flip Bag path.
+   * Reserves one staging-store row, seeds it to the new-particle defaults
+   * (@ref ParticleStore::seed_default_row), and returns a @ref Particle view
+   * over it. This is the creation entry point that replaces the pre-flip
+   * detached, carrier-laden @c Particle: the caller writes the fields it wants
+   * through the returned view, then hands the view to @ref add_particle /
+   * @ref add_local_particle, which stage the underlying staging row into the
+   * particle's home cell. The view is valid until the next staging-store growth
+   * / clear; @ref add_particle consumes it right away.
    */
-  Particle snapshot_staging_row(int staging_row);
+  Particle make_new_particle_view();
   /** @brief Drop all staged rows (row counter back to zero). The columns are
    *  retained as reusable capacity; @ref release_staging_store frees them. */
   void clear_staging_store() { m_staging_store_next_row = 0; }
@@ -1011,9 +1021,6 @@ public:
     staging.stage_row = [this](int live_row) { return stage_row(live_row); };
     staging.reserve_rows = [this](int count) {
       return reserve_staging_rows(count);
-    };
-    staging.snapshot_row = [this](int staging_row) {
-      return snapshot_staging_row(staging_row);
     };
     staging.clear = [this]() { clear_staging_store(); };
     return staging;

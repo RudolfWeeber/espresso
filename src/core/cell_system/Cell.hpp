@@ -33,6 +33,25 @@
 #include <utility>
 #include <vector>
 
+/** @brief A particle staged for insertion into a cell (phase 7b, Task 4).
+ *
+ *  Since the migration envelope died, a cell no longer stages a detached,
+ *  data-carrying @c Particle. It stages a reference to a row in a SOURCE store
+ *  from which the next store rebuild copies every field into a fresh row via
+ *  @ref ParticleStore::copy_row. Two shapes:
+ *  - @c source_store != nullptr : copy from @c source_store at @c source_row
+ *    (a migrating particle held in the CellStructure staging store, or a
+ *    freshly-built new particle in a creation staging store).
+ *  - @c source_store == nullptr : a fresh, default-seeded particle (a new ghost
+ *    from @ref CellParticleStorage::resize_ghost_storage); the rebuild seeds
+ *    the row to defaults (@ref ParticleStore::seed_default_row).
+ *  Ghost-ness is STRUCTURAL (the row's position in the store), so no flag is
+ *  carried here: ghost rows always land in the ghost suffix by construction. */
+struct StagedParticle {
+  ParticleStore *source_store = nullptr;
+  int source_row = -1;
+};
+
 template <class CellRef> class Neighbors {
   using storage_type = std::vector<CellRef>;
 
@@ -110,17 +129,19 @@ class Cell {
    *  detached particles. */
   CellRows m_rows;
 
-  /** Not-yet-committed detached particles (phase 7a staging area). A cell
-   *  mutation that ADDS a particle (@ref CellParticleStorage::insert_particle,
-   *  the migration re-insert path, ghost-cell resize) appends the incoming
-   *  detached, carrier-laden @c Particle here and marks the store dirty; the
-   *  next store rebuild seeds a fresh row per staged particle from its carriers
-   *  and clears this buffer. Between the mutation and the rebuild the staged
-   *  particles are part of the cell but have no store row yet, so
+  /** Not-yet-committed staged particles (phase 7a staging area, phase 7b row
+   *  refs). A cell mutation that ADDS a particle
+   *  (@ref CellParticleStorage::insert_staged_row, the migration re-insert
+   *  path, ghost-cell resize) appends a @ref StagedParticle here (a reference
+   * to a source-store row, or a fresh-default marker) and marks the store
+   * dirty; the next store rebuild copies a fresh row per staged entry (via
+   *  @ref ParticleStore::copy_row / @ref ParticleStore::seed_default_row) and
+   *  clears this buffer. Between the mutation and the rebuild the staged
+   *  particles are part of the cell but have no committed row yet, so
    *  @ref particles() cannot yet see them -- callers that add particles must
    *  trigger the rebuild (mark-dirty + ensure_particle_store_synchronized)
    *  before iterating, exactly as before the flip. */
-  std::vector<Particle> m_staged;
+  std::vector<StagedParticle> m_staged;
 
   /** The store the row indices point into (phase 7a). Wired by
    *  @ref CellStructure at construction / decomposition swap; used by

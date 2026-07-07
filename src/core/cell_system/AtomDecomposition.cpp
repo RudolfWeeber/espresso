@@ -133,7 +133,6 @@ void AtomDecomposition::resort(bool global_flag,
   // (MigrationPack::pack_rows) and exchanged as a byte buffer via all_to_all.
   assert(m_migration_staging && "migration staging store not installed");
   auto &staging = *m_migration_staging.store;
-  m_migration_staging.clear();
 
   // Sort displaced particles into per-rank staging-row buckets (iterate the
   // committed rows by position; drop_row removes the row via swap-with-back, so
@@ -165,9 +164,12 @@ void AtomDecomposition::resort(bool global_flag,
   diff.emplace_back(ModifiedList{local().rows()});
 
   // Unpack the received buffers (in rank order, matching the pre-flip recv_buf
-  // iteration) into fresh staging rows, then stage each into the local cell --
-  // the pre-flip cell staging path, so the rebuild commits them in the same
-  // order.
+  // iteration) into fresh staging rows, then stage each staging row into the
+  // local cell as a row reference (phase 7b): the next store rebuild copies it
+  // into a committed row, so the final row-assignment order is the same as the
+  // pre-flip cell staging path. The staging store is NOT cleared here -- the
+  // staged row references must remain valid until CellStructure commits them
+  // (ensure_particle_store_synchronized), which then resets the staging store.
   for (auto const &buffer : recv_buf) {
     if (buffer.empty()) {
       continue;
@@ -181,12 +183,9 @@ void AtomDecomposition::resort(bool global_flag,
         m_migration_staging.reserve_rows(static_cast<int>(count));
     MigrationPack::unpack_rows(staging, first_row, buffer);
     for (int k = 0; k < static_cast<int>(count); ++k) {
-      CellParticleStorage::insert_particle(
-          local(), m_migration_staging.snapshot_row(first_row + k));
+      CellParticleStorage::insert_staged_row(local(), staging, first_row + k);
     }
   }
-
-  m_migration_staging.clear();
 }
 
 AtomDecomposition::AtomDecomposition(BoxGeometry const &box_geo)

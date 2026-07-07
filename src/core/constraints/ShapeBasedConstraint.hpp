@@ -88,12 +88,19 @@ public:
 
   bool &only_positive() { return m_only_positive; }
   bool &penetrable() { return m_penetrable; }
-  int &type() { return part_rep.type(); }
+  int &type() {
+    ensure_part_rep_attached();
+    return part_rep.type();
+  }
   // v() returns a write-through proxy (not an lvalue reference) once velocity
   // moves into the ParticleStore columns, so expose value get/set instead of a
   // bound reference (mirrors the ParticleHandle proxy accessors).
-  Utils::Vector3d velocity() const { return part_rep.v(); }
+  Utils::Vector3d velocity() const {
+    ensure_part_rep_attached();
+    return part_rep.v();
+  }
   void set_velocity(Utils::Vector3d const &velocity) {
+    ensure_part_rep_attached();
     part_rep.v() = velocity;
   }
 
@@ -106,21 +113,31 @@ public:
   }
 
 private:
-  Particle part_rep;
-  /** Standalone store backing @ref part_rep's force/torque columns (migration
-   *  phase 2). @ref part_rep is a representative wall particle owned by the
-   *  constraint, not by any cell structure, so it needs its own single-row
-   *  store for the force/torque accessors to work. Attached lazily in
-   *  @ref force() because Kokkos may not be initialized at construction time.
+  /** @brief Attach @ref part_rep to its single-row store on first use
+   *  (phase 7b: a @ref Particle is a view -- EVERY accessor reads the store
+   *  column, so @c part_rep must be bound before its type/velocity/force is
+   *  touched). Idempotent. Attached lazily (not in the constructor) because
+   *  Kokkos may not be initialized then; every entry point that touches
+   *  @c part_rep (set_type/type/velocity/get_ia_param/force/add_energy) calls
+   *  this first, and all of them run after the System (hence Kokkos) exists.
+   *  The mutated members are @c mutable so the const accessors can attach.
+   *  Defined in the .cpp (needs @c ::kokkos_handle from communication.hpp). */
+  void ensure_part_rep_attached() const;
+
+  mutable Particle part_rep;
+  /** Standalone store backing @ref part_rep's columns (migration phase 2).
+   *  @ref part_rep is a representative wall particle owned by the constraint,
+   *  not by any cell structure, so it needs its own single-row store for the
+   *  view accessors to work. Attached lazily by @ref ensure_part_rep_attached.
    */
-  ParticleStore m_part_rep_store;
+  mutable ParticleStore m_part_rep_store;
   /** Co-ownership of the Kokkos runtime (mirrors @ref CellStructure's
    *  @c m_kokkos_handle). @ref m_part_rep_store holds Kokkos Views that must be
    *  destroyed before @c Kokkos::finalize(); if this constraint outlives the
    *  last CellStructure, holding a handle keeps the runtime alive until the
-   *  destructor releases the columns. Captured in the lazy attach path of
-   *  @ref force(), where Kokkos is guaranteed initialized. */
-  std::shared_ptr<KokkosHandle> m_kokkos_handle;
+   *  destructor releases the columns. Captured in @ref
+   * ensure_part_rep_attached, where Kokkos is guaranteed initialized. */
+  mutable std::shared_ptr<KokkosHandle> m_kokkos_handle;
   std::shared_ptr<Shapes::Shape> m_shape;
   bool m_penetrable;
   bool m_only_positive;

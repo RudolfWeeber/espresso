@@ -204,9 +204,12 @@ BOOST_FIXTURE_TEST_CASE(rng, CleanupActorLB) {
   BOOST_CHECK_EQUAL(thermostat.rng_seed(), 17u);
   BOOST_CHECK_EQUAL(thermostat.rng_counter(), 11ul);
   BOOST_CHECK(not thermostat.is_seed_required());
-  Particle test_partcl_1{};
+  // phase 7b: the particle id lives in the ParticleStore; attach both
+  // hand-made particles to a standalone store. get_noise_term only reads id().
+  ParticleStoreTestFixture fixture{};
+  auto test_partcl_1 = fixture.make();
   test_partcl_1.id() = 1;
-  Particle test_partcl_2{};
+  auto test_partcl_2 = fixture.make();
   test_partcl_2.id() = 4;
   auto const step1_random1 = coupling.get_noise_term(test_partcl_1);
   auto const step1_random2 = coupling.get_noise_term(test_partcl_2);

@@ -439,7 +439,20 @@ void mpi_mpiio_common_read(const std::string &prefix, unsigned fields,
   auto const [pref, nlocalpart] =
       read_prefs(prefix + ".pref", rank, size, nglobalpart);
 
-  std::vector<Particle> particles(nlocalpart);
+  // Phase 7b (Task 4): a Particle is a view, not a data carrier. Build the read
+  // particles into a LOCAL, independent ParticleStore (one row per particle,
+  // seeded to defaults), write fields through views, then hand each view to
+  // add_particle (which stages/copies the row into the cell store). The local
+  // store stays alive until every add commits, then its columns are released.
+  ParticleStore io_store{};
+  io_store.begin_rebuild(nlocalpart, 0u);
+  io_store.finish_rebuild();
+  std::vector<Particle> particles;
+  particles.reserve(nlocalpart);
+  for (std::size_t r = 0u; r < nlocalpart; ++r) {
+    io_store.seed_default_row(static_cast<int>(r));
+    particles.push_back(io_store.make_view(static_cast<int>(r)));
+  }
 
   {
     // 1.id on all nodes:
@@ -525,5 +538,8 @@ void mpi_mpiio_common_read(const std::string &prefix, unsigned fields,
   for (auto &p : particles) {
     cell_structure.add_particle(std::move(p));
   }
+  // The io_store's rows have been copied into the cell store; release its
+  // Kokkos columns (while the runtime is still alive).
+  io_store.release_columns();
 }
 } // namespace Mpiio

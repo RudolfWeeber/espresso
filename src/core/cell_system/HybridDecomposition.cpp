@@ -25,6 +25,8 @@
 #include "cell_system/CellStructure.hpp"
 #include "cell_system/ParticleListOperations.hpp"
 
+#include "particle_store/ParticleStore.hpp"
+
 #include "BoxGeometry.hpp"
 #include "LocalBox.hpp"
 #include "ParticleList.hpp"
@@ -36,6 +38,7 @@
 #include <boost/mpi/communicator.hpp>
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <functional>
 #include <iterator>
@@ -97,15 +100,23 @@ void HybridDecomposition::resort(bool global,
                                  std::vector<ParticleChange> &diff) {
   ParticleList displaced_parts;
 
-  /* Check for n_square type particles in regular decomposition. Phase 7a:
+  /* Check for n_square type particles in regular decomposition. Phase 7b:
    * cells are already wired to the store by CellStructure::resort_particles;
-   * iterate committed rows by position and snapshot + remove misplaced
-   * particles (extract_row swaps-with-back, so re-examine the swapped-in
-   * position). Read the type from the store by row. */
+   * iterate committed rows by position and, for a misplaced particle, copy its
+   * live row into the shared staging store (stage_row), drop the row from its
+   * cell (drop_row swaps-with-back, so re-examine the swapped-in position), and
+   * stage a reference to the staging row in the target child cell
+   * (insert_staged_row). The next store rebuild -- triggered by m_commit_store
+   * below, BEFORE the child resorts -- copies each staging row into a committed
+   * row and then resets the staging store. Read the type/id from the store by
+   * row (a lightweight view, avoiding the deleted detached-Particle path). */
+  assert(m_migration_staging && "migration staging store not installed");
+  auto &staging = *m_migration_staging.store;
   for (auto &cell_rd : m_regular_decomposition.local_cells()) {
     auto &store = cell_rd->store();
     for (std::size_t index = 0u; index < cell_rd->rows().size();) {
-      auto const type = store.type(cell_rd->rows().begin()[index]);
+      auto const live_row = cell_rd->rows().begin()[index];
+      auto const type = store.type(live_row);
       /* Particle is in the right decomposition, i.e. has no n_square type */
       if (not is_n_square_type(type)) {
         ++index;
@@ -113,13 +124,15 @@ void HybridDecomposition::resort(bool global,
       }
 
       /* else remove from current cell ... */
-      auto p = CellParticleStorage::extract_row(*cell_rd, index);
+      auto const staging_row = m_migration_staging.stage_row(live_row);
+      CellParticleStorage::drop_row(*cell_rd, index);
       diff.emplace_back(ModifiedList{cell_rd->rows()});
-      diff.emplace_back(RemovedParticle{p.id()});
+      diff.emplace_back(RemovedParticle{staging.id(staging_row)});
 
       /* ... and insert into a n_square cell */
       auto const first_local_cell = m_n_square.get_local_cells()[0];
-      CellParticleStorage::insert_particle(*first_local_cell, std::move(p));
+      CellParticleStorage::insert_staged_row(*first_local_cell, staging,
+                                             staging_row);
       diff.emplace_back(ModifiedList{first_local_cell->rows()});
     }
 
@@ -127,7 +140,8 @@ void HybridDecomposition::resort(bool global,
     for (auto &cell_ns : m_n_square.local_cells()) {
       auto &store = cell_ns->store();
       for (std::size_t index = 0u; index < cell_ns->rows().size();) {
-        auto const type = store.type(cell_ns->rows().begin()[index]);
+        auto const live_row = cell_ns->rows().begin()[index];
+        auto const type = store.type(live_row);
         /* Particle is of n_square type */
         if (is_n_square_type(type)) {
           ++index;
@@ -135,32 +149,40 @@ void HybridDecomposition::resort(bool global,
         }
 
         /* else remove from current cell ... */
-        auto p = CellParticleStorage::extract_row(*cell_ns, index);
+        auto const staging_row = m_migration_staging.stage_row(live_row);
+        CellParticleStorage::drop_row(*cell_ns, index);
         diff.emplace_back(ModifiedList{cell_ns->rows()});
-        diff.emplace_back(RemovedParticle{p.id()});
+        diff.emplace_back(RemovedParticle{staging.id(staging_row)});
 
-        /* ... and insert in regular decomposition */
-        auto const target_cell = particle_to_cell(p);
+        /* ... and insert in regular decomposition. The home cell is decided
+         * from the staged row's position (read through a view over it). */
+        auto const target_cell =
+            particle_to_cell(staging.make_view(staging_row));
         /* if particle belongs to this node insert it into correct cell */
         if (target_cell != nullptr) {
-          CellParticleStorage::insert_particle(*target_cell, std::move(p));
+          CellParticleStorage::insert_staged_row(*target_cell, staging,
+                                                 staging_row);
           diff.emplace_back(ModifiedList{target_cell->rows()});
         }
         /* otherwise just put into regular decomposition */
         else {
           auto first_local_cell = m_regular_decomposition.get_local_cells()[0];
-          CellParticleStorage::insert_particle(*first_local_cell, std::move(p));
+          CellParticleStorage::insert_staged_row(*first_local_cell, staging,
+                                                 staging_row);
           diff.emplace_back(ModifiedList{first_local_cell->rows()});
         }
       }
     }
   }
 
-  /* Phase 7a: the type-based moves above STAGED particles into their target
-   * child cells (insert_particle stages; pre-flip it inserted immediately).
-   * Commit now so the child resorts below iterate the correct committed cell
-   * contents -- otherwise a particle moved into a cell would be invisible to
-   * that cell's own resort, changing the final placement/order. */
+  /* Phase 7b: the type-based moves above STAGED staging-row references into
+   * their target child cells (insert_staged_row; pre-flip insert_particle
+   * inserted immediately). Commit now so the child resorts below iterate the
+   * correct committed cell contents -- otherwise a particle moved into a cell
+   * would be invisible to that cell's own resort, changing the final
+   * placement/order. The commit copies each staged row into a committed row and
+   * resets the shared staging store, so the child resorts start with a clean
+   * staging store. */
   if (m_commit_store) {
     m_commit_store();
   }

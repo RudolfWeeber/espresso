@@ -27,17 +27,9 @@
 #include "ParticleStoreTestFixture.hpp"
 #include "PropagationMode.hpp"
 
-#include <utils/compact_vector.hpp>
 #include <utils/serialization/memcpy_archive.hpp>
 
-#include <boost/archive/text_iarchive.hpp>
-#include <boost/archive/text_oarchive.hpp>
-
-#include <algorithm>
-#include <array>
-#include <sstream>
 #include <type_traits>
-#include <utility>
 #include <vector>
 
 void check_particle_force(ParticleForce const &out, ParticleForce const &ref) {
@@ -49,7 +41,9 @@ void check_particle_force(ParticleForce const &out, ParticleForce const &ref) {
 
 BOOST_AUTO_TEST_CASE(comparison) {
   {
-    Particle p, q;
+    ParticleStoreTestFixture fx{};
+    auto p = fx.make();
+    auto q = fx.make();
 
     p.id() = 1;
     q.id() = 2;
@@ -59,7 +53,9 @@ BOOST_AUTO_TEST_CASE(comparison) {
   }
 
   {
-    Particle p, q;
+    ParticleStoreTestFixture fx{};
+    auto p = fx.make();
+    auto q = fx.make();
 
     p.id() = 2;
     q.id() = 2;
@@ -69,180 +65,12 @@ BOOST_AUTO_TEST_CASE(comparison) {
   }
 }
 
-BOOST_AUTO_TEST_CASE(serialization) {
-  // Migration phase 2: force/torque live in the ParticleStore columns and are
-  // no longer part of Particle serialization. Attach the hand-made particles
-  // to a standalone store so the accessors work.
-  ParticleStoreTestFixture fixture{};
-  auto p = Particle();
-  fixture.attach(p);
-
-  auto const bond_id = 5;
-  auto const bond_partners = std::array<const int, 3>{{12, 13, 14}};
-
-  p.id() = 15;
-  p.bonds().insert({bond_id, bond_partners});
-  p.force() = {1., -2., 3.};
-#ifdef ESPRESSO_ROTATION
-  p.torque() = {-4., 5., -6.};
-#endif
-#ifdef ESPRESSO_EXCLUSIONS
-  std::vector<int> el = {5, 6, 7, 8};
-  p.exclusions() = Utils::compact_vector<int>{el.begin(), el.end()};
-#endif
-
-  std::stringstream stream;
-  boost::archive::text_oarchive out_ar(stream);
-  out_ar << p;
-
-  boost::archive::text_iarchive in_ar(stream);
-  // Migration phase 5: id (with all other parameters) lives in the store column
-  // and is ferried across the archive via the migration carrier. Deserialize
-  // into a DETACHED q so the carrier value is read back (the assign_row seeding
-  // path), then attach so the column read returns it -- mirrors the state and
-  // momentum carrier round-trips below.
-  auto q = Particle();
-  in_ar >> q;
-
-  BOOST_CHECK(q.detached_id() == p.detached_id());
-  BOOST_CHECK((*q.bonds().begin() == BondView{bond_id, bond_partners}));
-  fixture.attach(q);
-  BOOST_CHECK(q.id() == p.id());
-  // Force/torque ARE serialized via the migration carriers (m_detached_force /
-  // m_detached_torque); after attaching q to the fresh store, assign_row seeds
-  // row 0 from those carriers, so the column reads return the ferried values.
-  BOOST_TEST(Utils::Vector3d(q.force()) == (Utils::Vector3d{1., -2., 3.}),
-             boost::test_tools::per_element());
-#ifdef ESPRESSO_ROTATION
-  BOOST_TEST(Utils::Vector3d(q.torque()) == (Utils::Vector3d{-4., 5., -6.}),
-             boost::test_tools::per_element());
-#endif
-}
-
-// Migration phase 3: the STATE fields (position, image box, quaternion,
-// position-at-last-verlet-update, position-at-last-time-step, Lees-Edwards
-// offset and flag) live in the ParticleStore columns and are ferried across a
-// boost archive via the migration carriers. This round-trip test attaches p to
-// a store, sets known state, serializes, and deserializes into a DETACHED q so
-// that the carrier values (not a column) are read back through the detached_*()
-// getters -- exactly the path ParticleStore::assign_row uses to seed a migrated
-// particle's new row on the destination rank.
-BOOST_AUTO_TEST_CASE(state_carrier_serialization_round_trip) {
-  ParticleStoreTestFixture fixture{};
-  auto p = Particle();
-  fixture.attach(p);
-
-  auto const ref_pos = Utils::Vector3d{1.25, -2.5, 3.75};
-  auto const ref_image = Utils::Vector3i{4, -5, 6};
-  p.pos() = ref_pos;
-  p.image_box() = ref_image;
-  p.pos_at_last_verlet_update() = Utils::Vector3d{0.5, 0.25, -0.125};
-#ifdef ESPRESSO_ROTATION
-  auto const ref_quat = Utils::Quaternion<double>{{0.5, 0.5, 0.5, 0.5}};
-  p.quat() = ref_quat;
-#endif
-#ifdef ESPRESSO_BOND_CONSTRAINT
-  auto const ref_pos_last = Utils::Vector3d{7.5, 8.5, 9.5};
-  p.pos_last_time_step() = ref_pos_last;
-#endif
-  p.lees_edwards_offset() = 1.5;
-  p.lees_edwards_flag() = short{3};
-
-  std::stringstream stream;
-  boost::archive::text_oarchive out_ar(stream);
-  out_ar << p;
-
-  boost::archive::text_iarchive in_ar(stream);
-  auto q = Particle(); // intentionally NOT attached to a store
-  in_ar >> q;
-
-  // A detached q reads the ferried carriers through detached_*().
-  BOOST_TEST(q.detached_position() == ref_pos,
-             boost::test_tools::per_element());
-  BOOST_TEST(q.detached_image_box() == ref_image,
-             boost::test_tools::per_element());
-  BOOST_TEST(q.detached_position_at_last_verlet_update() ==
-                 (Utils::Vector3d{0.5, 0.25, -0.125}),
-             boost::test_tools::per_element());
-#ifdef ESPRESSO_ROTATION
-  {
-    auto const q_quat = q.detached_quaternion();
-    for (std::size_t j = 0u; j < 4u; ++j) {
-      BOOST_CHECK_EQUAL(q_quat[j], ref_quat[j]);
-    }
-  }
-#endif
-#ifdef ESPRESSO_BOND_CONSTRAINT
-  BOOST_TEST(q.detached_position_last_time_step() == ref_pos_last,
-             boost::test_tools::per_element());
-#endif
-  BOOST_CHECK_EQUAL(q.detached_lees_edwards_offset(), 1.5);
-  BOOST_CHECK_EQUAL(q.detached_lees_edwards_flag(), short{3});
-
-  // After attaching q to a fresh store, assign_row seeds the row from those
-  // carriers, so the column reads now return the ferried values.
-  fixture.attach(q);
-  BOOST_TEST(Utils::Vector3d(q.pos()) == ref_pos,
-             boost::test_tools::per_element());
-  BOOST_TEST(Utils::Vector3i(q.image_box()) == ref_image,
-             boost::test_tools::per_element());
-#ifdef ESPRESSO_ROTATION
-  {
-    auto const q_quat = Utils::Quaternion<double>(q.quat());
-    for (std::size_t j = 0u; j < 4u; ++j) {
-      BOOST_CHECK_EQUAL(q_quat[j], ref_quat[j]);
-    }
-  }
-#endif
-  BOOST_CHECK_EQUAL(q.lees_edwards_offset(), 1.5);
-  BOOST_CHECK_EQUAL(q.lees_edwards_flag(), short{3});
-}
-
-// Migration phase 4: the MOMENTUM fields (velocity and angular velocity) live
-// in the ParticleStore columns and are ferried across a boost archive via the
-// migration carriers. Mirror of state_carrier_serialization_round_trip for the
-// momentum fields: attach p to a store, set known velocity/omega, serialize,
-// deserialize into a DETACHED q (reads the carriers through detached_*()), then
-// attach q to a fresh store and confirm assign_row seeds the columns from the
-// ferried carriers -- exactly the cross-rank migration seeding path.
-BOOST_AUTO_TEST_CASE(momentum_carrier_serialization_round_trip) {
-  ParticleStoreTestFixture fixture{};
-  auto p = Particle();
-  fixture.attach(p);
-
-  auto const ref_vel = Utils::Vector3d{-1.5, 2.25, -3.5};
-  p.v() = ref_vel;
-#ifdef ESPRESSO_ROTATION
-  auto const ref_omega = Utils::Vector3d{0.75, -1.25, 4.5};
-  p.omega() = ref_omega;
-#endif
-
-  std::stringstream stream;
-  boost::archive::text_oarchive out_ar(stream);
-  out_ar << p;
-
-  boost::archive::text_iarchive in_ar(stream);
-  auto q = Particle(); // intentionally NOT attached to a store
-  in_ar >> q;
-
-  // A detached q reads the ferried carriers through detached_*().
-  BOOST_TEST(q.detached_velocity() == ref_vel,
-             boost::test_tools::per_element());
-#ifdef ESPRESSO_ROTATION
-  BOOST_TEST(q.detached_angular_velocity() == ref_omega,
-             boost::test_tools::per_element());
-#endif
-
-  // After attaching q to a fresh store, assign_row seeds the row from those
-  // carriers, so the column reads now return the ferried values.
-  fixture.attach(q);
-  BOOST_TEST(Utils::Vector3d(q.v()) == ref_vel,
-             boost::test_tools::per_element());
-#ifdef ESPRESSO_ROTATION
-  BOOST_TEST(Utils::Vector3d(q.omega()) == ref_omega,
-             boost::test_tools::per_element());
-#endif
-}
+// Phase 7b (Task 4): the migration envelope died -- a Particle is a two-word
+// non-owning view and can no longer be boost-serialized. The former whole-
+// Particle boost round-trip tests (id/state/momentum carrier round-trips) are
+// retired: the per-field cross-rank wire is now covered by
+// MigrationPack_test.cpp and the row-to-row migration copy by
+// ParticleStore::copy_row (exercised there and in ParticleStore_test.cpp).
 
 namespace Utils {
 template <>
@@ -415,7 +243,8 @@ BOOST_AUTO_TEST_CASE(thermal_stoner_wohlfarth_constructors) {
 #endif // ESPRESSO_THERMAL_STONER_WOHLFARTH
 
 BOOST_AUTO_TEST_CASE(particle_bitfields) {
-  auto p = Particle();
+  ParticleStoreTestFixture fx{};
+  auto p = fx.make();
 
   // check default values
   BOOST_CHECK(not p.has_fixed_coordinates());

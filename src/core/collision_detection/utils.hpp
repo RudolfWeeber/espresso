@@ -61,7 +61,9 @@ inline void place_vs_and_relate_to_particle(
     CellStructure &cell_structure, BoxGeometry const &box_geo,
     int const part_type_vs, double const min_global_cut,
     int const current_vs_pid, Utils::Vector3d const &pos, int const relate_to) {
-  Particle new_part;
+  // Phase 7b: build the new virtual site into a staging-store row via a view,
+  // then hand it to add_particle (which stages the underlying staging row).
+  auto new_part = cell_structure.make_new_particle_view();
   new_part.id() = current_vs_pid;
   new_part.pos() = pos;
   auto p_vs = cell_structure.add_particle(std::move(new_part));

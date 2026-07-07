@@ -43,7 +43,19 @@ struct ParticleStoreTestFixture {
     store.begin_rebuild(capacity, 0u);
     store.finish_rebuild();
   }
+  /** Attach an existing (freshly default-constructed) view to the next store
+   *  row. Phase 7b: a Particle carries no data, so this seeds the row to the
+   *  new-particle defaults and binds @p p to it (assign_row's not-preserve
+   *  branch). Any field the caller wants must be set AFTER this call, through
+   *  the now-attached view. */
   void attach(Particle &p) { store.assign_row(p, next_row++); }
+  /** Reserve and default-seed the next store row and return a view bound to it
+   *  (phase 7b: the store owns the data; the returned view reads/writes it). */
+  Particle make() {
+    auto const row = next_row++;
+    store.seed_default_row(row);
+    return store.make_view(row);
+  }
 
 private:
   static void ensure_kokkos_initialized() {

@@ -174,12 +174,11 @@ private:
    * @brief Deliver received staging rows to local cells (phase 7b flip).
    *
    * For each staging-store row index in @p src, checks whether the particle
-   * belongs to a local cell. If so, the row is lifted into a detached
-   * @c Particle (@ref MigrationStaging::snapshot_row) and staged into the
-   * target cell via @ref CellParticleStorage::insert_particle (the pre-flip
-   * staging path -- preserves the row-assignment order). Otherwise the
-   * staging-row index is kept in @p rest for the next exchange round. @p src is
-   * cleared.
+   * belongs to a local cell. If so, the staging row is staged into the target
+   * cell as a row reference (@ref CellParticleStorage::insert_staged_row); the
+   * next store rebuild copies it into a committed row, preserving the
+   * row-assignment order. Otherwise the staging-row index is kept in @p rest
+   * for the next exchange round. @p src is cleared.
    *
    * @param src Staging-row indices of received particles.
    * @param rest Output list for left-over (undeliverable) staging rows.

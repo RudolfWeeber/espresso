@@ -159,17 +159,20 @@ public:
   Particle make_view(int row);
 
   /**
-   * @brief Lift a store row into a detached, carrier-laden @ref Particle.
+   * @brief Seed @p row with the default new-particle values (phase 7b, Task 4).
    *
-   * Migration phase 7a: builds a view at @p row, snapshots its columns/sidecars
-   * into the returned Particle's migration carriers, and detaches it (store
-   * pointer null, row -1) -- the same choreography @ref Particle::serialize
-   * performs on SAVE. The result is a self-contained value the migration/resort
-   * paths can move into send buffers or a cell's staging area; it does NOT
-   * alias the store. Removing the row from the owning cell and marking the
-   * store dirty is the caller's job (see @ref CellParticleStorage).
+   * Writes the default value of every column / POD sidecar (and clears the
+   * ragged bond/exclusion sidecars) at @p row -- the values a genuinely-new /
+   * fresh-ghost particle starts from (id -1, mol_id 0, type 0, propagation
+   * SYSTEM_DEFAULT, position/velocity/force zero, quaternion identity, mass 1,
+   * gamma -1, etc.). These are the exact defaults the (now-deleted) migration
+   * carriers held; they must match @ref assign_row's seed branch. The
+   * new-particle creation path (@ref CellStructure::add_particle via a staging
+   * row) seeds a row, then the caller writes the fields it wants through a
+   * view;
+   * @ref CellParticleStorage::resize_ghost_storage seeds fresh ghost rows.
    */
-  Particle snapshot_row(int row);
+  void seed_default_row(int row);
 
   /** Release all Kokkos-backed columns. Must be called while the Kokkos
    *  runtime is still alive (e.g. before Kokkos::finalize); afterwards the

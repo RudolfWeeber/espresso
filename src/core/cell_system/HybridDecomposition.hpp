@@ -79,6 +79,13 @@ class HybridDecomposition : public ParticleDecomposition {
    *  @ref CellStructure::ensure_particle_store_synchronized. */
   std::function<void()> m_commit_store;
 
+  /** Shared migration staging handle (phase 7b): the hybrid's own type-based
+   *  moves between the two child decompositions copy a live row into this
+   *  staging store and stage a reference to it, exactly like a child's
+   *  wrong-cell-local move; the children hold the SAME handle (same
+   *  address-stable staging-store member on @ref CellStructure). */
+  MigrationStaging m_migration_staging;
+
   bool is_n_square_type(int type_id) const {
     return (m_n_square_types.find(type_id) != m_n_square_types.end());
   }
@@ -97,11 +104,16 @@ public:
 
   /** @brief Install the migration staging handle (phase 7b flip) and propagate
    *  it to the two child decompositions, which run the actual wire exchange in
-   *  their @c resort. The shared staging store is reset at the start and end of
-   *  each child resort, so back-to-back child resorts do not collide. */
+   *  their @c resort. The shared staging store is reset by @ref CellStructure
+   *  once it commits the staged rows (@c ensure_particle_store_synchronized),
+   *  not by the decompositions -- so the type-based moves' staged rows, the two
+   *  child resorts' staged rows, and the deferred commit=false hot path all
+   *  keep valid references until that single commit. The hybrid keeps its own
+   *  copy of the handle for its type-based moves. */
   void set_migration_staging(MigrationStaging staging) {
     m_regular_decomposition.set_migration_staging(staging);
-    m_n_square.set_migration_staging(std::move(staging));
+    m_n_square.set_migration_staging(staging);
+    m_migration_staging = std::move(staging);
   }
 
   auto get_cell_grid() const { return m_regular_decomposition.cell_grid; }
