@@ -67,6 +67,7 @@
 #include <optional>
 #include <ranges>
 #include <set>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -438,13 +439,55 @@ void CellStructure::ensure_particle_store_synchronized() {
   }
   m_particle_store.begin_rebuild(n_local, n_ghost);
   int row = 0;
-  for (auto &p : local_particles()) {
-    m_particle_store.assign_row(p, row++);
-  }
-  for (auto &p : ghost_particles()) {
-    m_particle_store.assign_row(p, row++);
-  }
+  // Iterate cells directly (not the flattened particle ranges) so each cell's
+  // parallel row-index bag (phase 7a, dormant) can be refilled as rows are
+  // assigned: cleared at the start of the cell's block, then one int appended
+  // per particle in ParticleList order. This preserves the row-assignment
+  // order (local cells then ghost cells, particles in Bag order) exactly.
+  auto assign_cell_rows = [this, &row](std::span<Cell *const> cells) {
+    for (auto *cell : cells) {
+      auto &rows = cell->rows();
+      rows.clear();
+      for (auto &p : cell->particles()) {
+        m_particle_store.assign_row(p, row);
+        rows.insert(row);
+        ++row;
+      }
+    }
+  };
+  assign_cell_rows(decomposition().local_cells());
+  assign_cell_rows(decomposition().ghost_cells());
   m_particle_store.finish_rebuild();
+
+#ifdef ESPRESSO_ADDITIONAL_CHECKS
+  // Verify the dormant per-cell row bags match the cell Bag contents: same
+  // length, and the store id at each recorded row equals the particle id at the
+  // same Bag position. Covers both local and ghost cells.
+  auto check_cell_rows = [this](std::span<Cell *const> cells) {
+    for (auto *cell : cells) {
+      auto const &parts = cell->particles();
+      auto const &rows = cell->rows();
+      if (rows.size() != parts.size()) {
+        throw std::runtime_error("CellRows size mismatch: bag has " +
+                                 std::to_string(parts.size()) + " parts but " +
+                                 std::to_string(rows.size()) + " rows");
+      }
+      std::size_t k = 0u;
+      for (auto const &p : parts) {
+        auto const stored_id = m_particle_store.id(rows.begin()[k]);
+        if (stored_id != p.id()) {
+          throw std::runtime_error(
+              "CellRows id mismatch at position " + std::to_string(k) +
+              ": store.id(row) = " + std::to_string(stored_id) +
+              " but bag id = " + std::to_string(p.id()));
+        }
+        ++k;
+      }
+    }
+  };
+  check_cell_rows(decomposition().local_cells());
+  check_cell_rows(decomposition().ghost_cells());
+#endif
 }
 
 void CellStructure::check_particle_index() const {

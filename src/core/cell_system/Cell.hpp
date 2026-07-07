@@ -21,6 +21,7 @@
 
 #include "Particle.hpp"
 #include "ParticleList.hpp"
+#include "cell_system/CellRows.hpp"
 
 #include <boost/range/iterator_range.hpp>
 
@@ -98,10 +99,21 @@ class Cell {
 
   ParticleList m_particles;
 
+  /** Store row indices of the particles in @ref m_particles (phase 7a).
+   *  Parallel to @ref m_particles: one entry per particle, in the same
+   *  iteration order, refilled during every store rebuild. DORMANT -- read by
+   *  no production code yet (Task 4 will flip @ref particles() to hand out
+   *  views over these rows). */
+  CellRows m_rows;
+
 public:
   /** Particles */
   auto &particles() { return m_particles; }
   auto const &particles() const { return m_particles; }
+
+  /** @brief Store row indices of this cell's particles (phase 7a, dormant). */
+  auto &rows() { return m_rows; }
+  auto const &rows() const { return m_rows; }
 
   neighbors_type m_neighbors;
 

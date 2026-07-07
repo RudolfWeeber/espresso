@@ -910,6 +910,45 @@ BOOST_AUTO_TEST_CASE(rebuild_seeds_parameters_from_carrier) {
 #endif
 }
 
+// Phase-7a make_view factory: a view built for a row reads that row's columns
+// (identity: store.make_view(r).id() == store.id(r)) and writes through it (a
+// write via the view lands in the column, readable via the store by row).
+BOOST_AUTO_TEST_CASE(make_view_identity_and_write_through) {
+  ParticleStore store{};
+  Particle p0{}, p1{};
+  store.begin_rebuild(2u, 0u);
+  store.assign_row(p0, 0);
+  store.assign_row(p1, 1);
+  store.finish_rebuild();
+
+  store.id(0) = 10;
+  store.id(1) = 20;
+  store.position_reference(0) = Utils::Vector3d{1., 2., 3.};
+  store.position_reference(1) = Utils::Vector3d{4., 5., 6.};
+
+  // Identity: the view over row r reports the store's id at row r, and the view
+  // is attached to this store at that row.
+  for (int r = 0; r < 2; ++r) {
+    auto view = store.make_view(r);
+    BOOST_REQUIRE(view.store() == &store);
+    BOOST_CHECK_EQUAL(view.store_row(), r);
+    BOOST_CHECK_EQUAL(view.id(), store.id(r));
+    BOOST_CHECK_EQUAL(view.pos()[0], store.position_value(r)[0]);
+    BOOST_CHECK_EQUAL(view.pos()[2], store.position_value(r)[2]);
+  }
+
+  // Write-through: mutating a column through the view is visible via the store
+  // (the view aliases the row, it does not snapshot it).
+  auto view = store.make_view(0);
+  view.pos() = Utils::Vector3d{-7., -8., -9.};
+  Utils::Vector3d const back = store.position_value(0);
+  BOOST_CHECK_EQUAL(back[0], -7.);
+  BOOST_CHECK_EQUAL(back[1], -8.);
+  BOOST_CHECK_EQUAL(back[2], -9.);
+  // And the OTHER row is untouched (no cross-row aliasing).
+  BOOST_CHECK_EQUAL(store.position_value(1)[0], 4.);
+}
+
 // Scalar column references write through to the stored value.
 BOOST_AUTO_TEST_CASE(scalar_column_references_write_through) {
   ParticleStore store{};

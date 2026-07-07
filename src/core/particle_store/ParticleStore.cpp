@@ -24,6 +24,7 @@
 #include <utils/Vector.hpp>
 #include <utils/quaternion.hpp>
 
+#include <cassert>
 #include <cstddef>
 #include <string>
 #include <utility>
@@ -501,6 +502,13 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
 #endif
 
   particle.attach_to_store(*this, row);
+}
+
+Particle ParticleStore::make_view(int const row) {
+  assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
+  Particle view;
+  view.attach_to_store(*this, row);
+  return view;
 }
 
 void ParticleStore::finish_rebuild() {

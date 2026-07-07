@@ -120,6 +120,17 @@ public:
   void assign_row(Particle &particle, int row);
   void finish_rebuild();
 
+  /**
+   * @brief Construct a non-owning view @ref Particle bound to a store row.
+   *
+   * Migration phase 7a: returns a @ref Particle whose accessors read/write the
+   * columns of THIS store at @p row (via the phase-2 attach handle). The row
+   * must be a currently-valid index; the returned view aliases the store and is
+   * invalidated by the next rebuild (which may renumber or drop the row).
+   * DORMANT in 7a -- no production code constructs views this way yet.
+   */
+  Particle make_view(int row);
+
   /** Release all Kokkos-backed columns. Must be called while the Kokkos
    *  runtime is still alive (e.g. before Kokkos::finalize); afterwards the
    *  store is empty and dirty. */
