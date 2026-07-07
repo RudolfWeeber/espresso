@@ -82,6 +82,17 @@ envelope death recovered the phase-7a resort residual and more (lj-4rank
 0.824 vs 7a). Remaining 7 sub-projects: 7e (id→row map), 7c (permutation
 resort + range collapse), 7d (GPU compile-safe shim).
 
+**Phase-7e checkpoint (2026-07-08, PASSED):** lj-1rank 1.084, lj-4rank 1.020,
+lj-omp 0.998, p3m-1rank 1.038, p3m-4rank 1.004, p3m-omp 1.029 vs phase-0;
+neutral vs 7b (≤1.015 all configs). The id→`Particle*` index and the 7a view
+pool are retired: `get_local_particle` resolves through a store-rebuild-cadence
+id→row map and returns views by value; the collision handlers re-resolve by id
+after topology changes (a latent GlueToSurface stale-reference bug was found
+and fixed with a deterministic regression test). Adjudication: the spec's
+"id→index map replaces m_particle_index" (listed at phase 5) was delivered
+here; `m_pack_index_to_store_row`/`m_unique_particles` survive until 7c (row
+identity holds only on the local prefix).
+
 ## Non-goals
 
 - No change to the Python user interface or its semantics.
