@@ -71,14 +71,24 @@ commit_particle(Particle const &p, auto const index,
   // ParticleStore type column stays authoritative; a mid-run type change forces
   // a rebuild (on_particle_type_change -> set_resort_particles), so this cache
   // is refreshed before it is next read.
+  // phase 6: the has-exclusion flag (like `type`) is written ONLY on rebuild.
+  // Exclusions cannot change between rebuilds: every add/delete goes through
+  // on_particle_change -> set_resort_particles(RESORT_LOCAL), which forces the
+  // next update_cabana_state onto the full-commit branch. The pack-owned
+  // `flags` column persists across partial-update steps (per-step force reset
+  // does not touch it; clear_local_properties zeroes it but also forces a
+  // resort/rebuild). Reading the exclusions sidecar per particle per step was
+  // pure waste -- and, post-eviction, that read is a ParticleStore column
+  // indirection rather than the old inline member, so keeping it out of the
+  // partial-update hot loop matters.
   if (rebuild) {
     aosoa.type(index) = p.type();
-  }
 #ifdef ESPRESSO_EXCLUSIONS
-  aosoa.set_has_exclusion(index, !p.exclusions().empty());
+    aosoa.set_has_exclusion(index, !p.exclusions().empty());
 #else
-  aosoa.flags(index) = 0;
+    aosoa.flags(index) = 0;
 #endif
+  }
 }
 
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
@@ -270,24 +280,17 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
 #ifdef ESPRESSO_CALIPER
     CALI_MARK_END("Verlet list creation");
 #endif
-  } else {
-    // ===================================================
-    // Fill particle storage (partial update)
-    // ===================================================
-#ifdef ESPRESSO_CALIPER
-    CALI_MARK_BEGIN("AoSoA commit partial");
-#endif
-    kokkos_parallel_range_for<policy_type>(
-        "AoSoA write", std::size_t{0}, n_part,
-        [&unique_particles, &aosoa](int const index) {
-          auto const &p = *unique_particles.at(index);
-          commit_particle(p, index, aosoa, false);
-        });
-    Kokkos::fence();
-#ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("AoSoA commit partial");
-#endif
   }
+  // Partial-update (no-rebuild) branch: NOTHING to commit. Since phase 3.5 the
+  // pack no longer owns per-step particle data (position/velocity/etc. alias
+  // the ParticleStore columns, read by store row), and the only remaining
+  // pack-owned commit writes -- `type` and the has-exclusion `flags` -- are
+  // rebuild-cadence data written on the full-commit branch above (both are
+  // refreshed by a forced rebuild whenever they can change). The old per-step
+  // commit_particle(rebuild=false) loop therefore had no work left to do; it
+  // iterated every unique particle each non-rebuild step doing nothing. Dropped
+  // (was an O(N)-per-step no-op). The store-view rebind (bind_pack_store_views
+  // above) already repointed the aliased views for this step.
 }
 
 #ifdef ESPRESSO_ELECTROSTATICS

@@ -231,7 +231,13 @@ void CellStructure::reset_local_properties() {
   Kokkos::deep_copy(get_local_virial(), 0.);
   m_scatter_virial->reset();
 #endif
-  Kokkos::deep_copy(get_aosoa().flags, uint8_t{0});
+  // phase 6: the has-exclusion `flags` column is NOT zeroed here. This runs on
+  // every partial-update (no-rebuild) step; the flag is rebuild-cadence data
+  // (commit_particle writes it only on rebuild, and exclusion changes force a
+  // rebuild), so it is valid across partial steps and must be preserved. It is
+  // (re)zeroed and rewritten on the rebuild path (rebuild_local_properties +
+  // the full-commit loop). Zeroing it here would drop live exclusion flags for
+  // the rest of the step.
 }
 
 void CellStructure::update_bond_storage(int &pair_count, int &angle_count,
