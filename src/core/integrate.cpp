@@ -478,14 +478,18 @@ static bool integrator_step_1(CellStructure &cell_structure,
 #else
       std::uint8_t const fixed = static_cast<std::uint8_t>(0u);
 #endif
+      // Resolve the momentum row bases ONCE (one pointer + stride each); the
+      // VV propagator then does stride-1 pointer arithmetic per axis. Cheaper
+      // than re-subscripting a 2D column view per component (perf-iterate).
+      auto vel = store.velocity_reference(row);
+      auto pos = store.position_reference(row);
+      auto const force = store.force_reference(row);
       if (propagation.should_propagate_with(
               prop, PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE))
-        velocity_verlet_propagator_1(vel_view, pos_view, force_view, row, mass,
-                                     fixed, time_step);
+        velocity_verlet_propagator_1(vel, pos, force, mass, fixed, time_step);
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::TRANS_NEWTON))
-        velocity_verlet_propagator_1(vel_view, pos_view, force_view, row, mass,
-                                     fixed, time_step);
+        velocity_verlet_propagator_1(vel, pos, force, mass, fixed, time_step);
 #ifdef ESPRESSO_ROTATION
       if (propagation.should_propagate_with(prop, PropagationMode::ROT_EULER))
         velocity_verlet_rotator_1(quat_view, omega_view, rinertia_view,
@@ -493,8 +497,7 @@ static bool integrator_step_1(CellStructure &cell_structure,
 #endif
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::TRANS_LANGEVIN))
-        velocity_verlet_propagator_1(vel_view, pos_view, force_view, row, mass,
-                                     fixed, time_step);
+        velocity_verlet_propagator_1(vel, pos, force, mass, fixed, time_step);
 #ifdef ESPRESSO_ROTATION
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::ROT_LANGEVIN))
@@ -562,11 +565,11 @@ static void integrator_step_2(CellStructure &cell_structure,
   if (propagation.integ_switch == INTEG_METHOD_STEEPEST_DESCENT)
     return;
 
-  // Phase-8a: hoist the velocity-Verlet translation column-view handles ONCE
-  // (see integrator_step_1). Step 2 only touches velocity + force.
+  // Phase-8a: hoist the per-particle scalar/rotation column-view handles ONCE
+  // (see integrator_step_1). The VV translation velocity/force rows are
+  // resolved per row via velocity_reference/force_reference (VectorReference),
+  // so no 2D velocity/force view handle is hoisted here.
   auto &store = cell_structure.particle_store();
-  auto vel_view = store.velocity_view();
-  auto force_view = store.force_view();
 #ifdef ESPRESSO_MASS
   auto mass_view = store.mass_view();
 #endif
@@ -624,14 +627,15 @@ static void integrator_step_2(CellStructure &cell_structure,
 #else
       std::uint8_t const fixed = static_cast<std::uint8_t>(0u);
 #endif
+      // Resolve the momentum row bases ONCE (see integrator_step_1).
+      auto vel = store.velocity_reference(row);
+      auto const force = store.force_reference(row);
       if (propagation.should_propagate_with(
               prop, PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE))
-        velocity_verlet_propagator_2(vel_view, force_view, row, mass, fixed,
-                                     time_step);
+        velocity_verlet_propagator_2(vel, force, mass, fixed, time_step);
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::TRANS_NEWTON))
-        velocity_verlet_propagator_2(vel_view, force_view, row, mass, fixed,
-                                     time_step);
+        velocity_verlet_propagator_2(vel, force, mass, fixed, time_step);
 #ifdef ESPRESSO_ROTATION
       if (propagation.should_propagate_with(prop, PropagationMode::ROT_EULER))
         velocity_verlet_rotator_2(quat_view, omega_view, rinertia_view,
@@ -639,8 +643,7 @@ static void integrator_step_2(CellStructure &cell_structure,
 #endif
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::TRANS_LANGEVIN))
-        velocity_verlet_propagator_2(vel_view, force_view, row, mass, fixed,
-                                     time_step);
+        velocity_verlet_propagator_2(vel, force, mass, fixed, time_step);
 #ifdef ESPRESSO_ROTATION
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::ROT_LANGEVIN))
