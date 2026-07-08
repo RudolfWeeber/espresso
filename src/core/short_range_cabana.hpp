@@ -114,25 +114,39 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
     // Contiguous store-row range (phase 7c); clean store, so index directly.
     auto const offset = cells[i]->offset();
     auto const n = cells[i]->count();
+    // Phase-8 perf (perf-guided): hoist raw id/position column pointers once
+    // per work item -- the per-candidate id and position reads are the
+    // hottest loads of the Verlet build, and the Particle accessors cost an
+    // attached-branch + view deref per candidate. LayoutRight vector columns
+    // are row-contiguous (element (row, j) at data() + 3 * row + j). The
+    // Particle views stay attached for the verlet_criterion (it may read
+    // types/flags); iteration order and arithmetic are unchanged.
+    auto const *const id_column = store.id_view().data();
+    auto const *const position_column = store.position_view().data();
     Particle p1, p2;
     for (std::size_t a = 0u; a < n; ++a) {
-      p1.attach_to_store(store, static_cast<int>(offset + a));
-      if (p1.id() <= max_id) {
-        auto const ii = id_to_index(p1.id());
+      auto const row_a = offset + a;
+      p1.attach_to_store(store, static_cast<int>(row_a));
+      if (id_column[row_a] <= max_id) {
+        auto const ii = id_to_index(id_column[row_a]);
         if (ii >= 0) {
-          // Hoist p1's position out of the inner loop: it lives in the
-          // ParticleStore column (phase 3), so materializing the proxy once per
-          // outer particle instead of once per pair candidate avoids O(pairs)
-          // strided column reads on this hot path.
-          auto const p1_pos = Utils::Vector3d(p1.pos());
+          // Hoist p1's position out of the inner loop (one read per outer
+          // particle instead of per pair candidate).
+          auto const p1_pos = Utils::Vector3d{position_column[3u * row_a + 0u],
+                                              position_column[3u * row_a + 1u],
+                                              position_column[3u * row_a + 2u]};
           // pairs in this cell (j > i), same order as before
           for (std::size_t b = a + 1u; b < n; ++b) {
-            p2.attach_to_store(store, static_cast<int>(offset + b));
-            if (p2.id() <= max_id) {
+            auto const row_b = offset + b;
+            if (id_column[row_b] <= max_id) {
+              p2.attach_to_store(store, static_cast<int>(row_b));
+              auto const p2_pos =
+                  Utils::Vector3d{position_column[3u * row_b + 0u],
+                                  position_column[3u * row_b + 1u],
+                                  position_column[3u * row_b + 2u]};
               if (verlet_criterion(p1, p2,
-                                   box_geo.get_mi_dist2(
-                                       p1_pos, Utils::Vector3d(p2.pos())))) {
-                auto const jj = id_to_index(p2.id());
+                                   box_geo.get_mi_dist2(p1_pos, p2_pos))) {
+                auto const jj = id_to_index(id_column[row_b]);
                 if (jj >= 0) {
                   intra_operator(ii, jj);
                 }
@@ -150,26 +164,37 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
     // Contiguous store-row range (phase 7c); clean store, so index directly.
     auto const offset = cells[i]->offset();
     auto const n = cells[i]->count();
+    // Hoisted raw column pointers: see intra_kernel. All cells share the one
+    // active ParticleStore, so the pointers are valid for neighbor cells too.
+    auto const *const id_column = store.id_view().data();
+    auto const *const position_column = store.position_view().data();
     Particle p1, p2;
     for (std::size_t a = 0u; a < n; ++a) {
-      p1.attach_to_store(store, static_cast<int>(offset + a));
-      if (p1.id() <= max_id) {
-        auto const ii = id_to_index(p1.id());
+      auto const row_a = offset + a;
+      p1.attach_to_store(store, static_cast<int>(row_a));
+      if (id_column[row_a] <= max_id) {
+        auto const ii = id_to_index(id_column[row_a]);
         if (ii >= 0) {
           // Hoist p1's position out of the inner loops (see intra_kernel).
-          auto const p1_pos = Utils::Vector3d(p1.pos());
+          auto const p1_pos = Utils::Vector3d{position_column[3u * row_a + 0u],
+                                              position_column[3u * row_a + 1u],
+                                              position_column[3u * row_a + 2u]};
           // pairs with neighboring cells, same order as before
           for (auto *neighbor : cells[i]->neighbors().red()) {
             auto &nb_store = neighbor->store();
             auto const nb_offset = neighbor->offset();
             auto const nb_n = neighbor->count();
             for (std::size_t k = 0u; k < nb_n; ++k) {
-              p2.attach_to_store(nb_store, static_cast<int>(nb_offset + k));
-              if (p2.id() <= max_id) {
+              auto const row_k = nb_offset + k;
+              if (id_column[row_k] <= max_id) {
+                p2.attach_to_store(nb_store, static_cast<int>(row_k));
+                auto const p2_pos =
+                    Utils::Vector3d{position_column[3u * row_k + 0u],
+                                    position_column[3u * row_k + 1u],
+                                    position_column[3u * row_k + 2u]};
                 if (verlet_criterion(p1, p2,
-                                     box_geo.get_mi_dist2(
-                                         p1_pos, Utils::Vector3d(p2.pos())))) {
-                  auto const jj = id_to_index(p2.id());
+                                     box_geo.get_mi_dist2(p1_pos, p2_pos))) {
+                  auto const jj = id_to_index(id_column[row_k]);
                   if (jj >= 0) {
                     inter_operator(ii, jj);
                   }

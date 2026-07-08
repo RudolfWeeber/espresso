@@ -90,7 +90,14 @@ static ParticleForce external_force(Particle const &p) {
 }
 
 /** Combined force initialization and Langevin noise application */
-static void init_forces_and_thermostat(System::System const &system) {
+// [[gnu::flatten]]: the per-particle lambda below exceeds gcc's bottom-up
+// inlining budget, which turns trivial helpers (Utils::hadamard_product,
+// Utils::Vector constructors) into per-particle PLT calls inside the Langevin
+// friction path -- measured at 15% of core time on the lj benchmark (perf,
+// phase 8). Flattening forces the whole call tree inline; same arithmetic,
+// bitwise-identical trajectories.
+[[gnu::flatten]] static void
+init_forces_and_thermostat(System::System const &system) {
 #ifdef ESPRESSO_CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif

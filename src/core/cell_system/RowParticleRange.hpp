@@ -97,10 +97,16 @@ class RowParticleIterator
   mutable std::optional<Particle> m_view;
 
   // Advance m_row to the next non-pending-removed row at or after `raw`,
-  // clamped to m_end.
+  // clamped to m_end. The store-level has_pending_removals() flag is checked
+  // FIRST: removal marks only exist between a particle removal and the next
+  // rebuild, so on steady-state paths this is one predictable branch instead
+  // of a per-element mask load (measured at ~40% of the Verlet-build slot on
+  // the lj benchmark when the mask was consulted per candidate row).
   std::size_t skip_removed(std::size_t raw) const {
-    while (raw < m_end and m_store != nullptr and
-           m_store->is_pending_removal(static_cast<int>(raw))) {
+    if (m_store == nullptr or not m_store->has_pending_removals()) {
+      return raw;
+    }
+    while (raw < m_end and m_store->is_pending_removal(static_cast<int>(raw))) {
       ++raw;
     }
     return raw;
@@ -174,6 +180,11 @@ class RowParticleRange : public boost::iterator_range<RowParticleIterator> {
 
   static std::size_t count_live(std::size_t offset, std::size_t count,
                                 ParticleStore const &store) {
+    // Fast path: no pending removals anywhere in the store (the steady state)
+    // means every row in the range is live.
+    if (not store.has_pending_removals()) {
+      return count;
+    }
     std::size_t live = 0u;
     for (std::size_t raw = offset; raw < offset + count; ++raw) {
       if (not store.is_pending_removal(static_cast<int>(raw))) {

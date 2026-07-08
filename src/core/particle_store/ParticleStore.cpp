@@ -417,6 +417,7 @@ void ParticleStore::swap_and_grow_generations(
   // zero-filled vector so any stale marks from the retired generation are
   // dropped -- rows are renumbered, so old positions are meaningless).
   m_pending_removal.assign(total, char{0});
+  m_pending_removal_count = 0u;
 }
 
 // Phase 7c permutation rebuild. The per-column permute list below is one of the
