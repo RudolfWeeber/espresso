@@ -57,8 +57,13 @@ public:
     m_at += sizeof(T);
   }
   void put_bytes(void const *src, std::size_t bytes) {
-    std::memcpy(m_at, src, bytes);
-    m_at += bytes;
+    // A zero-length ragged run (e.g. a particle with no bonds/exclusions) has a
+    // null data() pointer; memcpy declares both operands nonnull, so calling it
+    // with (dst, nullptr, 0) is UB even though it copies nothing (trips UBSan).
+    if (bytes != 0u) {
+      std::memcpy(m_at, src, bytes);
+      m_at += bytes;
+    }
   }
   char const *position() const { return m_at; }
 };
@@ -75,8 +80,12 @@ public:
     return value;
   }
   void get_bytes(void *dst, std::size_t bytes) {
-    std::memcpy(dst, m_at, bytes);
-    m_at += bytes;
+    // See WriteCursor::put_bytes: a zero-length run has a null data() pointer,
+    // and memcpy(dst, src, 0) with a null operand is UB (trips UBSan).
+    if (bytes != 0u) {
+      std::memcpy(dst, m_at, bytes);
+      m_at += bytes;
+    }
   }
   char const *position() const { return m_at; }
 };
