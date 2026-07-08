@@ -206,7 +206,11 @@ void GlueToSurface::handle_collisions(
       // re-resolve both base-particle views by id and re-stamp the generation.
       p1 = cell_structure.get_local_particle(pid1);
       p2 = cell_structure.get_local_particle(pid2);
+#ifndef NDEBUG
+      // Re-stamp for the generation guard; its only reader is the debug
+      // assert above, so the store would be dead code in release builds.
       resolved_generation = cell_structure.particle_store().generation();
+#endif
       current_vs_pid++;
     }
     // Create bond between the virtual particles

@@ -337,7 +337,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
     }
 #endif
     if (direction == SerializationDirection::LOAD) {
-      int id, mol_id, type, propagation;
+      int id = 0, mol_id = 0, type = 0, propagation = 0;
       ar & id & mol_id & type & propagation;
       if (use_ctx) {
         param_ctx->id[urow] = id;
@@ -351,7 +351,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
         p.propagation() = propagation;
       }
     } else {
-      int id, mol_id, type, propagation;
+      int id = 0, mol_id = 0, type = 0, propagation = 0;
       if (use_ctx) {
         id = param_ctx->id[urow];
         mol_id = param_ctx->mol_id[urow];
@@ -367,7 +367,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
     }
 #ifdef ESPRESSO_ROTATION
     if (direction == SerializationDirection::LOAD) {
-      std::uint8_t rotation;
+      std::uint8_t rotation = 0u;
       ar & rotation;
       if (use_ctx) {
         param_ctx->rotation[urow] = rotation;
@@ -381,7 +381,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
     }
 #ifdef ESPRESSO_ROTATIONAL_INERTIA
     if (direction == SerializationDirection::LOAD) {
-      Utils::Vector3d rinertia;
+      Utils::Vector3d rinertia{};
       ar & rinertia;
       if (use_ctx) {
         auto *r = param_ctx->rinertia + urow * param_ctx->rinertia_row_stride;
@@ -392,7 +392,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
         p.rinertia() = rinertia;
       }
     } else {
-      Utils::Vector3d rinertia;
+      Utils::Vector3d rinertia{};
       if (use_ctx) {
         auto const *r =
             param_ctx->rinertia + urow * param_ctx->rinertia_row_stride;
@@ -407,7 +407,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
 #endif
 #ifdef ESPRESSO_MASS
     if (direction == SerializationDirection::LOAD) {
-      double mass;
+      double mass = 0.;
       ar & mass;
       if (use_ctx) {
         param_ctx->mass[urow] = mass;
@@ -421,7 +421,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
 #endif
 #ifdef ESPRESSO_ELECTROSTATICS
     if (direction == SerializationDirection::LOAD) {
-      double q;
+      double q = 0.;
       ar & q;
       if (use_ctx) {
         param_ctx->q[urow] = q;
@@ -435,7 +435,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
 #endif
 #ifdef ESPRESSO_DIPOLES
     if (direction == SerializationDirection::LOAD) {
-      double dipm;
+      double dipm = 0.;
       ar & dipm;
       if (use_ctx) {
         param_ctx->dipm[urow] = dipm;
@@ -553,7 +553,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
 #endif
 #ifdef ESPRESSO_EXTERNAL_FORCES
     if (direction == SerializationDirection::LOAD) {
-      std::uint8_t ext_flag;
+      std::uint8_t ext_flag = 0u;
       ar & ext_flag;
       if (use_ctx) {
         param_ctx->ext_flag[urow] = ext_flag;
@@ -565,7 +565,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
       ar & ext_flag;
     }
     if (direction == SerializationDirection::LOAD) {
-      Utils::Vector3d ext_force;
+      Utils::Vector3d ext_force{};
       ar & ext_force;
       if (use_ctx) {
         auto *f = param_ctx->ext_force + urow * param_ctx->ext_force_row_stride;
@@ -576,7 +576,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
         p.ext_force() = ext_force;
       }
     } else {
-      Utils::Vector3d ext_force;
+      Utils::Vector3d ext_force{};
       if (use_ctx) {
         auto const *f =
             param_ctx->ext_force + urow * param_ctx->ext_force_row_stride;
@@ -589,7 +589,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
     }
 #ifdef ESPRESSO_ROTATION
     if (direction == SerializationDirection::LOAD) {
-      Utils::Vector3d ext_torque;
+      Utils::Vector3d ext_torque{};
       ar & ext_torque;
       if (use_ctx) {
         auto *t =
@@ -601,7 +601,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
         p.ext_torque() = ext_torque;
       }
     } else {
-      Utils::Vector3d ext_torque;
+      Utils::Vector3d ext_torque{};
       if (use_ctx) {
         auto const *t =
             param_ctx->ext_torque + urow * param_ctx->ext_torque_row_stride;
@@ -660,7 +660,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
     }
 #endif
     if (direction == SerializationDirection::LOAD) {
-      Utils::Vector3d position;
+      Utils::Vector3d position{};
       Utils::Vector3i image_box;
       ar & position;
       ar & image_box;
@@ -680,7 +680,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
         p.image_box() = image_box;
       }
     } else {
-      Utils::Vector3d position;
+      Utils::Vector3d position{};
       Utils::Vector3i image_box;
       if (use_ctx) {
         auto const *pos = pos_ctx->pos + static_cast<std::size_t>(row) *
@@ -707,7 +707,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
     }
 #ifdef ESPRESSO_ROTATION
     if (direction == SerializationDirection::LOAD) {
-      Utils::Quaternion<double> quat;
+      Utils::Quaternion<double> quat{};
       ar & quat;
       if (use_ctx) {
         auto *q = pos_ctx->quat +
@@ -720,7 +720,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
         p.quat() = quat;
       }
     } else {
-      Utils::Quaternion<double> quat;
+      Utils::Quaternion<double> quat{};
       if (use_ctx) {
         auto const *q = pos_ctx->quat + static_cast<std::size_t>(row) *
                                             pos_ctx->quat_row_stride;
@@ -736,7 +736,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
 #endif
 #ifdef ESPRESSO_BOND_CONSTRAINT
     if (direction == SerializationDirection::LOAD) {
-      Utils::Vector3d pos_last_time_step;
+      Utils::Vector3d pos_last_time_step{};
       ar & pos_last_time_step;
       if (use_ctx) {
         auto *pl = pos_ctx->plast +
@@ -748,7 +748,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
         p.pos_last_time_step() = pos_last_time_step;
       }
     } else {
-      Utils::Vector3d pos_last_time_step;
+      Utils::Vector3d pos_last_time_step{};
       if (use_ctx) {
         auto const *pl = pos_ctx->plast + static_cast<std::size_t>(row) *
                                               pos_ctx->plast_row_stride;
@@ -797,7 +797,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
     }
 #endif
     if (direction == SerializationDirection::LOAD) {
-      Utils::Vector3d velocity;
+      Utils::Vector3d velocity{};
       ar & velocity;
       if (use_ctx) {
         auto *v = mom_ctx->vel +
@@ -809,7 +809,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
         p.v() = velocity;
       }
     } else {
-      Utils::Vector3d velocity;
+      Utils::Vector3d velocity{};
       if (use_ctx) {
         auto const *v = mom_ctx->vel +
                         static_cast<std::size_t>(row) * mom_ctx->vel_row_stride;
@@ -823,7 +823,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
     }
 #ifdef ESPRESSO_ROTATION
     if (direction == SerializationDirection::LOAD) {
-      Utils::Vector3d angular_velocity;
+      Utils::Vector3d angular_velocity{};
       ar & angular_velocity;
       if (use_ctx) {
         auto *w = mom_ctx->omega +
@@ -835,7 +835,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
         p.omega() = angular_velocity;
       }
     } else {
-      Utils::Vector3d angular_velocity;
+      Utils::Vector3d angular_velocity{};
       if (use_ctx) {
         auto const *w = mom_ctx->omega + static_cast<std::size_t>(row) *
                                              mom_ctx->omega_row_stride;
@@ -851,7 +851,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
   }
   if (data_parts & GHOSTTRANS_FORCE) {
     if (direction == SerializationDirection::LOAD) {
-      Utils::Vector3d force;
+      Utils::Vector3d force{};
       ar & force;
       if (policy == ReductionPolicy::UPDATE) {
         p.force() += force;
@@ -864,7 +864,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
     }
 #ifdef ESPRESSO_ROTATION
     if (direction == SerializationDirection::LOAD) {
-      Utils::Vector3d torque;
+      Utils::Vector3d torque{};
       ar & torque;
       if (policy == ReductionPolicy::UPDATE) {
         p.torque() += torque;
@@ -886,11 +886,11 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
     // byte-identical to the previous implementation.
     if (policy == ReductionPolicy::UPDATE and
         direction == SerializationDirection::LOAD) {
-      Utils::Vector3d correction;
+      Utils::Vector3d correction{};
       ar & correction;
       p.rattle_correction() += correction;
     } else if (direction == SerializationDirection::LOAD) {
-      Utils::Vector3d correction;
+      Utils::Vector3d correction{};
       ar & correction;
       p.rattle_correction() = correction;
     } else {
@@ -1612,19 +1612,23 @@ static auto calc_transmit_size(BoxGeometry const &box_geo,
 #ifdef ESPRESSO_BOND_CONSTRAINT
   if (data_parts & GHOSTTRANS_RATTLE) {
     rattle_size = 3ul * sizeof(double);
-    data_parts &= ~static_cast<unsigned>(GHOSTTRANS_RATTLE);
   }
 #endif
-  /* GHOSTTRANS_BONDS contributes ZERO bytes to the main transfer buffer: the
-   * bond payload travels in the dedicated ragged bond buffer
-   * (CommBuf::bondbuf), which is sized at pack time. A communicator's
-   * data_parts legitimately carries the BONDS bit through here (e.g. the
-   * exchange communicator when bonded interactions and a thermostat are
-   * active), so mask it to keep the accounting assert below meaningful for
-   * genuinely unhandled parts. Caught by the Debug-with-asserts checkpoint
-   * tests on 4 MPI ranks (upstream fedora CI). */
-  data_parts &= ~static_cast<unsigned>(GHOSTTRANS_BONDS);
-  assert(data_parts == 0u);
+  /* Accounting check: every part must be handled above or contribute zero
+   * bytes to the main transfer buffer. GHOSTTRANS_BONDS is tolerated because
+   * the bond payload travels in the dedicated ragged bond buffer
+   * (CommBuf::bondbuf), sized at pack time; a communicator's data_parts
+   * legitimately carries the BONDS bit (e.g. the exchange communicator when
+   * bonded interactions and a thermostat are active) -- caught by the
+   * Debug-with-asserts checkpoint tests on 4 MPI ranks (upstream fedora CI).
+   * RATTLE is tolerated only when its ifdef branch above accounts for it. */
+  [[maybe_unused]] constexpr auto tolerated_parts =
+      static_cast<unsigned>(GHOSTTRANS_BONDS)
+#ifdef ESPRESSO_BOND_CONSTRAINT
+      | static_cast<unsigned>(GHOSTTRANS_RATTLE)
+#endif
+      ;
+  assert((data_parts & ~tolerated_parts) == 0u);
   return properties_size + force_size + position_size + momentum_size +
          rattle_size;
 }
@@ -1876,7 +1880,7 @@ add_rattle_correction_from_recv_buffer(CommBuf &recv_buffer,
       // wire carries one Utils::Vector3d (byte-identical to the previous
       // ParticleRattle payload, which held only the correction Vector3d).
       // Reduce it into the local column through the accessor.
-      Utils::Vector3d correction;
+      Utils::Vector3d correction{};
       archiver >> correction;
       part.rattle_correction() += correction;
     }
@@ -1922,11 +1926,11 @@ static void add_forces_from_recv_buffer(CommBuf &recv_buffer,
   auto archiver = Utils::MemcpyIArchive{recv_buffer.make_span()};
   for (auto &part_list : ghost_comm.part_lists) {
     for (Particle &part : part_list->particles()) {
-      Utils::Vector3d force;
+      Utils::Vector3d force{};
       archiver >> force;
       part.force() += force;
 #ifdef ESPRESSO_ROTATION
-      Utils::Vector3d torque;
+      Utils::Vector3d torque{};
       archiver >> torque;
       part.torque() += torque;
 #endif
