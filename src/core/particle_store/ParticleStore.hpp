@@ -39,7 +39,7 @@
 #include <type_traits>
 #include <vector>
 
-class Particle; // attach_to_store is defined in Particle.hpp
+struct Particle; // attach_to_store is defined in Particle.hpp
 
 /**
  * @brief Array-based particle storage (structure of arrays).

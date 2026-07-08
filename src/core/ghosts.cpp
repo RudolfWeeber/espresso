@@ -1615,6 +1615,15 @@ static auto calc_transmit_size(BoxGeometry const &box_geo,
     data_parts &= ~static_cast<unsigned>(GHOSTTRANS_RATTLE);
   }
 #endif
+  /* GHOSTTRANS_BONDS contributes ZERO bytes to the main transfer buffer: the
+   * bond payload travels in the dedicated ragged bond buffer
+   * (CommBuf::bondbuf), which is sized at pack time. A communicator's
+   * data_parts legitimately carries the BONDS bit through here (e.g. the
+   * exchange communicator when bonded interactions and a thermostat are
+   * active), so mask it to keep the accounting assert below meaningful for
+   * genuinely unhandled parts. Caught by the Debug-with-asserts checkpoint
+   * tests on 4 MPI ranks (upstream fedora CI). */
+  data_parts &= ~static_cast<unsigned>(GHOSTTRANS_BONDS);
   assert(data_parts == 0u);
   return properties_size + force_size + position_size + momentum_size +
          rattle_size;
