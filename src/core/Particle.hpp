@@ -301,16 +301,6 @@ struct ParticleForce {
  */
 struct ParticleMomentum {};
 
-/** Information on a particle that is needed only on the
- *  node the particle belongs to.
- *
- *  Migration phase 7b: the ghost flag has left this struct; ghost-ness is now
- *  STRUCTURAL for the view @ref Particle -- a view is a ghost iff its store row
- *  lies in the ghost suffix @c [n_local, n_total). The struct is retained
- *  (empty) as a type anchor; it is no longer a member of @ref Particle.
- */
-struct ParticleLocal {};
-
 #ifdef ESPRESSO_BOND_CONSTRAINT
 /** Migration phase 6: the position/velocity RATTLE correction has left this
  *  struct; it lives only in a @ref ParticleStore observable column (single
@@ -320,6 +310,11 @@ struct ParticleLocal {};
  *  serialization (it was never serialized), and the RATTLE ghost wire now
  *  archives one @ref Utils::Vector3d directly via @ref
  * Particle::rattle_correction().
+ *
+ *  KEPT (phase 8d): still the doxygen anchor for GHOSTTRANS_RATTLE
+ *  (`ghosts.hpp` lines 49, 138), exactly parallel to @ref ParticleMomentum for
+ *  GHOSTTRANS_MOMENTUM; removing it would dangle those live @ref links. Its
+ *  sibling @c ParticleLocal, which had NO such reference, was removed in 8d.
  */
 struct ParticleRattle {};
 #endif
@@ -836,7 +831,6 @@ BOOST_CLASS_IMPLEMENTATION(ParticleProperties, object_serializable)
 BOOST_CLASS_IMPLEMENTATION(ParticlePosition, object_serializable)
 BOOST_CLASS_IMPLEMENTATION(ParticleMomentum, object_serializable)
 BOOST_CLASS_IMPLEMENTATION(ParticleForce, object_serializable)
-BOOST_CLASS_IMPLEMENTATION(ParticleLocal, object_serializable)
 #ifdef ESPRESSO_BOND_CONSTRAINT
 BOOST_CLASS_IMPLEMENTATION(ParticleRattle, object_serializable)
 #endif
@@ -862,7 +856,6 @@ BOOST_IS_BITWISE_SERIALIZABLE(ParticleProperties)
 BOOST_IS_BITWISE_SERIALIZABLE(ParticlePosition)
 BOOST_IS_BITWISE_SERIALIZABLE(ParticleMomentum)
 BOOST_IS_BITWISE_SERIALIZABLE(ParticleForce)
-BOOST_IS_BITWISE_SERIALIZABLE(ParticleLocal)
 #ifdef ESPRESSO_BOND_CONSTRAINT
 BOOST_IS_BITWISE_SERIALIZABLE(ParticleRattle)
 #endif
