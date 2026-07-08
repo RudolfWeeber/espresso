@@ -973,26 +973,16 @@ static ParticleStore *active_particle_store() {
  * with a clear message. */
 static std::optional<std::pair<int, std::size_t>>
 contiguous_store_rows(Cell const &cell) {
-  // Phase 7a: the cell's row bag directly holds its committed store rows in
-  // order, so the range is read from it with no particle dereference. An empty
-  // bag (or a not-yet-synchronized cell) yields nullopt. Committed rows are >=
-  // 0 by construction on a clean store.
-  auto const &rows = cell.rows();
-  auto const size = rows.size();
+  // Phase 7c: the cell's committed rows ARE the contiguous store range
+  // [offset, offset+count) by construction (the permutation rebuild lays cells
+  // back-to-back), so contiguity is now structural rather than checked. An
+  // empty range yields nullopt. This runs on a clean store (no pending-removed
+  // rows), so the raw range is the live range.
+  auto const size = cell.count();
   if (size == 0u) {
     return std::nullopt;
   }
-  auto const first_row = rows.begin()[0];
-  if (first_row < 0) {
-    return std::nullopt;
-  }
-#ifndef NDEBUG
-  for (std::size_t i = 0u; i < size; ++i) {
-    if (rows.begin()[i] != first_row + static_cast<int>(i)) {
-      assert(false and "ghost cell store rows are not contiguous");
-    }
-  }
-#endif
+  auto const first_row = static_cast<int>(cell.offset());
   return std::make_pair(first_row, size);
 }
 
@@ -1636,10 +1626,9 @@ static auto calc_transmit_size(GhostCommunication const &ghost_comm,
   if (data_parts & GHOSTTRANS_PARTNUM)
     return sizeof(unsigned int) * ghost_comm.part_lists.size();
 
-  auto const n_part = boost::accumulate(ghost_comm.part_lists, std::size_t{0},
-                                        [](std::size_t sum, auto part_list) {
-                                          return sum + part_list->rows().size();
-                                        });
+  auto const n_part = boost::accumulate(
+      ghost_comm.part_lists, std::size_t{0},
+      [](std::size_t sum, auto part_list) { return sum + part_list->count(); });
   return n_part * calc_transmit_size(box_geo, data_parts);
 }
 
@@ -2108,9 +2097,11 @@ static void cell_cell_transfer(GhostCommunication const &ghost_comm,
       // ghost layer reading it as a source must see that pending size.
       CellParticleStorage::resize_ghost_storage(*dst_list, src_list->size());
     } else {
-      auto const &src_rows = src_list->rows();
-      auto const &dst_rows = dst_list->rows();
-      assert(src_rows.size() == dst_rows.size());
+      // Contiguous store-row ranges (phase 7c); clean store, so index directly.
+      auto const src_offset = src_list->offset();
+      auto const dst_offset = dst_list->offset();
+      auto const n_rows = src_list->count();
+      assert(n_rows == dst_list->count());
       auto &store = *active_particle_store();
 
       // Reuse two cached views across the row loop, REBOUND per row via
@@ -2119,12 +2110,12 @@ static void cell_cell_transfer(GhostCommunication const &ghost_comm,
       // every ghost update; the carriers stay default and are never read while
       // attached.
       Particle p1, p2;
-      for (std::size_t i = 0; i < src_rows.size(); i++) {
+      for (std::size_t i = 0; i < n_rows; i++) {
         auto ar_out = Utils::MemcpyOArchive{buffer.make_span()};
         auto ar_in = Utils::MemcpyIArchive{buffer.make_span()};
-        // Views over the source and destination store rows (phase 7a).
-        p1.attach_to_store(store, src_rows.begin()[i]);
-        p2.attach_to_store(store, dst_rows.begin()[i]);
+        // Views over the source and destination store rows (phase 7c).
+        p1.attach_to_store(store, static_cast<int>(src_offset + i));
+        p2.attach_to_store(store, static_cast<int>(dst_offset + i));
         serialize_and_reduce(ar_out, p1, data_parts, ReductionPolicy::UPDATE,
                              SerializationDirection::SAVE, box_geo,
                              &ghost_comm.shift, pos_ctx_ptr, mom_ctx_ptr,

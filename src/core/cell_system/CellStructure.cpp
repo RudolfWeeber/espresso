@@ -442,26 +442,40 @@ CellStructure::CellStructure(BoxGeometry const &box)
   mark_particle_store_dirty();
 }
 
-// Phase 7c permutation builder (DORMANT). Walks cells in the current rebuild
-// order and emits perm[] (old row per surviving new row, -1 for staged/ghost)
-// + the future (offset, count) per cell. Reproduces the assign_row rebuild
-// order byte-for-byte for a removal-free history: local cells in span order,
-// then ghost cells; per cell surviving rows in bag order, then staged in push
-// order. Must be called BEFORE the assign_row loop mutates the cell bags.
+// Phase 7c permutation builder. Walks cells in the current rebuild order and
+// emits perm[] (old row per surviving new row, -1 for staged/ghost) + the
+// future (offset, count) per cell. Reproduces the assign_row rebuild order
+// byte-for-byte for a removal-free history: local cells in span order, then
+// ghost cells; per cell surviving rows in RAW range order, then staged in push
+// order. A row dropped mid-epoch is marked pending-removed on the store; it is
+// NOT carried into the permutation (the row is dropped by this rebuild), so
+// surviving rows keep their store-row order (the T1 order contract for
+// removals; identity histories are removal-free). Must be called BEFORE the
+// permute rebuild swaps the generation out (it reads the current-generation
+// pending-removal mask and the cells' current ranges).
 void CellStructure::build_resort_permutation(
     std::vector<int> &permutation,
     std::vector<std::pair<std::size_t, std::size_t>> &cell_ranges) const {
   permutation.clear();
   cell_ranges.clear();
+  auto const &store = m_particle_store;
   // The permutation entry for a new row is the OLD store row it survives from
   // (>= 0), or -1 for a staged / fresh-ghost row that carries no old-generation
-  // data. `next_row` walks the future contiguous store; each cell's future
-  // range is [offset, offset + count).
-  auto emit_cells = [&permutation, &cell_ranges](std::span<Cell *const> cells) {
+  // data. permutation.size() walks the future contiguous store; each cell's
+  // future range is [offset, offset + count).
+  auto emit_cells = [&permutation, &cell_ranges,
+                     &store](std::span<Cell *const> cells) {
     for (auto const *cell : cells) {
       auto const offset = permutation.size();
-      // Surviving committed rows: preserve by old row, in current bag order.
-      for (int const old_row : cell->rows()) {
+      // Surviving committed rows: preserve by old row, in raw range order,
+      // skipping any dropped (pending-removed) rows.
+      auto const raw_offset = cell->offset();
+      auto const raw_count = cell->count();
+      for (std::size_t k = 0u; k < raw_count; ++k) {
+        auto const old_row = static_cast<int>(raw_offset + k);
+        if (store.is_pending_removal(old_row)) {
+          continue;
+        }
         permutation.push_back(old_row);
       }
       // Staged rows (new / migrated / fresh ghost) in push order: no old-
@@ -492,9 +506,10 @@ void CellStructure::ensure_particle_store_synchronized() {
   wire_stores(decomposition().local_cells());
   wire_stores(decomposition().ghost_cells());
 
-  // A cell's content after the flip = its surviving committed rows (preserved
-  // by old row) + its staged detached particles (seeded from carriers). Count
-  // both so begin_rebuild sizes the columns for the new generation.
+  // A cell's content after the flip = its surviving committed rows (the raw
+  // range minus pending-removed rows) + its staged particles. Count both (the
+  // live count) so the permute rebuild sizes the columns for the new
+  // generation. rows().size() is the LIVE count (excludes pending-removed).
   auto cell_count = [](Cell const *cell) {
     return cell->rows().size() + cell->staged().size();
   };
@@ -507,30 +522,51 @@ void CellStructure::ensure_particle_store_synchronized() {
     n_ghost += cell_count(cell);
   }
 
+  // THE FLIP (phase 7c): resort as a pure column permutation.
+  //   1. build the permutation (old row per surviving new row, -1 for staged /
+  //      fresh-ghost) + the future (offset, count) per cell, walking cells in
+  //      the rebuild order (locals then ghosts; per cell surviving rows in raw
+  //      range order skipping dropped rows, then staged in push order);
+  //   2. permute_rebuild moves every surviving column/sidecar in one pass per
+  //      column (contiguous, vectorizable -- the banked win over the per-row
+  //      branchy assign_row) and seeds the -1 rows to the new-particle
+  //      defaults;
+  //   3. copy each staged LOCAL's source-store row into its (already
+  //      default-seeded) new row via copy_row (fresh-default ghosts stay at
+  //      defaults for the ghost exchange to fill);
+  //   4. write the (offset, count) back onto each Cell and clear its staging.
+  // The order contract (surviving-then-staged per cell, cells in span order)
+  // matches the pre-7c assign_row path byte-for-byte for a removal-free
+  // history, so identity is preserved (controller constraint).
+  std::vector<int> permutation;
+  std::vector<std::pair<std::size_t, std::size_t>> cell_ranges;
+  build_resort_permutation(permutation, cell_ranges);
+  assert(permutation.size() == n_local + n_ghost);
+
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
-  // Phase 7c both-paths-in-debug: build the resort permutation the DORMANT
-  // permute_rebuild would consume, and capture the id each new row is EXPECTED
-  // to carry, sourced exactly as the live assign_row path sources it -- a
-  // survivor keeps the current-generation id at its old row; a staged row takes
-  // its source-store id (or the -1 default for a fresh, source-less ghost). The
-  // ids must be captured NOW, before begin_rebuild swaps the generation out.
-  // After the live rebuild, the store id at each new row must match, proving
-  // the builder reproduces the assign_row order row-for-row. Runs alongside
-  // (not instead of) the live rebuild for one release cycle.
-  std::vector<int> debug_permutation;
-  std::vector<std::pair<std::size_t, std::size_t>> debug_cell_ranges;
-  build_resort_permutation(debug_permutation, debug_cell_ranges);
+  // Self-check of the permuted result: capture the id each new row is EXPECTED
+  // to carry, sourced exactly as the permute path sources it -- a survivor
+  // keeps the current-generation id at its old row; a staged row takes its
+  // source-store id (or -1 for a fresh, source-less ghost). Captured NOW,
+  // before permute_rebuild swaps the generation out; verified row-for-row
+  // against the store AFTER the rebuild (below). This is the
+  // both-paths-in-debug cross-verification flipped to a self-check of the
+  // permuted result.
   std::vector<int> debug_expected_ids;
-  debug_expected_ids.reserve(debug_permutation.size());
+  debug_expected_ids.reserve(permutation.size());
   {
-    // Walk the cells in the SAME order the builder used to line up each new
-    // row's permutation entry with its staged source (the staged entries carry
-    // -1 in the permutation, so their id source is read from the cell here).
+    auto const &store = m_particle_store;
     auto capture_expected =
-        [this, &debug_expected_ids](std::span<Cell *const> cells) {
+        [&store, &debug_expected_ids](std::span<Cell *const> cells) {
           for (auto const *cell : cells) {
-            for (int const old_row : cell->rows()) {
-              debug_expected_ids.push_back(m_particle_store.id(old_row));
+            auto const raw_offset = cell->offset();
+            auto const raw_count = cell->count();
+            for (std::size_t k = 0u; k < raw_count; ++k) {
+              auto const old_row = static_cast<int>(raw_offset + k);
+              if (store.is_pending_removal(old_row)) {
+                continue;
+              }
+              debug_expected_ids.push_back(store.id(old_row));
             }
             for (auto const &staged : cell->staged()) {
               debug_expected_ids.push_back(
@@ -545,65 +581,74 @@ void CellStructure::ensure_particle_store_synchronized() {
   }
 #endif
 
-  // Snapshot the OLD row bags before begin_rebuild swaps the columns: a
-  // surviving row is assigned by handing assign_row a Particle attached to
-  // THIS store at the OLD row, from which it preserves the (now-spare) column
-  // data; the staged particles are detached, so assign_row seeds them from
-  // their carriers. begin_rebuild resizes to the new count, so we must capture
-  // the old row indices first (a shrink would put them out of the new bounds).
-  m_particle_store.begin_rebuild(n_local, n_ghost);
-  int row = 0;
-  // One reused survivor view rebound per old row (phase 7a perf): constructing
-  // a fresh Particle per survivor default-constructs all migration carriers
-  // (heap-owning BondList/exclusion members) every iteration; rebinding the two
-  // store-handle fields via attach_to_store instead costs two writes and never
-  // touches the carriers (assign_row's preserve branch reads only columns by
-  // old row). Reused across all cells (assign_cell is called sequentially).
-  Particle survivor;
-  auto assign_cell = [this, &row, &survivor](Cell *cell,
-                                             std::vector<int> const &old_rows) {
-    auto &rows = cell->rows();
-    rows.clear();
-    // Surviving committed rows: preserve column data by old row.
-    for (int const old_row : old_rows) {
-      survivor.attach_to_store(m_particle_store, old_row);
-      m_particle_store.assign_row(survivor, row);
-      rows.insert(row);
-      ++row;
-    }
-    // Staged (newly inserted / migrated / fresh ghost) row references
-    // (phase 7b): copy the referenced SOURCE-store row into the fresh committed
-    // row, or seed defaults for a fresh-default (ghost/new) entry. Then clear
-    // the staging area. A staged copy commits AFTER the surviving rows in the
-    // exact same [surviving..., staged...] order as the pre-flip Bag path, so
-    // the final row-assignment order is identical -> identity is preserved.
-    for (auto const &staged : cell->staged()) {
-      if (staged.source_store != nullptr) {
-        m_particle_store.copy_row(*staged.source_store, staged.source_row, row);
-      } else {
-        m_particle_store.seed_default_row(row);
+  // Capture each staged entry's source (store + row) in the SAME walk order the
+  // builder used, paired with the future row it lands in, so the copy_row step
+  // can overwrite the default-seeded staged-local rows after the permute. The
+  // walk mirrors build_resort_permutation: per cell, surviving (live) rows fill
+  // the leading part of the cell's range, then staged rows fill the tail.
+  struct StagedCopy {
+    ParticleStore *source_store;
+    int source_row;
+    int destination_row;
+  };
+  std::vector<StagedCopy> staged_copies;
+  {
+    std::size_t new_row = 0u;
+    auto collect_staged = [this, &new_row,
+                           &staged_copies](std::span<Cell *const> cells) {
+      for (auto *cell : cells) {
+        // Skip the surviving-row leading part (their perm entries are >= 0).
+        auto const raw_offset = cell->offset();
+        auto const raw_count = cell->count();
+        for (std::size_t k = 0u; k < raw_count; ++k) {
+          if (not m_particle_store.is_pending_removal(
+                  static_cast<int>(raw_offset + k))) {
+            ++new_row;
+          }
+        }
+        for (auto const &staged : cell->staged()) {
+          if (staged.source_store != nullptr) {
+            staged_copies.push_back(StagedCopy{staged.source_store,
+                                               staged.source_row,
+                                               static_cast<int>(new_row)});
+          }
+          ++new_row;
+        }
       }
-      rows.insert(row);
-      ++row;
-    }
-    cell->staged().clear();
-  };
-  // Reuse ONE scratch buffer across all cells (phase 7a perf): a surviving
-  // cell's row indices must be copied out before assign_cell clears/refills the
-  // bag, but allocating a fresh std::vector per cell (thousands per resort)
-  // churned the heap in the resort hot path. Reusing a single buffer (assign to
-  // clear-and-refill without freeing capacity) removes that per-cell alloc.
-  std::vector<int> old_rows;
-  auto assign_cells = [&assign_cell, &old_rows](std::span<Cell *const> cells) {
-    for (auto *cell : cells) {
-      auto const &row_bag = cell->rows();
-      old_rows.assign(row_bag.begin(), row_bag.end());
-      assign_cell(cell, old_rows);
-    }
-  };
-  assign_cells(decomposition().local_cells());
-  assign_cells(decomposition().ghost_cells());
-  m_particle_store.finish_rebuild();
+    };
+    collect_staged(decomposition().local_cells());
+    collect_staged(decomposition().ghost_cells());
+    assert(new_row == permutation.size());
+  }
+
+  // Step 2: permute every surviving column from the retired generation and seed
+  // the -1 (staged / fresh-ghost) rows to defaults, in one pass per column.
+  m_particle_store.permute_rebuild(permutation, n_local, n_ghost);
+
+  // Step 3: copy each staged LOCAL's source row into its new (default-seeded)
+  // row. The source (staging) store rows stay valid until clear_staging_store
+  // below.
+  for (auto const &copy : staged_copies) {
+    m_particle_store.copy_row(*copy.source_store, copy.source_row,
+                              copy.destination_row);
+  }
+
+  // Step 4: write the (offset, count) collapse back onto each cell and clear
+  // its staging area. The ranges tile [0, n_total) contiguously in cell order.
+  {
+    std::size_t range_index = 0u;
+    auto writeback = [&cell_ranges,
+                      &range_index](std::span<Cell *const> cells) {
+      for (auto *cell : cells) {
+        auto const &[offset, count] = cell_ranges[range_index++];
+        cell->set_range(offset, count);
+        cell->staged().clear();
+      }
+    };
+    writeback(decomposition().local_cells());
+    writeback(decomposition().ghost_cells());
+    assert(range_index == cell_ranges.size());
+  }
 
   // Phase 7b: every staged row reference has now been copied into a committed
   // row (copy_row above), so the staging store's rows are consumed. Reset its
@@ -622,43 +667,47 @@ void CellStructure::ensure_particle_store_synchronized() {
   rebuild_particle_index();
 
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
-  // Verify each cell's row bag matches the store: the store id at each recorded
-  // row equals the id of the view at the same position. Covers local + ghost.
+  // Verify each cell's committed range matches the store: the store id at each
+  // range row equals the id of the view at the same position, and the live
+  // range has no pending-removed rows (the rebuild cleared the mask). Covers
+  // local + ghost.
   auto check_cell_rows = [this](std::span<Cell *const> cells) {
     for (auto *cell : cells) {
-      auto const &rows = cell->rows();
+      auto const raw_offset = cell->offset();
+      auto const raw_count = cell->count();
       std::size_t k = 0u;
       for (auto const &p : cell->particles()) {
-        auto const stored_id = m_particle_store.id(rows.begin()[k]);
+        auto const row = static_cast<int>(raw_offset + k);
+        auto const stored_id = m_particle_store.id(row);
         if (stored_id != p.id()) {
           throw std::runtime_error(
-              "CellRows id mismatch at position " + std::to_string(k) +
+              "cell range id mismatch at position " + std::to_string(k) +
               ": store.id(row) = " + std::to_string(stored_id) +
               " but view id = " + std::to_string(p.id()));
         }
         ++k;
       }
-      if (k != rows.size()) {
-        throw std::runtime_error("CellRows size mismatch");
+      if (k != raw_count) {
+        throw std::runtime_error("cell range size mismatch (a fresh rebuild "
+                                 "must leave no pending-removed rows)");
       }
     }
   };
   check_cell_rows(decomposition().local_cells());
   check_cell_rows(decomposition().ghost_cells());
 
-  // Phase 7c both-paths-in-debug cross-verification: the builder produced one
-  // permutation entry per new row in the SAME order the live rebuild assigned
-  // them, so the store id at each new row must equal the id we captured from
-  // that entry's source before the swap. A mismatch means the permutation
-  // builder and the live assign_row rebuild disagree on the row order.
-  if (debug_permutation.size() != m_particle_store.number_of_particles()) {
+  // Phase 7c self-check of the permuted result: the builder produced one
+  // permutation entry per new row in the SAME order the permute rebuild filled
+  // them, so the store id at each new row must equal the id captured from that
+  // entry's source before the swap. A mismatch means the permutation builder
+  // and the permute rebuild disagree on the row order.
+  if (permutation.size() != m_particle_store.number_of_particles()) {
     throw std::runtime_error(
-        "resort permutation size " + std::to_string(debug_permutation.size()) +
+        "resort permutation size " + std::to_string(permutation.size()) +
         " != store row count " +
         std::to_string(m_particle_store.number_of_particles()));
   }
-  for (std::size_t new_row = 0u; new_row < debug_permutation.size();
-       ++new_row) {
+  for (std::size_t new_row = 0u; new_row < permutation.size(); ++new_row) {
     auto const stored_id = m_particle_store.id(static_cast<int>(new_row));
     if (stored_id != debug_expected_ids[new_row]) {
       throw std::runtime_error("resort permutation id mismatch at new row " +
@@ -669,28 +718,22 @@ void CellStructure::ensure_particle_store_synchronized() {
     }
   }
   // The (offset, count) ranges must tile [0, n_total) contiguously and match
-  // each cell's assigned row span -- the (offset, count) collapse the Task-3
-  // flip writes back onto Cell.
+  // each cell's committed row span (the collapse written back above).
   {
     std::size_t expected_offset = 0u;
-    std::size_t range_index = 0u;
-    auto check_ranges = [this, &debug_cell_ranges, &expected_offset,
-                         &range_index](std::span<Cell *const> cells) {
+    auto check_ranges = [&expected_offset](std::span<Cell *const> cells) {
       for (auto const *cell : cells) {
-        auto const &[offset, count] = debug_cell_ranges.at(range_index++);
-        // After the rebuild, cell->rows() holds ALL committed rows (survivors
-        // plus the now-committed staged rows), which is exactly the builder's
-        // count (survivors + staged, captured before the staged area cleared).
-        if (offset != expected_offset or count != cell->rows().size()) {
-          throw std::runtime_error(
-              "resort cell range mismatch at cell range index " +
-              std::to_string(range_index - 1u));
+        if (cell->offset() != expected_offset) {
+          throw std::runtime_error("resort cell range not contiguous");
         }
-        expected_offset += count;
+        expected_offset += cell->count();
       }
     };
     check_ranges(decomposition().local_cells());
     check_ranges(decomposition().ghost_cells());
+    if (expected_offset != m_particle_store.number_of_particles()) {
+      throw std::runtime_error("resort cell ranges do not tile the store");
+    }
   }
 #endif
 }
@@ -852,17 +895,24 @@ void CellStructure::remove_particle(int id) {
 
   for (auto cell : decomposition().local_cells()) {
     cell->set_store(m_particle_store);
-    // Iterate the committed rows by position. extract_row removes a row via
-    // swap-with-back (so we re-examine the swapped-in position); a kept
-    // particle has any bond to the removed id stripped (written through the
-    // view into the store's bond sidecar, preserved by the next rebuild).
-    for (std::size_t index = 0u; index < cell->rows().size();) {
-      auto view = m_particle_store.make_view(cell->rows().begin()[index]);
+    // Iterate the committed rows by RAW position (phase 7c). drop_row marks the
+    // matching row pending-removed (the live iteration skips it immediately, so
+    // the removed particle is invisible before the next rebuild resolves it); a
+    // kept particle has any bond to the removed id stripped (written through
+    // the view into the store's bond sidecar, preserved by the next rebuild). A
+    // row already marked pending (a prior drop) is skipped.
+    auto const offset = cell->offset();
+    auto const count = cell->count();
+    for (std::size_t index = 0u; index < count; ++index) {
+      auto const row = static_cast<int>(offset + index);
+      if (m_particle_store.is_pending_removal(row)) {
+        continue;
+      }
+      auto view = m_particle_store.make_view(row);
       if (view.id() == id) {
         CellParticleStorage::drop_row(*cell, index);
       } else {
         remove_all_bonds_to(view.bonds());
-        ++index;
       }
     }
   }

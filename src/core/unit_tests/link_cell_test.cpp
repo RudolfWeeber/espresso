@@ -77,10 +77,10 @@ BOOST_AUTO_TEST_CASE(link_cell) {
     c.m_neighbors = Neighbors<Cell *>(neighbors, {});
 
     c.set_store(store);
-    c.rows().clear();
-    for (auto i = 0u; i < n_part_per_cell; ++i) {
-      c.rows().insert(row++);
-    }
+    // Phase 7c: a cell's committed rows are a contiguous (offset, count) range.
+    // Each cell owns its consecutive block [row, row + n_part_per_cell).
+    c.set_range(static_cast<std::size_t>(row), n_part_per_cell);
+    row += static_cast<int>(n_part_per_cell);
   }
 
   std::vector<std::pair<int, int>> lc_pairs;

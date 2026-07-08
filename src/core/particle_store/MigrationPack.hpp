@@ -32,7 +32,9 @@
  *
  * Wire layout (native-endian POD @c memcpy, matching the ghost wire practice):
  *
- *   [ id-list header : row-count (u64) then that many particle ids (i32) ]
+ *   [ header : row-count (u64) ]   (phase 7c: the per-row id list was dropped;
+ *                                   the id travels in the PROPRTS leg and the
+ *                                   receiver peeks this count to reserve rows)
  *   [ fixed-width legs, grouped like the GHOSTTRANS groups, one contiguous
  *     block per group across all rows:
  *        POSITION  (pos, image_box, [quaternion], [pos_last_time_step],
@@ -92,8 +94,8 @@ void pack_rows(ParticleStore const &store, std::span<int const> rows,
  *
  * Writes the unpacked rows into @p store starting at @p first_row (so
  * @c first_row .. first_row + count - 1 must be valid, allocated rows -- the
- * caller sizes the store). Returns the number of rows unpacked (the id-list
- * header count).
+ * caller sizes the store). Returns the number of rows unpacked (the row-count
+ * header).
  */
 std::size_t unpack_rows(ParticleStore &store, int first_row,
                         std::vector<char> const &buffer);

@@ -38,6 +38,7 @@
 #include <Kokkos_Core.hpp>
 
 #include <cstddef>
+#include <vector>
 
 // ParticleStore allocates Kokkos Views, which requires an initialized runtime.
 struct GlobalConfig {
@@ -72,25 +73,40 @@ struct SourceStore {
 };
 
 // Commit a cell's staged rows into store rows, mirroring the staged loop of
-// CellStructure::ensure_particle_store_synchronized for a single-cell system:
-// one committed row per staged entry, copied from its source row (copy_row) or
-// seeded to defaults (fresh-default ghost, source_store == nullptr).
+// CellStructure::ensure_particle_store_synchronized for a single-cell system
+// (phase 7c): the surviving committed rows (the live range, skipping any
+// pending-removed) come first, then one committed row per staged entry (copied
+// from its source row via copy_row, or seeded to defaults for a fresh-default
+// ghost). The cell's committed range is written back as (0, count). The rebuild
+// clears the pending-removal mask for the new generation.
 void commit(Cell &cell, ParticleStore &store) {
-  auto const n = cell.rows().size() + cell.staged().size();
+  // Snapshot the surviving live rows (skips pending-removed) before the swap.
+  std::vector<int> survivors;
+  for (int const r : cell.rows()) {
+    survivors.push_back(r);
+  }
+  auto const n = survivors.size() + cell.staged().size();
+  int row = 0;
+  // A survivor preserves its column data by copy_row within the (about-to-swap)
+  // store into a scratch source? For a single-cell test the simplest faithful
+  // model is: stage survivors into a source store first. But these tests only
+  // exercise staged inserts and drops, where survivors are re-committed via a
+  // fresh rebuild that seeds+copies from staging. To keep the helper minimal we
+  // rebuild from the staged entries only (the tests never mix survivors with a
+  // subsequent commit); assert that precondition.
+  BOOST_REQUIRE(survivors.empty());
   store.mark_dirty();
   store.begin_rebuild(n, 0u);
-  int row = 0;
-  cell.rows().clear();
   for (auto const &staged : cell.staged()) {
     if (staged.source_store != nullptr) {
       store.copy_row(*staged.source_store, staged.source_row, row);
     } else {
       store.seed_default_row(row);
     }
-    cell.rows().insert(row);
     ++row;
   }
   store.finish_rebuild();
+  cell.set_range(0u, static_cast<std::size_t>(row));
   cell.staged().clear();
   cell.set_store(store);
 }
@@ -110,7 +126,10 @@ BOOST_AUTO_TEST_CASE(insert_staged_row_stages_a_row_reference) {
   BOOST_CHECK_EQUAL(cell.staged()[0].source_row, row);
 }
 
-BOOST_AUTO_TEST_CASE(drop_row_removes_with_swap_with_back) {
+// Phase 7c: drop_row marks the RAW range position pending-removed (no
+// swap-with-back). The live range keeps its store-row ORDER for the survivors;
+// a dropped row is skipped by iteration immediately.
+BOOST_AUTO_TEST_CASE(drop_row_marks_pending_and_preserves_order) {
   SourceStore src{3u};
   ParticleStore store{};
   Cell cell;
@@ -126,14 +145,20 @@ BOOST_AUTO_TEST_CASE(drop_row_removes_with_swap_with_back) {
   BOOST_REQUIRE_EQUAL(store.id(0), 1);
   BOOST_REQUIRE_EQUAL(store.id(2), 3);
 
+  // Drop the FIRST range position (row 0, id 1): the survivors keep their
+  // store-row order (rows 1, 2 -> ids 2, 3), unlike the pre-7c swap-with-back.
   CellParticleStorage::drop_row(cell, 0u);
   BOOST_CHECK_EQUAL(cell.rows().size(), 2ul);
-  // swap-with-back: the row bag's freed position now holds the former last row
-  // (row 2, which held id 3).
-  BOOST_CHECK_EQUAL(store.id(cell.rows().begin()[0]), store.id(2));
+  BOOST_CHECK(store.is_pending_removal(0));
+  std::vector<int> ids;
+  for (auto const &p : cell.particles()) {
+    ids.push_back(p.id());
+  }
+  std::vector<int> const expected{2, 3};
+  BOOST_CHECK(ids == expected);
 }
 
-BOOST_AUTO_TEST_CASE(drop_row_on_single_element_empties_row_bag) {
+BOOST_AUTO_TEST_CASE(drop_row_on_single_element_empties_range) {
   SourceStore src{1u};
   ParticleStore store{};
   Cell cell;
@@ -144,6 +169,7 @@ BOOST_AUTO_TEST_CASE(drop_row_on_single_element_empties_row_bag) {
 
   CellParticleStorage::drop_row(cell, 0u);
   BOOST_CHECK_EQUAL(cell.rows().size(), 0ul);
+  BOOST_CHECK(cell.rows().empty());
 }
 
 BOOST_AUTO_TEST_CASE(clear_particles_empties_rows_and_staging) {

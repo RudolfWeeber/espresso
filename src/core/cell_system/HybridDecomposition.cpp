@@ -114,44 +114,50 @@ void HybridDecomposition::resort(bool global,
   auto &staging = *m_migration_staging.store;
   for (auto &cell_rd : m_regular_decomposition.local_cells()) {
     auto &store = cell_rd->store();
-    for (std::size_t index = 0u; index < cell_rd->rows().size();) {
-      auto const live_row = cell_rd->rows().begin()[index];
+    // Iterate committed rows by RAW position (phase 7c): drop_row marks the row
+    // pending-removed (no swap-with-back), so advance unconditionally.
+    auto const rd_offset = cell_rd->offset();
+    auto const rd_count = cell_rd->count();
+    for (std::size_t index = 0u; index < rd_count; ++index) {
+      auto const live_row = static_cast<int>(rd_offset + index);
       auto const type = store.type(live_row);
       /* Particle is in the right decomposition, i.e. has no n_square type */
       if (not is_n_square_type(type)) {
-        ++index;
         continue;
       }
 
       /* else remove from current cell ... */
       auto const staging_row = m_migration_staging.stage_row(live_row);
       CellParticleStorage::drop_row(*cell_rd, index);
-      diff.emplace_back(ModifiedList{cell_rd->rows()});
+      diff.emplace_back(ModifiedList{*cell_rd});
       diff.emplace_back(RemovedParticle{staging.id(staging_row)});
 
       /* ... and insert into a n_square cell */
       auto const first_local_cell = m_n_square.get_local_cells()[0];
       CellParticleStorage::insert_staged_row(*first_local_cell, staging,
                                              staging_row);
-      diff.emplace_back(ModifiedList{first_local_cell->rows()});
+      diff.emplace_back(ModifiedList{*first_local_cell});
     }
 
     /* Now check for regular decomposition type particles in n_square */
     for (auto &cell_ns : m_n_square.local_cells()) {
       auto &store = cell_ns->store();
-      for (std::size_t index = 0u; index < cell_ns->rows().size();) {
-        auto const live_row = cell_ns->rows().begin()[index];
+      // Iterate committed rows by RAW position (phase 7c): drop_row marks the
+      // row pending-removed (no swap-with-back), so advance unconditionally.
+      auto const ns_offset = cell_ns->offset();
+      auto const ns_count = cell_ns->count();
+      for (std::size_t index = 0u; index < ns_count; ++index) {
+        auto const live_row = static_cast<int>(ns_offset + index);
         auto const type = store.type(live_row);
         /* Particle is of n_square type */
         if (is_n_square_type(type)) {
-          ++index;
           continue;
         }
 
         /* else remove from current cell ... */
         auto const staging_row = m_migration_staging.stage_row(live_row);
         CellParticleStorage::drop_row(*cell_ns, index);
-        diff.emplace_back(ModifiedList{cell_ns->rows()});
+        diff.emplace_back(ModifiedList{*cell_ns});
         diff.emplace_back(RemovedParticle{staging.id(staging_row)});
 
         /* ... and insert in regular decomposition. The home cell is decided
@@ -162,14 +168,14 @@ void HybridDecomposition::resort(bool global,
         if (target_cell != nullptr) {
           CellParticleStorage::insert_staged_row(*target_cell, staging,
                                                  staging_row);
-          diff.emplace_back(ModifiedList{target_cell->rows()});
+          diff.emplace_back(ModifiedList{*target_cell});
         }
         /* otherwise just put into regular decomposition */
         else {
           auto first_local_cell = m_regular_decomposition.get_local_cells()[0];
           CellParticleStorage::insert_staged_row(*first_local_cell, staging,
                                                  staging_row);
-          diff.emplace_back(ModifiedList{first_local_cell->rows()});
+          diff.emplace_back(ModifiedList{*first_local_cell});
         }
       }
     }

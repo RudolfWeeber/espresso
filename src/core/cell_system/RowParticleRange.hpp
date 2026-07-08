@@ -30,14 +30,20 @@
 #include <optional>
 
 /**
- * @brief Iterator over a @ref CellRows bag yielding @ref Particle views.
+ * @brief Iterator over a @ref Cell's contiguous store-row range yielding
+ * @ref Particle views.
  *
- * The live iterator backing @ref Cell::particles() since the phase-7a flip
- * (Task 4). Walks the row indices stored in a @ref CellRows bag and, for each,
- * hands out a @ref Particle view over the paired @ref ParticleStore row (a
- * cached view rebound via @ref Particle::attach_to_store; see the PERFORMANCE
- * note below).  Its contract mirrors @ref ParticleIterator / @ref
- * ParticleRange:
+ * The live iterator backing @ref Cell::particles() since the phase-7c range
+ * collapse (Task 3). Where the phase-7a iterator walked a @c Bag<int> row array
+ * (one indirection per element), this walks the ARITHMETIC range
+ * @c [offset, offset+count) directly -- no per-cell int array. Rows dropped
+ * mid-epoch are marked pending-removed on the store (@ref
+ * ParticleStore::mark_pending_removal); this iterator SKIPS them, so a removed
+ * particle is invisible to iteration immediately (before the next rebuild
+ * resolves it). For each surviving row it hands out a @ref Particle view over
+ * the paired @ref ParticleStore row (a cached view rebound via @ref
+ * Particle::attach_to_store; see the PERFORMANCE note below).  Its contract
+ * mirrors @ref ParticleIterator / @ref ParticleRange:
  *   - @c value_type is @ref Particle and @c reference is @ref Particle& (as in
  *     @ref ParticleIterator, whose @c dereference() returns @c Particle&);
  *   - it is a forward iterator (@c boost::forward_traversal_tag).
@@ -67,7 +73,7 @@
  * construction and @c begin() (all frequent: @ref ParticleIterator reassigns
  * its inner iterator once per cell, @ref Algorithm::link_cell copies iterators
  * via @c std::next and builds a fresh range per neighbour) cost NOTHING beyond
- * the two index fields -- no Particle is materialised until the iterator is
+ * the index fields -- no Particle is materialised until the iterator is
  * actually dereferenced. Exactly one Particle shell is constructed per iterator
  * that is dereferenced at least once, and it is reused (rebound) across every
  * subsequent dereference of that iterator.
@@ -75,7 +81,10 @@
 class RowParticleIterator
     : public boost::iterator_facade<RowParticleIterator, Particle,
                                     boost::forward_traversal_tag, Particle &> {
-  CellRows::const_iterator m_row;
+  // Current raw row and the past-the-end row (offset + count). The store is
+  // consulted to skip pending-removed rows on increment.
+  std::size_t m_row;
+  std::size_t m_end;
   ParticleStore *m_store;
   /** Cached view over the current row; the target of @c operator*. Lazily
    *  materialised on first dereference (see the class PERFORMANCE note) and
@@ -87,30 +96,43 @@ class RowParticleIterator
    *  logically transient. */
   mutable std::optional<Particle> m_view;
 
+  // Advance m_row to the next non-pending-removed row at or after `raw`,
+  // clamped to m_end.
+  std::size_t skip_removed(std::size_t raw) const {
+    while (raw < m_end and m_store != nullptr and
+           m_store->is_pending_removal(static_cast<int>(raw))) {
+      ++raw;
+    }
+    return raw;
+  }
+
 public:
   /** @brief Default (singular) iterator, needed by @ref ParticleIterator's
    *  end/singular states. Never dereferenced. */
-  RowParticleIterator() : m_row(nullptr), m_store(nullptr) {}
+  RowParticleIterator() : m_row(0u), m_end(0u), m_store(nullptr) {}
 
-  /** @brief Iterator at @p row over @p store. */
-  RowParticleIterator(CellRows::const_iterator row, ParticleStore &store)
-      : m_row(row), m_store(&store) {}
+  /** @brief Iterator at the first LIVE row at/after @p row over @p store, with
+   *  past-the-end @p end. */
+  RowParticleIterator(std::size_t row, std::size_t end, ParticleStore &store)
+      : m_row(row), m_end(end), m_store(&store) {
+    m_row = skip_removed(m_row);
+  }
 
   /** @brief Past-the-end iterator (no store dereference happens). */
-  explicit RowParticleIterator(CellRows::const_iterator end)
-      : m_row(end), m_store(nullptr) {}
+  explicit RowParticleIterator(std::size_t end)
+      : m_row(end), m_end(end), m_store(nullptr) {}
 
   /** @brief The store + row this iterator currently addresses. Lets a composing
    *  iterator (@ref ParticleIterator) rebind its OWN reused view without
    *  materialising this iterator's cache -- avoiding a Particle construction
    * per cell boundary. Valid only on a non-end iterator. */
   ParticleStore *current_store() const { return m_store; }
-  int current_row() const { return *m_row; }
+  int current_row() const { return static_cast<int>(m_row); }
 
 private:
   friend class boost::iterator_core_access;
 
-  void increment() { ++m_row; }
+  void increment() { m_row = skip_removed(m_row + 1u); }
 
   bool equal(RowParticleIterator const &rhs) const {
     return m_row == rhs.m_row;
@@ -124,35 +146,54 @@ private:
   // m_view so the returned reference outlives the expression, honouring the
   // lifetime contract documented on the class.
   Particle &dereference() const {
+    auto const row = static_cast<int>(m_row);
     if (not m_view) {
       m_view.emplace();
-      m_view->attach_to_store(*m_store, *m_row);
-    } else if (m_view->store() != m_store or m_view->store_row() != *m_row) {
-      // Rebind only if not already bound to (m_store, *m_row); a repeat
+      m_view->attach_to_store(*m_store, row);
+    } else if (m_view->store() != m_store or m_view->store_row() != row) {
+      // Rebind only if not already bound to (m_store, m_row); a repeat
       // dereference of the same row is then a pure comparison.
-      m_view->attach_to_store(*m_store, *m_row);
+      m_view->attach_to_store(*m_store, row);
     }
     return *m_view;
   }
 };
 
 /**
- * @brief Range of @ref Particle views over a @ref CellRows bag + store.
+ * @brief Range of @ref Particle views over a @ref Cell's store-row range.
  *
- * The live return type of @ref Cell::particles() since the phase-7a flip.
- * Modelled on @ref ParticleRange (a @c boost::iterator_range with a cached
- * size). Iterating it yields the cell's particles in cell-traversal order,
- * each as a live @ref Particle view aliasing the @ref ParticleStore columns.
+ * The live return type of @ref Cell::particles() since the phase-7a flip
+ * (backed by an arithmetic row range since the phase-7c collapse). Modelled on
+ * @ref ParticleRange (a @c boost::iterator_range with a cached size). Iterating
+ * it yields the cell's LIVE particles (pending-removed rows skipped) in
+ * cell-traversal order, each as a live @ref Particle view aliasing the @ref
+ * ParticleStore columns.
  */
 class RowParticleRange : public boost::iterator_range<RowParticleIterator> {
   using base_type = boost::iterator_range<RowParticleIterator>;
 
+  static std::size_t count_live(std::size_t offset, std::size_t count,
+                                ParticleStore const &store) {
+    std::size_t live = 0u;
+    for (std::size_t raw = offset; raw < offset + count; ++raw) {
+      if (not store.is_pending_removal(static_cast<int>(raw))) {
+        ++live;
+      }
+    }
+    return live;
+  }
+
 public:
-  RowParticleRange(CellRows const &rows, ParticleStore &store)
-      : base_type(rows.empty() ? RowParticleIterator(rows.end())
-                               : RowParticleIterator(rows.begin(), store),
-                  RowParticleIterator(rows.end())),
-        m_size(rows.size()) {}
+  RowParticleRange(std::size_t offset, std::size_t count, ParticleStore &store)
+      : base_type(count == 0u
+                      ? RowParticleIterator(offset + count)
+                      : RowParticleIterator(offset, offset + count, store),
+                  RowParticleIterator(offset + count)),
+        m_size(count == 0u ? 0u : count_live(offset, count, store)) {}
+
+  /** @brief Construct from a @ref CellRowSpan (its raw range + store). */
+  RowParticleRange(CellRowSpan const &rows, ParticleStore &store)
+      : RowParticleRange(rows.offset(), rows.count(), store) {}
 
   base_type::size_type size() const { return m_size; }
 

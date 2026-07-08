@@ -249,7 +249,11 @@ private:
    *  id not owned by a local). Consumers (force/energy/pressure/icc reductions,
    *  the AoSoA commit) index it in pack order. Pointers into
    *  @ref m_unique_particle_views; rebuilt every @ref set_index_map.
-   *  Retired in 7c once pack index == store row holds on the ghost tail too. */
+   *  7c-2026-07-08 (T1 dedup adjudication): survives 7c for the same reason as
+   *  @ref m_pack_index_to_store_row -- the deduped ghost tail is a
+   *  non-contiguous subset, so pack index != store row on the tail and the
+   *  view list is still required. Retires only when the ghost dedup produces a
+   *  contiguous pack-order ghost range (a later phase). */
   std::vector<Particle *> m_unique_particles;
   /** Owning backing for @ref m_unique_particles (phase 7e). Replaces the
    * retired view pool as the storage the pack-order pointer list points into:
@@ -277,7 +281,12 @@ private:
   std::size_t m_staging_store_capacity = 0u;
   /** Pack-index -> store-row translation (phase 3.5). Identity on the local
    *  prefix; only the deduped ghost tail is remapped. Rebuilt in
-   *  @ref set_index_map. */
+   *  @ref set_index_map.
+   *  7c-2026-07-08 (T1 dedup adjudication): identity holds on the local prefix
+   *  by construction; the ghost tail is still a DEDUPED, non-contiguous subset
+   *  of [n_local, n_total), so the real translation is still needed. Cannot die
+   *  in 7c; remove only when the ghost dedup is expressed as a contiguous row
+   *  range (spec phase-7 full range collapse, a later phase). */
   Kokkos::View<int *, Kokkos::HostSpace> m_pack_index_to_store_row;
 #if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
   /** Store-side derived director view (phase 3.5), sized n_total, recomputed
@@ -345,13 +354,12 @@ private:
   void index_ghost_particles();
 
   /**
-   * @brief Build the resort permutation over surviving store rows (phase 7c,
-   * DORMANT).
+   * @brief Build the resort permutation over surviving store rows (phase 7c).
    *
-   * Walks the cells in the CURRENT rebuild order -- local cells in
+   * Walks the cells in the rebuild order -- local cells in
    * @ref ParticleDecomposition::local_cells span order, then ghost cells; per
-   * cell: surviving rows in @c cell->rows() bag order, then staged rows in
-   * @c cell->staged() push order -- and produces:
+   * cell: surviving rows in raw range order (skipping any pending-removed row),
+   * then staged rows in @c cell->staged() push order -- and produces:
    *  - @p permutation : one entry per new row. A surviving row's entry is the
    *    OLD store row whose data the permute rebuild moves into that new row; a
    *    staged / fresh-ghost row's entry is -1 (the permute rebuild seeds the
@@ -359,14 +367,14 @@ private:
    *  - @p cell_ranges : the future @c (offset, count) of each cell, in the same
    *    cell order (locals then ghosts). @c offset is the first new row of the
    *    cell, @c count its surviving + staged row total. This is the (offset,
-   *    count) collapse the Task-3 flip writes back onto @ref Cell.
+   *    count) collapse @ref ensure_particle_store_synchronized writes back onto
+   *    @ref Cell.
    *
-   * MUST reproduce the current assign_row rebuild order byte-for-byte for a
-   * removal-free history: cells in current span order, surviving rows in bag
-   * order, staged in push order. Under @c ESPRESSO_ADDITIONAL_CHECKS the caller
-   * runs this alongside the live assign_row rebuild and cross-verifies row-for-
-   * row id equality (both-paths-in-debug for one release cycle). DORMANT: no
-   * production path drives the resort with it yet (the Task-3 flip does).
+   * Reproduces the pre-7c assign_row rebuild order byte-for-byte for a
+   * removal-free history (cells in span order, surviving rows in range order,
+   * staged in push order), so identity is preserved. This is the LIVE resort
+   * path since the Task-3 flip; @ref ensure_particle_store_synchronized feeds
+   * @p permutation to @ref ParticleStore::permute_rebuild.
    */
   void build_resort_permutation(
       std::vector<int> &permutation,
@@ -468,7 +476,7 @@ public:
       // store pointer to be wired, and is exactly the number of committed
       // particles (staged-but-uncommitted particles are not counted, matching
       // the pre-flip Bag size after a sync).
-      count += cell->rows().size();
+      count += cell->count();
     }
     return count;
   }
@@ -825,9 +833,10 @@ private:
     std::vector<int> retained_staging_rows;
     for (auto *cell : m_decomposition->local_cells()) {
       cell->set_store(m_particle_store);
-      auto &rows = cell->rows();
-      for (std::size_t i = 0u; i < rows.size(); ++i) {
-        retained_staging_rows.push_back(stage_row(rows.begin()[i]));
+      // Stage every LIVE committed row (the CellRowSpan skips pending-removed
+      // rows); the new decomposition below re-homes each retained row.
+      for (int const live_row : cell->rows()) {
+        retained_staging_rows.push_back(stage_row(live_row));
       }
     }
 
@@ -944,23 +953,25 @@ private:
     // are never read while attached.
     Particle p1, p_self, p_nb;
     for (auto *cell : decomposition().local_cells()) {
-      auto const &rows = cell->rows();
-      auto const n = rows.size();
-      auto const *row_data = rows.begin();
+      // Contiguous store-row range (phase 7c). This runs only on a clean store
+      // (the caller ran ensure_particle_store_synchronized before any force
+      // loop), so there are no pending-removed rows and the raw range IS the
+      // live range: index it directly by offset + i (O(1), no skip).
+      auto const offset = cell->offset();
+      auto const n = cell->count();
       for (std::size_t i = 0u; i < n; ++i) {
-        p1.attach_to_store(store, row_data[i]);
+        p1.attach_to_store(store, static_cast<int>(offset + i));
         // Pairs within this cell (j > i), same order as Algorithm::link_cell.
         for (std::size_t j = i + 1u; j < n; ++j) {
-          p_self.attach_to_store(store, row_data[j]);
+          p_self.attach_to_store(store, static_cast<int>(offset + j));
           kernel(p1, p_self, df(p1, p_self));
         }
         // Pairs with the red-partition neighbours, same order.
         for (auto *neighbor : cell->neighbors().red()) {
-          auto const &nb_rows = neighbor->rows();
-          auto const nb_n = nb_rows.size();
-          auto const *nb_data = nb_rows.begin();
+          auto const nb_offset = neighbor->offset();
+          auto const nb_n = neighbor->count();
           for (std::size_t k = 0u; k < nb_n; ++k) {
-            p_nb.attach_to_store(store, nb_data[k]);
+            p_nb.attach_to_store(store, static_cast<int>(nb_offset + k));
             kernel(p1, p_nb, df(p1, p_nb));
           }
         }

@@ -116,6 +116,27 @@ public:
   std::uint64_t generation() const { return m_generation; }
   bool is_dirty() const { return m_dirty; }
 
+  // -- mid-epoch pending removal (phase 7c) ---------------------------------
+  // Since cells collapsed to contiguous (offset, count) ranges, a row cannot be
+  // swap-removed from a cell between rebuilds (a range has no shuffling op). A
+  // removal instead marks the store row PENDING-REMOVED here: iteration
+  // (@ref RowParticleRange / @ref CellRowSpan) skips such rows immediately, and
+  // the next permutation rebuild resolves it by NOT including the row in the
+  // permutation (the row is dropped). The mask is indexed by store row and is
+  // cleared on every rebuild (begin_rebuild / permute_rebuild size it fresh and
+  // finish_rebuild leaves it all-clear for the new generation). This is the T1
+  // pending-removal adjudication: iteration must not see a removed particle
+  // before the rebuild renumbers rows. Identity histories are removal-free, so
+  // the mask is never set on the identity path.
+  void mark_pending_removal(int const row) {
+    assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
+    m_pending_removal[static_cast<std::size_t>(row)] = char{1};
+  }
+  bool is_pending_removal(int const row) const {
+    assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
+    return m_pending_removal[static_cast<std::size_t>(row)] != char{0};
+  }
+
   void begin_rebuild(std::size_t number_of_local_particles,
                      std::size_t number_of_ghost_particles);
   void assign_row(Particle &particle, int row);
@@ -146,7 +167,7 @@ public:
                 int destination_row);
 
   /**
-   * @brief Rebuild the store by permuting surviving rows (phase 7c, DORMANT).
+   * @brief Rebuild the store by permuting surviving rows (phase 7c).
    *
    * The resort-as-permutation path that replaces the per-particle branchy
    * @ref assign_row rebuild loop with contiguous, vectorizable per-column
@@ -174,7 +195,9 @@ public:
    * permute unit tests enforce it. On @ref finish_rebuild the generation is
    * bumped exactly as for an assign_row rebuild.
    *
-   * DORMANT: no production path calls this yet (the Task-3 flip wires it in).
+   * This is the LIVE resort rebuild path since the phase-7c flip:
+   * @ref CellStructure::ensure_particle_store_synchronized builds the
+   * permutation and calls this instead of the per-particle assign_row loop.
    */
   void permute_rebuild(std::span<int const> permutation, std::size_t n_local,
                        std::size_t n_ghost);
@@ -364,6 +387,7 @@ public:
     m_number_of_local_particles = 0u;
     m_number_of_ghost_particles = 0u;
     m_old_number_of_particles = 0u;
+    m_pending_removal.clear();
     m_dirty = true;
   }
 
@@ -764,6 +788,13 @@ private:
   std::size_t m_number_of_ghost_particles = 0u;
   bool m_dirty = false;
   std::uint64_t m_generation = 0u;
+
+  // -- mid-epoch pending-removal mask (phase 7c) ----------------------------
+  // One byte per store row; 1 = row was dropped from its cell this epoch and is
+  // invisible to iteration until the next rebuild resolves it. Sized to
+  // number_of_particles() and zeroed by every rebuild (see the accessors and
+  // begin_rebuild / permute_rebuild).
+  std::vector<char> m_pending_removal;
 
   // -- current-generation columns -------------------------------------------
   Column m_force;

@@ -102,7 +102,7 @@ void RegularDecomposition::move_if_local(
       // staging row stays valid until CellStructure commits it.
       CellParticleStorage::insert_staged_row(*target_cell, staging,
                                              staging_row);
-      modified_cells.emplace_back(ModifiedList{target_cell->rows()});
+      modified_cells.emplace_back(ModifiedList{*target_cell});
     } else {
       // Undeliverable this round: keep the staging row for the next round's
       // re-pack (the multi-round intermediate-rank case).
@@ -254,17 +254,19 @@ void RegularDecomposition::resort(bool global,
   std::vector<int> displaced_rows;
 
   for (auto &c : local_cells()) {
-    // Iterate the cell's committed rows by position. drop_row removes a row via
-    // swap-with-back (order not preserved, exactly the pre-flip Bag erase), so
-    // on removal we re-examine the same position (the swapped-in row);
-    // otherwise we advance. fold_and_reset writes through
-    // the view into the store column BEFORE the row is copied to staging, so
-    // the staged copy carries the folded value. One cached view reused across
-    // this cell's rows, REBOUND per position via attach_to_store (phase 7a perf
-    // fix).
+    // Iterate the cell's committed rows by RAW position (phase 7c). drop_row
+    // marks the row pending-removed (the range keeps its store-row order; no
+    // swap-with-back), so we advance unconditionally -- a dropped row stays in
+    // the raw range but is skipped by every live iteration until the next
+    // rebuild resolves it. fold_and_reset writes through the view into the
+    // store column BEFORE the row is copied to staging, so the staged copy
+    // carries the folded value. One cached view reused across this cell's rows,
+    // REBOUND per position via attach_to_store (phase 7a perf fix).
     Particle view;
-    for (std::size_t index = 0u; index < c->rows().size();) {
-      auto const live_row = c->rows().begin()[index];
+    auto const offset = c->offset();
+    auto const count = c->count();
+    for (std::size_t index = 0u; index < count; ++index) {
+      auto const live_row = static_cast<int>(offset + index);
       view.attach_to_store(c->store(), live_row);
       fold_and_reset(view, m_box);
 
@@ -272,7 +274,6 @@ void RegularDecomposition::resort(bool global,
 
       /* Particle is in place */
       if (target_cell == c) {
-        ++index;
         continue;
       }
 
@@ -284,21 +285,21 @@ void RegularDecomposition::resort(bool global,
         // the exchange rounds.
         displaced_rows.push_back(m_migration_staging.stage_row(live_row));
         CellParticleStorage::drop_row(*c, index);
-        diff.emplace_back(ModifiedList{c->rows()});
+        diff.emplace_back(ModifiedList{*c});
       }
       /* Particle belongs on this node but is in the wrong cell. Copy the
        * (folded) live row into the staging store, drop it from this cell, and
        * stage a reference to that staging row in the target cell -- the next
-       * store rebuild copies it into a committed row (same [surviving...,
-       * staged...] order as the pre-flip extract_row -> insert_particle path).
+       * store rebuild copies it into a committed row (surviving-then-staged per
+       * cell, the phase-7c order contract).
        */
       else {
         auto const staging_row = m_migration_staging.stage_row(live_row);
         CellParticleStorage::drop_row(*c, index);
-        diff.emplace_back(ModifiedList{c->rows()});
+        diff.emplace_back(ModifiedList{*c});
         CellParticleStorage::insert_staged_row(*target_cell, staging,
                                                staging_row);
-        diff.emplace_back(ModifiedList{target_cell->rows()});
+        diff.emplace_back(ModifiedList{*target_cell});
       }
     }
   }
@@ -331,7 +332,7 @@ void RegularDecomposition::resort(bool global,
                         << "more than one local box length in one timestep";
       CellParticleStorage::insert_staged_row(*sort_cell, staging, staging_row);
 
-      diff.emplace_back(ModifiedList{sort_cell->rows()});
+      diff.emplace_back(ModifiedList{*sort_cell});
     }
   }
 

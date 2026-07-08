@@ -81,7 +81,7 @@ public:
   char const *position() const { return m_at; }
 };
 
-// The id-list header count and every ragged run length travel as this type.
+// The row-count header and every ragged run length travel as this type.
 using LengthType = std::uint64_t;
 
 // -- per-field helpers over the fixed-width vector/scalar types ---------------
@@ -437,10 +437,11 @@ void read_row_exclusions(ReadCursor &cursor, ParticleStore &store,
 } // namespace
 
 std::size_t packed_size(ParticleStore const &store, std::span<int const> rows) {
-  // Fixed part: id-list header (row count + one id per row) + the
-  // constant-per-row fixed legs.
-  std::size_t size = sizeof(LengthType) + rows.size() * sizeof(int) +
-                     rows.size() * fixed_size_per_row();
+  // Fixed part: the row-count header (u64) + the constant-per-row fixed legs.
+  // Phase 7c (carry 7b-M3): the per-row id list is gone from the header (the id
+  // is re-read from the PROPRTS leg on unpack), so the header is just the
+  // count.
+  std::size_t size = sizeof(LengthType) + rows.size() * fixed_size_per_row();
   // Ragged actuals.
   for (auto const row : rows) {
     size += bonds_run_size(store, row);
@@ -459,11 +460,9 @@ void pack_rows(ParticleStore const &store, std::span<int const> rows,
   buffer.resize(total);
   WriteCursor cursor{buffer};
 
-  // id-list header: row count, then each row's particle id.
+  // Header: row count only (phase 7c carry 7b-M3; the per-row id is carried in
+  // the PROPRTS leg and re-read on unpack, so no separate id list is packed).
   cursor.put(static_cast<LengthType>(rows.size()));
-  for (auto const row : rows) {
-    cursor.put(store.id(row));
-  }
 
   // Fixed-width legs, one contiguous block per row.
   for (auto const row : rows) {
@@ -487,13 +486,11 @@ std::size_t unpack_rows(ParticleStore &store, int const first_row,
                         std::vector<char> const &buffer) {
   ReadCursor cursor{buffer};
 
-  // id-list header. The ids are re-read per-row from the PROPRTS leg below, so
-  // the header ids are skipped here; they exist so the receiver can size /
-  // route before touching the fixed legs (used by the Task-3 flip).
+  // Header: row count (phase 7c carry 7b-M3). The receiver peeks this same u64
+  // to reserve the target rows before unpacking (see
+  // RegularDecomposition::exchange_neighbors); the per-row id is re-read from
+  // the PROPRTS leg below, so no separate id list travels in the header.
   auto const count = static_cast<std::size_t>(cursor.get<LengthType>());
-  for (std::size_t i = 0u; i < count; ++i) {
-    static_cast<void>(cursor.get<int>());
-  }
 
   for (std::size_t i = 0u; i < count; ++i) {
     read_row_fixed(cursor, store, first_row + static_cast<int>(i));

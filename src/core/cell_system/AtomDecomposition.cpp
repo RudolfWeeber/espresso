@@ -28,6 +28,7 @@
 #include <utils/Vector.hpp>
 
 #include <boost/mpi/collectives/all_to_all.hpp>
+#include <boost/serialization/vector.hpp>
 
 #include <cassert>
 #include <cstddef>
@@ -135,11 +136,14 @@ void AtomDecomposition::resort(bool global_flag,
   auto &staging = *m_migration_staging.store;
 
   // Sort displaced particles into per-rank staging-row buckets (iterate the
-  // committed rows by position; drop_row removes the row via swap-with-back, so
-  // re-examine the swapped-in position).
+  // committed rows by RAW position; drop_row marks the row pending-removed --
+  // the range keeps its order, no swap-with-back -- so we advance
+  // unconditionally, phase 7c).
   std::vector<std::vector<int>> send_rows(m_comm.size());
-  for (std::size_t index = 0u; index < local().rows().size();) {
-    auto const live_row = local().rows().begin()[index];
+  auto const row_offset = local().offset();
+  auto const row_count = local().count();
+  for (std::size_t index = 0u; index < row_count; ++index) {
+    auto const live_row = static_cast<int>(row_offset + index);
     auto const id = store.id(live_row);
     auto const target_node = id_to_rank(id);
     if (target_node != m_comm.rank()) {
@@ -147,8 +151,6 @@ void AtomDecomposition::resort(bool global_flag,
       send_rows.at(target_node)
           .push_back(m_migration_staging.stage_row(live_row));
       CellParticleStorage::drop_row(local(), index);
-    } else {
-      ++index;
     }
   }
 
@@ -161,7 +163,7 @@ void AtomDecomposition::resort(bool global_flag,
   std::vector<std::vector<char>> recv_buf(m_comm.size());
   boost::mpi::all_to_all(m_comm, send_buf, recv_buf);
 
-  diff.emplace_back(ModifiedList{local().rows()});
+  diff.emplace_back(ModifiedList{local()});
 
   // Unpack the received buffers (in rank order, matching the pre-flip recv_buf
   // iteration) into fresh staging rows, then stage each staging row into the

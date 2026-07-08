@@ -105,16 +105,17 @@ ResultType reduce_over_local_particles(
         [&cells, add_partial](std::size_t const c_index, ResultType &res) {
           // One reused view per cell (per thread), REBOUND per row via
           // attach_to_store instead of materialising a Particle per cell
-          // through the row-range iterator (phase 7a perf fix). Carriers stay
-          // default and are never read while attached.
+          // through the row-range iterator (phase 7a perf fix). The cell's
+          // committed rows are the contiguous range [offset, offset+count)
+          // (phase 7c); this runs on a clean store, so index it directly.
+          // Carriers stay default and are never read while attached.
           auto *cell = cells[c_index];
-          auto const &rows = cell->rows();
-          auto const n_part = rows.size();
-          auto const *row_data = rows.begin();
+          auto const offset = cell->offset();
+          auto const n_part = cell->count();
           auto &store = cell->store();
           Particle p;
           for (std::size_t idx = 0u; idx < n_part; ++idx) {
-            p.attach_to_store(store, row_data[idx]);
+            p.attach_to_store(store, static_cast<int>(offset + idx));
             add_partial(res, std::as_const(p));
           }
         },
@@ -124,16 +125,19 @@ ResultType reduce_over_local_particles(
     return result;
   }
   // single cell case: parallel over particles, each index building its OWN view
-  // (phase 7a; a shared cached-view iterator would not be thread-safe).
-  auto const &rows = cells.front()->rows();
+  // (phase 7a; a shared cached-view iterator would not be thread-safe). The
+  // committed rows are the contiguous range [offset, offset+count) (phase 7c).
+  auto const offset = cells.front()->offset();
+  auto const n_part = cells.front()->count();
   auto &store = cells.front()->store();
   auto reducer = Reduction::make_kokkos_reducer<ResultType>(
-      [&rows, &store, add_partial](std::size_t const p_index, ResultType &res) {
-        auto const view = store.make_view(rows.begin()[p_index]);
+      [offset, &store, add_partial](std::size_t const p_index,
+                                    ResultType &res) {
+        auto const view = store.make_view(static_cast<int>(offset + p_index));
         add_partial(res, std::as_const(view));
       },
       reduce_op);
   Kokkos::parallel_reduce( // loop over particles
-      "reduce_on_local_particle", rows.size(), reducer, result);
+      "reduce_on_local_particle", n_part, reducer, result);
   return result;
 }

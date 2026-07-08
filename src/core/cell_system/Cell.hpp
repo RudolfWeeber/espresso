@@ -119,15 +119,21 @@ private:
 class Cell {
   using neighbors_type = Neighbors<Cell *>;
 
-  /** Store row indices of this cell's particles (phase 7a). One entry per
-   *  particle already committed to the @ref ParticleStore, in cell-traversal
-   *  order; refilled during every store rebuild
-   *  (@ref CellStructure::ensure_particle_store_synchronized). Since the flip,
-   *  this -- together with @ref m_staged -- is the cell's authoritative
-   *  particle content: the cell no longer owns @c Particle objects, it owns
-   *  ROW INDICES into the store plus a small buffer of not-yet-committed
-   *  detached particles. */
-  CellRows m_rows;
+  /** Contiguous store-row range of this cell's committed particles (phase 7c).
+   *  The cell's committed particles occupy rows @c [m_offset, m_offset+m_count)
+   *  of the @ref ParticleStore, in cell-traversal order; the range is
+   *  (re)established by the permutation rebuild
+   *  (@ref CellStructure::ensure_particle_store_synchronized). This collapses
+   *  the pre-7c per-cell @c Bag<int> row bag to two integers: cells are laid
+   * out back-to-back in the store by the counting sort, so a cell's rows are a
+   * pure arithmetic range and @ref rows() hands out a @ref CellRowSpan over it.
+   *  Together with @ref m_staged this is the cell's authoritative particle
+   *  content: the cell owns a ROW RANGE into the store plus a small buffer of
+   *  not-yet-committed row references. A row dropped mid-epoch is marked
+   *  pending-removed on the store (not physically removed from the range); the
+   *  live @ref CellRowSpan / @ref RowParticleRange skip it. */
+  std::size_t m_offset = 0u;
+  std::size_t m_count = 0u;
 
   /** Not-yet-committed staged particles (phase 7a staging area, phase 7b row
    *  refs). A cell mutation that ADDS a particle
@@ -159,32 +165,47 @@ public:
 
   /** @brief Particles in this cell as a range of @ref Particle VIEWS over the
    *  committed store rows (phase 7a). NOT including staged (uncommitted)
-   *  particles -- those become visible only after the next store rebuild. The
-   *  returned range's views alias the store and are invalidated by a rebuild
-   *  (see @ref RowParticleRange). */
+   *  particles -- those become visible only after the next store rebuild;
+   *  pending-removed rows are skipped (phase 7c). The returned range's views
+   *  alias the store and are invalidated by a rebuild (see
+   *  @ref RowParticleRange). */
   RowParticleRange particles() {
     assert(m_store != nullptr);
-    return RowParticleRange(m_rows, *m_store);
+    return RowParticleRange(m_offset, m_count, *m_store);
   }
   RowParticleRange particles() const {
     assert(m_store != nullptr);
-    return RowParticleRange(m_rows, *m_store);
+    return RowParticleRange(m_offset, m_count, *m_store);
   }
 
-  /** @brief Store row indices of this cell's committed particles (phase 7a). */
-  auto &rows() { return m_rows; }
-  auto const &rows() const { return m_rows; }
+  /** @brief The cell's committed store-row range as a @ref CellRowSpan (phase
+   *  7c). The live surface (@c begin/end/size/empty) skips pending-removed
+   *  rows; @c offset()/count() expose the raw range. */
+  CellRowSpan rows() const { return CellRowSpan(m_offset, m_count, m_store); }
+
+  /** @brief Raw store-row range of this cell's committed particles (phase 7c).
+   *  Removal-agnostic; the resort loops iterate these directly and mark dropped
+   *  rows pending-removed. */
+  std::size_t offset() const { return m_offset; }
+  std::size_t count() const { return m_count; }
+  /** @brief Set the committed row range (written by the store rebuild). */
+  void set_range(std::size_t offset, std::size_t count) {
+    m_offset = offset;
+    m_count = count;
+  }
 
   /** @brief The staging area of not-yet-committed detached particles. */
   auto &staged() { return m_staged; }
   auto const &staged() const { return m_staged; }
 
-  /** @brief Total particle count = committed rows + staged (phase 7a).
-   *  Ghost-count (PARTNUM) communication uses this so that a cell resized as a
-   *  ghost destination (which STAGES its ghosts, deferring the row commit)
-   *  reports its new size immediately when read as a source for a downstream
-   *  ghost layer within the same communicator pass. */
-  std::size_t size() const { return m_rows.size() + m_staged.size(); }
+  /** @brief Total live particle count = live committed rows + staged (phase
+   *  7c). Committed rows marked pending-removed are excluded (@ref
+   * rows().size() is the live count). Ghost-count (PARTNUM) communication uses
+   * this so that a cell resized as a ghost destination (which STAGES its
+   * ghosts, deferring the row commit) reports its new size immediately when
+   * read as a source for a downstream ghost layer within the same communicator
+   * pass. */
+  std::size_t size() const { return rows().size() + m_staged.size(); }
 
   neighbors_type m_neighbors;
 

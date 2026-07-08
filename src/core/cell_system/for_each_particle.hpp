@@ -38,25 +38,26 @@ CellStructure::parallel_for_each_particle_impl(std::span<Cell *const> cells,
         "for_each_local_particle", cells.size(), [&](auto cell_idx) {
           // One reused view per cell (per thread), REBOUND per row via
           // attach_to_store instead of relying on the row-range iterator to
-          // materialise a Particle per cell (phase 7a perf fix). Iterating the
-          // row bag directly avoids even the one-per-cell shell construction.
-          // Carriers stay default and are never read while attached.
-          auto const &rows = cells[cell_idx]->rows();
-          auto const n_part = rows.size();
-          auto const *row_data = rows.begin();
+          // materialise a Particle per cell (phase 7a perf fix). The cell's
+          // committed rows are the contiguous range [offset, offset+count)
+          // (phase 7c); this runs on a clean store (no pending-removed rows),
+          // so index it directly. Carriers stay default and are never read
+          // while attached.
+          auto const offset = cells[cell_idx]->offset();
+          auto const n_part = cells[cell_idx]->count();
           Particle p;
           for (std::size_t idx = 0u; idx < n_part; ++idx) {
-            p.attach_to_store(store, row_data[idx]);
+            p.attach_to_store(store, static_cast<int>(offset + idx));
             f(p);
           }
         });
   } else if (cells.size() == 1) {
     // Single-cell parallel-over-particles: each index gets its OWN view (a
     // shared cached-view iterator would not be thread-safe here).
-    auto const &rows = cells.front()->rows();
+    auto const offset = cells.front()->offset();
     Kokkos::parallel_for( // loop over particles
-        "for_each_local_particle", rows.size(), [&](auto part_idx) {
-          auto view = store.make_view(rows.begin()[part_idx]);
+        "for_each_local_particle", cells.front()->count(), [&](auto part_idx) {
+          auto view = store.make_view(static_cast<int>(offset) + part_idx);
           f(view);
         });
   }

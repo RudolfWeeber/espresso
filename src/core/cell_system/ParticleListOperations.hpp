@@ -71,32 +71,42 @@ inline void insert_staged_row(Cell &cell, ParticleStore &source_store,
 }
 
 /**
- * @brief Drop the committed row at bag position @p index from a cell (phase
- * 7b).
+ * @brief Drop the committed row at RAW range position @p index from a cell
+ * (phase 7c).
  *
- * Removes the cell's row-index bag entry via a constant-time swap-with-back
- * erase (so the row-bag churn is bitwise-equivalent to the pre-flip
- * @c Bag<Particle> erase: element order not preserved -- surviving rows are
- * renumbered on the next rebuild anyway). The store row itself is dropped by
- * the next rebuild; the caller must mark the store dirty. @p index refers to a
- * position in @ref Cell::rows (0-based).
+ * Cells collapsed to a contiguous @c (offset, count) range, which cannot
+ * swap-remove; instead the store row @c cell.offset() + @p index is marked
+ * PENDING-REMOVED on the store (@ref ParticleStore::mark_pending_removal). The
+ * live @ref CellRowSpan / @ref RowParticleRange then skip it immediately (a
+ * removed particle is invisible to iteration and id-resolution before the next
+ * rebuild), and the next permutation rebuild resolves it by not carrying the
+ * row into the new generation. @p index is a RAW position in the cell's
+ * committed range @c [0, cell.count()) -- the resort loops iterate raw
+ * positions (no re-examine, since nothing is shuffled) and mark the migrated
+ * ones. The store row itself is dropped by the next rebuild; the caller must
+ * mark the store dirty.
+ *
+ * NB the T1 adjudication: within-cell ORDER CHURN differs from the pre-7c
+ * swap-with-back bag (the range keeps store-row order), which is tolerated for
+ * mid-epoch-removal scenarios (validated by the physics batteries, not
+ * identity -- identity histories are removal-free).
  */
 inline void drop_row(Cell &cell, std::size_t index) {
-  auto &rows = cell.rows();
-  assert(index < rows.size());
-  rows.erase(rows.begin() + static_cast<std::ptrdiff_t>(index));
+  assert(index < cell.count());
+  cell.store().mark_pending_removal(static_cast<int>(cell.offset() + index));
 }
 
-/** @brief Remove all committed rows and staged particles from a cell. */
+/** @brief Remove all committed rows and staged particles from a cell (phase
+ *  7c: collapse the committed range to empty and clear staging). */
 inline void clear_particles(Cell &cell) {
-  cell.rows().clear();
+  cell.set_range(0u, 0u);
   cell.staged().clear();
 }
 
 /**
- * @brief Resize a ghost cell to exactly @p count particles (phase 7a; 7b).
+ * @brief Resize a ghost cell to exactly @p count particles (phase 7a; 7c).
  *
- * Drops the cell's committed rows and staging buffer and stages @p count
+ * Drops the cell's committed range and staging buffer and stages @p count
  * fresh-default ghost particles (a @ref StagedParticle with a null source
  * store); the next store rebuild seeds each as a fresh default ghost row
  * (@ref ParticleStore::seed_default_row). Ghost-ness is STRUCTURAL: these rows
@@ -106,7 +116,7 @@ inline void clear_particles(Cell &cell) {
  * same "count default ghosts" outcome for the row-based cell.)
  */
 inline void resize_ghost_storage(Cell &cell, std::size_t count) {
-  cell.rows().clear();
+  cell.set_range(0u, 0u);
   auto &staged = cell.staged();
   staged.clear();
   staged.resize(count); // default StagedParticle: source_store == nullptr

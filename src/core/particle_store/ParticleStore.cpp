@@ -404,6 +404,12 @@ void ParticleStore::swap_and_grow_generations(
 #ifdef ESPRESSO_EXCLUSIONS
   m_exclusions_sidecar.resize(total);
 #endif
+
+  // Pending-removal mask (phase 7c): a fresh generation starts with no row
+  // pending-removed. Resize to the new count and clear every entry (assign to a
+  // zero-filled vector so any stale marks from the retired generation are
+  // dropped -- rows are renumbered, so old positions are meaningless).
+  m_pending_removal.assign(total, char{0});
 }
 
 // Phase 7c permutation rebuild. The per-column permute list below is one of the
@@ -559,6 +565,16 @@ void ParticleStore::permute_rebuild(std::span<int const> const permutation,
 // values the deleted migration carriers held) via seed_default_row. Migration
 // and the new-particle creation path deliver data by copying a source (staging)
 // store row into the target row (copy_row), never through assign_row.
+//
+// Phase 7c: assign_row is RETIRED from the resort rebuild hot path -- the flip
+// drives the resort through permute_rebuild (per-column permute) instead of the
+// per-particle branchy assign_row loop. It is KEPT as a store primitive for the
+// standalone single-row fill (a detached particle -> a fresh one-row store):
+// the only production caller left is ShapeBasedConstraint's part_rep store
+// (which seeds one default row and attaches the detached representation), plus
+// the hand-built stores in the unit-test fixtures. The four-way sync note above
+// still applies (assign_row's field coverage must equal copy_row /
+// permute_rebuild / MigrationPack).
 void ParticleStore::assign_row(Particle &particle, int const row) {
   assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
   auto const old_row = particle.store_row();

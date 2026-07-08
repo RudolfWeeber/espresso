@@ -111,12 +111,12 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
   auto intra_kernel = [&cells, &box_geo, &verlet_criterion, &id_to_index,
                        &intra_operator, max_id](const int i) {
     auto &store = cells[i]->store();
-    auto const &rows = cells[i]->rows();
-    auto const n = rows.size();
-    auto const *row_data = rows.begin();
+    // Contiguous store-row range (phase 7c); clean store, so index directly.
+    auto const offset = cells[i]->offset();
+    auto const n = cells[i]->count();
     Particle p1, p2;
     for (std::size_t a = 0u; a < n; ++a) {
-      p1.attach_to_store(store, row_data[a]);
+      p1.attach_to_store(store, static_cast<int>(offset + a));
       if (p1.id() <= max_id) {
         auto const ii = id_to_index(p1.id());
         if (ii >= 0) {
@@ -127,7 +127,7 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
           auto const p1_pos = Utils::Vector3d(p1.pos());
           // pairs in this cell (j > i), same order as before
           for (std::size_t b = a + 1u; b < n; ++b) {
-            p2.attach_to_store(store, row_data[b]);
+            p2.attach_to_store(store, static_cast<int>(offset + b));
             if (p2.id() <= max_id) {
               if (verlet_criterion(p1, p2,
                                    box_geo.get_mi_dist2(
@@ -147,12 +147,12 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
   auto inter_kernel = [&cells, &box_geo, &verlet_criterion, &id_to_index,
                        &inter_operator, max_id](const int i) {
     auto &store = cells[i]->store();
-    auto const &rows = cells[i]->rows();
-    auto const n = rows.size();
-    auto const *row_data = rows.begin();
+    // Contiguous store-row range (phase 7c); clean store, so index directly.
+    auto const offset = cells[i]->offset();
+    auto const n = cells[i]->count();
     Particle p1, p2;
     for (std::size_t a = 0u; a < n; ++a) {
-      p1.attach_to_store(store, row_data[a]);
+      p1.attach_to_store(store, static_cast<int>(offset + a));
       if (p1.id() <= max_id) {
         auto const ii = id_to_index(p1.id());
         if (ii >= 0) {
@@ -161,11 +161,10 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
           // pairs with neighboring cells, same order as before
           for (auto *neighbor : cells[i]->neighbors().red()) {
             auto &nb_store = neighbor->store();
-            auto const &nb_rows = neighbor->rows();
-            auto const nb_n = nb_rows.size();
-            auto const *nb_data = nb_rows.begin();
+            auto const nb_offset = neighbor->offset();
+            auto const nb_n = neighbor->count();
             for (std::size_t k = 0u; k < nb_n; ++k) {
-              p2.attach_to_store(nb_store, nb_data[k]);
+              p2.attach_to_store(nb_store, static_cast<int>(nb_offset + k));
               if (p2.id() <= max_id) {
                 if (verlet_criterion(p1, p2,
                                      box_geo.get_mi_dist2(
