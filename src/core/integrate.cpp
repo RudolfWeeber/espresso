@@ -79,6 +79,7 @@
 #include <cassert>
 #include <cmath>
 #include <csignal>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <sstream>
@@ -388,7 +389,23 @@ static bool integrator_step_1(CellStructure &cell_structure,
 
   auto const &thermostat = *system.thermostat;
   auto const kT = thermostat.kT;
-  cell_structure.for_each_local_particle([&](Particle &p) {
+  // Phase-8a: hoist the velocity-Verlet translation column-view handles ONCE
+  // outside the parallel_for (the handle copy here is fine; per-element view
+  // rebinding is not). The still-view-path operations (symplectic Euler,
+  // rotation, Brownian) rebind a Particle lazily inside their branches only.
+  auto &store = cell_structure.particle_store();
+  auto vel_view = store.velocity_view();
+  auto pos_view = store.position_view();
+  auto force_view = store.force_view();
+#ifdef ESPRESSO_MASS
+  auto mass_view = store.mass_view();
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  auto ext_flag_view = store.ext_flag_view();
+#endif
+  cell_structure.for_each_local_particle_row([&](int const row) {
+    Particle p;
+    p.attach_to_store(store, row);
 #ifdef ESPRESSO_VIRTUAL_SITES
     // virtual sites are updated later in the integration loop
     if (p.is_virtual())
@@ -417,19 +434,35 @@ static bool integrator_step_1(CellStructure &cell_structure,
         symplectic_euler_rotator_1(p, time_step);
 #endif
     } else {
+      // Fixed-coordinate bitfield / mass read ONCE per particle from the
+      // hoisted views (compile-time fallbacks when the feature is off, matching
+      // Particle::fixed_flags_byte() / Particle::mass()).
+#ifdef ESPRESSO_MASS
+      double const mass = mass_view(row);
+#else
+      double const mass = 1.0;
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+      std::uint8_t const fixed = ext_flag_view(row);
+#else
+      std::uint8_t const fixed = static_cast<std::uint8_t>(0u);
+#endif
       if (propagation.should_propagate_with(
               prop, PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE))
-        velocity_verlet_propagator_1(p, time_step);
+        velocity_verlet_propagator_1(vel_view, pos_view, force_view, row, mass,
+                                     fixed, time_step);
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::TRANS_NEWTON))
-        velocity_verlet_propagator_1(p, time_step);
+        velocity_verlet_propagator_1(vel_view, pos_view, force_view, row, mass,
+                                     fixed, time_step);
 #ifdef ESPRESSO_ROTATION
       if (propagation.should_propagate_with(prop, PropagationMode::ROT_EULER))
         velocity_verlet_rotator_1(p, time_step);
 #endif
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::TRANS_LANGEVIN))
-        velocity_verlet_propagator_1(p, time_step);
+        velocity_verlet_propagator_1(vel_view, pos_view, force_view, row, mass,
+                                     fixed, time_step);
 #ifdef ESPRESSO_ROTATION
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::ROT_LANGEVIN))
@@ -484,7 +517,20 @@ static void integrator_step_2(CellStructure &cell_structure,
   if (propagation.integ_switch == INTEG_METHOD_STEEPEST_DESCENT)
     return;
 
-  cell_structure.for_each_local_particle([&](Particle &p) {
+  // Phase-8a: hoist the velocity-Verlet translation column-view handles ONCE
+  // (see integrator_step_1). Step 2 only touches velocity + force.
+  auto &store = cell_structure.particle_store();
+  auto vel_view = store.velocity_view();
+  auto force_view = store.force_view();
+#ifdef ESPRESSO_MASS
+  auto mass_view = store.mass_view();
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+  auto ext_flag_view = store.ext_flag_view();
+#endif
+  cell_structure.for_each_local_particle_row([&](int const row) {
+    Particle p;
+    p.attach_to_store(store, row);
 #ifdef ESPRESSO_VIRTUAL_SITES
     // virtual sites are updated later in the integration loop
     if (p.is_virtual())
@@ -512,19 +558,32 @@ static void integrator_step_2(CellStructure &cell_structure,
         symplectic_euler_rotator_2(p, time_step);
 #endif
     } else {
+#ifdef ESPRESSO_MASS
+      double const mass = mass_view(row);
+#else
+      double const mass = 1.0;
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+      std::uint8_t const fixed = ext_flag_view(row);
+#else
+      std::uint8_t const fixed = static_cast<std::uint8_t>(0u);
+#endif
       if (propagation.should_propagate_with(
               prop, PropagationMode::TRANS_LB_MOMENTUM_EXCHANGE))
-        velocity_verlet_propagator_2(p, time_step);
+        velocity_verlet_propagator_2(vel_view, force_view, row, mass, fixed,
+                                     time_step);
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::TRANS_NEWTON))
-        velocity_verlet_propagator_2(p, time_step);
+        velocity_verlet_propagator_2(vel_view, force_view, row, mass, fixed,
+                                     time_step);
 #ifdef ESPRESSO_ROTATION
       if (propagation.should_propagate_with(prop, PropagationMode::ROT_EULER))
         velocity_verlet_rotator_2(p, time_step);
 #endif
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::TRANS_LANGEVIN))
-        velocity_verlet_propagator_2(p, time_step);
+        velocity_verlet_propagator_2(vel_view, force_view, row, mass, fixed,
+                                     time_step);
 #ifdef ESPRESSO_ROTATION
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::ROT_LANGEVIN))

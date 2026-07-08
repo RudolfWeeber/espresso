@@ -500,6 +500,32 @@ public:
   }
 
   /**
+   * @brief Run a column kernel on every local particle by STORE ROW.
+   *
+   * Phase-8a de-proxy path: the hot integrator/thermostat loops rewrite their
+   * per-particle @ref Particle-view bodies as direct column kernels. Instead of
+   * materialising a @ref Particle per element (which pays @c view_host() +
+   * address + stride on every accessor), this launcher iterates exactly the
+   * same rows in exactly the same order as @ref for_each_local_particle but
+   * hands the kernel the raw STORE ROW @c int. The kernel captures its hoisted
+   * @c *_view() column handles ONCE (outside the loop) and indexes them by row.
+   *
+   * Iteration structure is bit-identical to
+   * @ref parallel_for_each_particle_impl (multi-cell: parallel over cells,
+   * inner serial over @c [offset, offset+count); single-cell: parallel over the
+   * cell's rows). Local cells tile @c [0, n_local) contiguously in
+   * cell-traversal order (see @ref ensure_particle_store_synchronized), so the
+   * visited row set and order match the view path exactly. Virtual sites are
+   * local rows and ARE visited -- the kernel guards them per-row (propagation
+   * mask), matching the view-path lambda's @c is_virtual() early return.
+   * The kernel is assumed to be thread-safe.
+   */
+  template <typename RowKernel>
+  void for_each_local_particle_row(RowKernel &&kernel) const {
+    parallel_for_each_local_row_impl(decomposition().local_cells(), kernel);
+  }
+
+  /**
    * @brief Run a kernel on all ghost particles.
    * The kernel is assumed to be thread-safe.
    */
@@ -527,6 +553,10 @@ private:
   template <typename Callable>
   inline void parallel_for_each_particle_impl(std::span<Cell *const> cells,
                                               Callable &f) const;
+
+  template <typename RowKernel>
+  inline void parallel_for_each_local_row_impl(std::span<Cell *const> cells,
+                                               RowKernel &kernel) const;
 
 public:
   /**

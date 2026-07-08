@@ -24,28 +24,39 @@
 #include "Particle.hpp"
 #include "rotation.hpp"
 
+#include <cstdint>
+
+// Phase-8a de-proxy: the velocity-Verlet translation steps are direct column
+// kernels. The caller (integrator_step_1 / _2 in integrate.cpp) hoists the
+// ParticleStore *_view() column handles ONCE outside the parallel_for and calls
+// these per-row kernels with those handles + the store row. Each accessor is a
+// direct indexed read (view(row, j)) -- no Particle-view rebind, no
+// per-accessor view_host()/address/stride recompute. The arithmetic, iteration
+// order and the per-axis fixed-coordinate branch are IDENTICAL to the pre-8a
+// Particle-view bodies, so bitwise trajectory identity holds. The kernels are
+// templated over the Kokkos host-view handle types (which differ per column and
+// per config); scalar fallbacks (mass 1.0, fixed byte 0u) are supplied by the
+// caller under the same ifdefs the Particle accessors used.
+
 /** Propagate the velocities and positions. Integration steps before force
  *  calculation of the Velocity Verlet integrator: <br> \f[ v(t+0.5 \Delta t) =
  *  v(t) + 0.5 \Delta t f(t)/m \f] <br> \f[ p(t+\Delta t) = p(t) + \Delta t
  *  v(t+0.5 \Delta t) \f]
  */
-inline void velocity_verlet_propagator_1(Particle &p, double time_step) {
-  auto pos = p.pos();
-  auto const force = p.force();
-  auto const mass = p.mass();
-  // Read the fixed-coordinate bitfield ONCE (each is_fixed_along call would
-  // otherwise re-read the ParticleStore ext_flag column). Bit j set => axis j
-  // fixed; the byte is 0 when ESPRESSO_EXTERNAL_FORCES is off, so no axis is
-  // fixed (identical semantics to is_fixed_along returning false).
-  auto const fixed = p.fixed_flags_byte();
+template <class VelView, class PosView, class ForceView>
+inline void velocity_verlet_propagator_1(VelView const &vel, PosView const &pos,
+                                         ForceView const &force, int const row,
+                                         double const mass,
+                                         std::uint8_t const fixed,
+                                         double time_step) {
   for (unsigned int j = 0; j < 3; j++) {
     if (not detail::get_nth_bit(fixed, j)) {
       /* Propagate velocities: v(t+0.5*dt) = v(t) + 0.5 * dt * a(t) */
-      p.v()[j] += 0.5 * time_step * force[j] / mass;
+      vel(row, j) += 0.5 * time_step * force(row, j) / mass;
 
       /* Propagate positions (only NVT): p(t + dt)   = p(t) + dt *
        * v(t+0.5*dt) */
-      pos[j] += time_step * p.v()[j];
+      pos(row, j) += time_step * vel(row, j);
     }
   }
 }
@@ -53,15 +64,15 @@ inline void velocity_verlet_propagator_1(Particle &p, double time_step) {
 /** Final integration step of the Velocity Verlet integrator
  *  \f[ v(t+\Delta t) = v(t+0.5 \Delta t) + 0.5 \Delta t f(t+\Delta t)/m \f]
  */
-inline void velocity_verlet_propagator_2(Particle &p, double time_step) {
-  auto const force = p.force();
-  auto const mass = p.mass();
-  // Read the fixed-coordinate bitfield once (see velocity_verlet_propagator_1).
-  auto const fixed = p.fixed_flags_byte();
+template <class VelView, class ForceView>
+inline void
+velocity_verlet_propagator_2(VelView const &vel, ForceView const &force,
+                             int const row, double const mass,
+                             std::uint8_t const fixed, double time_step) {
   for (unsigned int j = 0; j < 3; j++) {
     if (not detail::get_nth_bit(fixed, j)) {
       /* Propagate velocity: v(t+dt) = v(t+0.5*dt) + 0.5*dt * a(t+dt) */
-      p.v()[j] += 0.5 * time_step * force[j] / mass;
+      vel(row, j) += 0.5 * time_step * force(row, j) / mass;
     }
   }
 }

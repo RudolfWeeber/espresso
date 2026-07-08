@@ -62,3 +62,32 @@ CellStructure::parallel_for_each_particle_impl(std::span<Cell *const> cells,
         });
   }
 }
+
+template <typename RowKernel>
+inline void
+CellStructure::parallel_for_each_local_row_impl(std::span<Cell *const> cells,
+                                                RowKernel &kernel) const {
+  // Phase-8a column-kernel launcher: same iteration structure as
+  // parallel_for_each_particle_impl (above) but hands the kernel the raw STORE
+  // ROW instead of a rebound Particle view. The kernel body reads its hoisted
+  // *_view() column handles directly by row -- no per-element view_host() /
+  // address / stride recompute. The row set and traversal order match the view
+  // path exactly (local cells tile [0, n_local) contiguously in cell order).
+  if (cells.size() > 1) {
+    Kokkos::parallel_for( // loop over cells
+        "for_each_local_particle_row", cells.size(), [&](auto cell_idx) {
+          auto const offset = cells[cell_idx]->offset();
+          auto const n_part = cells[cell_idx]->count();
+          for (std::size_t idx = 0u; idx < n_part; ++idx) {
+            kernel(static_cast<int>(offset + idx));
+          }
+        });
+  } else if (cells.size() == 1) {
+    auto const offset = cells.front()->offset();
+    Kokkos::parallel_for( // loop over particles
+        "for_each_local_particle_row", cells.front()->count(),
+        [&](auto part_idx) {
+          kernel(static_cast<int>(offset) + static_cast<int>(part_idx));
+        });
+  }
+}
