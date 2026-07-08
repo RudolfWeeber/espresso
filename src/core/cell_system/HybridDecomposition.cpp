@@ -121,6 +121,15 @@ void HybridDecomposition::resort(bool global,
     auto const rd_count = cell_rd->count();
     for (std::size_t index = 0u; index < rd_count; ++index) {
       auto const live_row = static_cast<int>(rd_offset + index);
+      /* Skip a row a prior pass already dropped (marked pending-removed by
+       * drop_row). The n_square-scan loop below is nested in this regular-cell
+       * loop, so it re-scans every n_square cell once per regular cell; a row
+       * already migrated in an earlier pass is invisible to live iteration and
+       * must not be re-staged, or it would be duplicated once per outer pass.
+       */
+      if (store.is_pending_removal(live_row)) {
+        continue;
+      }
       auto const type = store.type(live_row);
       /* Particle is in the right decomposition, i.e. has no n_square type */
       if (not is_n_square_type(type)) {
@@ -149,6 +158,15 @@ void HybridDecomposition::resort(bool global,
       auto const ns_count = cell_ns->count();
       for (std::size_t index = 0u; index < ns_count; ++index) {
         auto const live_row = static_cast<int>(ns_offset + index);
+        /* Skip a row a prior pass already dropped (marked pending-removed by
+         * drop_row). This loop is re-entered once per regular cell (it is
+         * nested in the regular-cell loop above), so an rd-type particle
+         * already migrated out of this n_square cell in an earlier pass is
+         * invisible to live iteration and must not be re-staged, or it would be
+         * duplicated once per outer pass. */
+        if (store.is_pending_removal(live_row)) {
+          continue;
+        }
         auto const type = store.type(live_row);
         /* Particle is of n_square type */
         if (is_n_square_type(type)) {
