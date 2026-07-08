@@ -93,6 +93,23 @@ and fixed with a deterministic regression test). Adjudication: the spec's
 here; `m_pack_index_to_store_row`/`m_unique_particles` survive until 7c (row
 identity holds only on the local prefix).
 
+**Phase-7c checkpoint (2026-07-08, PASSED):** resort is a column permutation
+(counting-sort by cell → per-column permute) and cells hold `(offset,count)`
+ranges — the spec's phase-7 CPU storage end state; the 7a `Bag<int>`
+transitional deviation is retired. lj-1rank 1.066, lj-4rank 1.002, lj-omp
+0.990, p3m-1rank 1.036, p3m-4rank 1.010 vs phase-0; p3m-omp read 1.086 on the
+sequential gate but order-balanced A/B (6 reps) against the 7e binary gives
+0.995 with ±8% intra-binary P3M auto-tuning spread — adjudicated as tuning
+variance, config passes (A/B min 1.003 vs phase-0). Mid-epoch removals are
+pending-removal marks resolved at rebuild; the removal-order contract change
+is invisible to removal-free histories (identity stayed bitwise). One
+regression was caught at the gauntlet and fixed: hybrid decomposition's nested
+type-migration loops re-staged already-migrated particles once per regular
+cell (125×) — fixed with pending-removal guards. The pack ghost-tail
+translation maps survive (deduped tail is non-contiguous); they die when ghost
+dedup is restructured. Remaining: 7d (GPU compile-safe shim), phase-7
+checkpoint budget re-evaluation.
+
 ## Non-goals
 
 - No change to the Python user interface or its semantics.
