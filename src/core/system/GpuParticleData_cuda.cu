@@ -39,7 +39,6 @@
 
 #include <cstddef>
 #include <cstdio>
-#include <cstdlib>
 #include <memory>
 #include <span>
 
@@ -94,6 +93,11 @@ public:
   GpuParticleData::prop::bitset m_need;
   GpuParticleData::GpuEnergy *energy_device = nullptr;
   std::size_t current_size = 0ul;
+  // Authoritative local particle count for n_particles() (consumed by the
+  // P3M/DDS solvers). Set on BOTH transfer paths so the single-rank SoA fast
+  // path no longer has to size the (otherwise unused) device AoS buffer just
+  // to keep n_particles() correct. See copy_particles_to_device.
+  std::size_t n_particles = 0ul;
   pinned_vector<GpuParticle> particle_data_host;
   thrust::device_vector<GpuParticle> particle_data_device;
   pinned_vector<float> particle_forces_host;
@@ -130,7 +134,7 @@ public:
 #endif
 
   ~Storage();
-  void realloc_device_memory();
+  void realloc_device_memory(std::size_t n_part);
   void split_particle_struct();
   void resize_and_zero_return_buffers(std::size_t n_part);
   void resize_soa_staging_buffers(std::size_t n_part);
@@ -204,9 +208,7 @@ void GpuParticleData::initialize() {
 
 void GpuParticleData::deinitialize() noexcept { m_data.reset(); }
 
-std::size_t GpuParticleData::n_particles() const {
-  return m_data->particle_data_device.size();
-}
+std::size_t GpuParticleData::n_particles() const { return m_data->n_particles; }
 
 float *GpuParticleData::get_particle_positions_device() const {
   return m_data->particle_pos_device;
@@ -277,7 +279,7 @@ void GpuParticleData::gpu_init_particle_comm() {
   } catch (cuda_runtime_error const &err) {
     throw cuda_fatal_error(err.what());
   }
-  m_data->realloc_device_memory();
+  m_data->realloc_device_memory(m_data->n_particles);
 }
 
 void GpuParticleData::Storage::resize_and_zero_return_buffers(
@@ -399,23 +401,14 @@ void GpuParticleData::copy_particles_to_device(ParticleRange const &particles,
   // split-relevant properties are pos (always column-backed), q (ELECTROSTATICS
   // column) and dip (DIPOLES columns via calc_dip). On a single rank
   // this_node == 0. force/torque/dip_fld are return-path arrays, unaffected.
-  //
-  // ESPRESSO_GPU_FORCE_AOS_STAGING=1 forces the legacy AoS pack + split path
-  // even on a single rank. This exists solely as an A/B verification switch:
-  // the two paths are bit-identical by construction, so toggling it must not
-  // change any GPU result (used to validate the fast path against the legacy
-  // path). Read once and cached.
-  static bool const force_aos_staging = []() {
-    auto const *env = std::getenv("ESPRESSO_GPU_FORCE_AOS_STAGING");
-    return env != nullptr and env[0] != '\0' and env[0] != '0';
-  }();
-  if (single_rank and m_split_particle_struct and not force_aos_staging) {
+  if (single_rank and m_split_particle_struct) {
     auto const n_part = particles.size();
-    // keep particle_data_device sized so n_particles() stays correct; its
-    // contents are unused on this path (no AoS copy, no split kernel).
-    resize_or_replace(m_data->particle_data_device, n_part);
+    // n_particles() reads m_data->n_particles (a plain counter), so the device
+    // AoS buffer no longer needs to be sized on this path -- it is entirely
+    // unused here (no AoS host copy, no split kernel).
+    m_data->n_particles = n_part;
     m_data->resize_and_zero_return_buffers(n_part);
-    m_data->realloc_device_memory();
+    m_data->realloc_device_memory(n_part);
     m_data->resize_soa_staging_buffers(n_part);
 #ifdef ESPRESSO_ELECTROSTATICS
     auto q_span = m_data->get_particle_q_host_soa_span();
@@ -437,8 +430,9 @@ void GpuParticleData::copy_particles_to_device(ParticleRange const &particles,
   gather_particle_data(particles, m_data->particle_data_host, this_node);
   if (this_node == 0) {
     m_data->copy_particles_to_device();
+    m_data->n_particles = m_data->particle_data_device.size();
     if (m_split_particle_struct) {
-      m_data->realloc_device_memory();
+      m_data->realloc_device_memory(m_data->n_particles);
       m_data->split_particle_struct();
     }
   }
@@ -591,9 +585,9 @@ void GpuParticleData::Storage::split_particle_struct() {
 #endif
 }
 
-void GpuParticleData::Storage::realloc_device_memory() {
+void GpuParticleData::Storage::realloc_device_memory(std::size_t const n_part) {
   using prop = GpuParticleData::prop;
-  auto const new_size = particle_data_device.size();
+  auto const new_size = n_part;
   auto const resize_needed = new_size != current_size;
   if (m_need[prop::pos] and (resize_needed or particle_pos_device == nullptr)) {
     if (particle_pos_device != nullptr) {
