@@ -94,7 +94,7 @@ BOOST_AUTO_TEST_CASE(cell_range_matches_store_order) {
   fill_cell(local_cell, store, 0u, 3u);
   fill_cell(ghost_cell, store, 3u, 2u);
 
-  auto check = [&store](Cell const &cell, int base_id) {
+  auto check = [](Cell const &cell, int base_id) {
     auto const bag = cell.particles();
     auto const rows = cell.rows();
     BOOST_REQUIRE_EQUAL(rows.size(), bag.size());
