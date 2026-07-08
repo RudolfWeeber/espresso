@@ -78,13 +78,32 @@ velocity_verlet_propagator_2(VelView const &vel, ForceView const &force,
 }
 
 #ifdef ESPRESSO_ROTATION
-inline void velocity_verlet_rotator_1(Particle &p, double time_step) {
-  if (p.can_rotate())
-    propagate_omega_quat_particle(p, time_step);
+// Phase-8a: the VV-rotation steps are column kernels (rotation.hpp). The caller
+// hoists the quaternion / angular-velocity / rinertia / torque / rotation view
+// handles ONCE and passes them + the store row; the kernels guard the
+// can_rotate() (rotation != 0) case per-row internally, matching the pre-8a
+// velocity_verlet_rotator_* guard exactly.
+template <class QuatView, class OmegaView, class RinertiaView, class TorqueView,
+          class RotationView>
+inline void velocity_verlet_rotator_1(QuatView const &quat_view,
+                                      OmegaView const &omega_view,
+                                      RinertiaView const &rinertia_view,
+                                      TorqueView const &torque_view,
+                                      RotationView const &rotation_view,
+                                      int const row, double time_step) {
+  velocity_verlet_rotator_1_kernel(quat_view, omega_view, rinertia_view,
+                                   torque_view, rotation_view, row, time_step);
 }
 
-inline void velocity_verlet_rotator_2(Particle &p, double time_step) {
-  if (p.can_rotate())
-    convert_torque_propagate_omega(p, time_step);
+template <class QuatView, class OmegaView, class RinertiaView, class TorqueView,
+          class RotationView>
+inline void velocity_verlet_rotator_2(QuatView const &quat_view,
+                                      OmegaView const &omega_view,
+                                      RinertiaView const &rinertia_view,
+                                      TorqueView const &torque_view,
+                                      RotationView const &rotation_view,
+                                      int const row, double time_step) {
+  velocity_verlet_rotator_2_kernel(quat_view, omega_view, rinertia_view,
+                                   torque_view, rotation_view, row, time_step);
 }
 #endif // ESPRESSO_ROTATION

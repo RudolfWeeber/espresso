@@ -403,6 +403,17 @@ static bool integrator_step_1(CellStructure &cell_structure,
 #ifdef ESPRESSO_EXTERNAL_FORCES
   auto ext_flag_view = store.ext_flag_view();
 #endif
+#ifdef ESPRESSO_ROTATION
+  auto quat_view = store.quaternion_view();
+  auto omega_view = store.angular_velocity_view();
+  auto torque_view = store.torque_view();
+  auto rotation_view = store.rotation_view();
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  auto rinertia_view = store.rinertia_view();
+#else
+  auto rinertia_view = store.velocity_view(); // unused (compile-time fallback)
+#endif
+#endif
   cell_structure.for_each_local_particle_row([&](int const row) {
     Particle p;
     p.attach_to_store(store, row);
@@ -457,7 +468,8 @@ static bool integrator_step_1(CellStructure &cell_structure,
                                      fixed, time_step);
 #ifdef ESPRESSO_ROTATION
       if (propagation.should_propagate_with(prop, PropagationMode::ROT_EULER))
-        velocity_verlet_rotator_1(p, time_step);
+        velocity_verlet_rotator_1(quat_view, omega_view, rinertia_view,
+                                  torque_view, rotation_view, row, time_step);
 #endif
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::TRANS_LANGEVIN))
@@ -466,7 +478,8 @@ static bool integrator_step_1(CellStructure &cell_structure,
 #ifdef ESPRESSO_ROTATION
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::ROT_LANGEVIN))
-        velocity_verlet_rotator_1(p, time_step);
+        velocity_verlet_rotator_1(quat_view, omega_view, rinertia_view,
+                                  torque_view, rotation_view, row, time_step);
 #endif
     }
     if (propagation.should_propagate_with(prop,
@@ -528,6 +541,17 @@ static void integrator_step_2(CellStructure &cell_structure,
 #ifdef ESPRESSO_EXTERNAL_FORCES
   auto ext_flag_view = store.ext_flag_view();
 #endif
+#ifdef ESPRESSO_ROTATION
+  auto quat_view = store.quaternion_view();
+  auto omega_view = store.angular_velocity_view();
+  auto torque_view = store.torque_view();
+  auto rotation_view = store.rotation_view();
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  auto rinertia_view = store.rinertia_view();
+#else
+  auto rinertia_view = store.velocity_view(); // unused (compile-time fallback)
+#endif
+#endif
   cell_structure.for_each_local_particle_row([&](int const row) {
     Particle p;
     p.attach_to_store(store, row);
@@ -578,7 +602,8 @@ static void integrator_step_2(CellStructure &cell_structure,
                                      time_step);
 #ifdef ESPRESSO_ROTATION
       if (propagation.should_propagate_with(prop, PropagationMode::ROT_EULER))
-        velocity_verlet_rotator_2(p, time_step);
+        velocity_verlet_rotator_2(quat_view, omega_view, rinertia_view,
+                                  torque_view, rotation_view, row, time_step);
 #endif
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::TRANS_LANGEVIN))
@@ -587,7 +612,8 @@ static void integrator_step_2(CellStructure &cell_structure,
 #ifdef ESPRESSO_ROTATION
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::ROT_LANGEVIN))
-        velocity_verlet_rotator_2(p, time_step);
+        velocity_verlet_rotator_2(quat_view, omega_view, rinertia_view,
+                                  torque_view, rotation_view, row, time_step);
 #endif
     }
   });

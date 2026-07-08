@@ -44,29 +44,38 @@
 
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 
 /** @brief Calculate the derivatives of the quaternion and angular
  *  acceleration for a given particle.
  *  See @cite sonnenschein85a. Please note that ESPResSo uses scalar-first
  *  notation for quaternions, while @cite sonnenschein85a uses scalar-last
  *  notation.
- *  @param[in]  p    Particle
+ *
+ *  Phase-8a: value-parameter form. The VV-rotation column kernel reads the
+ *  quaternion / omega / rinertia / torque / rotation columns into locals once
+ *  and passes them here, so this helper no longer touches a @ref Particle view.
+ *  The arithmetic, the per-axis @c can_rotate_around branch (now a bit-test on
+ *  the rotation byte) and the argument set are IDENTICAL to the pre-8a body.
+ *  @param[in]  quaternion   Particle quaternion
+ *  @param[in]  omega        Particle angular velocity (already axis-masked)
+ *  @param[in]  rinertia     Particle rotational inertia
+ *  @param[in]  torque       Particle torque
+ *  @param[in]  rotation     Particle rotation bitfield
  *  @param[out] Qd   First derivative of the particle quaternion
  *  @param[out] Qdd  Second derivative of the particle quaternion
  *  @param[out] S    Function of @p Qd and @p Qdd, used to evaluate the
  *                   Lagrange parameter lambda
  *  @param[out] Wd   Angular acceleration of the particle
  */
-static void define_Qdd(Particle const &p, Utils::Quaternion<double> &Qd,
-                       Utils::Quaternion<double> &Qdd, Utils::Vector3d &S,
-                       Utils::Vector3d &Wd) {
+static void
+define_Qdd(Utils::Quaternion<double> const &quaternion,
+           Utils::Vector3d const &omega, Utils::Vector3d const &rinertia,
+           Utils::Vector3d const &torque, std::uint8_t const rotation,
+           Utils::Quaternion<double> &Qd, Utils::Quaternion<double> &Qdd,
+           Utils::Vector3d &S, Utils::Vector3d &Wd) {
   /* calculate the first derivative of the quaternion */
   /* Eq. (4) @cite sonnenschein85a */
-  auto const quaternion = Utils::Quaternion<double>(p.quat());
-  Utils::Vector3d const omega = p.omega();
-  // rinertia() will return a value/proxy (not an lvalue reference) once the
-  // rotational inertia moves into the ParticleStore columns, so bind by value.
-  Utils::Vector3d const rinertia = p.rinertia();
   Qd[0] = 0.5 * (-quaternion[1] * omega[0] - quaternion[2] * omega[1] -
                  quaternion[3] * omega[2]);
 
@@ -81,14 +90,13 @@ static void define_Qdd(Particle const &p, Utils::Quaternion<double> &Qd,
 
   /* Calculate the angular acceleration. */
   /* Eq. (5) @cite sonnenschein85a */
-  auto const torque = p.torque();
-  if (p.can_rotate_around(0))
+  if (detail::get_nth_bit(rotation, 0))
     Wd[0] = (torque[0] + omega[1] * omega[2] * (rinertia[1] - rinertia[2])) /
             rinertia[0];
-  if (p.can_rotate_around(1))
+  if (detail::get_nth_bit(rotation, 1))
     Wd[1] = (torque[1] + omega[2] * omega[0] * (rinertia[2] - rinertia[0])) /
             rinertia[1];
-  if (p.can_rotate_around(2))
+  if (detail::get_nth_bit(rotation, 2))
     Wd[2] = (torque[2] + omega[0] * omega[1] * (rinertia[0] - rinertia[1])) /
             rinertia[2];
 
@@ -129,23 +137,26 @@ static void define_Qdd(Particle const &p, Utils::Quaternion<double> &Qd,
  *
  *  \todo implement for fixed_coord_flag
  */
-void propagate_omega_quat_particle(Particle &p, double time_step) {
-  assert(p.can_rotate());
+void propagate_omega_quat_values(Utils::Quaternion<double> &quat,
+                                 Utils::Vector3d &omega,
+                                 Utils::Vector3d const &rinertia,
+                                 Utils::Vector3d const &torque,
+                                 std::uint8_t const rotation,
+                                 double time_step) {
+  assert(rotation != 0u);
 
   Utils::Quaternion<double> Qd{}, Qdd{};
   Utils::Vector3d S{}, Wd{};
 
-  // Clear rotational velocity for blocked rotation axes. v()/omega() will
-  // return a write-through proxy (not an lvalue reference) once velocity moves
-  // into the ParticleStore columns, so mutate a local copy and write it back.
-  // The write-back MUST happen before define_Qdd, which reads p.omega()
-  // internally: particles with a blocked axis carrying non-zero omega must
-  // see the zeroed component during quaternion-derivative computation.
-  Utils::Vector3d omega = p.omega();
-  omega = Utils::mask(p.rotation(), omega);
-  p.omega() = omega;
+  // Clear rotational velocity for blocked rotation axes. The masked omega MUST
+  // be the value define_Qdd sees (particles with a blocked axis carrying
+  // non-zero omega must see the zeroed component during quaternion-derivative
+  // computation) -- the caller writes this masked value back to the omega
+  // column before define_Qdd runs (phase-4 mask-ordering lesson), reproduced
+  // here by masking the local omega before the define_Qdd call below.
+  omega = Utils::mask(rotation, omega);
 
-  define_Qdd(p, Qd, Qdd, S, Wd);
+  define_Qdd(quat, omega, rinertia, torque, rotation, Qd, Qdd, S, Wd);
 
   auto const time_step_squared = time_step * time_step;
   auto const time_step_half = 0.5 * time_step;
@@ -159,9 +170,7 @@ void propagate_omega_quat_particle(Particle &p, double time_step) {
   auto const lambda = 1 - S[0] * 0.5 * time_step_squared - sqrt(square);
 
   omega += time_step_half * Wd;
-  p.omega() = omega;
-  auto quat = p.quat();
-  auto const quaternion_old = Utils::Quaternion<double>(quat);
+  auto const quaternion_old = quat;
   quat += time_step * (Qd + time_step_half * Qdd) - lambda * quaternion_old;
 
   /* and rescale quaternion, so it is exactly of unit length */
@@ -173,20 +182,11 @@ void propagate_omega_quat_particle(Particle &p, double time_step) {
   }
 }
 
-void convert_torque_propagate_omega(Particle &p, double time_step) {
-  assert(p.can_rotate());
-  convert_torque_to_body_frame_apply_fix(p);
-
-  // Propagation of angular velocities. omega() will return a write-through
-  // proxy (not an lvalue reference) once velocity moves into the ParticleStore
-  // columns, so mutate a local copy and write it back at the end.
-  Utils::Vector3d omega = p.omega();
-  // rinertia() will return a value/proxy (not an lvalue reference) once the
-  // rotational inertia moves into the ParticleStore columns, so bind by value;
-  // this also lets hadamard_division deduce its vector type below.
-  Utils::Vector3d const rinertia = p.rinertia();
-  omega += hadamard_division(0.5 * time_step * Utils::Vector3d(p.torque()),
-                             rinertia);
+void convert_torque_propagate_omega_values(Utils::Vector3d &omega,
+                                           Utils::Vector3d const &rinertia,
+                                           Utils::Vector3d const &torque,
+                                           double time_step) {
+  omega += hadamard_division(0.5 * time_step * torque, rinertia);
 
   // zeroth estimate of omega
   Utils::Vector3d omega_0 = omega;
@@ -208,6 +208,36 @@ void convert_torque_propagate_omega(Particle &p, double time_step) {
 
     omega = omega_0 + (0.5 * time_step) * Wd;
   }
+}
+
+// View-form wrappers over the value cores above. Retained for the non-column
+// callers (symplectic-Euler rotation, which stays on the view path). They read
+// the columns via the Particle view, run the shared value core, and write the
+// results back -- bitwise identical to the pre-8a bodies.
+void propagate_omega_quat_particle(Particle &p, double time_step) {
+  assert(p.can_rotate());
+  Utils::Quaternion<double> quat = p.quat();
+  Utils::Vector3d omega = p.omega();
+  Utils::Vector3d const rinertia = p.rinertia();
+  Utils::Vector3d const torque = p.torque();
+  auto const rotation = p.rotation();
+  // Masked omega write-back BEFORE the quaternion-derivative step (the omega
+  // column must carry the masked value when define_Qdd reads it in the pre-8a
+  // body); the value core re-masks the local, so the arithmetic matches.
+  p.omega() = Utils::mask(rotation, omega);
+  propagate_omega_quat_values(quat, omega, rinertia, torque, rotation,
+                              time_step);
+  p.omega() = omega;
+  p.quat() = quat;
+}
+
+void convert_torque_propagate_omega(Particle &p, double time_step) {
+  assert(p.can_rotate());
+  convert_torque_to_body_frame_apply_fix(p);
+  Utils::Vector3d omega = p.omega();
+  Utils::Vector3d const rinertia = p.rinertia();
+  Utils::Vector3d const torque = p.torque();
+  convert_torque_propagate_omega_values(omega, rinertia, torque, time_step);
   p.omega() = omega;
 }
 

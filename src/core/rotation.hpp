@@ -40,14 +40,43 @@
 
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <utility>
 
-/** @brief Propagate angular velocities and update quaternions on a
- *  particle.
+/** @brief Propagate angular velocities and update quaternions (value form).
+ *
+ *  Phase-8a VV-rotation column-kernel core: operates on quaternion / omega
+ *  value references (in/out) plus rinertia / torque / rotation values read
+ *  from the store columns by the caller. The omega is axis-masked internally
+ *  (phase-4 mask-ordering lesson) before the quaternion-derivative step; the
+ *  caller writes the masked omega back to the column BEFORE this runs (see the
+ *  VV-rotation kernel below). Arithmetic identical to the pre-8a body.
+ */
+void propagate_omega_quat_values(Utils::Quaternion<double> &quat,
+                                 Utils::Vector3d &omega,
+                                 Utils::Vector3d const &rinertia,
+                                 Utils::Vector3d const &torque,
+                                 std::uint8_t rotation, double time_step);
+
+/** @brief Convert torques and propagate angular velocities (value form).
+ *
+ *  Phase-8a VV-rotation column-kernel core. The caller has ALREADY converted
+ *  the torque to the body frame and applied the fix (via
+ *  @ref convert_torque_to_body_frame_apply_fix) and passes that torque here.
+ */
+void convert_torque_propagate_omega_values(Utils::Vector3d &omega,
+                                           Utils::Vector3d const &rinertia,
+                                           Utils::Vector3d const &torque,
+                                           double time_step);
+
+/** @brief Propagate angular velocities and update quaternions on a particle.
+ *  View-form wrapper over @ref propagate_omega_quat_values; retained for the
+ *  symplectic-Euler rotation path (still on the view path).
  */
 void propagate_omega_quat_particle(Particle &p, double time_step);
 
+/** View-form wrapper over @ref convert_torque_propagate_omega_values. */
 void convert_torque_propagate_omega(Particle &p, double time_step);
 
 /** Convert torques to the body-fixed frame before the integration loop. */
@@ -146,6 +175,114 @@ inline void convert_torque_to_body_frame_apply_fix(Particle &p) {
   auto torque_ref = p.torque();
   auto const torque = convert_vector_space_to_body(p, torque_ref);
   torque_ref = mask(p.rotation(), torque);
+}
+
+/** @brief Value-parameter overload of @ref
+ * convert_torque_to_body_frame_apply_fix.
+ *
+ *  Phase-8a: converts the space-frame @p torque to the body frame using @p quat
+ *  and applies the rotation-axis fix, returning the masked body-frame torque.
+ *  No @ref Particle view -- the column kernel reads quat / torque / rotation
+ *  from the store columns and writes the result back. Arithmetic identical to
+ *  the view overload above.
+ */
+inline Utils::Vector3d
+convert_torque_to_body_frame_apply_fix(Utils::Quaternion<double> const &quat,
+                                       Utils::Vector3d const &torque,
+                                       std::uint8_t const rotation) {
+  auto const torque_body = rotation_matrix(quat).transposed() * torque;
+  return mask(rotation, torque_body);
+}
+
+// -- phase-8a VV-rotation column kernels ----------------------------------
+// The caller (integrator_step_1 / _2) hoists the quaternion / angular-velocity
+// / rinertia / torque / rotation *_view() handles ONCE and calls these per-row
+// kernels. Columns are read into locals, the value-form cores run the math, and
+// results are written back. The rotation-axis mask, the omega write-back order
+// and the arithmetic are IDENTICAL to the pre-8a Particle-view bodies.
+
+template <class QuatView, class OmegaView, class RinertiaView, class TorqueView,
+          class RotationView>
+inline void velocity_verlet_rotator_1_kernel(QuatView const &quat_view,
+                                             OmegaView const &omega_view,
+                                             RinertiaView const &rinertia_view,
+                                             TorqueView const &torque_view,
+                                             RotationView const &rotation_view,
+                                             int const row, double time_step) {
+  std::uint8_t const rotation = rotation_view(row);
+  if (rotation == 0u)
+    return; // matches Particle::can_rotate()
+
+  Utils::Quaternion<double> quat;
+  for (unsigned int j = 0u; j < 4u; ++j)
+    quat[j] = quat_view(row, j);
+  Utils::Vector3d omega{omega_view(row, 0), omega_view(row, 1),
+                        omega_view(row, 2)};
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  Utils::Vector3d const rinertia{rinertia_view(row, 0), rinertia_view(row, 1),
+                                 rinertia_view(row, 2)};
+#else
+  Utils::Vector3d const rinertia{1., 1., 1.};
+#endif
+  Utils::Vector3d const torque{torque_view(row, 0), torque_view(row, 1),
+                               torque_view(row, 2)};
+
+  // The masked omega must be written back to the column BEFORE the quaternion
+  // update, exactly as the pre-8a body did (phase-4 mask-ordering lesson).
+  // propagate_omega_quat_values masks the local omega first, so writing that
+  // masked value back here reproduces the ordering; the value core then
+  // finishes the omega/quaternion propagation on the same local.
+  auto const omega_masked = Utils::mask(rotation, omega);
+  for (unsigned int j = 0u; j < 3u; ++j)
+    omega_view(row, j) = omega_masked[j];
+
+  propagate_omega_quat_values(quat, omega, rinertia, torque, rotation,
+                              time_step);
+
+  for (unsigned int j = 0u; j < 3u; ++j)
+    omega_view(row, j) = omega[j];
+  for (unsigned int j = 0u; j < 4u; ++j)
+    quat_view(row, j) = quat[j];
+}
+
+template <class QuatView, class OmegaView, class RinertiaView, class TorqueView,
+          class RotationView>
+inline void velocity_verlet_rotator_2_kernel(QuatView const &quat_view,
+                                             OmegaView const &omega_view,
+                                             RinertiaView const &rinertia_view,
+                                             TorqueView const &torque_view,
+                                             RotationView const &rotation_view,
+                                             int const row, double time_step) {
+  std::uint8_t const rotation = rotation_view(row);
+  if (rotation == 0u)
+    return; // matches Particle::can_rotate()
+
+  Utils::Quaternion<double> quat;
+  for (unsigned int j = 0u; j < 4u; ++j)
+    quat[j] = quat_view(row, j);
+  Utils::Vector3d const torque_space{torque_view(row, 0), torque_view(row, 1),
+                                     torque_view(row, 2)};
+  // Convert the torque to the body frame and apply the axis fix, writing it
+  // back (matches convert_torque_to_body_frame_apply_fix(p) at the top of the
+  // pre-8a convert_torque_propagate_omega).
+  auto const torque =
+      convert_torque_to_body_frame_apply_fix(quat, torque_space, rotation);
+  for (unsigned int j = 0u; j < 3u; ++j)
+    torque_view(row, j) = torque[j];
+
+  Utils::Vector3d omega{omega_view(row, 0), omega_view(row, 1),
+                        omega_view(row, 2)};
+#ifdef ESPRESSO_ROTATIONAL_INERTIA
+  Utils::Vector3d const rinertia{rinertia_view(row, 0), rinertia_view(row, 1),
+                                 rinertia_view(row, 2)};
+#else
+  Utils::Vector3d const rinertia{1., 1., 1.};
+#endif
+
+  convert_torque_propagate_omega_values(omega, rinertia, torque, time_step);
+
+  for (unsigned int j = 0u; j < 3u; ++j)
+    omega_view(row, j) = omega[j];
 }
 
 #endif // ESPRESSO_ROTATION
