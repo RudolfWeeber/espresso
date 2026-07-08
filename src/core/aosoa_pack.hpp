@@ -192,4 +192,33 @@ struct CellStructure::AoSoA_pack {
   }
 
   bool has_exclusion(std::size_t i) const { return flags(i) == uint8_t{1}; }
+
+#ifdef ESPRESSO_ELECTROSTATICS
+  /**
+   * @brief Debug freshness check for the pack-owned @ref pair_charge column.
+   *
+   * The hot Coulomb pair kernels and the P3M real-space charge gather read
+   * @ref pair_charge PACK-INDEXED, trusting that it was resynced from the
+   * authoritative ParticleStore q column this step (via refresh_pack_charges).
+   * The phase-6 ICC bug (commit f8350d0) violated exactly this: q was mutated
+   * in place on an observable-calc path with no intervening refresh, so the
+   * gather consumed stale charges. This is the cheap freshness token asked for
+   * by the phase-8d cleanup: the store-aliased @ref charge view (indexed by
+   * store row) IS the current authoritative charge, so a fresh @ref pair_charge
+   * must equal it element-for-element. O(n_part) and debug-only
+   * (ESPRESSO_ADDITIONAL_CHECKS), i.e. negligible vs the O(mesh)/O(pairs)
+   * P3M work. @p n_part is the local particle count the caller is about to
+   * gather over.
+   */
+  void assert_pair_charge_fresh([[maybe_unused]] std::size_t n_part) const {
+#ifdef ESPRESSO_ADDITIONAL_CHECKS
+    for (std::size_t i = 0ul; i < n_part; ++i) {
+      assert(pair_charge(i) == charge(row(i)) &&
+             "P3M/Coulomb gather read a STALE pack charge column: "
+             "refresh_pack_charges was not called after the store q column "
+             "last changed (see the phase-6 ICC stale-charge bug, f8350d0)");
+    }
+#endif
+  }
+#endif
 };
