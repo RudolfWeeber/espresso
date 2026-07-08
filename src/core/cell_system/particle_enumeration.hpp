@@ -44,12 +44,16 @@ inline void enumerate_local_particles(CellStructure const &cs,
   if (cs.use_parallel_for_each_local_particle()) {
     auto const local_cells = cs.decomposition().local_cells();
 
+    // Use count() (raw committed rows) as the basis for cell_offsets to match
+    // the inner loop, which iterates [offset, offset+count(). The function's
+    // contract requires a clean store (no pending-removed rows); on a clean
+    // store count() == particles().size() (live count), so behavior is
+    // identical at all call sites.
     std::vector<std::size_t> cell_offsets(local_cells.size(), std::size_t{0});
-    std::exclusive_scan(local_cells.begin(), local_cells.end(),
-                        cell_offsets.begin(), std::size_t{0},
-                        [](auto acc, auto const &cell) {
-                          return acc + cell->particles().size();
-                        });
+    std::exclusive_scan(
+        local_cells.begin(), local_cells.end(), cell_offsets.begin(),
+        std::size_t{0},
+        [](auto acc, auto const &cell) { return acc + cell->count(); });
 
     Kokkos::parallel_for(
         "enumerate_local_particles", local_cells.size(), [&](auto cell_idx) {

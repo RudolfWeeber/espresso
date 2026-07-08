@@ -100,16 +100,17 @@ void HybridDecomposition::resort(bool global,
                                  std::vector<ParticleChange> &diff) {
   ParticleList displaced_parts;
 
-  /* Check for n_square type particles in regular decomposition. Phase 7b:
+  /* Check for n_square type particles in regular decomposition. Phase 7b/7c:
    * cells are already wired to the store by CellStructure::resort_particles;
-   * iterate committed rows by position and, for a misplaced particle, copy its
-   * live row into the shared staging store (stage_row), drop the row from its
-   * cell (drop_row swaps-with-back, so re-examine the swapped-in position), and
-   * stage a reference to the staging row in the target child cell
-   * (insert_staged_row). The next store rebuild -- triggered by m_commit_store
-   * below, BEFORE the child resorts -- copies each staging row into a committed
-   * row and then resets the staging store. Read the type/id from the store by
-   * row (a lightweight view, avoiding the deleted detached-Particle path). */
+   * iterate committed rows by raw position and, for a misplaced particle, copy
+   * its live row into the shared staging store (stage_row), mark the source row
+   * pending-removed via drop_row (no swap-with-back; the raw index stays valid
+   * so we advance unconditionally), and stage a reference to the staging row in
+   * the target child cell (insert_staged_row). The next store rebuild --
+   * triggered by m_commit_store below, BEFORE the child resorts -- emits
+   * surviving rows then staged rows in permutation order, drops pending-removed
+   * rows, and resets the staging store. Read the type/id from the store by row
+   * (a lightweight view, avoiding the deleted detached-Particle path). */
   assert(m_migration_staging && "migration staging store not installed");
   auto &staging = *m_migration_staging.store;
   for (auto &cell_rd : m_regular_decomposition.local_cells()) {

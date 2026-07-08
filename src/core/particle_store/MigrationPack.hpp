@@ -75,8 +75,8 @@ namespace MigrationPack {
  *
  * The future replacement of the sizer-@c Particle in ghosts.cpp: a constant
  * fixed part per row (the enabled fixed-width legs, determined at compile time
- * by the ifdef config) plus the id-list header and the ragged bond/exclusion
- * actuals summed over @p rows.
+ * by the ifdef config) plus the row-count header (u64) and the ragged
+ * bond/exclusion actuals summed over @p rows.
  */
 std::size_t packed_size(ParticleStore const &store, std::span<int const> rows);
 

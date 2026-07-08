@@ -160,9 +160,9 @@ void RegularDecomposition::exchange_neighbors(
     if (buffer.empty()) {
       return;
     }
-    // unpack_rows reads the id-list header to learn the count, but the caller
-    // must reserve the staging rows first. Peek the count from the header (the
-    // u64 row-count prefix), reserve that many rows, then unpack into them.
+    // unpack_rows reads the row-count header (u64) to learn the count, but the
+    // caller must reserve the staging rows first. Peek the count from the
+    // row-count header (u64 prefix), reserve that many rows, then unpack.
     std::uint64_t count = 0u;
     std::memcpy(&count, buffer.data(), sizeof(count));
     if (count == 0u) {
@@ -274,6 +274,12 @@ void RegularDecomposition::resort(bool global,
 
       /* Particle is in place */
       if (target_cell == c) {
+        // A pending-removed row reaching here is safe ONLY because removal
+        // never moves a particle: fold_and_reset leaves it in the same cell,
+        // so particle_to_cell returns c, and we continue without re-staging.
+        // The rebuild then drops the pending row. If removal could ever move
+        // a particle (changing particle_to_cell), a pending row could enter
+        // the migrate/stage branch below and corrupt survivors.
         continue;
       }
 

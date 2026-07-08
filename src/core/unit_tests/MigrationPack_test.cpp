@@ -124,7 +124,7 @@ BOOST_AUTO_TEST_CASE(copy_row_within_one_store) {
   check_row_equal(store, 0, store, 2);
 }
 
-// (c) edge case: zero rows -> only the id-list header (row count 0).
+// (c) edge case: zero rows -> only the row-count header (u64, value 0).
 BOOST_AUTO_TEST_CASE(pack_unpack_zero_rows) {
   auto source = make_store(1u);
   fill_maximal(source, 0, 5000.);
