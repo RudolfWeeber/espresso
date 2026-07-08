@@ -479,7 +479,7 @@ static bool integrator_step_1(CellStructure &cell_structure,
 #ifdef ESPRESSO_EXTERNAL_FORCES
       std::uint8_t const fixed = ext_flag_view(row);
 #else
-      std::uint8_t const fixed = static_cast<std::uint8_t>(0u);
+      auto const fixed = static_cast<std::uint8_t>(0u);
 #endif
       // Resolve the momentum row bases ONCE (one pointer + stride each); the
       // VV propagator then does stride-1 pointer arithmetic per axis. Cheaper
@@ -631,7 +631,7 @@ static void integrator_step_2(CellStructure &cell_structure,
 #ifdef ESPRESSO_EXTERNAL_FORCES
       std::uint8_t const fixed = ext_flag_view(row);
 #else
-      std::uint8_t const fixed = static_cast<std::uint8_t>(0u);
+      auto const fixed = static_cast<std::uint8_t>(0u);
 #endif
       // Resolve the momentum row bases ONCE (see integrator_step_1).
       auto vel = store.velocity_reference(row);

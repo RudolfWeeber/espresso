@@ -125,8 +125,7 @@ void RegularDecomposition::move_left_or_right(std::vector<int> &src,
   auto const my_left = m_local_box.my_left()[dir];
   auto const my_right = m_local_box.my_right()[dir];
   auto keep = src.begin();
-  for (auto it = src.begin(); it != src.end(); ++it) {
-    auto const staging_row = *it;
+  for (auto const staging_row : src) {
     auto const pos = staging.position_value(staging_row)[dir];
     if (m_box.get_mi_coord(pos, my_right, dir) >= 0. and can_move_right) {
       right.push_back(staging_row);
