@@ -513,6 +513,10 @@ void prefetch_particle_data(std::span<const int> in_ids) {
   auto out_ids = std::back_inserter(ids);
 
   /* Don't prefetch particles already on the head node or already cached. */
+  // TODO(upstream): inverted predicate -- `has(id)` should be `!has(id)`; this
+  // never prefetches uncached particles. Pre-existing upstream bug in a cold
+  // multi-rank path, unrelated to the ParticleStore migration; fix in a
+  // separate upstream PR (see phase8-exploration.md §7).
   std::ranges::copy_if(in_ids, out_ids, [](int id) {
     return (get_particle_node(id) != this_node) && particle_fetch_cache.has(id);
   });
