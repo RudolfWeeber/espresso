@@ -313,8 +313,8 @@ struct ParticleMomentum {};
  *
  *  KEPT (phase 8d): still the doxygen anchor for GHOSTTRANS_RATTLE
  *  (`ghosts.hpp` lines 49, 138), exactly parallel to @ref ParticleMomentum for
- *  GHOSTTRANS_MOMENTUM; removing it would dangle those live @ref links. Its
- *  sibling @c ParticleLocal, which had NO such reference, was removed in 8d.
+ *  GHOSTTRANS_MOMENTUM; removing it would dangle those live cross-references.
+ *  Its sibling `ParticleLocal`, which had NO such reference, was removed in 8d.
  */
 struct ParticleRattle {};
 #endif
