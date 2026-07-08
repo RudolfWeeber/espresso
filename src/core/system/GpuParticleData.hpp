@@ -48,6 +48,18 @@
  * Note that once a particle member is requested, the corresponding device
  * memory is allocated and populated at every time step, even when the GPU
  * method that originally requested the data is disabled.
+ *
+ * @note Phase-7 (array-based particle storage) kept this AoS host-staging
+ * design intact: @ref pack_particles gathers fields through the preserved
+ * particle accessor API at gather cadence, so the migration to
+ * @ref ParticleStore columns required no changes here. The phase-8 rework
+ * (@ref docs "array-based particle storage design", phase 8 "device-resident
+ * execution") replaces this staging layer with device views of the store
+ * columns: the @ref GpuParticle AoS pack/split path (@ref pack_particles,
+ * @ref split_kernel_r) is retired in favour of per-field
+ * `DualView::view_device()` with `modify(host)`/`sync(device)` discipline,
+ * and the component-major-vs-@c LayoutRight coalescing question is resolved
+ * there. Until then this AoS layer remains the CUDA data path.
  */
 class GpuParticleData : public System::Leaf<GpuParticleData>,
                         public std::enable_shared_from_this<GpuParticleData> {
