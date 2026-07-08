@@ -121,7 +121,7 @@ class AnalyzeMassRelated(ut.TestCase):
             np.copy(self.system.galilei.system_CMS_velocity()),
             np.average(no_virtual.v, weights=no_virtual.mass, axis=0))
 
-    def test_angularmomentum(self):
+    def test_angular_momentum(self):
         no_virtual_type_0 = self.system.part.select(
             lambda p: (not p.is_virtual()) and p.type == 0)
         am = np.zeros(3)
@@ -132,7 +132,7 @@ class AnalyzeMassRelated(ut.TestCase):
             am,
             self.system.analysis.angular_momentum(p_type=0))
 
-    def test_angularmomentum_all_particles(self):
+    def test_angular_momentum_all_particles(self):
         # p_type=-1 is the documented sentinel for "all (non-virtual)
         # particles", and must be distinct from the type-0-only result.
         no_virtual = self.system.part.select(lambda p: not p.is_virtual())
