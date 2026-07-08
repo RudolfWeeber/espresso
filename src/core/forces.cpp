@@ -107,8 +107,31 @@ static void init_forces_and_thermostat(System::System const &system) {
       (propagation.used_propagations &
        (PropagationMode::TRANS_LANGEVIN | PropagationMode::ROT_LANGEVIN));
 
+  // Phase-8a: hoist the Langevin column-view handles ONCE outside the
+  // parallel_for. The Langevin friction is a column kernel (velocity / omega /
+  // id (+ gamma, quaternion) read by row); external-force init and the
+  // body->space torque rotation stay on the view path (external_force reads the
+  // engine sidecar; the rotation needs the quaternion).
+  auto &store = cell_structure.particle_store();
+  auto vel_view = store.velocity_view();
+  auto id_view = store.id_view();
+#ifdef ESPRESSO_ROTATION
+  auto omega_view = store.angular_velocity_view();
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+  auto gamma_view = store.gamma_view();
+#ifdef ESPRESSO_ROTATION
+  auto gamma_rot_view = store.gamma_rot_view();
+#endif
+#endif
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+  auto quat_view = store.quaternion_view();
+#endif
+
   // Single pass over all local particles
-  cell_structure.for_each_local_particle([&](Particle &p) {
+  cell_structure.for_each_local_particle_row([&](int const row) {
+    Particle p;
+    p.attach_to_store(store, row);
     // Initialize force with external forces
     auto const external = external_force(p);
     auto force = p.force();
@@ -126,12 +149,23 @@ static void init_forces_and_thermostat(System::System const &system) {
       int const prop = p.propagation();
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::TRANS_LANGEVIN))
-        force += friction_thermo_langevin(langevin, p, time_step, kT);
+        force += friction_thermo_langevin(langevin, vel_view, id_view,
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+                                          gamma_view,
+#endif
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+                                          quat_view,
+#endif
+                                          row, time_step, kT);
 #ifdef ESPRESSO_ROTATION
       if (propagation.should_propagate_with(prop,
                                             PropagationMode::ROT_LANGEVIN))
         torque += convert_vector_body_to_space(
-            p, friction_thermo_langevin_rotation(langevin, p, time_step, kT));
+            p, friction_thermo_langevin_rotation(langevin, omega_view, id_view,
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+                                                 gamma_rot_view,
+#endif
+                                                 row, time_step, kT));
 #endif
     }
   });
