@@ -716,7 +716,16 @@ private:
   // -- proxy factories for the various column kinds -------------------------
   VectorReference column_reference(Column &column, int const row) {
     assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
-    auto &view = column.view_host();
+    // Bind by const reference (never by non-const reference): view_host()
+    // returns `const t_host&` in the vendored Kokkos but `t_host` by value when
+    // KOKKOS_ENABLE_DEPRECATED_CODE_4 is on (Kokkos <=4.5 / fedora / macos),
+    // and a non-const lvalue reference cannot bind to that by-value rvalue. A
+    // Kokkos View has shallow-const semantics, so `operator()` on a const-ref'd
+    // view still yields a writable element; the write-through proxy below
+    // remains valid. Binding by const reference (not by value) also avoids a
+    // View handle copy -- and its reference-count atomic -- on the default
+    // (non-deprecated) build, where this per-particle accessor is a hot path.
+    auto const &view = column.view_host();
     // Layout-agnostic proxy over one row: address of component 0 plus the
     // component-to-component stride. stride(1) is 1 for LayoutRight (row
     // contiguous) and number-of-rows for LayoutLeft; &view(row, 0) is the
@@ -733,7 +742,9 @@ private:
   IntegerVectorReference integer_column_reference(IntegerColumn &column,
                                                   int const row) {
     assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
-    auto &view = column.view_host();
+    // Const-ref binding: see column_reference for the view_host() by-value vs
+    // by-reference compatibility rationale and the shallow-const write-through.
+    auto const &view = column.view_host();
     return IntegerVectorReference(&view(row, 0), view.stride(1));
   }
   Utils::Vector3i integer_column_value(IntegerColumn const &column,
@@ -745,7 +756,9 @@ private:
   QuaternionReference quaternion_column_reference(QuaternionColumn &column,
                                                   int const row) {
     assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
-    auto &view = column.view_host();
+    // Const-ref binding: see column_reference for the view_host() by-value vs
+    // by-reference compatibility rationale and the shallow-const write-through.
+    auto const &view = column.view_host();
     return QuaternionReference(&view(row, 0), view.stride(1));
   }
   Utils::Quaternion<double>

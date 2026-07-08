@@ -40,7 +40,11 @@ template <std::size_t N, class ColumnType, class SeedType>
 void preserve_or_seed(ColumnType &new_column, ColumnType const &old_column,
                       int const row, int const old_row, bool const preserve,
                       SeedType const &seed) {
-  auto &new_view = new_column.view_host();
+  // Const-ref binding: view_host() returns `const t_host&` in the vendored
+  // Kokkos but `t_host` by value under KOKKOS_ENABLE_DEPRECATED_CODE_4, and a
+  // non-const lvalue reference cannot bind to that by-value rvalue. A View has
+  // shallow-const semantics, so writing through a const-ref'd view is valid.
+  auto const &new_view = new_column.view_host();
   if (preserve) {
     auto const &old_view = old_column.view_host();
     for (std::size_t j = 0u; j < N; ++j) {
@@ -59,7 +63,8 @@ void preserve_or_seed_scalar(ColumnType &new_column,
                              ColumnType const &old_column, int const row,
                              int const old_row, bool const preserve,
                              SeedType const &seed) {
-  auto &new_view = new_column.view_host();
+  // Const-ref binding: see preserve_or_seed for the rationale.
+  auto const &new_view = new_column.view_host();
   if (preserve) {
     new_view(row) = old_column.view_host()(old_row);
   } else {
@@ -114,7 +119,8 @@ void preserve_or_move_sidecar(SidecarVector &new_sidecar,
 template <std::size_t N, class ColumnType>
 void permute_column(ColumnType &new_column, ColumnType const &old_column,
                     std::span<int const> permutation) {
-  auto &new_view = new_column.view_host();
+  // Const-ref binding: see preserve_or_seed for the rationale.
+  auto const &new_view = new_column.view_host();
   auto const &old_view = old_column.view_host();
   for (std::size_t new_row = 0u; new_row < permutation.size(); ++new_row) {
     int const old_row = permutation[new_row];
@@ -131,7 +137,8 @@ void permute_column(ColumnType &new_column, ColumnType const &old_column,
 template <class ColumnType>
 void permute_column_scalar(ColumnType &new_column, ColumnType const &old_column,
                            std::span<int const> permutation) {
-  auto &new_view = new_column.view_host();
+  // Const-ref binding: see preserve_or_seed for the rationale.
+  auto const &new_view = new_column.view_host();
   auto const &old_view = old_column.view_host();
   for (std::size_t new_row = 0u; new_row < permutation.size(); ++new_row) {
     int const old_row = permutation[new_row];
