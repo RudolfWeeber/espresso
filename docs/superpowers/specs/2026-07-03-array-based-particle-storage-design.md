@@ -124,6 +124,23 @@ resort, not to accessor proxies — the 12% amendment for 1000ppc stays until
 the phase-8 final checkpoint. Doxygen reference cleanup (51→0 warnings)
 joined the standing gates alongside gcc-14.
 
+**Phase-8 FINAL checkpoint (2026-07-08, PASSED THE ORIGINAL 5% BUDGET — the
+2026-07-05/06 amendments are RETIRED):** lj-1rank 1.049, lj-4rank 0.976,
+lj-omp 0.982, p3m-1rank 0.981, p3m-4rank 0.947, p3m-omp 0.993 vs the phase-0
+AoS baseline — four of six configurations are FASTER than the original
+struct-of-arrays code. The last ~4pp on lj-1rank came from hardware-counter
+profiling (perf, enabled on the host late in phase 8): (i) gcc had stopped
+inlining the Langevin friction call tree inside init_forces_and_thermostat
+(per-particle PLT calls, 15% of core time — fixed with [[gnu::flatten]]);
+(ii) the phase-7c pending-removal mask was consulted per element on every
+iteration path (fixed with an O(1) has_pending_removals fast path); (iii) the
+Verlet-build kernels paid per-candidate Particle-accessor derefs for id and
+position (fixed with raw column pointers hoisted per work item). All fixes
+bitwise-identity-preserving. Upstream finding (NOT this branch's): p3m_gpu
+tuning with zero particles raises an FPE under -ftrapping-math at 4 MPI ranks
+(clang+CUDA+FPE config) — reproduced identically at the pre-migration base
+commit; upstream PR candidate alongside the particle_node prefetch predicate.
+
 ## Non-goals
 
 - No change to the Python user interface or its semantics.
