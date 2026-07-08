@@ -262,7 +262,9 @@ BOOST_AUTO_TEST_CASE(
   // particle (row 0), i.e. the referent was not a destroyed temporary.
   volatile int scratch = 0;
   for (int i = 0; i < 1000; ++i) {
-    scratch += i;
+    // Note: not `scratch += i;` -- compound assignment to a volatile operand
+    // is deprecated in C++20 and rejected under -Werror by gcc-12.
+    scratch = scratch + i;
   }
   static_cast<void>(scratch);
 
