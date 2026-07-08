@@ -95,6 +95,23 @@ inline Utils::Vector3d convert_vector_space_to_body(const Particle &p,
   return rotation_matrix(quaternion).transposed() * v;
 }
 
+// Phase-8a value-parameter overloads of the frame-conversion routines: the
+// Brownian column kernels have the quaternion in a local (read from the column
+// once) so they pass it directly instead of a Particle view. Arithmetic
+// identical to the view overloads above.
+inline Utils::Vector3d
+convert_vector_body_to_space(Utils::Quaternion<double> const &quat,
+                             const Utils::Vector3d &vec) {
+  return quat * vec;
+}
+
+inline Utils::Vector3d
+convert_vector_space_to_body(Utils::Quaternion<double> const &quat,
+                             const Utils::Vector3d &v) {
+  assert(quat.norm() > 0.0);
+  return rotation_matrix(quat).transposed() * v;
+}
+
 /**
  * @brief Transform matrix from body- to space-fixed frame.
  *
@@ -157,6 +174,24 @@ local_rotate_particle_body(Particle const &p,
     return Utils::Quaternion<double>(p.quat()) *
            boost::qvm::rot_quat(mask(p.rotation(), axis_body_frame), phi);
   return Utils::Quaternion<double>(p.quat());
+}
+
+/** @brief Value-parameter OVERLOAD of @ref local_rotate_particle_body.
+ *
+ *  Phase-8a: the Brownian rotation column kernel has the quaternion and the
+ *  rotation bitfield in locals (read from the columns once) and passes them
+ *  directly. The existing Particle-view overload is retained unchanged (unit
+ *  tests and other callers). Arithmetic identical.
+ */
+inline Utils::Quaternion<double> local_rotate_particle_body(
+    Utils::Quaternion<double> const &quat, std::uint8_t const rotation,
+    const Utils::Vector3d &axis_body_frame, const double phi) {
+  // Rotation turned off entirely?
+  if (rotation == 0u)
+    return quat;
+  if (std::abs(phi) > std::numeric_limits<double>::epsilon())
+    return quat * boost::qvm::rot_quat(mask(rotation, axis_body_frame), phi);
+  return quat;
 }
 
 /** Rotate the particle p around the NORMALIZED axis aSpaceFrame by amount phi

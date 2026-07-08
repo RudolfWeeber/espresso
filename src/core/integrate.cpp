@@ -397,22 +397,42 @@ static bool integrator_step_1(CellStructure &cell_structure,
   auto vel_view = store.velocity_view();
   auto pos_view = store.position_view();
   auto force_view = store.force_view();
+  auto id_view = store.id_view();
 #ifdef ESPRESSO_MASS
   auto mass_view = store.mass_view();
+#else
+  auto mass_view = store.velocity_view(); // unused (compile-time fallback)
 #endif
 #ifdef ESPRESSO_EXTERNAL_FORCES
   auto ext_flag_view = store.ext_flag_view();
+#else
+  auto ext_flag_view = store.velocity_view(); // unused (fallback)
 #endif
 #ifdef ESPRESSO_ROTATION
   auto quat_view = store.quaternion_view();
   auto omega_view = store.angular_velocity_view();
   auto torque_view = store.torque_view();
   auto rotation_view = store.rotation_view();
+#else
+  auto quat_view = store.velocity_view();   // unused (fallback)
+  auto omega_view = store.velocity_view();  // unused (fallback)
+  auto torque_view = store.velocity_view(); // unused (fallback)
+  auto rotation_view = store.id_view();     // unused (fallback)
+#endif
 #ifdef ESPRESSO_ROTATIONAL_INERTIA
   auto rinertia_view = store.rinertia_view();
 #else
   auto rinertia_view = store.velocity_view(); // unused (compile-time fallback)
 #endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+  auto gamma_view = store.gamma_view();
+#else
+  auto gamma_view = store.velocity_view(); // unused (fallback)
+#endif
+#if defined(ESPRESSO_THERMOSTAT_PER_PARTICLE) && defined(ESPRESSO_ROTATION)
+  auto gamma_rot_view = store.gamma_rot_view();
+#else
+  auto gamma_rot_view = store.velocity_view(); // unused (fallback)
 #endif
   cell_structure.for_each_local_particle_row([&](int const row) {
     Particle p;
@@ -484,10 +504,22 @@ static bool integrator_step_1(CellStructure &cell_structure,
     }
     if (propagation.should_propagate_with(prop,
                                           PropagationMode::TRANS_BROWNIAN))
-      brownian_dynamics_propagator(*thermostat.brownian, p, time_step, kT);
+      brownian_dynamics_propagator(
+          *thermostat.brownian,
+          make_brownian_row_view(pos_view, vel_view, force_view, torque_view,
+                                 quat_view, omega_view, rinertia_view, id_view,
+                                 mass_view, rotation_view, ext_flag_view,
+                                 gamma_view, gamma_rot_view, row),
+          time_step, kT);
 #ifdef ESPRESSO_ROTATION
     if (propagation.should_propagate_with(prop, PropagationMode::ROT_BROWNIAN))
-      brownian_dynamics_rotator(*thermostat.brownian, p, time_step, kT);
+      brownian_dynamics_rotator(
+          *thermostat.brownian,
+          make_brownian_row_view(pos_view, vel_view, force_view, torque_view,
+                                 quat_view, omega_view, rinertia_view, id_view,
+                                 mass_view, rotation_view, ext_flag_view,
+                                 gamma_view, gamma_rot_view, row),
+          time_step, kT);
 #endif
   });
 
