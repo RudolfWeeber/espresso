@@ -28,7 +28,7 @@
  *
  * Migration phase 7a. Any structure that records @ref ParticleStore ROW indices
  * (rather than @c Particle* pointers) and reuses them across integration steps
- * -- the Verlet list (@ref CellStructure::m_verlet_list), and in phase 7e the
+ * -- the Verlet list (@c CellStructure::m_verlet_list), and in phase 7e the
  * collision-detection / bond-handler held references -- must stamp the store
  * @ref ParticleStore::generation() when it records the rows and re-check it
  * before resolving them back to views. A rebuild renumbers (or drops) rows and

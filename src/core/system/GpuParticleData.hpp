@@ -53,7 +53,7 @@
  * design intact: @ref pack_particles gathers fields through the preserved
  * particle accessor API at gather cadence, so the migration to
  * @ref ParticleStore columns required no changes here. The phase-8 rework
- * (@ref docs "array-based particle storage design", phase 8 "device-resident
+ * (array-based particle storage design, phase 8 "device-resident
  * execution") replaces this staging layer with device views of the store
  * columns: the @ref GpuParticle AoS pack/split path (@ref pack_particles,
  * @ref split_kernel_r) is retired in favour of per-field

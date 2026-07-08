@@ -51,7 +51,8 @@
  *   [ ragged EXCLUSIONS leg : per row, run-length (u64) then that many ints ]
  *
  * The ghost flag (@c Particle::l.ghost) is deliberately OMITTED: a migrating
- * particle is never a ghost. @ref unpack_rows asserts this precondition holds.
+ * particle is never a ghost. @ref MigrationPack::unpack_rows asserts this
+ * precondition holds.
  *
  * The RATTLE correction is omitted (as in @c Particle::serialize): it is a
  * per-iteration scratch recomputed on the owning rank post-migration.

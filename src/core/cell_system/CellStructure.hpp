@@ -178,12 +178,12 @@ public:
 private:
   /** The local id -> @ref ParticleStore ROW map (phase 7e). Indexed by particle
    *  id; the entry is the store row that @ref get_local_particle resolves the
-   * id to, or @ref no_store_row (-1) when the id is not present on this rank.
+   * id to, or @c no_store_row (-1) when the id is not present on this rank.
    *  Locals win over ghost copies of the same id; among ghost copies the first
    *  valid row (in store-row order) wins -- exactly the dedup contract the
    * retired view pool implemented. Rebuilt wholesale from the (synchronized)
    * store by
-   *  @ref rebuild_particle_index / @ref index_ghost_particles at store-rebuild
+   *  @c rebuild_particle_index / @c index_ghost_particles at store-rebuild
    *  cadence (the single write site). An entry stays valid between store
    *  rebuilds; a rebuild renumbers rows and refreshes the whole map.
    *
@@ -192,7 +192,7 @@ private:
    *  resolves the id to a row here and returns a fresh by-value @ref Particle
    *  view over that row (a 16-byte handle). */
   std::vector<int> m_id_to_store_row;
-  /** Sentinel stored in @ref m_id_to_store_row for an id absent on this rank.
+  /** Sentinel stored in @c m_id_to_store_row for an id absent on this rank.
    */
   static constexpr int no_store_row = -1;
   /** Implementation of the primary particle decomposition */
@@ -212,11 +212,11 @@ private:
    *  a view at loop entry (hoisted store pointer, one view per row -- same cost
    *  shape as the old pointer deref). The rows are only valid for the store
    *  @ref ParticleStore::generation() they were recorded at (a rebuild
-   *  renumbers rows); that generation is stamped in @ref m_verlet_list_store
-   *  / @ref m_verlet_list_generation and re-checked (debug) before every use
+   *  renumbers rows); that generation is stamped in @c m_verlet_list_store
+   *  / @c m_verlet_list_generation and re-checked (debug) before every use
    *  via @ref ParticleStoreGuard::assert_generation. */
   std::vector<std::pair<int, int>> m_verlet_list;
-  /** Store identity + generation the rows in @ref m_verlet_list were recorded
+  /** Store identity + generation the rows in @c m_verlet_list were recorded
    *  at (phase 7a). Used only by the debug generation guard; a rebuild between
    *  build and consume without a Verlet rebuild would make the rows stale. */
   ParticleStore const *m_verlet_list_store = nullptr;
@@ -248,18 +248,18 @@ private:
    *  order) followed by the deduped ghost tail (first occurrence of each ghost
    *  id not owned by a local). Consumers (force/energy/pressure/icc reductions,
    *  the AoSoA commit) index it in pack order. Pointers into
-   *  @ref m_unique_particle_views; rebuilt every @ref set_index_map.
+   *  @c m_unique_particle_views; rebuilt every @ref set_index_map.
    *  7c-2026-07-08 (T1 dedup adjudication): survives 7c for the same reason as
-   *  @ref m_pack_index_to_store_row -- the deduped ghost tail is a
+   *  @c m_pack_index_to_store_row -- the deduped ghost tail is a
    *  non-contiguous subset, so pack index != store row on the tail and the
    *  view list is still required. Retires only when the ghost dedup produces a
    *  contiguous pack-order ghost range (a later phase). */
   std::vector<Particle *> m_unique_particles;
-  /** Owning backing for @ref m_unique_particles (phase 7e). Replaces the
+  /** Owning backing for @c m_unique_particles (phase 7e). Replaces the
    * retired view pool as the storage the pack-order pointer list points into:
    * one by-value @ref Particle view per pack participant, in pack order,
    * rebuilt wholesale by @ref set_index_map. A @c std::vector reused (grown,
-   * never shrunk) across rebuilds; the pointers in @ref m_unique_particles are
+   * never shrunk) across rebuilds; the pointers in @c m_unique_particles are
    * only valid until the next @ref set_index_map. */
   std::vector<Particle> m_unique_particle_views;
   std::shared_ptr<KokkosHandle> m_kokkos_handle;
@@ -268,16 +268,16 @@ private:
   /** Migration staging store (migration phase 7b, DORMANT until the Task-3
    *  flip). A second, small @ref ParticleStore holding rows in transit between
    *  the live store and a remote rank: `extract` copies a live row into a
-   *  staging row (@ref stage_row); a migrating row that a round could not
+   *  staging row (@c stage_row); a migrating row that a round could not
    *  deliver locally waits here between exchange rounds; `receive` unpacks into
    *  staging rows; `rebuild` commits them into the live store. Lazily sized on
-   *  first @ref stage_row and reused (grown, never shrunk) across resorts, like
+   *  first @c stage_row and reused (grown, never shrunk) across resorts, like
    *  the fetch-cache store. Not wired into any production path yet. */
   ParticleStore m_staging_store;
-  /** Next free row in @ref m_staging_store; the count of currently-staged rows.
+  /** Next free row in @c m_staging_store; the count of currently-staged rows.
    *  0 while empty; reset by @ref clear_staging_store. */
   int m_staging_store_next_row = 0;
-  /** Capacity @ref m_staging_store was last (re)built with (phase 7b). */
+  /** Capacity @c m_staging_store was last (re)built with (phase 7b). */
   std::size_t m_staging_store_capacity = 0u;
   /** Pack-index -> store-row translation (phase 3.5). Identity on the local
    *  prefix; only the deduped ghost tail is remapped. Rebuilt in
@@ -307,9 +307,9 @@ public:
   /**
    * @brief Set the store-row entry for a particle id (phase 7e).
    *
-   * Records that @p id resolves to store @p row in @ref m_id_to_store_row,
+   * Records that @p id resolves to store @p row in @c m_id_to_store_row,
    * growing the map as needed. The single write site is the store-rebuild
-   * indexing (@ref rebuild_particle_index / @ref index_ghost_particles).
+   * indexing (@c rebuild_particle_index / @c index_ghost_particles).
    *
    * @param id  Particle id (>= 0).
    * @param row Store row the id resolves to.
@@ -333,11 +333,11 @@ private:
   /**
    * @brief Rebuild the id -> store-row map from the (synchronized) store.
    *
-   * Phase 7e: fills @ref m_id_to_store_row with the store row of each indexed
+   * Phase 7e: fills @c m_id_to_store_row with the store row of each indexed
    * particle -- all locals first, then the ghost rows whose id is not already
    * owned by a local. Must run with a clean store (rows assigned). Indexes
    * LOCALS only; ghost id columns are not valid until ghosts_update runs, so
-   * ghosts are indexed separately by @ref index_ghost_particles afterwards.
+   * ghosts are indexed separately by @c index_ghost_particles afterwards.
    * "Locals win" over ghost copies of the same id, matching the pre-flip index
    * semantics.
    */
@@ -406,7 +406,7 @@ public:
   /**
    * @brief Get a local particle by id (phase 7e).
    *
-   * Resolves @p id to a store row via @ref m_id_to_store_row and returns a
+   * Resolves @p id to a store row via @c m_id_to_store_row and returns a
    * fresh by-value @ref Particle view over that row. The returned view is a
    * 16-byte handle aliasing the store; it is valid until the next store rebuild
    * (which renumbers rows), exactly the pre-7e "pointer valid until the next
@@ -503,7 +503,7 @@ public:
    * @brief Run a column kernel on every local particle by STORE ROW.
    *
    * Phase-8a de-proxy path: the hot integrator/thermostat loops rewrite their
-   * per-particle @ref Particle-view bodies as direct column kernels. Instead of
+   * per-particle @ref Particle view bodies as direct column kernels. Instead of
    * materialising a @ref Particle per element (which pays @c view_host() +
    * address + stride on every accessor), this launcher iterates exactly the
    * same rows in exactly the same order as @ref for_each_local_particle but
@@ -511,7 +511,7 @@ public:
    * @c *_view() column handles ONCE (outside the loop) and indexes them by row.
    *
    * Iteration structure is bit-identical to
-   * @ref parallel_for_each_particle_impl (multi-cell: parallel over cells,
+   * @c parallel_for_each_particle_impl (multi-cell: parallel over cells,
    * inner serial over @c [offset, offset+count); single-cell: parallel over the
    * cell's rows). Local cells tile @c [0, n_local) contiguously in
    * cell-traversal order (see @ref ensure_particle_store_synchronized), so the
@@ -784,7 +784,7 @@ public:
    * view pool is gone), so the resolved partners are collected as by-value
    * @ref Particle views (16-byte handles). Callers that need the historical
    * @c std::span<Particle*> handler contract build a pointer span into this
-   * owned buffer (see @ref execute_bond_handler), which stays valid for as long
+   * owned buffer (see @c execute_bond_handler), which stays valid for as long
    * as the returned vector lives.
    */
   boost::container::static_vector<Particle, 4>
@@ -974,7 +974,7 @@ private:
   }
 
   /** @brief Row-bag link-cell driver reusing three cached views (phase 7a perf
-   *  fix). See @ref link_cell. */
+   *  fix). See @c link_cell. */
   template <class DistanceFunction, class Kernel>
   void link_cell_rows(DistanceFunction const &df, Kernel &kernel) {
     auto &store = m_particle_store;

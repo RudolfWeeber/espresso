@@ -96,7 +96,7 @@ public:
                       BoxGeometry const &box_geo, LocalBox const &local_box,
                       std::set<int> n_square_types);
 
-  /** @brief Set the store-commit callback (phase 7a); see @ref m_commit_store.
+  /** @brief Set the store-commit callback (phase 7a); see @c m_commit_store.
    */
   void set_commit_store(std::function<void()> commit) {
     m_commit_store = std::move(commit);

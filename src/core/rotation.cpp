@@ -131,9 +131,9 @@ define_Qdd(Utils::Quaternion<double> const &quaternion,
  *  notation.
  *
  *  For very high angular velocities (e.g. if the product of @p time_step
- *  with the largest component of @ref ParticleMomentum::omega "p.omega()"
- *  is superior to ~2.0) and for @p time_step superior or equal to unity,
- *  the calculation might fail.
+ *  with the largest component of @c omega (accessible via @ref
+ * Particle::omega()) is superior to ~2.0) and for @p time_step superior or
+ * equal to unity, the calculation might fail.
  *
  *  \todo implement for fixed_coord_flag
  */

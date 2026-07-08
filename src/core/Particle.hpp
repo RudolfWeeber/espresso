@@ -330,7 +330,7 @@ struct ParticleRattle {};
  *  is now a two-word view {store pointer, store row}; ALL per-field data lives
  *  in the @ref ParticleStore columns / host sidecars (single ownership). There
  *  is no such thing as a detached, data-carrying @c Particle any more: every
- *  accessor is an unconditional store read at @ref m_store_row, guarded (in
+ *  accessor is an unconditional store read at @c m_store_row, guarded (in
  *  debug builds) by @c assert(m_particle_store != nullptr). Cross-rank
  *  migration and the head-node fetch cache transfer data per field (see
  *  particle_store/MigrationPack) sourced/sunk directly from store columns; the
@@ -349,7 +349,7 @@ private:
   /** The store this view reads/writes; null while unbound. Rank-local; never
    *  serialized. */
   ParticleStore *m_particle_store = nullptr;
-  /** Row of this particle in @ref m_particle_store; -1 while unbound. */
+  /** Row of this particle in @c m_particle_store; -1 while unbound. */
   int m_store_row = -1;
 
   /** Static fallbacks for the constexpr-when-disabled parameter accessors.

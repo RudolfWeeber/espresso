@@ -29,10 +29,10 @@
  * carrier-laden @c Particle objects through boost-serialized send buffers.
  * Instead a mis-celled non-local particle is COPIED (column-by-column) out of
  * the live store into a row of the @ref CellStructure staging store
- * (@ref stage_row); the migration `displaced_parts` list holds staging-row
+ * (@c stage_row); the migration `displaced_parts` list holds staging-row
  * INDICES; per direction those rows are @ref MigrationPack "packed" into a flat
  * byte buffer; received buffers are unpacked into fresh reserved staging rows
- * (@ref reserve_staging_rows); and a received row that belongs on this node is
+ * (@c reserve_rows); and a received row that belongs on this node is
  * staged into its home cell as a reference to that staging row
  * (@ref CellParticleStorage::insert_staged_row) -- the next store rebuild
  * copies it into a committed row, exactly the pre-flip cell staging path, so

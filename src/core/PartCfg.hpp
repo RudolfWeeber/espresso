@@ -33,7 +33,7 @@
  * This implementation fetches all particles to the head node on creation.
  *
  * Phase 7b flip: the cached particles are @c Particle VIEWS over an OWNED
- * @ref ParticleStore (@ref m_store), NOT copies of the shared fetch-cache
+ * @ref ParticleStore (@c m_store), NOT copies of the shared fetch-cache
  * views. Each fetched particle's row is copied (@ref ParticleStore::copy_row)
  * into a fresh row of this store; the position is then unfolded IN THIS STORE
  * (@c p.pos() += image_shift). This makes the config self-contained and
@@ -46,7 +46,7 @@ class PartCfg {
   /** Owned backing store for the cached rows (independent of the fetch cache).
    */
   ParticleStore m_store;
-  /** Views over @ref m_store rows, one per particle in id order. */
+  /** Views over @c m_store rows, one per particle in id order. */
   std::vector<Particle> m_parts;
   BoxGeometry const &m_box_geo;
 

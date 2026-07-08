@@ -36,9 +36,9 @@
  *  handles aliasing the store), so the reference range that observables consume
  *  can no longer point into a persistent view pool -- it must point into an
  *  owned buffer that lives as long as the range. This struct owns that buffer
- *  (@ref owned) and exposes the @ref ParticleReferenceRange (@ref refs) that
- *  references into it. Callers keep the returned object alive for the duration
- *  of the observable evaluation and pass @c .refs to @c evaluate. */
+ *  (@c owned) and exposes the @ref Observables::ParticleReferenceRange (@c
+ * refs) that references into it. Callers keep the returned object alive for the
+ * duration of the observable evaluation and pass @c .refs to @c evaluate. */
 struct FetchedParticles {
   std::vector<Particle> owned;
   Observables::ParticleReferenceRange refs;

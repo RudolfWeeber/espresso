@@ -43,14 +43,14 @@
  * resolves it). For each surviving row it hands out a @ref Particle view over
  * the paired @ref ParticleStore row (a cached view rebound via @ref
  * Particle::attach_to_store; see the PERFORMANCE note below).  Its contract
- * mirrors @ref ParticleIterator / @ref ParticleRange:
- *   - @c value_type is @ref Particle and @c reference is @ref Particle& (as in
+ * mirrors @ref ParticleIterator / @ref ParticleRange :
+ *   - @c value_type is @ref Particle and @c reference is @c Particle& (as in
  *     @ref ParticleIterator, whose @c dereference() returns @c Particle&);
  *   - it is a forward iterator (@c boost::forward_traversal_tag).
  *
  * LIFETIME CONTRACT (the load-bearing design point): @c operator* returns a
  * reference to a @ref Particle view CACHED INSIDE THE ITERATOR (the
- * @ref m_view member), REBOUND to the current row on each dereference. That
+ * @c m_view member), REBOUND to the current row on each dereference. That
  * reference stays valid for as long as the iterator object lives and is not
  * incremented; incrementing or destroying the iterator invalidates it. This
  * lets a caller bind @c Particle &p = *it and keep using @c p across a loop

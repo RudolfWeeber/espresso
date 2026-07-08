@@ -180,7 +180,7 @@ Utils::Cache<int, Particle> particle_fetch_cache(max_cache_size);
  * particles working after the phase-8 flip (cluster analysis, ParticleHandle
  * getters), each cached particle is attached to this head-node-local store,
  * seeded from its migration carriers via @ref ParticleStore::assign_row.
- * Mirrors @ref Constraints::ShapeBasedConstraint::m_part_rep_store.
+ * Mirrors @c Constraints::ShapeBasedConstraint::m_part_rep_store.
  *
  * Pointer-stability design (IMPORTANT):
  * @ref Utils::Cache is backed by a @c std::unordered_map<int,const Particle>,
@@ -201,7 +201,8 @@ int fetch_cache_store_next_row = -1;
 /** Capacity @ref fetch_cache_store was built with in the current epoch. */
 std::size_t fetch_cache_store_capacity = 0u;
 /** Co-ownership of the Kokkos runtime (mirrors @ref CellStructure's
- *  @c m_kokkos_handle and @ref ShapeBasedConstraint's). @ref fetch_cache_store
+ *  @c m_kokkos_handle and the analogous member of
+ *  @ref Constraints::ShapeBasedConstraint). @c fetch_cache_store
  *  holds Kokkos Views that must be released before @c Kokkos::finalize().
  *  Captured lazily when the store first allocates (particle_node code runs
  *  well after Kokkos init, but we capture defensively the same way). */
@@ -462,7 +463,7 @@ REGISTER_CALLBACK(mpi_get_particles_local)
  *
  * Groups the requested ids per owning rank, scatters the id lists, and gathers
  * one per-field packed buffer per rank; each buffer is unpacked straight into
- * @ref fetch_cache_store (a view per row is cached, keyed by the row's id).
+ * @c fetch_cache_store (a view per row is cached, keyed by the row's id).
  * Particles are cached in an arbitrary (per-rank) order; every caller reads the
  * cache by id afterwards, so the order does not matter.
  *

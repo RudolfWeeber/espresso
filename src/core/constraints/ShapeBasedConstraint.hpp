@@ -113,7 +113,7 @@ public:
   }
 
 private:
-  /** @brief Attach @ref part_rep to its single-row store on first use
+  /** @brief Attach @c part_rep to its single-row store on first use
    *  (phase 7b: a @ref Particle is a view -- EVERY accessor reads the store
    *  column, so @c part_rep must be bound before its type/velocity/force is
    *  touched). Idempotent. Attached lazily (not in the constructor) because
@@ -125,18 +125,18 @@ private:
   void ensure_part_rep_attached() const;
 
   mutable Particle part_rep;
-  /** Standalone store backing @ref part_rep's columns (migration phase 2).
-   *  @ref part_rep is a representative wall particle owned by the constraint,
+  /** Standalone store backing @c part_rep's columns (migration phase 2).
+   *  @c part_rep is a representative wall particle owned by the constraint,
    *  not by any cell structure, so it needs its own single-row store for the
-   *  view accessors to work. Attached lazily by @ref ensure_part_rep_attached.
+   *  view accessors to work. Attached lazily by @c ensure_part_rep_attached.
    */
   mutable ParticleStore m_part_rep_store;
   /** Co-ownership of the Kokkos runtime (mirrors @ref CellStructure's
-   *  @c m_kokkos_handle). @ref m_part_rep_store holds Kokkos Views that must be
+   *  @c m_kokkos_handle). @c m_part_rep_store holds Kokkos Views that must be
    *  destroyed before @c Kokkos::finalize(); if this constraint outlives the
    *  last CellStructure, holding a handle keeps the runtime alive until the
-   *  destructor releases the columns. Captured in @ref
-   * ensure_part_rep_attached, where Kokkos is guaranteed initialized. */
+   *  destructor releases the columns. Captured in @c ensure_part_rep_attached,
+   *  where Kokkos is guaranteed initialized. */
   mutable std::shared_ptr<KokkosHandle> m_kokkos_handle;
   std::shared_ptr<Shapes::Shape> m_shape;
   bool m_penetrable;
