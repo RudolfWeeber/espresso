@@ -110,6 +110,20 @@ translation maps survive (deduped tail is non-contiguous); they die when ghost
 dedup is restructured. Remaining: 7d (GPU compile-safe shim), phase-7
 checkpoint budget re-evaluation.
 
+**Phase-8a checkpoint (2026-07-08, PASSED amended budget):** all 8
+integrator/thermostat hot loops (velocity-Verlet translation+rotation,
+Langevin, Brownian) are direct column kernels via a shared row launcher;
+identity stayed BITWISE per kernel group. Perf verdict (order-balanced A/B +
+sequential gate): 8a is ≈neutral vs the phase-7 tip (the arithmetic was
+already fast; a 2-D-view-subscript regression found by slot instrumentation
+was fixed by per-row VectorReference bundles); vs phase-0: lj-1rank 1.086,
+lj-4rank 1.014, lj-omp 1.007, p3m-1rank 0.985, p3m-4rank 0.971, p3m-omp
+1.033 — five of six configs inside the ORIGINAL 5% budget. The lj-1rank
+residual is attributed (instrumented) to the phase-7 whole-store rebuild per
+resort, not to accessor proxies — the 12% amendment for 1000ppc stays until
+the phase-8 final checkpoint. Doxygen reference cleanup (51→0 warnings)
+joined the standing gates alongside gcc-14.
+
 ## Non-goals
 
 - No change to the Python user interface or its semantics.
