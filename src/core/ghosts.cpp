@@ -1644,25 +1644,30 @@ static bool columnar_prepare_send_buffer(CommBuf &send_buffer,
   if (ranges == nullptr) {
     return false; // decided before touching the buffer/store
   }
-  auto const position_ctx =
-      (data_parts == GHOSTTRANS_POSITION)
-          ? std::optional<PositionRowContext>(
-                make_position_row_context_unchecked(store))
-          : std::nullopt;
-  auto const force_ctx =
-      (data_parts == GHOSTTRANS_FORCE)
-          ? std::optional<ForceRowContext>(make_force_row_context(store))
-          : std::nullopt;
+  // data_parts is a single fixed value for the whole columnar-eligible call
+  // (POSITION xor FORCE), so build the one plain-value row context the branch
+  // needs rather than a per-branch std::optional. Using the value type
+  // directly (like the make_*_row_context_unchecked callers in
+  // columnar_put_recv_buffer / columnar_add_forces_from_recv_buffer) keeps
+  // gcc-14 from mis-tracking the std::optional payload as maybe-uninitialized
+  // (the optional-payload false-positive family).
   auto *cursor = send_buffer.data();
-  for (auto const &[first_row, n] : *ranges) {
-    if (n == 0u) {
-      continue;
-    }
-    if (data_parts == GHOSTTRANS_POSITION) {
-      cursor = pack_position_range(cursor, *position_ctx, first_row, n, box_geo,
+  if (data_parts == GHOSTTRANS_POSITION) {
+    auto const position_ctx = make_position_row_context_unchecked(store);
+    for (auto const &[first_row, n] : *ranges) {
+      if (n == 0u) {
+        continue;
+      }
+      cursor = pack_position_range(cursor, position_ctx, first_row, n, box_geo,
                                    &ghost_comm.shift);
-    } else {
-      cursor = pack_force_range(cursor, *force_ctx, first_row, n);
+    }
+  } else {
+    auto const force_ctx = make_force_row_context(store);
+    for (auto const &[first_row, n] : *ranges) {
+      if (n == 0u) {
+        continue;
+      }
+      cursor = pack_force_range(cursor, force_ctx, first_row, n);
     }
   }
   assert(static_cast<std::size_t>(cursor - send_buffer.data()) ==
@@ -2023,28 +2028,35 @@ static bool columnar_cell_cell_transfer(GhostCommunication const &ghost_comm,
     pairs.emplace_back(src_range->first, dst_range->first);
     sizes.push_back(src_range->second);
   }
-  // Phase 2: apply the transfers.
+  // Phase 2: apply the transfers. data_parts is a single fixed value for the
+  // whole columnar-eligible call (POSITION xor FORCE), so build the one
+  // plain-value row context the branch needs rather than a per-branch
+  // std::optional. Using the value type directly (like the
+  // make_*_row_context_unchecked callers in columnar_put_recv_buffer /
+  // columnar_add_forces_from_recv_buffer) keeps gcc-14 from mis-tracking the
+  // std::optional payload as maybe-uninitialized (the optional-payload
+  // false-positive family).
   auto &store = *active_particle_store();
-  auto const position_ctx =
-      (data_parts == GHOSTTRANS_POSITION)
-          ? std::optional<PositionRowContext>(
-                make_position_row_context_unchecked(store))
-          : std::nullopt;
-  auto const force_ctx =
-      (data_parts == GHOSTTRANS_FORCE)
-          ? std::optional<ForceRowContext>(make_force_row_context(store))
-          : std::nullopt;
-  for (std::size_t pl = 0; pl < offset; pl++) {
-    auto const n = sizes[pl];
-    if (n == 0u) {
-      continue;
-    }
-    auto const [src_first, dst_first] = pairs[pl];
-    if (data_parts == GHOSTTRANS_POSITION) {
-      locl_transfer_position(*position_ctx, src_first, dst_first, n, box_geo,
+  if (data_parts == GHOSTTRANS_POSITION) {
+    auto const position_ctx = make_position_row_context_unchecked(store);
+    for (std::size_t pl = 0; pl < offset; pl++) {
+      auto const n = sizes[pl];
+      if (n == 0u) {
+        continue;
+      }
+      auto const [src_first, dst_first] = pairs[pl];
+      locl_transfer_position(position_ctx, src_first, dst_first, n, box_geo,
                              ghost_comm.shift);
-    } else {
-      locl_transfer_force(*force_ctx, src_first, dst_first, n);
+    }
+  } else {
+    auto const force_ctx = make_force_row_context(store);
+    for (std::size_t pl = 0; pl < offset; pl++) {
+      auto const n = sizes[pl];
+      if (n == 0u) {
+        continue;
+      }
+      auto const [src_first, dst_first] = pairs[pl];
+      locl_transfer_force(force_ctx, src_first, dst_first, n);
     }
   }
   return true;
