@@ -51,7 +51,16 @@ void GpuParticleData::enable_particle_transfer() {
 
 void GpuParticleData::copy_particles_to_device() {
   auto const &cell_structure = *System::get_system().cell_structure;
-  copy_particles_to_device(cell_structure.local_particles(), ::this_node);
+  // Phase 8c: on a single rank the store is the whole system (no cross-rank
+  // gather), so the per-field SoA staging fast path can bypass the AoS pack +
+  // device AoS buffer + split kernel. The multi-rank head-node MPI gather path
+  // is unchanged. Full device residency (data persistent on the GPU across
+  // steps) needs a Kokkos CUDA backend and is out of migration scope; this
+  // delivers the spec's per-field staging on the dominant single-rank GPU use
+  // case.
+  auto const single_rank = ::comm_cart.size() == 1;
+  copy_particles_to_device(cell_structure.local_particles(), ::this_node,
+                           single_rank);
 }
 
 bool GpuParticleData::has_compatible_device() const {
@@ -95,6 +104,44 @@ static void pack_particles(ParticleRange const &particles,
     buffer[i].q = static_cast<float>(p.q());
 #endif
     buffer[i].identity = p.id();
+    i++;
+  }
+}
+
+void GpuParticleData::pack_particles_soa(
+    ParticleRange const &particles, std::span<float> positions,
+    [[maybe_unused]] std::span<float> charges,
+    [[maybe_unused]] std::span<float> dipoles) const {
+  auto const &box = *System::get_system().box_geo;
+  // Bit-identity contract with pack_particles + split_particle_struct: for
+  // every field, compute the SAME double value and apply the SAME
+  // static_cast<float> (Utils::Vector3f's conversion is componentwise
+  // static_cast<float>), writing it into the SAME per-field SoA slot the split
+  // kernels produce (particle-major float3 for pos/dip, one float per particle
+  // for q), in local_particles() iteration order. Empty spans = disabled
+  // property (skipped). See split_kernel_r / _rq / _q / _dip in the .cu file.
+  std::size_t i = 0u;
+  for (auto const &p : particles) {
+    if (not positions.empty()) {
+      auto const folded =
+          static_cast<Utils::Vector3f>(box.folded_position(p.pos()));
+      positions[3ul * i + 0ul] = folded[0u];
+      positions[3ul * i + 1ul] = folded[1u];
+      positions[3ul * i + 2ul] = folded[2u];
+    }
+#ifdef ESPRESSO_ELECTROSTATICS
+    if (not charges.empty()) {
+      charges[i] = static_cast<float>(p.q());
+    }
+#endif
+#ifdef ESPRESSO_DIPOLES
+    if (not dipoles.empty()) {
+      auto const dip = static_cast<Utils::Vector3f>(p.calc_dip());
+      dipoles[3ul * i + 0ul] = dip[0u];
+      dipoles[3ul * i + 1ul] = dip[1u];
+      dipoles[3ul * i + 2ul] = dip[2u];
+    }
+#endif
     i++;
   }
 }

@@ -39,6 +39,7 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <span>
 
@@ -113,9 +114,40 @@ public:
   float *particle_q_device = nullptr;
 #endif
 
+  // -- phase 8c single-rank per-field staging buffers ----------------------
+  // Pinned host buffers in SoA layout (particle-major float3 for pos/dip, one
+  // float per particle for q), filled DIRECTLY from the ParticleStore columns
+  // on the comm.size()==1 fast path. Their contents are byte-identical to what
+  // the device split kernels produce, so they are cudaMemcpy'd straight into
+  // the SoA device buffers, bypassing the AoS host pack + device AoS buffer +
+  // split_kernel_* de-interleave (see copy_particles_soa_to_device below).
+  pinned_vector<float> particle_pos_host_soa;
+#ifdef ESPRESSO_DIPOLES
+  pinned_vector<float> particle_dip_host_soa;
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  pinned_vector<float> particle_q_host_soa;
+#endif
+
   ~Storage();
   void realloc_device_memory();
   void split_particle_struct();
+  void resize_and_zero_return_buffers(std::size_t n_part);
+  void resize_soa_staging_buffers(std::size_t n_part);
+  void copy_particles_soa_to_device();
+  std::span<float> get_particle_pos_host_soa_span() {
+    return {particle_pos_host_soa.data(), particle_pos_host_soa.size()};
+  }
+#ifdef ESPRESSO_DIPOLES
+  std::span<float> get_particle_dip_host_soa_span() {
+    return {particle_dip_host_soa.data(), particle_dip_host_soa.size()};
+  }
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  std::span<float> get_particle_q_host_soa_span() {
+    return {particle_q_host_soa.data(), particle_q_host_soa.size()};
+  }
+#endif
   void copy_particles_to_device();
   void copy_particle_forces_to_host() {
     if (not particle_forces_device.empty()) {
@@ -248,10 +280,11 @@ void GpuParticleData::gpu_init_particle_comm() {
   m_data->realloc_device_memory();
 }
 
-void GpuParticleData::Storage::copy_particles_to_device() {
-  // resize buffers
-  auto const n_part = particle_data_host.size();
-  resize_or_replace(particle_data_device, n_part);
+void GpuParticleData::Storage::resize_and_zero_return_buffers(
+    std::size_t const n_part) {
+  // Size the force/torque/dip_fld return-path buffers and zero the device side
+  // (the GPU solvers accumulate into these). Shared by the AoS split path and
+  // the phase-8c single-rank SoA staging path.
   particle_forces_host.resize(3ul * n_part);
   resize_or_replace(particle_forces_device, 3ul * n_part);
 
@@ -278,6 +311,13 @@ void GpuParticleData::Storage::copy_particles_to_device() {
   cudaMemsetAsync(raw_data_pointer(particle_torques_device), 0x0,
                   byte_size(particle_torques_device), stream[0]);
 #endif
+}
+
+void GpuParticleData::Storage::copy_particles_to_device() {
+  // resize buffers
+  auto const n_part = particle_data_host.size();
+  resize_or_replace(particle_data_device, n_part);
+  resize_and_zero_return_buffers(n_part);
 
   // copy particles to device
   cudaMemcpyAsync(raw_data_pointer(particle_data_device),
@@ -285,16 +325,121 @@ void GpuParticleData::Storage::copy_particles_to_device() {
                   cudaMemcpyHostToDevice, stream[0]);
 }
 
+/**
+ * @brief Size the pinned per-field SoA staging buffers for @p n_part particles
+ * (phase 8c single-rank fast path). Only the buffers for enabled properties are
+ * grown; the others stay empty (and are skipped by the copy).
+ */
+void GpuParticleData::Storage::resize_soa_staging_buffers(
+    std::size_t const n_part) {
+  using prop = GpuParticleData::prop;
+  if (m_need[prop::pos]) {
+    particle_pos_host_soa.resize(3ul * n_part);
+  }
+#ifdef ESPRESSO_ELECTROSTATICS
+  if (m_need[prop::q]) {
+    particle_q_host_soa.resize(n_part);
+  }
+#endif
+#ifdef ESPRESSO_DIPOLES
+  if (m_need[prop::dip]) {
+    particle_dip_host_soa.resize(3ul * n_part);
+  }
+#endif
+}
+
+/**
+ * @brief Copy the pinned per-field SoA staging buffers straight into the SoA
+ * device buffers (phase 8c single-rank fast path).
+ *
+ * The staging buffers were filled directly from the ParticleStore columns in
+ * SoA layout with the SAME f64->f32 casts, in the SAME per-field element order
+ * that @ref split_particle_struct produces from the AoS pack. Copying them here
+ * therefore leaves the device SoA buffers (@ref particle_pos_device,
+ * @ref particle_q_device, @ref particle_dip_device) bit-identical to the AoS
+ * pack + split path, but without the device AoS buffer or the split kernels.
+ */
+void GpuParticleData::Storage::copy_particles_soa_to_device() {
+  using prop = GpuParticleData::prop;
+  if (m_need[prop::pos] and particle_pos_device != nullptr) {
+    cudaMemcpyAsync(particle_pos_device, particle_pos_host_soa.data(),
+                    byte_size(particle_pos_host_soa), cudaMemcpyHostToDevice,
+                    stream[0]);
+  }
+#ifdef ESPRESSO_ELECTROSTATICS
+  if (m_need[prop::q] and particle_q_device != nullptr) {
+    cudaMemcpyAsync(particle_q_device, particle_q_host_soa.data(),
+                    byte_size(particle_q_host_soa), cudaMemcpyHostToDevice,
+                    stream[0]);
+  }
+#endif
+#ifdef ESPRESSO_DIPOLES
+  if (m_need[prop::dip] and particle_dip_device != nullptr) {
+    cudaMemcpyAsync(particle_dip_device, particle_dip_host_soa.data(),
+                    byte_size(particle_dip_host_soa), cudaMemcpyHostToDevice,
+                    stream[0]);
+  }
+#endif
+}
+
 void GpuParticleData::copy_particles_to_device(ParticleRange const &particles,
-                                               int this_node) {
-  if (m_communication_enabled) {
-    gather_particle_data(particles, m_data->particle_data_host, this_node);
-    if (this_node == 0) {
-      m_data->copy_particles_to_device();
-      if (m_split_particle_struct) {
-        m_data->realloc_device_memory();
-        m_data->split_particle_struct();
-      }
+                                               int this_node,
+                                               bool single_rank) {
+  if (not m_communication_enabled) {
+    return;
+  }
+
+  // Phase 8c single-rank fast path: fill per-field SoA host staging buffers
+  // DIRECTLY from the ParticleStore columns and cudaMemcpy each enabled field
+  // straight into the device SoA buffers, bypassing the AoS host pack, the
+  // device AoS buffer and the split kernels. This is bit-identical to the
+  // AoS+split path (same f64->f32 casts, same per-field SoA layout / order;
+  // see pack_particles_soa) but skips the de-interleave. Requires all enabled
+  // properties to be column-backed, which holds by construction: the only
+  // split-relevant properties are pos (always column-backed), q (ELECTROSTATICS
+  // column) and dip (DIPOLES columns via calc_dip). On a single rank
+  // this_node == 0. force/torque/dip_fld are return-path arrays, unaffected.
+  //
+  // ESPRESSO_GPU_FORCE_AOS_STAGING=1 forces the legacy AoS pack + split path
+  // even on a single rank. This exists solely as an A/B verification switch:
+  // the two paths are bit-identical by construction, so toggling it must not
+  // change any GPU result (used to validate the fast path against the legacy
+  // path). Read once and cached.
+  static bool const force_aos_staging = []() {
+    auto const *env = std::getenv("ESPRESSO_GPU_FORCE_AOS_STAGING");
+    return env != nullptr and env[0] != '\0' and env[0] != '0';
+  }();
+  if (single_rank and m_split_particle_struct and not force_aos_staging) {
+    auto const n_part = particles.size();
+    // keep particle_data_device sized so n_particles() stays correct; its
+    // contents are unused on this path (no AoS copy, no split kernel).
+    resize_or_replace(m_data->particle_data_device, n_part);
+    m_data->resize_and_zero_return_buffers(n_part);
+    m_data->realloc_device_memory();
+    m_data->resize_soa_staging_buffers(n_part);
+#ifdef ESPRESSO_ELECTROSTATICS
+    auto q_span = m_data->get_particle_q_host_soa_span();
+#else
+    auto q_span = std::span<float>();
+#endif
+#ifdef ESPRESSO_DIPOLES
+    auto dip_span = m_data->get_particle_dip_host_soa_span();
+#else
+    auto dip_span = std::span<float>();
+#endif
+    pack_particles_soa(particles, m_data->get_particle_pos_host_soa_span(),
+                       q_span, dip_span);
+    m_data->copy_particles_soa_to_device();
+    return;
+  }
+
+  // Multi-rank (or no split needed): head-node MPI gather + AoS split path.
+  gather_particle_data(particles, m_data->particle_data_host, this_node);
+  if (this_node == 0) {
+    m_data->copy_particles_to_device();
+    if (m_split_particle_struct) {
+      m_data->realloc_device_memory();
+      m_data->split_particle_struct();
     }
   }
 }
