@@ -651,6 +651,27 @@ public:
 #endif // ESPRESSO_ROTATION
 #endif // ESPRESSO_THERMOSTAT_PER_PARTICLE
 
+  // -- typed zero-extent dummy views (phase 8d hardening) -------------------
+  // When an optional feature (rotation, mass, per-particle friction, ...) is
+  // compiled OUT, the integrator kernels still need to NAME a view handle for
+  // that feature's column so the shared lambda signature stays fixed; the
+  // handle is only ever passed to code paths that are themselves #ifdef'd out.
+  // Prior to phase 8d those disabled-feature handles reused an UNRELATED live
+  // column (e.g. rotation_view := id_view(), mass_view := velocity_view()), so
+  // a future edit that accidentally indexed such a handle would silently read
+  // the WRONG column type (int-as-uint8, double[3]-as-scalar, ...). These
+  // helpers instead hand back a zero-extent host view of the CORRECT column
+  // type: naming is safe, but any index into one traps under bounds checking
+  // (ESPRESSO_ADDITIONAL_CHECKS / Kokkos debug) instead of aliasing live data.
+  // A default-constructed column has extent 0; its host mirror is the dummy.
+  auto dummy_vector_view() { return Column{}.view_host(); }
+  auto dummy_quaternion_view() { return QuaternionColumn{}.view_host(); }
+  auto dummy_scalar_view() { return ScalarColumn{}.view_host(); }
+  auto dummy_uint8_view() { return Uint8Column{}.view_host(); }
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+  auto dummy_gamma_view() { return GammaColumn{}.view_host(); }
+#endif
+
   // -- host parameter sidecars (phase 5) ------------------------------------
   // Cold PODs live in plain std::vector sidecars indexed by store row (not
   // Kokkos columns). Rebuilt with the store (old vector swapped like a column;

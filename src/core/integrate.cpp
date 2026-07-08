@@ -398,15 +398,18 @@ static bool integrator_step_1(CellStructure &cell_structure,
   auto pos_view = store.position_view();
   auto force_view = store.force_view();
   auto id_view = store.id_view();
+  // Disabled-feature handles are typed zero-extent dummy views (correct column
+  // type, extent 0): they exist only to fix the shared kernel lambda signature
+  // and are never indexed on a compiled-out path. See ParticleStore::dummy_*.
 #ifdef ESPRESSO_MASS
   auto mass_view = store.mass_view();
 #else
-  auto mass_view = store.velocity_view(); // unused (compile-time fallback)
+  auto mass_view = store.dummy_scalar_view();
 #endif
 #ifdef ESPRESSO_EXTERNAL_FORCES
   auto ext_flag_view = store.ext_flag_view();
 #else
-  auto ext_flag_view = store.velocity_view(); // unused (fallback)
+  auto ext_flag_view = store.dummy_uint8_view();
 #endif
 #ifdef ESPRESSO_ROTATION
   auto quat_view = store.quaternion_view();
@@ -414,25 +417,25 @@ static bool integrator_step_1(CellStructure &cell_structure,
   auto torque_view = store.torque_view();
   auto rotation_view = store.rotation_view();
 #else
-  auto quat_view = store.velocity_view();   // unused (fallback)
-  auto omega_view = store.velocity_view();  // unused (fallback)
-  auto torque_view = store.velocity_view(); // unused (fallback)
-  auto rotation_view = store.id_view();     // unused (fallback)
+  auto quat_view = store.dummy_quaternion_view();
+  auto omega_view = store.dummy_vector_view();
+  auto torque_view = store.dummy_vector_view();
+  auto rotation_view = store.dummy_uint8_view();
 #endif
 #ifdef ESPRESSO_ROTATIONAL_INERTIA
   auto rinertia_view = store.rinertia_view();
 #else
-  auto rinertia_view = store.velocity_view(); // unused (compile-time fallback)
+  auto rinertia_view = store.dummy_vector_view();
 #endif
 #ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
   auto gamma_view = store.gamma_view();
 #else
-  auto gamma_view = store.velocity_view(); // unused (fallback)
+  auto gamma_view = store.dummy_scalar_view();
 #endif
 #if defined(ESPRESSO_THERMOSTAT_PER_PARTICLE) && defined(ESPRESSO_ROTATION)
   auto gamma_rot_view = store.gamma_rot_view();
 #else
-  auto gamma_rot_view = store.velocity_view(); // unused (fallback)
+  auto gamma_rot_view = store.dummy_scalar_view();
 #endif
   cell_structure.for_each_local_particle_row([&](int const row) {
     Particle p;
@@ -584,7 +587,10 @@ static void integrator_step_2(CellStructure &cell_structure,
 #ifdef ESPRESSO_ROTATIONAL_INERTIA
   auto rinertia_view = store.rinertia_view();
 #else
-  auto rinertia_view = store.velocity_view(); // unused (compile-time fallback)
+  // Correct-typed zero-extent dummy: rinertia_view is never indexed when
+  // rotational inertia is off (the rotator kernels use {1,1,1}); see
+  // ParticleStore::dummy_vector_view.
+  auto rinertia_view = store.dummy_vector_view();
 #endif
 #endif
   cell_structure.for_each_local_particle_row([&](int const row) {
