@@ -49,17 +49,11 @@
  * memory is allocated and populated at every time step, even when the GPU
  * method that originally requested the data is disabled.
  *
- * @note Phase-7 (array-based particle storage) kept this AoS host-staging
- * design intact: @ref pack_particles gathers fields through the preserved
- * particle accessor API at gather cadence, so the migration to
- * @ref ParticleStore columns required no changes here. The phase-8 rework
- * (array-based particle storage design, phase 8 "device-resident
- * execution") replaces this staging layer with device views of the store
- * columns: the @ref GpuParticle AoS pack/split path (@ref pack_particles,
- * @ref split_kernel_r) is retired in favour of per-field
- * `DualView::view_device()` with `modify(host)`/`sync(device)` discipline,
- * and the component-major-vs-@c LayoutRight coalescing question is resolved
- * there. Until then this AoS layer remains the CUDA data path.
+ * @note The AoS host-staging design (@ref pack_particles gathering fields
+ * through the particle accessor API) remains the multi-rank CUDA data path.
+ * The single-rank fast path fills per-field SoA staging buffers directly from
+ * the @ref ParticleStore columns (@ref pack_particles_soa), bypassing the AoS
+ * pack + split kernel.
  */
 class GpuParticleData : public System::Leaf<GpuParticleData>,
                         public std::enable_shared_from_this<GpuParticleData> {
@@ -121,11 +115,11 @@ private:
                             int this_node);
   /**
    * @brief Fill the per-field SoA host staging buffers directly from the
-   * @ref ParticleStore columns (phase 8c single-rank fast path).
+   * @ref ParticleStore columns (single-rank fast path).
    *
    * Writes the enabled properties (position, charge, dipole moment) into the
-   * @p positions / @p charges / @p dipoles spans in SoA layout, using the SAME
-   * particle accessors and f64->f32 casts as @ref pack_particles feeding
+   * @p positions / @p charges / @p dipoles spans in SoA layout, using the
+   * same particle accessors and f64->f32 casts as @ref pack_particles feeding
    * @ref Storage::split_particle_struct, so the resulting device SoA buffers
    * are bit-identical to the AoS pack + split path. An empty span means the
    * property is not enabled and is skipped. Only meaningful on a single rank

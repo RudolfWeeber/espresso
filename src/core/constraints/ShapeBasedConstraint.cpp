@@ -105,8 +105,8 @@ double ShapeBasedConstraint::min_dist(BoxGeometry const &box_geo,
 ParticleForce ShapeBasedConstraint::force(Particle const &p,
                                           Utils::Vector3d const &folded_pos,
                                           double) {
-  // Phase 7b: part_rep is a view; ensure it is bound to its store before any
-  // accessor (force/torque/type/velocity) is read.
+  // part_rep is a view; ensure it is bound to its store before any accessor
+  // (force/torque/type/velocity) is read.
   ensure_part_rep_attached();
   ParticleForce pf{};
   auto const &ia_params = get_ia_param(p.type());

@@ -32,15 +32,14 @@
  * particle range on the head node.
  * This implementation fetches all particles to the head node on creation.
  *
- * Phase 7b flip: the cached particles are @c Particle VIEWS over an OWNED
- * @ref ParticleStore (@c m_store), NOT copies of the shared fetch-cache
- * views. Each fetched particle's row is copied (@ref ParticleStore::copy_row)
- * into a fresh row of this store; the position is then unfolded IN THIS STORE
+ * The cached particles are @c Particle VIEWS over an OWNED @ref ParticleStore
+ * (@c m_store), not aliases of the shared fetch-cache views. Each fetched
+ * particle's row is copied (@ref ParticleStore::copy_row) into a fresh row of
+ * this store; the position is then unfolded IN THIS STORE
  * (@c p.pos() += image_shift). This makes the config self-contained and
- * independent of the fetch cache -- the pre-flip @c std::vector<Particle> COPY
- * held its own data, but a view copied by value would alias the fetch-cache
- * store row (invalidated on cache eviction) and the pos()/image_box() writeback
- * would corrupt the shared cache (T1 alias hazard).
+ * independent of the fetch cache: a view copied by value would alias the
+ * fetch-cache store row (invalidated on cache eviction) and the
+ * pos()/image_box() writeback would corrupt the shared cache.
  */
 class PartCfg {
   /** Owned backing store for the cached rows (independent of the fetch cache).

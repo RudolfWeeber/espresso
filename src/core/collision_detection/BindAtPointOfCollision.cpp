@@ -105,12 +105,12 @@ void BindAtPointOfCollision::handle_collisions(
   // Iterate over global collision queue
   for (auto const &[pid1, pid2] : global_collision_queue) {
 
-    // Phase 7e: get_local_particle returns by-value views (the view pool is
-    // gone). p1/p2 are held across place_vs_and_relate_to_particle, which calls
-    // add_particle -> a store rebuild that RENUMBERS every row and bumps the
-    // store generation. The views must therefore be re-resolved by id after
-    // each such call; a debug generation guard (see below) catches a missed
-    // re-resolution before a stale view is used.
+    // get_local_particle returns by-value views. p1/p2 are held across
+    // place_vs_and_relate_to_particle, which calls add_particle -> a store
+    // rebuild that RENUMBERS every row and bumps the store generation. The
+    // views must therefore be re-resolved by id after each such call; a debug
+    // generation guard (see below) catches a missed re-resolution before a
+    // stale view is used.
     std::optional<Particle> p1 = cell_structure.get_local_particle(pid1);
     std::optional<Particle> p2 = cell_structure.get_local_particle(pid2);
     // Generation at which p1/p2 were last resolved; bumped on each re-resolve.

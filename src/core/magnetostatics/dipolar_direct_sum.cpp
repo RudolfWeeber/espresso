@@ -223,10 +223,10 @@ T image_sum(InputIterator begin, InputIterator end, InputIterator it,
 static auto gather_particle_data(BoxGeometry const &box_geo,
                                  ParticleRange const &particles) {
   auto const &comm = ::comm_cart;
-  // Phase 7a: store VIEW COPIES, not pointers into the transient cached views
-  // the range hands out (those dangle after the loop increment). A view copy
-  // still aliases the store row, so the force/torque write-back below lands in
-  // the columns.
+  // Store VIEW COPIES, not pointers into the transient cached views the range
+  // hands out (those dangle after the loop increment). A view copy still
+  // aliases the store row, so the force/torque write-back below lands in the
+  // columns.
   std::vector<Particle> local_particles;
   std::vector<PosMom> local_posmom;
   std::vector<PosMom> all_posmom;

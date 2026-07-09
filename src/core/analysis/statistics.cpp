@@ -80,9 +80,9 @@ static auto gather_traits_for_types(System::System const &system,
                                     Trait &&...trait) {
   std::vector<typename DecayTupleResult<Trait...>::type> buffer{};
 
-  // Migration phase 3: reading p.pos()/p.image_box() requires a valid
-  // ParticleStore row. This analysis path is called directly from the script
-  // interface, possibly after a topology change. O(1) when clean; rank-local.
+  // Reading p.pos()/p.image_box() requires a valid ParticleStore row. This
+  // analysis path is called directly from the script interface, possibly after
+  // a topology change. O(1) when clean; rank-local.
   system.cell_structure->ensure_particle_store_synchronized();
   for (auto const &p : system.cell_structure->local_particles()) {
     if (Utils::contains(p_types, p.type())) {
@@ -150,9 +150,9 @@ Utils::Vector3d calc_linear_momentum(System::System const &system,
                                      bool include_lbfluid) {
   Utils::Vector3d momentum{};
   if (include_particles) {
-    // Reading p.v() requires a valid ParticleStore row (phase 4: velocity lives
-    // in the store columns); this is a script-facing entry point that may
-    // follow a topology change. O(1) when clean.
+    // Reading p.v() requires a valid ParticleStore row (velocity lives in the
+    // store columns); this is a script-facing entry point that may follow a
+    // topology change. O(1) when clean.
     system.cell_structure->ensure_particle_store_synchronized();
     momentum = reduce_over_local_particles<Utils::Vector3d>(
         *(system.cell_structure),

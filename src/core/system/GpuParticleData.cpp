@@ -51,13 +51,10 @@ void GpuParticleData::enable_particle_transfer() {
 
 void GpuParticleData::copy_particles_to_device() {
   auto const &cell_structure = *System::get_system().cell_structure;
-  // Phase 8c: on a single rank the store is the whole system (no cross-rank
-  // gather), so the per-field SoA staging fast path can bypass the AoS pack +
-  // device AoS buffer + split kernel. The multi-rank head-node MPI gather path
-  // is unchanged. Full device residency (data persistent on the GPU across
-  // steps) needs a Kokkos CUDA backend and is out of migration scope; this
-  // delivers the spec's per-field staging on the dominant single-rank GPU use
-  // case.
+  // On a single rank the store is the whole system (no cross-rank gather), so
+  // the per-field SoA staging fast path can bypass the AoS pack + device AoS
+  // buffer + split kernel. The multi-rank head-node MPI gather path is
+  // unchanged.
   auto const single_rank = ::comm_cart.size() == 1;
   copy_particles_to_device(cell_structure.local_particles(), ::this_node,
                            single_rank);

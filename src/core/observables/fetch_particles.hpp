@@ -30,15 +30,15 @@
 #include <set>
 #include <vector>
 
-/** Owning result of @ref fetch_particles (phase 7e).
+/** Owning result of @ref fetch_particles.
  *
- *  Phase 7e: get_local_particle returns by-value @ref Particle views (16-byte
- *  handles aliasing the store), so the reference range that observables consume
- *  can no longer point into a persistent view pool -- it must point into an
- *  owned buffer that lives as long as the range. This struct owns that buffer
- *  (@c owned) and exposes the @ref Observables::ParticleReferenceRange (@c
- * refs) that references into it. Callers keep the returned object alive for the
- * duration of the observable evaluation and pass @c .refs to @c evaluate. */
+ *  get_local_particle returns by-value @ref Particle views (16-byte handles
+ *  aliasing the store), so the reference range that observables consume must
+ *  point into an owned buffer that lives as long as the range. This struct
+ *  owns that buffer (@c owned) and exposes the
+ *  @ref Observables::ParticleReferenceRange (@c refs) that references into it.
+ *  Callers keep the returned object alive for the duration of the observable
+ *  evaluation and pass @c .refs to @c evaluate. */
 struct FetchedParticles {
   std::vector<Particle> owned;
   Observables::ParticleReferenceRange refs;
@@ -48,7 +48,7 @@ struct FetchedParticles {
  *
  *  @param ids particle identifiers
  *  @return owned particle views (with positions in the current box) plus a
- *          reference range into them (phase 7e).
+ *          reference range into them.
  */
 inline FetchedParticles fetch_particles(std::vector<int> const &ids) {
   auto const &system = System::get_system();
@@ -59,9 +59,7 @@ inline FetchedParticles fetch_particles(std::vector<int> const &ids) {
   result.owned.reserve(ids.size());
   // Resolve each requested id through get_local_particle, which returns a
   // by-value view over the store row -- valid for the observable's lifetime (no
-  // rebuild during evaluation). Skip ids that are not a local (owned) particle
-  // here (absent or ghost), preserving the pre-flip filter (only local,
-  // non-ghost particles).
+  // rebuild during evaluation). Only local, non-ghost particles are included.
   for (auto const id : ids) {
     auto const p = cell_structure.get_local_particle(id);
     if (p and not p->is_ghost()) {

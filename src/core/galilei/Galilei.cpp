@@ -39,9 +39,9 @@ void Galilei::kill_particle_motion(System::System &system, bool omega) const {
 #ifndef ESPRESSO_ROTATION
   std::ignore = omega;
 #endif
-  // Writing p.v()/p.omega() requires a valid ParticleStore row (phase 4:
-  // velocity/angular velocity live in the store columns). This is a
-  // script-facing entry point that may follow a topology change.
+  // Writing p.v()/p.omega() requires a valid ParticleStore row (velocity and
+  // angular velocity live in the store columns). This is a script-facing entry
+  // point that may follow a topology change.
   system.cell_structure->ensure_particle_store_synchronized();
   for (auto &p : system.cell_structure->local_particles()) {
     p.v() = {};
@@ -74,8 +74,8 @@ void Galilei::kill_particle_forces(System::System &system, bool torque) const {
 Utils::Vector3d
 Galilei::calc_system_cms_position(System::System const &system) const {
   auto const &box_geo = *system.box_geo;
-  // Reading p.pos()/p.image_box() requires a valid ParticleStore row; this is a
-  // script-facing entry point that may follow a topology change (phase 3).
+  // Reading p.pos()/p.image_box() requires a valid ParticleStore row; this is
+  // a script-facing entry point that may follow a topology change.
   system.cell_structure->ensure_particle_store_synchronized();
   auto total_mass = 0.;
   auto cms_pos = Utils::Vector3d{};
@@ -93,9 +93,9 @@ Galilei::calc_system_cms_position(System::System const &system) const {
 
 Utils::Vector3d
 Galilei::calc_system_cms_velocity(System::System const &system) const {
-  // Reading p.v() requires a valid ParticleStore row (phase 4: velocity lives
-  // in the store columns); this is a script-facing entry point that may follow
-  // a topology change.
+  // Reading p.v() requires a valid ParticleStore row (velocity lives in the
+  // store columns); this is a script-facing entry point that may follow a
+  // topology change.
   system.cell_structure->ensure_particle_store_synchronized();
   auto total_mass = 0.;
   auto cms_vel = Utils::Vector3d{};

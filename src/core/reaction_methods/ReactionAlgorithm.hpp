@@ -271,8 +271,8 @@ private:
   double m_slab_end_z = -10.0;
   double m_max_exclusion_range = 0.;
 
-  // Phase 7e: return by-value views (optional); the cell structure no longer
-  // hands out stable pointers.
+  // Return by-value views (optional); the cell structure hands out views, not
+  // stable pointers.
   std::optional<Particle> get_real_particle(int p_id) const;
   std::optional<Particle> get_local_particle(int p_id) const;
 

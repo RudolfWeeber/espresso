@@ -110,10 +110,10 @@ void GlueToSurface::handle_collisions(
   // Iterate over global collision queue
   for (auto const &[pid1, pid2] : global_collision_queue) {
 
-    // Phase 7e: get_local_particle returns by-value views (the view pool is
-    // gone). p1/p2 are held across place_vs_and_relate_to_particle, which calls
-    // add_particle -> a store rebuild that RENUMBERS every row and bumps the
-    // generation, so they must be re-resolved by id afterwards.
+    // get_local_particle returns by-value views. p1/p2 are held across
+    // place_vs_and_relate_to_particle, which calls add_particle -> a store
+    // rebuild that RENUMBERS every row and bumps the generation, so they must
+    // be re-resolved by id afterwards.
     std::optional<Particle> p1 = cell_structure.get_local_particle(pid1);
     std::optional<Particle> p2 = cell_structure.get_local_particle(pid2);
     auto const resolved_generation =
@@ -165,13 +165,11 @@ void GlueToSurface::handle_collisions(
     }
     assert(ratio != -1.);
     auto const pos = Utils::Vector3d(p2->pos()) + vec21 * ratio;
-    // Phase 7e (latent-bug fix): capture the base-particle id and its ghost
-    // flag BY VALUE now, before add_particle. The pre-7e code held a reference
-    // (`attach_vs_to`) into *p1/*p2 across place_vs_and_relate_to_particle's
-    // add_particle; a store rebuild renumbers rows, so reading
-    // attach_vs_to.id() afterwards would alias whatever now occupies the old
-    // row. Snapshotting the scalar id/is_ghost decouples the decision from row
-    // identity.
+    // Capture the base-particle id and its ghost flag BY VALUE before
+    // add_particle. add_particle triggers a store rebuild that renumbers rows,
+    // so reading id()/is_ghost() from a view held across that call would alias
+    // whatever now occupies the old row. Snapshotting the scalar values
+    // decouples the decision from row identity.
     auto const attach_vs_to =
         (p1->type() == part_type_to_attach_vs_to) ? *p1 : *p2;
     auto const attach_vs_to_id = attach_vs_to.id();

@@ -363,12 +363,11 @@ void System::System::lb_couple_particles() {
     LB::ParticleCoupling coupling{*thermostat->lb, lb, *box_geo, *local_geo};
     LB::CouplingBookkeeping bookkeeping{*cell_structure};
     lb.ghost_communication_vel();
-    // Phase 7a: local_particles()/ghost_particles() hand out transient cached
-    // VIEWS, so storing `&p` from the loop would dangle after the next
-    // increment (the cached-view multipass hazard). Snapshot each coupled
-    // particle's VIEW into a stable owning buffer (the view still aliases the
-    // store row, so force writes through it land in the column) and pass
-    // pointers into that buffer to the kernel.
+    // local_particles()/ghost_particles() hand out transient cached views, so
+    // storing `&p` from the loop would dangle after the next increment.
+    // Snapshot each coupled particle's view into a stable owning buffer (the
+    // view still aliases the store row, so force writes through it land in the
+    // column) and pass pointers into that buffer to the kernel.
     std::vector<Particle> coupled_views{};
     for (auto const *particle_range : {&real_particles, &ghost_particles}) {
       for (auto &p : *particle_range) {

@@ -45,12 +45,10 @@ inline auto constexpr new_part = -3;
 /**
  * @brief Get particle data.
  *
- *  Phase 7e: returns a by-value @ref Particle VIEW (a 16-byte handle aliasing
- *  the live store row, or a fetch-cache row for remote particles) rather than a
- *  reference, since @ref CellStructure::get_local_particle no longer hands out
- * a stable pointer. Callers that bound the old @c const @c Particle& keep
- * working (a const reference binds to the returned temporary;
- * lifetime-extended).
+ *  Returns a by-value @ref Particle VIEW (a 16-byte handle aliasing the live
+ *  store row for local particles, or a fetch-cache row for remote ones).
+ *  Callers that bind the result to @c const @c Particle& keep working
+ *  (lifetime-extended by the const reference).
  *
  *  @param p_id the identity of the particle to fetch
  */

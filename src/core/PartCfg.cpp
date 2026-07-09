@@ -34,8 +34,8 @@ void PartCfg::update() {
   auto const chunk_size = fetch_cache_max_size();
 
   // Size the owned store to hold one row per particle, then fill it row by row
-  // by COPYING each fetched view's row into it (phase 7b flip): m_parts holds
-  // views over THIS store, independent of the shared fetch cache.
+  // by COPYING each fetched view's row into it: m_parts holds views over THIS
+  // store, independent of the shared fetch cache.
   m_store.begin_rebuild(ids.size(), 0u);
   m_store.finish_rebuild();
   m_parts.reserve(ids.size());

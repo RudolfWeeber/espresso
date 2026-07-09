@@ -642,11 +642,11 @@ double ReactionAlgorithm::calculate_potential_energy() const {
 std::optional<Particle> ReactionAlgorithm::get_real_particle(int p_id) const {
   assert(p_id >= 0);
   auto const &system = System::get_system();
-  // Phase 7e: resolve against a synchronized store. get_local_particle now
-  // returns a live-store view whose is_ghost() reads number_of_local_particles;
-  // on a dirty store (e.g. after a type/charge change scheduled a resort) that
-  // read -- and thus the ownership decision below -- could diverge across ranks
-  // and break the collective all_reduce count check.
+  // Resolve against a synchronized store. get_local_particle returns a
+  // live-store view whose is_ghost() reads number_of_local_particles; on a
+  // dirty store (e.g. after a type/charge change scheduled a resort) that read
+  // -- and thus the ownership decision below -- could diverge across ranks and
+  // break the collective all_reduce count check.
   system.cell_structure->ensure_particle_store_synchronized();
   auto ptr = system.cell_structure->get_local_particle(p_id);
   if (ptr and ptr->is_ghost()) {
@@ -660,7 +660,7 @@ std::optional<Particle> ReactionAlgorithm::get_real_particle(int p_id) const {
 std::optional<Particle> ReactionAlgorithm::get_local_particle(int p_id) const {
   assert(p_id >= 0);
   auto const &system = System::get_system();
-  // Phase 7e: resolve against a synchronized store (see get_real_particle).
+  // Resolve against a synchronized store (see get_real_particle).
   system.cell_structure->ensure_particle_store_synchronized();
   auto ptr = system.cell_structure->get_local_particle(p_id);
   assert(boost::mpi::all_reduce(m_comm,

@@ -439,11 +439,11 @@ void mpi_mpiio_common_read(const std::string &prefix, unsigned fields,
   auto const [pref, nlocalpart] =
       read_prefs(prefix + ".pref", rank, size, nglobalpart);
 
-  // Phase 7b (Task 4): a Particle is a view, not a data carrier. Build the read
-  // particles into a LOCAL, independent ParticleStore (one row per particle,
-  // seeded to defaults), write fields through views, then hand each view to
-  // add_particle (which stages/copies the row into the cell store). The local
-  // store stays alive until every add commits, then its columns are released.
+  // Build the read particles into a LOCAL, independent ParticleStore (one row
+  // per particle, seeded to defaults), write fields through views, then hand
+  // each view to add_particle (which stages/copies the row into the cell
+  // store). The local store stays alive until every add commits, then its
+  // columns are released.
   ParticleStore io_store{};
   io_store.begin_rebuild(nlocalpart, 0u);
   io_store.finish_rebuild();

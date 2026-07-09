@@ -24,7 +24,7 @@
 
 bool add_bond(System::System &system, int bond_id,
               std::vector<int> const &particle_ids) {
-  // Phase 7e: mutable optional view -- the bond is inserted through it below.
+  // Mutable optional view -- the bond is inserted through it below.
   auto p = system.cell_structure->get_local_particle(particle_ids[0]);
   if (p) {
     // The bond view is stored in the bond list of the primary particle.

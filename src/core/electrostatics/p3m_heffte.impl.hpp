@@ -372,20 +372,19 @@ template <int cao> struct AssignCharge {
     auto constexpr memory_order = Utils::MemoryOrder::ROW_MAJOR;
     auto const &aosoa = cell_structure.get_aosoa();
     auto const n_part = cell_structure.count_local_particles();
-    // Debug-only: the gather below reads the pack-owned pair_charge column
-    // pack-indexed, trusting it was refreshed from the store q column this
-    // step. Assert that invariant (the phase-6 ICC bug violated it).
+    // Debug-only: assert the pack-owned pair_charge column was refreshed from
+    // the store q column this step before reading it pack-indexed below.
     aosoa.assert_pair_charge_fresh(n_part);
     p3m.inter_weights.zfill(n_part); // allocate buffer for parallel write
     kokkos_parallel_range_for(
         "InterpolateCharges", std::size_t{0u}, n_part, [&](auto p_index) {
           auto const tid = omp_get_thread_num();
-          // phase 3.5: position lives in the ParticleStore column; translate
-          // the pack index to a store row (identity on the local prefix).
+          // Position lives in the ParticleStore column; translate the pack
+          // index to a store row (identity on the local prefix).
           auto const pos =
               aosoa.get_vector_at(aosoa.position, aosoa.row(p_index));
-          // phase-5 perf recovery: read the pack-owned contiguous charge column
-          // pack-indexed (refreshed this step; coulomb solver active).
+          // Read the pack-owned contiguous charge column pack-indexed
+          // (refreshed this step; coulomb solver active).
           auto const q = aosoa.pair_charge(p_index);
           auto const weights =
               p3m_calculate_interpolation_weights<cao, memory_order>(

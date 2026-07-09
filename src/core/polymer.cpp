@@ -149,7 +149,7 @@ draw_polymer_positions(System::System const &system, int const n_polymers,
 
   auto const &box_geo = *system.box_geo;
   // is_valid_position() reads p.pos() on live local particles; ensure valid
-  // ParticleStore rows before the position checks (phase 3). O(1) when clean.
+  // ParticleStore rows before the position checks. O(1) when clean.
   system.cell_structure->ensure_particle_store_synchronized();
   auto rng = [mt = Random::mt19937(static_cast<unsigned>(seed)),
               dist = std::uniform_real_distribution<double>(

@@ -113,19 +113,19 @@ public:
   }
 
 private:
-  /** @brief Attach @c part_rep to its single-row store on first use
-   *  (phase 7b: a @ref Particle is a view -- EVERY accessor reads the store
-   *  column, so @c part_rep must be bound before its type/velocity/force is
-   *  touched). Idempotent. Attached lazily (not in the constructor) because
-   *  Kokkos may not be initialized then; every entry point that touches
-   *  @c part_rep (set_type/type/velocity/get_ia_param/force/add_energy) calls
-   *  this first, and all of them run after the System (hence Kokkos) exists.
-   *  The mutated members are @c mutable so the const accessors can attach.
-   *  Defined in the .cpp (needs @c ::kokkos_handle from communication.hpp). */
+  /** @brief Attach @c part_rep to its single-row store on first use.
+   *  A @ref Particle is a view -- EVERY accessor reads the store column, so
+   *  @c part_rep must be bound before its type/velocity/force is touched.
+   *  Idempotent. Attached lazily (not in the constructor) because Kokkos may
+   *  not be initialized then; every entry point that touches @c part_rep
+   *  (set_type/type/velocity/get_ia_param/force/add_energy) calls this first,
+   *  and all of them run after the System (hence Kokkos) exists. The mutated
+   *  members are @c mutable so the const accessors can attach. Defined in the
+   *  .cpp (needs @c ::kokkos_handle from communication.hpp). */
   void ensure_part_rep_attached() const;
 
   mutable Particle part_rep;
-  /** Standalone store backing @c part_rep's columns (migration phase 2).
+  /** Standalone store backing @c part_rep's columns.
    *  @c part_rep is a representative wall particle owned by the constraint,
    *  not by any cell structure, so it needs its own single-row store for the
    *  view accessors to work. Attached lazily by @c ensure_part_rep_attached.

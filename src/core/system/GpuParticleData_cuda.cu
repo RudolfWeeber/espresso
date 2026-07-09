@@ -94,9 +94,7 @@ public:
   GpuParticleData::GpuEnergy *energy_device = nullptr;
   std::size_t current_size = 0ul;
   // Authoritative local particle count for n_particles() (consumed by the
-  // P3M/DDS solvers). Set on BOTH transfer paths so the single-rank SoA fast
-  // path no longer has to size the (otherwise unused) device AoS buffer just
-  // to keep n_particles() correct. See copy_particles_to_device.
+  // P3M/DDS solvers). Set on both transfer paths; see copy_particles_to_device.
   std::size_t n_particles = 0ul;
   pinned_vector<GpuParticle> particle_data_host;
   thrust::device_vector<GpuParticle> particle_data_device;
@@ -118,9 +116,9 @@ public:
   float *particle_q_device = nullptr;
 #endif
 
-  // -- phase 8c single-rank per-field staging buffers ----------------------
+  // -- single-rank per-field SoA staging buffers ---------------------------
   // Pinned host buffers in SoA layout (particle-major float3 for pos/dip, one
-  // float per particle for q), filled DIRECTLY from the ParticleStore columns
+  // float per particle for q), filled directly from the ParticleStore columns
   // on the comm.size()==1 fast path. Their contents are byte-identical to what
   // the device split kernels produce, so they are cudaMemcpy'd straight into
   // the SoA device buffers, bypassing the AoS host pack + device AoS buffer +
@@ -286,7 +284,7 @@ void GpuParticleData::Storage::resize_and_zero_return_buffers(
     std::size_t const n_part) {
   // Size the force/torque/dip_fld return-path buffers and zero the device side
   // (the GPU solvers accumulate into these). Shared by the AoS split path and
-  // the phase-8c single-rank SoA staging path.
+  // the single-rank SoA staging path.
   particle_forces_host.resize(3ul * n_part);
   resize_or_replace(particle_forces_device, 3ul * n_part);
 
@@ -329,8 +327,8 @@ void GpuParticleData::Storage::copy_particles_to_device() {
 
 /**
  * @brief Size the pinned per-field SoA staging buffers for @p n_part particles
- * (phase 8c single-rank fast path). Only the buffers for enabled properties are
- * grown; the others stay empty (and are skipped by the copy).
+ * (single-rank fast path). Only the buffers for enabled properties are grown;
+ * the others stay empty (and are skipped by the copy).
  */
 void GpuParticleData::Storage::resize_soa_staging_buffers(
     std::size_t const n_part) {
@@ -352,11 +350,11 @@ void GpuParticleData::Storage::resize_soa_staging_buffers(
 
 /**
  * @brief Copy the pinned per-field SoA staging buffers straight into the SoA
- * device buffers (phase 8c single-rank fast path).
+ * device buffers (single-rank fast path).
  *
- * The staging buffers were filled directly from the ParticleStore columns in
- * SoA layout with the SAME f64->f32 casts, in the SAME per-field element order
- * that @ref split_particle_struct produces from the AoS pack. Copying them here
+ * The staging buffers are filled directly from the ParticleStore columns in
+ * SoA layout with the same f64->f32 casts and per-field element order that
+ * @ref split_particle_struct produces from the AoS pack. Copying them here
  * therefore leaves the device SoA buffers (@ref particle_pos_device,
  * @ref particle_q_device, @ref particle_dip_device) bit-identical to the AoS
  * pack + split path, but without the device AoS buffer or the split kernels.
@@ -391,21 +389,20 @@ void GpuParticleData::copy_particles_to_device(ParticleRange const &particles,
     return;
   }
 
-  // Phase 8c single-rank fast path: fill per-field SoA host staging buffers
-  // DIRECTLY from the ParticleStore columns and cudaMemcpy each enabled field
-  // straight into the device SoA buffers, bypassing the AoS host pack, the
-  // device AoS buffer and the split kernels. This is bit-identical to the
-  // AoS+split path (same f64->f32 casts, same per-field SoA layout / order;
-  // see pack_particles_soa) but skips the de-interleave. Requires all enabled
-  // properties to be column-backed, which holds by construction: the only
-  // split-relevant properties are pos (always column-backed), q (ELECTROSTATICS
-  // column) and dip (DIPOLES columns via calc_dip). On a single rank
-  // this_node == 0. force/torque/dip_fld are return-path arrays, unaffected.
+  // Single-rank fast path: fill per-field SoA host staging buffers directly
+  // from the ParticleStore columns and cudaMemcpy each enabled field straight
+  // into the device SoA buffers, bypassing the AoS host pack, the device AoS
+  // buffer and the split kernels. This is bit-identical to the AoS+split path
+  // (same f64->f32 casts, same per-field SoA layout / order; see
+  // pack_particles_soa). The only split-relevant properties are pos (always
+  // column-backed), q (ELECTROSTATICS column) and dip (DIPOLES columns via
+  // calc_dip). On a single rank this_node == 0.
+  // force/torque/dip_fld are return-path arrays, unaffected.
   if (single_rank and m_split_particle_struct) {
     auto const n_part = particles.size();
-    // n_particles() reads m_data->n_particles (a plain counter), so the device
-    // AoS buffer no longer needs to be sized on this path -- it is entirely
-    // unused here (no AoS host copy, no split kernel).
+    // n_particles() reads m_data->n_particles (a plain counter); the device
+    // AoS buffer is entirely unused on this path (no AoS host copy, no split
+    // kernel).
     m_data->n_particles = n_part;
     m_data->resize_and_zero_return_buffers(n_part);
     m_data->realloc_device_memory(n_part);
@@ -426,7 +423,8 @@ void GpuParticleData::copy_particles_to_device(ParticleRange const &particles,
     return;
   }
 
-  // Multi-rank (or no split needed): head-node MPI gather + AoS split path.
+  // Multi-rank (or no split needed): head-node MPI gather + AoS pack + split
+  // path.
   gather_particle_data(particles, m_data->particle_data_host, this_node);
   if (this_node == 0) {
     m_data->copy_particles_to_device();
