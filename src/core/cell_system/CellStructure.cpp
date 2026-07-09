@@ -81,7 +81,7 @@ CellStructure::~CellStructure() {
   // reset below may finalize Kokkos, and leaving the store's Views to
   // member-destruction would free them after Kokkos::finalize.
   m_particle_store.release_columns();
-  // Same Kokkos-lifetime constraint for the (phase 7b) migration staging store.
+  // Same Kokkos-lifetime constraint for the migration staging store.
   m_staging_store.release_columns();
   // Kokkos handle can only be freed after all Cabana containers have been freed
   m_kokkos_handle.reset();
@@ -102,8 +102,8 @@ void CellStructure::clear_local_properties() {
   m_aosoa.reset();
   m_verlet_list_cabana.reset();
   m_bond_state->clear();
-  // Release the phase-3.5 Kokkos-backed views owned here (translation view and
-  // derived director). The pack's aliasing views were just dropped by
+  // Release the Kokkos-backed views owned here (translation view and derived
+  // director). The pack's aliasing views were just dropped by
   // m_aosoa.reset() above, so releasing the owners now is safe and must happen
   // while Kokkos is still alive (see the destructor's release ordering).
   m_pack_index_to_store_row = Kokkos::View<int *, Kokkos::HostSpace>{};
@@ -234,8 +234,8 @@ void CellStructure::reset_local_properties() {
   Kokkos::deep_copy(get_local_virial(), 0.);
   m_scatter_virial->reset();
 #endif
-  // phase 6: the has-exclusion `flags` column is NOT zeroed here. This runs on
-  // every partial-update (no-rebuild) step; the flag is rebuild-cadence data
+  // The has-exclusion `flags` column is NOT zeroed here. This runs on every
+  // partial-update (no-rebuild) step; the flag is rebuild-cadence data
   // (commit_particle writes it only on rebuild, and exclusion changes force a
   // rebuild), so it is valid across partial steps and must be preserved. It is
   // (re)zeroed and rewritten on the rebuild path (rebuild_local_properties +
@@ -256,7 +256,7 @@ void CellStructure::update_bond_storage(int &pair_count, int &angle_count,
     auto const partner_ids = bond.partner_ids();
     try {
       auto const partners = resolve_bond_partners(partner_ids);
-      // Phase 7e: resolve_bond_partners now yields by-value Particle views.
+      // resolve_bond_partners yields by-value Particle views.
       if (partners.size() == 1u) { // pair bonds
         auto p_index = Kokkos::atomic_fetch_add(&pair_count, 1);
         pair_list(p_index, 0) = p.id();
@@ -286,17 +286,15 @@ void CellStructure::set_index_map() {
 #ifdef ESPRESSO_CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif
-  // Phase 7e: the id->view pool is gone; rebuild the pack-order participant
-  // list (m_unique_particles) directly from the synchronized store. The pack
-  // order is the local prefix (store rows [0, n_local) in row order == pack
-  // order, so pack index i == store row i on the local prefix) followed by the
-  // deduped ghost tail (first occurrence of each ghost id not owned by a local,
-  // in store-row order) -- exactly the point set and order the retired view
-  // pool produced. The by-value views are materialized into
-  // m_unique_particle_views (the owning backing) and m_unique_particles points
-  // into it. The dedup reuses the id->store-row map the store rebuild just
-  // built (m_id_to_store_row): "locals win, then first valid ghost row wins" is
-  // precisely what that map resolves each id to.
+  // Rebuild the pack-order participant list (m_unique_particles) directly from
+  // the synchronized store. The pack order is the local prefix (store rows
+  // [0, n_local) in row order == pack order, so pack index i == store row i on
+  // the local prefix) followed by the deduped ghost tail (first occurrence of
+  // each ghost id not owned by a local, in store-row order). The by-value views
+  // are materialized into m_unique_particle_views (the owning backing) and
+  // m_unique_particles points into it. The dedup reuses the id->store-row map
+  // the store rebuild just built (m_id_to_store_row): "locals win, then first
+  // valid ghost row wins" is precisely what that map resolves each id to.
   assert(not m_particle_store.is_dirty());
   auto &unique_particles = m_unique_particles;
   auto &unique_particle_views = m_unique_particle_views;
@@ -315,8 +313,7 @@ void CellStructure::set_index_map() {
     auto const &p = unique_particle_views.emplace_back(
         m_particle_store.make_view(static_cast<int>(r)));
     max_id = std::max(p.id(), max_id);
-    // Count bonds only on the local prefix (matching the pre-flip
-    // enumerate_local_particles pass, which never walked ghosts).
+    // Count bonds only on the local prefix (never walk ghosts).
     for (auto const bond : p.bonds()) {
       auto const partner_ids = bond.partner_ids();
       if (partner_ids.empty()) {
@@ -360,12 +357,11 @@ void CellStructure::set_index_map() {
   m_cached_max_local_particle_id = max_id;
   m_num_local_particles_cached = unique_particles.size();
 
-  // Build the pack-index -> store-row translation view (phase 3.5). The store
-  // must already be synchronized (rows assigned) by the caller. The local
-  // prefix is the identity: enumerate_local_particles' exclusive-scan order
-  // matches ensure_particle_store_synchronized's local loop, so pack index i
-  // equals store row i for every local particle. Only the deduped ghost tail
-  // needs a real translation.
+  // Build the pack-index -> store-row translation view. The store must already
+  // be synchronized (rows assigned) by the caller. The local prefix is the
+  // identity: the pack order matches ensure_particle_store_synchronized's local
+  // loop, so pack index i equals store row i for every local particle. Only the
+  // deduped ghost tail needs a real translation.
   assert(not m_particle_store.is_dirty());
   auto const n_unique = unique_particles.size();
   if (m_pack_index_to_store_row.extent(0) != n_unique) {
@@ -386,14 +382,14 @@ void CellStructure::bind_pack_store_views() {
   aosoa.position = m_particle_store.position_view();
   aosoa.image = m_particle_store.image_box_view();
   aosoa.velocity = m_particle_store.velocity_view();
-  // phase 5: id/mass/charge alias the authoritative ParticleStore scalar
-  // columns (indexed by store row), like position/velocity, and are read only
-  // on cold paths (bond kernels; charge is needed by BondedCoulomb even with no
-  // coulomb solver, so it must always be valid). phase-5 perf recovery: type is
-  // a pack-owned contiguous column written on rebuild in commit_particle, and
-  // pair_charge/pair_dipm are pack-owned contiguous hot-path columns refreshed
-  // per step by refresh_pack_charges/refresh_pack_dipm when the corresponding
-  // solver is active; those pack-owned columns are not bound here.
+  // id/mass/charge alias the authoritative ParticleStore scalar columns
+  // (indexed by store row), like position/velocity, and are read only on cold
+  // paths (bond kernels; charge is needed by BondedCoulomb even with no coulomb
+  // solver, so it must always be valid). type is a pack-owned contiguous column
+  // written on rebuild in commit_particle, and pair_charge/pair_dipm are
+  // pack-owned contiguous hot-path columns refreshed per step by
+  // refresh_pack_charges/refresh_pack_dipm when the corresponding solver is
+  // active; those pack-owned columns are not bound here.
   aosoa.id = m_particle_store.id_view();
 #ifdef ESPRESSO_ELECTROSTATICS
   aosoa.charge = m_particle_store.q_view();
@@ -442,17 +438,15 @@ CellStructure::CellStructure(BoxGeometry const &box)
   mark_particle_store_dirty();
 }
 
-// Phase 7c permutation builder. Walks cells in the current rebuild order and
-// emits perm[] (old row per surviving new row, -1 for staged/ghost) + the
-// future (offset, count) per cell. Reproduces the assign_row rebuild order
-// byte-for-byte for a removal-free history: local cells in span order, then
-// ghost cells; per cell surviving rows in RAW range order, then staged in push
-// order. A row dropped mid-epoch is marked pending-removed on the store; it is
-// NOT carried into the permutation (the row is dropped by this rebuild), so
-// surviving rows keep their store-row order (the T1 order contract for
-// removals; identity histories are removal-free). Must be called BEFORE the
-// permute rebuild swaps the generation out (it reads the current-generation
-// pending-removal mask and the cells' current ranges).
+// Permutation builder. Walks cells in the rebuild order and emits perm[] (old
+// row per surviving new row, -1 for staged/ghost) + the future (offset, count)
+// per cell. Rebuild order: local cells in span order, then ghost cells; per
+// cell surviving rows in RAW range order, then staged in push order. A row
+// dropped mid-epoch is marked pending-removed on the store; it is NOT carried
+// into the permutation (the row is dropped by this rebuild), so surviving rows
+// keep their store-row order. Must be called BEFORE the permute rebuild swaps
+// the generation out (it reads the current-generation pending-removal mask and
+// the cells' current ranges).
 void CellStructure::build_resort_permutation(
     std::vector<int> &permutation,
     std::vector<std::pair<std::size_t, std::size_t>> &cell_ranges) const {
@@ -506,10 +500,10 @@ void CellStructure::ensure_particle_store_synchronized() {
   wire_stores(decomposition().local_cells());
   wire_stores(decomposition().ghost_cells());
 
-  // A cell's content after the flip = its surviving committed rows (the raw
-  // range minus pending-removed rows) + its staged particles. Count both (the
-  // live count) so the permute rebuild sizes the columns for the new
-  // generation. rows().size() is the LIVE count (excludes pending-removed).
+  // A cell's content = its surviving committed rows (the raw range minus
+  // pending-removed rows) + its staged particles. Count both (the live count)
+  // so the permute rebuild sizes the columns for the new generation.
+  // rows().size() is the LIVE count (excludes pending-removed).
   auto cell_count = [](Cell const *cell) {
     return cell->rows().size() + cell->staged().size();
   };
@@ -522,22 +516,19 @@ void CellStructure::ensure_particle_store_synchronized() {
     n_ghost += cell_count(cell);
   }
 
-  // THE FLIP (phase 7c): resort as a pure column permutation.
+  // Resort as a pure column permutation:
   //   1. build the permutation (old row per surviving new row, -1 for staged /
   //      fresh-ghost) + the future (offset, count) per cell, walking cells in
   //      the rebuild order (locals then ghosts; per cell surviving rows in raw
   //      range order skipping dropped rows, then staged in push order);
   //   2. permute_rebuild moves every surviving column/sidecar in one pass per
-  //      column (contiguous, vectorizable -- the banked win over the per-row
-  //      branchy assign_row) and seeds the -1 rows to the new-particle
-  //      defaults;
+  //      column (contiguous, vectorizable) and seeds the -1 rows to the
+  //      new-particle defaults;
   //   3. copy each staged LOCAL's source-store row into its (already
   //      default-seeded) new row via copy_row (fresh-default ghosts stay at
   //      defaults for the ghost exchange to fill);
   //   4. write the (offset, count) back onto each Cell and clear its staging.
-  // The order contract (surviving-then-staged per cell, cells in span order)
-  // matches the pre-7c assign_row path byte-for-byte for a removal-free
-  // history, so identity is preserved (controller constraint).
+  // The order contract is surviving-then-staged per cell, cells in span order.
   std::vector<int> permutation;
   std::vector<std::pair<std::size_t, std::size_t>> cell_ranges;
   build_resort_permutation(permutation, cell_ranges);
@@ -650,20 +641,20 @@ void CellStructure::ensure_particle_store_synchronized() {
     assert(range_index == cell_ranges.size());
   }
 
-  // Phase 7b: every staged row reference has now been copied into a committed
-  // row (copy_row above), so the staging store's rows are consumed. Reset its
-  // row counter here -- NOT in the decompositions' resort -- because a staged
+  // Every staged row reference has now been copied into a committed row
+  // (copy_row above), so the staging store's rows are consumed. Reset its row
+  // counter here -- NOT in the decompositions' resort -- because a staged
   // {staging_store, row} reference must stay valid from the moment it is staged
-  // until THIS commit reads it. Clearing at resort end (the crashed-agent plan)
-  // would recycle staging rows that the two hybrid children, or the deferred
-  // commit=false hot path, still reference. Clearing at commit makes the
-  // staging counter monotonic across a resort cycle and reset exactly when the
-  // referenced data is consumed. (Fresh-default staged entries carry a null
-  // source store and reference no staging row, so this is harmless for ghosts.)
+  // until THIS commit reads it. Clearing at resort end would recycle staging
+  // rows that the two hybrid children, or the deferred commit=false hot path,
+  // still reference. Clearing at commit makes the staging counter monotonic
+  // across a resort cycle and reset exactly when the referenced data is
+  // consumed. (Fresh-default staged entries carry a null source store and
+  // reference no staging row, so this is harmless for ghosts.)
   clear_staging_store();
 
-  // Refresh the id->view index / stable view pool from the freshly assigned
-  // rows (locals win over ghost copies of the same id).
+  // Refresh the id -> store-row index from the freshly assigned rows (locals
+  // win over ghost copies of the same id).
   rebuild_particle_index();
 
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
@@ -696,11 +687,11 @@ void CellStructure::ensure_particle_store_synchronized() {
   check_cell_rows(decomposition().local_cells());
   check_cell_rows(decomposition().ghost_cells());
 
-  // Phase 7c self-check of the permuted result: the builder produced one
-  // permutation entry per new row in the SAME order the permute rebuild filled
-  // them, so the store id at each new row must equal the id captured from that
-  // entry's source before the swap. A mismatch means the permutation builder
-  // and the permute rebuild disagree on the row order.
+  // Self-check of the permuted result: the builder produced one permutation
+  // entry per new row in the SAME order the permute rebuild filled them, so the
+  // store id at each new row must equal the id captured from that entry's
+  // source before the swap. A mismatch means the permutation builder and the
+  // permute rebuild disagree on the row order.
   if (permutation.size() != m_particle_store.number_of_particles()) {
     throw std::runtime_error(
         "resort permutation size " + std::to_string(permutation.size()) +
@@ -741,9 +732,9 @@ void CellStructure::ensure_particle_store_synchronized() {
 void CellStructure::ensure_staging_capacity(std::size_t const needed) {
   // Grow the staging store when it cannot hold @p needed rows. The staging
   // store's own rows must survive the growth, so a fresh larger store is built
-  // and every already-staged row is copied into it via copy_row (the same
-  // machinery the flip uses); the small store is then swapped in. Capacity
-  // doubles (min 8) to amortize the copies over a batch of stages.
+  // and every already-staged row is copied into it via copy_row; the small
+  // store is then swapped in. Capacity doubles (min 8) to amortize the copies
+  // over a batch of stages.
   if (needed <= m_staging_store_capacity) {
     return;
   }
@@ -787,8 +778,8 @@ Particle CellStructure::make_new_particle_view() {
 
 void CellStructure::rebuild_particle_index() {
   assert(not m_particle_store.is_dirty());
-  // Phase 7e: rebuild the id -> store-row map wholesale from the (synchronized)
-  // store. This is the single write site of m_id_to_store_row.
+  // Rebuild the id -> store-row map wholesale from the (synchronized) store.
+  // This is the single write site of m_id_to_store_row.
   m_id_to_store_row.clear();
   auto const n_local = m_particle_store.number_of_local_particles();
   // Index locals (rows [0, n_local)); their id columns are valid.
@@ -837,10 +828,10 @@ void CellStructure::check_particle_index() const {
       throw std::runtime_error("Particle id out of bounds.");
     }
 
-    // Phase 7e: particles are by-value views over store rows, so the resolved
-    // view and the iterated view have DIFFERENT addresses even for the same
-    // particle. Check identity by store row instead of by address: both must
-    // resolve to the same row of the same store.
+    // Particles are by-value views over store rows, so the resolved view and
+    // the iterated view have DIFFERENT addresses even for the same particle.
+    // Check identity by store row instead of by address: both must resolve to
+    // the same row of the same store.
     auto const indexed = get_local_particle(id);
     if (not indexed or indexed->store() != p.store() or
         indexed->store_row() != p.store_row()) {
@@ -848,9 +839,9 @@ void CellStructure::check_particle_index() const {
     }
   }
 
-  /* checks: local particle id. Phase 7e: the map also holds ghost entries
-   * (for ghost-id lookups), so count only the LOCAL (non-ghost) entries when
-   * comparing against local_particles(). */
+  /* checks: local particle id. The map also holds ghost entries (for ghost-id
+   * lookups), so count only the LOCAL (non-ghost) entries when comparing
+   * against local_particles(). */
   std::size_t local_part_cnt = 0u;
   for (int n = 0; n < get_max_local_particle_id() + 1; n++) {
     auto const indexed = get_local_particle(n);
@@ -895,8 +886,8 @@ void CellStructure::remove_particle(int id) {
 
   for (auto cell : decomposition().local_cells()) {
     cell->set_store(m_particle_store);
-    // Iterate the committed rows by RAW position (phase 7c). drop_row marks the
-    // matching row pending-removed (the live iteration skips it immediately, so
+    // Iterate the committed rows by RAW position. drop_row marks the matching
+    // row pending-removed (the live iteration skips it immediately, so
     // the removed particle is invisible before the next rebuild resolves it); a
     // kept particle has any bond to the removed id stripped (written through
     // the view into the store's bond sidecar, preserved by the next rebuild). A
@@ -916,13 +907,10 @@ void CellStructure::remove_particle(int id) {
       }
     }
   }
-  // Phase 7e: eagerly invalidate the id -> store-row entry so no stale row is
-  // readable through get_local_particle before the next store rebuild. The full
-  // map is still rebuilt wholesale at the next
-  // ensure_particle_store_synchronized (which renumbers every row); this just
-  // closes the intervening window (the pre-7e code left an orphaned view-pool
-  // pointer readable here, relying on the resort that on_particle_change forces
-  // before the next force calculation).
+  // Eagerly invalidate the id -> store-row entry so no stale row is readable
+  // through get_local_particle before the next store rebuild. The full map is
+  // still rebuilt wholesale at the next ensure_particle_store_synchronized
+  // (which renumbers every row); this just closes the intervening window.
   if (id >= 0 and static_cast<unsigned int>(id) < m_id_to_store_row.size()) {
     m_id_to_store_row[static_cast<unsigned int>(id)] = no_store_row;
   }
@@ -937,9 +925,8 @@ std::optional<Particle> CellStructure::add_local_particle(Particle &&p) {
     append_staged_particle(*sort_cell, std::move(p));
     mark_particle_store_dirty();
     // Commit immediately so the new particle is live (indexed, iterable,
-    // readable) right after this call -- the pre-flip contract callers rely on.
-    // Phase 7e: return a fresh by-value view resolved via the id->store-row
-    // map.
+    // readable) right after this call. Return a fresh by-value view resolved
+    // via the id -> store-row map.
     ensure_particle_store_synchronized();
     return get_local_particle(id);
   }
@@ -961,16 +948,15 @@ std::optional<Particle> CellStructure::add_particle(Particle &&p) {
   auto const id = p.id();
   append_staged_particle(*cell, std::move(p));
   mark_particle_store_dirty();
-  // Commit immediately so the new particle is live right after this call (the
-  // pre-flip contract). Phase 7e: return a fresh by-value view resolved via the
-  // id->store-row map.
+  // Commit immediately so the new particle is live right after this call.
+  // Return a fresh by-value view resolved via the id -> store-row map.
   ensure_particle_store_synchronized();
   return get_local_particle(id);
 }
 
 int CellStructure::get_max_local_particle_id() const {
-  // Phase 7e: the id -> store-row map is indexed by id; the highest id present
-  // on this rank is the highest index carrying a valid (non-sentinel) row.
+  // The id -> store-row map is indexed by id; the highest id present on this
+  // rank is the highest index carrying a valid (non-sentinel) row.
   auto const it =
       std::ranges::find_if(std::ranges::views::reverse(m_id_to_store_row),
                            [](int const row) { return row != no_store_row; });
@@ -1006,8 +992,8 @@ void CellStructure::remove_all_particles() {
   for (auto cell : decomposition().local_cells()) {
     CellParticleStorage::clear_particles(*cell);
   }
-  // Also clear the GHOST cells (phase 7a): they hold ghost copies of the
-  // now-deleted particles. If left in place, the next store rebuild would
+  // Also clear the GHOST cells: they hold ghost copies of the now-deleted
+  // particles. If left in place, the next store rebuild would
   // re-index those stale ghost rows (rebuild_particle_index indexes valid
   // ghosts), so get_local_particle would still report the deleted ids as
   // present -- e.g. a fresh add of the same id would wrongly see "already
@@ -1060,14 +1046,14 @@ void CellStructure::ghosts_reduce_rattle_correction() {
 #endif
 
 void CellStructure::resort_particles(bool global_flag, bool commit) {
-  // Phase 7a: the id->view index / view pool is rebuilt wholesale from the
-  // store by ensure_particle_store_synchronized after the resort (see
-  // rebuild_particle_index), so the pre-flip incremental index bookkeeping
-  // (invalidate_ghosts + the ModifiedList/RemovedParticle diff visitor) is no
-  // longer needed. The `diff` is still collected (the decomposition contract)
-  // but only for its "cells touched" side effect; index correctness comes from
-  // the rebuild. Clear the stale index now so nothing reads a dangling view
-  // pool pointer in the resort window (get_local_particle is not called there).
+  // The id -> store-row index is rebuilt wholesale from the store by
+  // ensure_particle_store_synchronized after the resort (see
+  // rebuild_particle_index), so no incremental index bookkeeping is needed
+  // during the resort. The `diff` is still collected (the decomposition
+  // contract) but only for its "cells touched" side effect; index correctness
+  // comes from the rebuild. Clear the stale index now so nothing reads a
+  // dangling entry in the resort window (get_local_particle is not called
+  // there).
   clear_particle_index();
 
   std::vector<ParticleChange> diff;
@@ -1090,18 +1076,18 @@ void CellStructure::resort_particles(bool global_flag, bool commit) {
   static_cast<void>(diff);
 
   // Commit the staged (migrated/new) particles into store rows and rebuild the
-  // id->view index (phase 7a): resort cleared the index and staged the moved
+  // id -> store-row index: resort cleared the index and staged the moved
   // particles, so a caller reading the index right after resort (e.g. the
   // ADDITIONAL_CHECKS below, or a direct/unit-test resort_particles call) must
-  // see a consistent, populated index -- the pre-flip contract. Rank-local (no
-  // MPI), so it does not affect the collective ordering the caller relies on.
+  // see a consistent, populated index. Rank-local (no MPI), so it does not
+  // affect the collective ordering the caller relies on.
   //
-  // Phase 7a perf: the hot-path caller (update_ghosts_and_resort_particle)
-  // passes commit=false to DEFER this to a single rebuild AFTER ghosts_count,
-  // so locals are not committed here only to be re-copied by a second whole-
-  // store rebuild moments later. ghosts_count sizes ghost cells from the
-  // SOURCE cell's Cell::size (committed rows + staged), so it does not need the
-  // locals committed first; and nothing reads the index in the deferred window.
+  // The hot-path caller (update_ghosts_and_resort_particle) passes commit=false
+  // to DEFER this to a single rebuild AFTER ghosts_count, so locals are not
+  // committed here only to be re-copied by a second whole-store rebuild moments
+  // later. ghosts_count sizes ghost cells from the SOURCE cell's Cell::size
+  // (committed rows + staged), so it does not need the locals committed first;
+  // and nothing reads the index in the deferred window.
   if (commit) {
     ensure_particle_store_synchronized();
   }
@@ -1112,10 +1098,11 @@ void CellStructure::resort_particles(bool global_flag, bool commit) {
   m_le_pos_offset_at_last_resort = lebc.pos_offset;
 
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
-  // These checks read the id->view index / sorted store, which only exist after
-  // the commit above; when the commit is deferred, the caller runs its own sync
-  // and the equivalent checks (ensure_particle_store_synchronized's cell-row
-  // validation) after ghosts_count.
+  // These checks read the id -> store-row index / sorted store, which only
+  // exist after the commit above; when the commit is deferred, the caller runs
+  // its own sync and the equivalent checks
+  // (ensure_particle_store_synchronized's cell-row validation) after
+  // ghosts_count.
   if (commit) {
     check_particle_index();
     check_particle_sorting();
@@ -1128,9 +1115,8 @@ void CellStructure::set_atom_decomposition() {
   auto &local_geo = *system.local_geo;
   auto const &box_geo = *system.box_geo;
   auto atom = std::make_unique<AtomDecomposition>(::comm_cart, box_geo);
-  // Install the per-field migration staging handle (phase 7b flip): the
-  // decomposition's resort routes migrating particles through this store's
-  // staging store instead of boost-serializing whole Particles.
+  // Install the per-field migration staging handle: the decomposition's resort
+  // routes migrating particles through this store's staging store.
   atom->set_migration_staging(make_migration_staging());
   set_particle_decomposition(std::move(atom));
   m_type = CellStructureType::NSQUARE;
@@ -1161,8 +1147,8 @@ void CellStructure::set_hybrid_decomposition(double cutoff_regular,
       ::comm_cart, cutoff_regular, m_verlet_skin,
       [&system]() { return system.get_global_ghost_flags(); }, box_geo,
       local_geo, n_square_types);
-  // Phase 7a: let the hybrid decomposition commit staged particles to store
-  // rows between its internal resort and ghost communications (see
+  // Let the hybrid decomposition commit staged particles to store rows between
+  // its internal resort and ghost communications (see
   // HybridDecomposition::resort). Mark the store dirty first: the ghost resize
   // (resize_ghost_storage) stages ghosts WITHOUT marking dirty, so a bare
   // ensure_particle_store_synchronized would early-return (clean store) and
@@ -1172,8 +1158,8 @@ void CellStructure::set_hybrid_decomposition(double cutoff_regular,
     mark_particle_store_dirty();
     ensure_particle_store_synchronized();
   });
-  // Install the per-field migration staging handle (phase 7b flip); the hybrid
-  // propagates it to its two child decompositions, which run the wire exchange.
+  // Install the per-field migration staging handle; the hybrid propagates it to
+  // its two child decompositions, which run the wire exchange.
   hybrid->set_migration_staging(make_migration_staging());
   set_particle_decomposition(std::move(hybrid));
   m_type = CellStructureType::HYBRID;
@@ -1214,17 +1200,17 @@ void CellStructure::update_ghosts_and_resort_particle(unsigned data_parts) {
   if (global_resort != Cells::RESORT_NONE) {
     auto const do_global_resort = (global_resort & Cells::RESORT_GLOBAL) != 0;
 
-    /* Resort cell system. Phase 7a perf: defer the local commit (commit=false)
-     * so it is folded into the SINGLE post-ghosts_count store rebuild below,
-     * instead of committing locals here and re-copying every local column a
-     * second time in that rebuild (the phase-7a double-rebuild regression). */
+    /* Resort cell system. Defer the local commit (commit=false) so it is folded
+     * into the SINGLE post-ghosts_count store rebuild below, instead of
+     * committing locals here and re-copying every local column a second time in
+     * that rebuild. */
     resort_particles(do_global_resort, /*commit=*/false);
-    /* Phase 7a: after resort the migrated/new locals are STAGED (not yet
-     * committed to store rows). ghosts_count sizes every ghost cell from its
-     * source (local) cell's Cell::size, which counts committed rows + staged,
-     * so staged locals are counted correctly and do not need committing first.
-     * Count ghosts (stages ghost slots + marks the store dirty), then rebuild
-     * ONCE to commit locals AND the freshly staged ghosts together. */
+    /* After resort the migrated/new locals are STAGED (not yet committed to
+     * store rows). ghosts_count sizes every ghost cell from its source (local)
+     * cell's Cell::size, which counts committed rows + staged, so staged locals
+     * are counted correctly and do not need committing first. Count ghosts
+     * (stages ghost slots + marks the store dirty), then rebuild ONCE to commit
+     * locals AND the freshly staged ghosts together. */
     ghosts_count();
     /* Rebuild the store rows NOW: resort staged locals and ghosts_count marked
      * the store dirty (staged ghost slots); a dirty store forces the ghost
@@ -1235,11 +1221,11 @@ void CellStructure::update_ghosts_and_resort_particle(unsigned data_parts) {
     ensure_particle_store_synchronized();
     ghosts_update(data_parts);
 
-    /* Index the ghosts now that ghosts_update has filled their id columns
-     * (phase 7a: the rebuild inside ensure_particle_store_synchronized indexed
-     * only locals, whose ids were valid; freshly created ghost rows carried a
-     * default id until this update). Records the store row for each ghost whose
-     * id is not already owned by a local (phase 7e retired the view pool). */
+    /* Index the ghosts now that ghosts_update has filled their id columns (the
+     * rebuild inside ensure_particle_store_synchronized indexed only locals,
+     * whose ids were valid; freshly created ghost rows carried a default id
+     * until this update). Records the store row for each ghost whose id is not
+     * already owned by a local. */
     index_ghost_particles();
 
     /* Particles are now sorted */

@@ -25,18 +25,15 @@
 #include <iterator>
 
 /**
- * @brief Lightweight view over a @ref Cell's contiguous store-row range (phase
- * 7c).
+ * @brief Lightweight view over a @ref Cell's contiguous store-row range.
  *
- * Since the phase-7c flip a @ref Cell no longer owns a @c Bag<int> row bag: its
- * committed particles occupy a CONTIGUOUS range @c [offset, offset+count) of
- * the @ref ParticleStore, established by the permutation rebuild (counting sort
- * by cell). @ref Cell::rows() hands out a @c CellRowSpan over that range; it is
- * the read surface the pre-7c @c CellRows bag exposed, but backed by pure
- * arithmetic instead of a per-cell int array.
+ * A @ref Cell's committed particles occupy a CONTIGUOUS range
+ * @c [offset, offset+count) of the @ref ParticleStore, established by the
+ * permutation rebuild (counting sort by cell). @ref Cell::rows() hands out a
+ * @c CellRowSpan over that range, backed by pure arithmetic.
  *
- * MID-EPOCH REMOVAL (T1 pending-removal adjudication): a range cannot
- * swap-remove, so a row dropped between rebuilds
+ * MID-EPOCH REMOVAL: a range cannot swap-remove, so a row dropped between
+ * rebuilds
  * (@ref CellParticleStorage::drop_row) is marked PENDING-REMOVED on the store
  * (@ref ParticleStore::mark_pending_removal). The LIVE surface of this span --
  * @ref begin / @ref end / @ref size / @ref empty -- skips such rows, so a
@@ -48,7 +45,7 @@
  * so the raw range equals the live range there).
  *
  * Identity histories are removal-free, so the live and raw views coincide on
- * the identity path and the iteration order is exactly the pre-7c bag order.
+ * the identity path.
  */
 class CellRowSpan {
   std::size_t m_offset;

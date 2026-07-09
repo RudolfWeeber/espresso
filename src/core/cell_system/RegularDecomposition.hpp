@@ -94,9 +94,9 @@ public:
                        BoxGeometry const &box_geo, LocalBox const &local_geo,
                        std::optional<std::pair<int, int>> fully_connected);
 
-  /** @brief Install the staging-store handle (phase 7b flip); see
-   *  @ref MigrationStaging. Set by @ref CellStructure. Also propagated to the
-   *  child decompositions by @ref HybridDecomposition. */
+  /** @brief Install the staging-store handle; see @ref MigrationStaging.
+   *  Set by @ref CellStructure. Also propagated to the child decompositions by
+   *  @ref HybridDecomposition. */
   void set_migration_staging(MigrationStaging staging) {
     m_migration_staging = std::move(staging);
   }
@@ -171,7 +171,7 @@ private:
   }
 
   /**
-   * @brief Deliver received staging rows to local cells (phase 7b flip).
+   * @brief Deliver received staging rows to local cells.
    *
    * For each staging-store row index in @p src, checks whether the particle
    * belongs to a local cell. If so, the staging row is staged into the target
@@ -188,7 +188,7 @@ private:
                      std::vector<ParticleChange> &modified_cells);
 
   /**
-   * @brief Split staging-row indices by direction (phase 7b flip).
+   * @brief Split staging-row indices by direction.
    *
    * Routes each staging-row index in @p src into @p left or @p right depending
    * on whether the particle (its position read from the staging store) belongs
@@ -204,7 +204,7 @@ private:
                           std::vector<int> &right, int dir) const;
 
   /**
-   * @brief One round of particle exchange with the next neighbors (phase 7b).
+   * @brief One round of particle exchange with the next neighbors.
    *
    * @param[in,out] displaced_rows Staging-row indices of particles on the move.
    * @param[out] modified_cells Cells that got touched.
@@ -249,6 +249,6 @@ private:
    */
   static constexpr int max_num_cells = 32768;
 
-  /** Staging-store handle for the per-field migration wire (phase 7b flip). */
+  /** Staging-store handle for the per-field migration wire. */
   MigrationStaging m_migration_staging;
 };

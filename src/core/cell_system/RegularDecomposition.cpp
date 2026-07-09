@@ -96,10 +96,10 @@ void RegularDecomposition::move_if_local(
     auto target_cell = position_to_cell(staging.position_value(staging_row));
 
     if (target_cell) {
-      // Stage the staging row into the target cell as a row reference (phase
-      // 7b): the next store rebuild copies it into a committed row, in the SAME
-      // [surviving..., staged...] order as the pre-flip cell staging path. The
-      // staging row stays valid until CellStructure commits it.
+      // Stage the staging row into the target cell as a row reference: the next
+      // store rebuild copies it into a committed row, in
+      // [surviving..., staged...] order per cell. The staging row stays valid
+      // until CellStructure commits it.
       CellParticleStorage::insert_staged_row(*target_cell, staging,
                                              staging_row);
       modified_cells.emplace_back(ModifiedList{*target_cell});
@@ -133,8 +133,7 @@ void RegularDecomposition::move_left_or_right(std::vector<int> &src,
       left.push_back(staging_row);
     } else {
       // Row stays for a later direction: compact it into the surviving prefix
-      // (preserving relative order, exactly like the pre-flip Bag which left
-      // non-moved elements in place).
+      // (preserving relative order).
       *keep++ = staging_row;
     }
   }
@@ -148,13 +147,13 @@ void RegularDecomposition::exchange_neighbors(
   auto &staging = *m_migration_staging.store;
   // Per-direction staging-row buckets, packed byte buffers, and the reusable
   // scratch for the received staging rows. Static so the buffers' capacity is
-  // reused across resorts (mirrors the pre-flip static ParticleList buffers).
+  // reused across resorts.
   static std::vector<int> send_rows_l, send_rows_r, recv_rows;
   static std::vector<char> send_buf_l, send_buf_r, recv_buf_l, recv_buf_r;
 
   // Unpack a received byte buffer into fresh staging rows and record their
   // indices in `recv_rows` (the received-this-direction set, delivered by
-  // move_if_local below -- mirrors the pre-flip move_if_local(recv_buf, pl)).
+  // move_if_local below).
   auto unpack_received = [&](std::vector<char> const &buffer) {
     if (buffer.empty()) {
       return;
@@ -219,8 +218,7 @@ void RegularDecomposition::exchange_neighbors(
     // Deliver the freshly received rows: local ones are staged into their home
     // cell, undeliverable ones are appended back onto `displaced_rows` (kept
     // for the next direction / round). The non-routed rows already sitting in
-    // `displaced_rows` are NOT re-examined here -- exactly the pre-flip
-    // move_if_local(recv_buf, pl) semantics.
+    // `displaced_rows` are NOT re-examined here.
     move_if_local(recv_rows, displaced_rows, modified_cells);
   }
 }
@@ -240,27 +238,27 @@ static void fold_and_reset(Particle &p, BoxGeometry const &box_geo) {
 
 void RegularDecomposition::resort(bool global,
                                   std::vector<ParticleChange> &diff) {
-  // Phase 7b flip: both a mis-celled NON-local particle (routed through the
-  // exchange rounds) and a wrong-cell-but-LOCAL particle are copied out of the
-  // live store into a staging-store row (stage_row) and then dropped from their
-  // cell; `displaced_rows` holds the non-local staging-row indices. The staging
-  // store is NOT cleared here: it is reset by CellStructure once it has
-  // committed the staged rows (ensure_particle_store_synchronized). Clearing at
-  // resort start/end would recycle rows that the deferred commit=false hot path
-  // (and the hybrid children sharing this staging store) still reference.
+  // Both a mis-celled NON-local particle (routed through the exchange rounds)
+  // and a wrong-cell-but-LOCAL particle are copied out of the live store into a
+  // staging-store row (stage_row) and then dropped from their cell;
+  // `displaced_rows` holds the non-local staging-row indices. The staging store
+  // is NOT cleared here: it is reset by CellStructure once it has committed the
+  // staged rows (ensure_particle_store_synchronized). Clearing at resort
+  // start/end would recycle rows that the deferred commit=false hot path (and
+  // the hybrid children sharing this staging store) still reference.
   assert(m_migration_staging && "migration staging store not installed");
   auto &staging = *m_migration_staging.store;
   std::vector<int> displaced_rows;
 
   for (auto &c : local_cells()) {
-    // Iterate the cell's committed rows by RAW position (phase 7c). drop_row
-    // marks the row pending-removed (the range keeps its store-row order; no
-    // swap-with-back), so we advance unconditionally -- a dropped row stays in
-    // the raw range but is skipped by every live iteration until the next
-    // rebuild resolves it. fold_and_reset writes through the view into the
-    // store column BEFORE the row is copied to staging, so the staged copy
-    // carries the folded value. One cached view reused across this cell's rows,
-    // REBOUND per position via attach_to_store (phase 7a perf fix).
+    // Iterate the cell's committed rows by RAW position. drop_row marks the row
+    // pending-removed (the range keeps its store-row order; no swap-with-back),
+    // so we advance unconditionally -- a dropped row stays in the raw range but
+    // is skipped by every live iteration until the next rebuild resolves it.
+    // fold_and_reset writes through the view into the store column BEFORE the
+    // row is copied to staging, so the staged copy carries the folded value.
+    // One cached view reused across this cell's rows, REBOUND per position via
+    // attach_to_store.
     Particle view;
     auto const offset = c->offset();
     auto const count = c->count();
@@ -296,7 +294,7 @@ void RegularDecomposition::resort(bool global,
        * (folded) live row into the staging store, drop it from this cell, and
        * stage a reference to that staging row in the target cell -- the next
        * store rebuild copies it into a committed row (surviving-then-staged per
-       * cell, the phase-7c order contract).
+       * cell order contract).
        */
       else {
         auto const staging_row = m_migration_staging.stage_row(live_row);

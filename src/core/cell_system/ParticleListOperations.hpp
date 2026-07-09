@@ -27,29 +27,26 @@
 #include <utility>
 
 /**
- * @brief Primitives for mutating the particle storage of cells (phase 7a; 7b
- * row-ref staging).
+ * @brief Primitives for mutating the particle storage of cells.
  *
- * Since the cell flip, a @ref Cell no longer owns @c Particle objects: it owns
- * @ref ParticleStore ROW INDICES (@ref Cell::rows) for its committed particles
- * plus a small staging buffer (@ref Cell::staged) of @ref StagedParticle row
- * references not yet committed. Every insertion, removal, or move of a particle
- * in *cell storage* (including ghost cells) MUST go through these functions.
- * They are the single choke point that keeps the store's row bookkeeping
- * consistent; the actual column data is (re)materialized by the next store
- * rebuild (@ref CellStructure::ensure_particle_store_synchronized), so all of
- * these mutations only stage/unstage rows and mark the store dirty -- the
- * caller is responsible for the dirty mark (via
+ * A @ref Cell owns @ref ParticleStore ROW INDICES (@ref Cell::rows) for its
+ * committed particles plus a small staging buffer (@ref Cell::staged) of
+ * @ref StagedParticle row references not yet committed. Every insertion,
+ * removal, or move of a particle in *cell storage* (including ghost cells) MUST
+ * go through these functions. They are the single choke point that keeps the
+ * store's row bookkeeping consistent; the actual column data is
+ * (re)materialized by the next store rebuild
+ * (@ref CellStructure::ensure_particle_store_synchronized), so all of these
+ * mutations only stage/unstage rows and mark the store dirty -- the caller is
+ * responsible for the dirty mark (via
  * @ref CellStructure::mark_particle_store_dirty) and for triggering the rebuild
  * before the changes become visible through @ref Cell::particles().
  *
- * Phase 7b (Task 4): the migration envelope is dead, so a cell can no longer
- * stage a detached, data-carrying @c Particle. It stages a @ref StagedParticle
- * (a reference to a SOURCE-store row, or a fresh-default marker); the rebuild
- * COPIES that source row into a fresh committed row (@ref
- * ParticleStore::copy_row) or seeds it to defaults (@ref
- * ParticleStore::seed_default_row). Callers that need to move a live row (local
- * mis-cell move, migration receive) first copy it into a source store
+ * A cell stages a @ref StagedParticle (a reference to a SOURCE-store row, or a
+ * fresh-default marker); the rebuild COPIES that source row into a fresh
+ * committed row (@ref ParticleStore::copy_row) or seeds it to defaults
+ * (@ref ParticleStore::seed_default_row). Callers that need to move a live row
+ * (local mis-cell move, migration receive) first copy it into a source store
  * (@ref CellStructure::stage_row) and then stage a reference to that row here.
  *
  * maintainer/CI/check_cell_storage_mutations.sh enforces this rule.
@@ -57,7 +54,7 @@
 namespace CellParticleStorage {
 
 /**
- * @brief Stage a source-store row for insertion into a cell (phase 7b).
+ * @brief Stage a source-store row for insertion into a cell.
  *
  * Appends a @ref StagedParticle referencing @p source_row of @p source_store to
  * the cell's staging buffer; the next store rebuild copies that row into a
@@ -71,14 +68,13 @@ inline void insert_staged_row(Cell &cell, ParticleStore &source_store,
 }
 
 /**
- * @brief Drop the committed row at RAW range position @p index from a cell
- * (phase 7c).
+ * @brief Drop the committed row at RAW range position @p index from a cell.
  *
- * Cells collapsed to a contiguous @c (offset, count) range, which cannot
- * swap-remove; instead the store row @c cell.offset() + @p index is marked
- * PENDING-REMOVED on the store (@ref ParticleStore::mark_pending_removal). The
- * live @ref CellRowSpan / @ref RowParticleRange then skip it immediately (a
- * removed particle is invisible to iteration and id-resolution before the next
+ * Cells hold a contiguous @c (offset, count) range, which cannot swap-remove;
+ * instead the store row @c cell.offset() + @p index is marked PENDING-REMOVED
+ * on the store (@ref ParticleStore::mark_pending_removal). The live
+ * @ref CellRowSpan / @ref RowParticleRange then skip it immediately (a removed
+ * particle is invisible to iteration and id-resolution before the next
  * rebuild), and the next permutation rebuild resolves it by not carrying the
  * row into the new generation. @p index is a RAW position in the cell's
  * committed range @c [0, cell.count()) -- the resort loops iterate raw
@@ -86,34 +82,31 @@ inline void insert_staged_row(Cell &cell, ParticleStore &source_store,
  * ones. The store row itself is dropped by the next rebuild; the caller must
  * mark the store dirty.
  *
- * NB the T1 adjudication: within-cell ORDER CHURN differs from the pre-7c
- * swap-with-back bag (the range keeps store-row order), which is tolerated for
- * mid-epoch-removal scenarios (validated by the physics batteries, not
- * identity -- identity histories are removal-free).
+ * Within-cell ORDER: the range keeps store-row order (no swap-with-back), which
+ * is tolerated for mid-epoch-removal scenarios (validated by the physics
+ * batteries; identity histories are removal-free).
  */
 inline void drop_row(Cell &cell, std::size_t index) {
   assert(index < cell.count());
   cell.store().mark_pending_removal(static_cast<int>(cell.offset() + index));
 }
 
-/** @brief Remove all committed rows and staged particles from a cell (phase
- *  7c: collapse the committed range to empty and clear staging). */
+/** @brief Remove all committed rows and staged particles from a cell
+ *  (collapse the committed range to empty and clear staging). */
 inline void clear_particles(Cell &cell) {
   cell.set_range(0u, 0u);
   cell.staged().clear();
 }
 
 /**
- * @brief Resize a ghost cell to exactly @p count particles (phase 7a; 7c).
+ * @brief Resize a ghost cell to exactly @p count particles.
  *
  * Drops the cell's committed range and staging buffer and stages @p count
  * fresh-default ghost particles (a @ref StagedParticle with a null source
  * store); the next store rebuild seeds each as a fresh default ghost row
  * (@ref ParticleStore::seed_default_row). Ghost-ness is STRUCTURAL: these rows
  * land in the store's ghost suffix @c [n_local, n_total) by construction, so no
- * flag is carried. The caller must mark the store dirty. (Pre-flip this resized
- * the cell's @ref ParticleList in place; the staging + rebuild reproduces the
- * same "count default ghosts" outcome for the row-based cell.)
+ * flag is carried. The caller must mark the store dirty.
  */
 inline void resize_ghost_storage(Cell &cell, std::size_t count) {
   cell.set_range(0u, 0u);

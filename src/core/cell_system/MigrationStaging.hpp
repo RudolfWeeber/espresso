@@ -22,21 +22,17 @@
 /**
  * @file
  * @brief Handle a @ref ParticleDecomposition uses to route migrating particles
- * through the owning @ref CellStructure's staging @ref ParticleStore (migration
- * phase 7b flip).
+ * through the owning @ref CellStructure's staging @ref ParticleStore.
  *
- * Since the flip, the global-resort migration no longer ferries detached,
- * carrier-laden @c Particle objects through boost-serialized send buffers.
- * Instead a mis-celled non-local particle is COPIED (column-by-column) out of
- * the live store into a row of the @ref CellStructure staging store
- * (@c stage_row); the migration `displaced_parts` list holds staging-row
- * INDICES; per direction those rows are @ref MigrationPack "packed" into a flat
- * byte buffer; received buffers are unpacked into fresh reserved staging rows
- * (@c reserve_rows); and a received row that belongs on this node is
- * staged into its home cell as a reference to that staging row
- * (@ref CellParticleStorage::insert_staged_row) -- the next store rebuild
- * copies it into a committed row, exactly the pre-flip cell staging path, so
- * the final store row-assignment order is unchanged.
+ * A mis-celled non-local particle is COPIED (column-by-column) out of the live
+ * store into a row of the @ref CellStructure staging store (@c stage_row); the
+ * migration `displaced_parts` list holds staging-row INDICES; per direction
+ * those rows are @ref MigrationPack "packed" into a flat byte buffer; received
+ * buffers are unpacked into fresh reserved staging rows (@c reserve_rows); and
+ * a received row that belongs on this node is staged into its home cell as a
+ * reference to that staging row (@ref CellParticleStorage::insert_staged_row)
+ * -- the next store rebuild copies it into a committed row, so the final store
+ * row-assignment order matches the cell staging order.
  *
  * @ref CellStructure owns the staging store and installs this handle on the
  * decomposition (like @c set_commit_store); the function objects wrap the

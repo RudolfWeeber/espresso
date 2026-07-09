@@ -36,14 +36,13 @@ struct RemovedParticle {
   int id;
 };
 
-/** @brief A cell whose row content changed during a resort (phase 7a; 7c).
- *  Since the flip cells no longer own @c Particle objects; since phase 7c a
- *  cell's content is a @c (offset, count) store-row range (@ref CellRowSpan),
- *  not a bag, so a modified cell is identified by the @ref Cell itself. The
- *  particle index / view pool is rebuilt wholesale from the store after a
- *  resort (@ref CellStructure::ensure_particle_store_synchronized), so this
- *  record is retained for the "cells touched" bookkeeping contract but is no
- *  longer used for incremental index updates (its field has no reader). */
+/** @brief A cell whose row content changed during a resort.
+ *  A cell's content is a @c (offset, count) store-row range (@ref CellRowSpan),
+ *  so a modified cell is identified by the @ref Cell itself. The particle index
+ *  is rebuilt wholesale from the store after a resort
+ *  (@ref CellStructure::ensure_particle_store_synchronized); this record is
+ *  retained for the "cells touched" bookkeeping contract (its field has no
+ *  reader). */
 struct ModifiedList {
   Cell &cell;
 };

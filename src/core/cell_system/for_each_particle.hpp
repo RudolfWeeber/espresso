@@ -38,11 +38,10 @@ CellStructure::parallel_for_each_particle_impl(std::span<Cell *const> cells,
         "for_each_local_particle", cells.size(), [&](auto cell_idx) {
           // One reused view per cell (per thread), REBOUND per row via
           // attach_to_store instead of relying on the row-range iterator to
-          // materialise a Particle per cell (phase 7a perf fix). The cell's
-          // committed rows are the contiguous range [offset, offset+count)
-          // (phase 7c); this runs on a clean store (no pending-removed rows),
-          // so index it directly. Carriers stay default and are never read
-          // while attached.
+          // materialise a Particle per cell. The cell's committed rows are the
+          // contiguous range [offset, offset+count); this runs on a clean store
+          // (no pending-removed rows), so index it directly. The heap-owning
+          // members stay default-constructed and are never read while attached.
           auto const offset = cells[cell_idx]->offset();
           auto const n_part = cells[cell_idx]->count();
           Particle p;
@@ -67,7 +66,7 @@ template <typename RowKernel>
 inline void
 CellStructure::parallel_for_each_local_row_impl(std::span<Cell *const> cells,
                                                 RowKernel &kernel) const {
-  // Phase-8a column-kernel launcher: same iteration structure as
+  // Column-kernel launcher: same iteration structure as
   // parallel_for_each_particle_impl (above) but hands the kernel the raw STORE
   // ROW instead of a rebound Particle view. The kernel body reads its hoisted
   // *_view() column handles directly by row -- no per-element view_host() /

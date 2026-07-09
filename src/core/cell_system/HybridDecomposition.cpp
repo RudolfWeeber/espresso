@@ -100,22 +100,20 @@ void HybridDecomposition::resort(bool global,
                                  std::vector<ParticleChange> &diff) {
   ParticleList displaced_parts;
 
-  /* Check for n_square type particles in regular decomposition. Phase 7b/7c:
-   * cells are already wired to the store by CellStructure::resort_particles;
-   * iterate committed rows by raw position and, for a misplaced particle, copy
-   * its live row into the shared staging store (stage_row), mark the source row
+  /* Check for n_square type particles in regular decomposition. Iterate
+   * committed rows by raw position and, for a misplaced particle, copy its live
+   * row into the shared staging store (stage_row), mark the source row
    * pending-removed via drop_row (no swap-with-back; the raw index stays valid
    * so we advance unconditionally), and stage a reference to the staging row in
    * the target child cell (insert_staged_row). The next store rebuild --
    * triggered by m_commit_store below, BEFORE the child resorts -- emits
    * surviving rows then staged rows in permutation order, drops pending-removed
-   * rows, and resets the staging store. Read the type/id from the store by row
-   * (a lightweight view, avoiding the deleted detached-Particle path). */
+   * rows, and resets the staging store. */
   assert(m_migration_staging && "migration staging store not installed");
   auto &staging = *m_migration_staging.store;
   for (auto &cell_rd : m_regular_decomposition.local_cells()) {
     auto &store = cell_rd->store();
-    // Iterate committed rows by RAW position (phase 7c): drop_row marks the row
+    // Iterate committed rows by RAW position: drop_row marks the row
     // pending-removed (no swap-with-back), so advance unconditionally.
     auto const rd_offset = cell_rd->offset();
     auto const rd_count = cell_rd->count();
@@ -152,8 +150,8 @@ void HybridDecomposition::resort(bool global,
     /* Now check for regular decomposition type particles in n_square */
     for (auto &cell_ns : m_n_square.local_cells()) {
       auto &store = cell_ns->store();
-      // Iterate committed rows by RAW position (phase 7c): drop_row marks the
-      // row pending-removed (no swap-with-back), so advance unconditionally.
+      // Iterate committed rows by RAW position: drop_row marks the row
+      // pending-removed (no swap-with-back), so advance unconditionally.
       auto const ns_offset = cell_ns->offset();
       auto const ns_count = cell_ns->count();
       for (std::size_t index = 0u; index < ns_count; ++index) {
@@ -200,14 +198,13 @@ void HybridDecomposition::resort(bool global,
     }
   }
 
-  /* Phase 7b: the type-based moves above STAGED staging-row references into
-   * their target child cells (insert_staged_row; pre-flip insert_particle
-   * inserted immediately). Commit now so the child resorts below iterate the
-   * correct committed cell contents -- otherwise a particle moved into a cell
-   * would be invisible to that cell's own resort, changing the final
-   * placement/order. The commit copies each staged row into a committed row and
-   * resets the shared staging store, so the child resorts start with a clean
-   * staging store. */
+  /* The type-based moves above staged staging-row references into their target
+   * child cells (insert_staged_row). Commit now so the child resorts below
+   * iterate the correct committed cell contents -- otherwise a particle moved
+   * into a cell would be invisible to that cell's own resort, changing the
+   * final placement/order. The commit copies each staged row into a committed
+   * row and resets the shared staging store, so the child resorts start with a
+   * clean staging store. */
   if (m_commit_store) {
     m_commit_store();
   }
@@ -216,11 +213,11 @@ void HybridDecomposition::resort(bool global,
   m_regular_decomposition.resort(global, diff);
   m_n_square.resort(global, diff);
 
-  /* Phase 7a: the child resorts staged migrated/new particles into cells but
-   * did not commit them to store rows. Commit now so the internal ghost
-   * communications below see committed rows/columns (the PARTNUM step still
-   * uses Cell::size() = rows+staged for downstream ghost layers, but the DATA
-   * step reads committed views). */
+  /* The child resorts staged migrated/new particles into cells but did not
+   * commit them to store rows. Commit now so the internal ghost communications
+   * below see committed rows/columns (the PARTNUM step still uses
+   * Cell::size() = rows+staged for downstream ghost layers, but the DATA step
+   * reads committed views). */
   if (m_commit_store) {
     m_commit_store();
   }

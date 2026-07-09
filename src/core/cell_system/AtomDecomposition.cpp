@@ -128,17 +128,17 @@ void AtomDecomposition::resort(bool global_flag,
     return;
   }
 
-  // Phase 7b flip: a mis-owned particle is copied out of the live store into a
-  // staging-store row (stage_row); its staging-row index goes into the target
-  // rank's per-rank bucket, which is then packed per-field
-  // (MigrationPack::pack_rows) and exchanged as a byte buffer via all_to_all.
+  // A mis-owned particle is copied out of the live store into a staging-store
+  // row (stage_row); its staging-row index goes into the target rank's per-rank
+  // bucket, which is then packed per-field (MigrationPack::pack_rows) and
+  // exchanged as a byte buffer via all_to_all.
   assert(m_migration_staging && "migration staging store not installed");
   auto &staging = *m_migration_staging.store;
 
   // Sort displaced particles into per-rank staging-row buckets (iterate the
   // committed rows by RAW position; drop_row marks the row pending-removed --
   // the range keeps its order, no swap-with-back -- so we advance
-  // unconditionally, phase 7c).
+  // unconditionally).
   std::vector<std::vector<int>> send_rows(m_comm.size());
   auto const row_offset = local().offset();
   auto const row_count = local().count();
@@ -165,13 +165,12 @@ void AtomDecomposition::resort(bool global_flag,
 
   diff.emplace_back(ModifiedList{local()});
 
-  // Unpack the received buffers (in rank order, matching the pre-flip recv_buf
-  // iteration) into fresh staging rows, then stage each staging row into the
-  // local cell as a row reference (phase 7b): the next store rebuild copies it
-  // into a committed row, so the final row-assignment order is the same as the
-  // pre-flip cell staging path. The staging store is NOT cleared here -- the
-  // staged row references must remain valid until CellStructure commits them
-  // (ensure_particle_store_synchronized), which then resets the staging store.
+  // Unpack the received buffers (in rank order) into fresh staging rows, then
+  // stage each staging row into the local cell as a row reference: the next
+  // store rebuild copies it into a committed row. The staging store is NOT
+  // cleared here -- the staged row references must remain valid until
+  // CellStructure commits them (ensure_particle_store_synchronized), which then
+  // resets the staging store.
   for (auto const &buffer : recv_buf) {
     if (buffer.empty()) {
       continue;

@@ -72,18 +72,18 @@ class HybridDecomposition : public ParticleDecomposition {
 
   std::function<bool()> m_get_global_ghost_flags;
 
-  /** Commit the ParticleStore (phase 7a): child resorts STAGE migrated
-   *  particles into cells without committing them to store rows; the internal
-   *  ghost communications in @ref resort need the committed rows/columns. This
+  /** Commit the ParticleStore: child resorts stage migrated particles into
+   *  cells without committing them to store rows; the internal ghost
+   *  communications in @ref resort need the committed rows/columns. This
    *  callback (set by @ref CellStructure via @ref set_commit_store) runs
    *  @ref CellStructure::ensure_particle_store_synchronized. */
   std::function<void()> m_commit_store;
 
-  /** Shared migration staging handle (phase 7b): the hybrid's own type-based
-   *  moves between the two child decompositions copy a live row into this
-   *  staging store and stage a reference to it, exactly like a child's
-   *  wrong-cell-local move; the children hold the SAME handle (same
-   *  address-stable staging-store member on @ref CellStructure). */
+  /** Shared migration staging handle: the hybrid's own type-based moves between
+   *  the two child decompositions copy a live row into this staging store and
+   *  stage a reference to it, exactly like a child's wrong-cell-local move; the
+   *  children hold the SAME handle (same address-stable staging-store member on
+   *  @ref CellStructure). */
   MigrationStaging m_migration_staging;
 
   bool is_n_square_type(int type_id) const {
@@ -96,20 +96,19 @@ public:
                       BoxGeometry const &box_geo, LocalBox const &local_box,
                       std::set<int> n_square_types);
 
-  /** @brief Set the store-commit callback (phase 7a); see @c m_commit_store.
-   */
+  /** @brief Set the store-commit callback; see @c m_commit_store. */
   void set_commit_store(std::function<void()> commit) {
     m_commit_store = std::move(commit);
   }
 
-  /** @brief Install the migration staging handle (phase 7b flip) and propagate
-   *  it to the two child decompositions, which run the actual wire exchange in
-   *  their @c resort. The shared staging store is reset by @ref CellStructure
-   *  once it commits the staged rows (@c ensure_particle_store_synchronized),
-   *  not by the decompositions -- so the type-based moves' staged rows, the two
-   *  child resorts' staged rows, and the deferred commit=false hot path all
-   *  keep valid references until that single commit. The hybrid keeps its own
-   *  copy of the handle for its type-based moves. */
+  /** @brief Install the migration staging handle and propagate it to the two
+   *  child decompositions, which run the actual wire exchange in their
+   *  @c resort. The shared staging store is reset by @ref CellStructure once it
+   *  commits the staged rows (@c ensure_particle_store_synchronized), not by
+   *  the decompositions -- so the type-based moves' staged rows, the two child
+   *  resorts' staged rows, and the deferred commit=false hot path all keep
+   * valid references until that single commit. The hybrid keeps its own copy of
+   * the handle for its type-based moves. */
   void set_migration_staging(MigrationStaging staging) {
     m_regular_decomposition.set_migration_staging(staging);
     m_n_square.set_migration_staging(staging);

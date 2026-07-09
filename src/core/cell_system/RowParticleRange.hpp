@@ -33,16 +33,13 @@
  * @brief Iterator over a @ref Cell's contiguous store-row range yielding
  * @ref Particle views.
  *
- * The live iterator backing @ref Cell::particles() since the phase-7c range
- * collapse (Task 3). Where the phase-7a iterator walked a @c Bag<int> row array
- * (one indirection per element), this walks the ARITHMETIC range
- * @c [offset, offset+count) directly -- no per-cell int array. Rows dropped
- * mid-epoch are marked pending-removed on the store (@ref
- * ParticleStore::mark_pending_removal); this iterator SKIPS them, so a removed
- * particle is invisible to iteration immediately (before the next rebuild
- * resolves it). For each surviving row it hands out a @ref Particle view over
- * the paired @ref ParticleStore row (a cached view rebound via @ref
- * Particle::attach_to_store; see the PERFORMANCE note below).  Its contract
+ * Walks the ARITHMETIC range @c [offset, offset+count) directly -- no per-cell
+ * int array. Rows dropped mid-epoch are marked pending-removed on the store
+ * (@ref ParticleStore::mark_pending_removal); this iterator SKIPS them, so a
+ * removed particle is invisible to iteration immediately (before the next
+ * rebuild resolves it). For each surviving row it hands out a @ref Particle
+ * view over the paired @ref ParticleStore row (a cached view rebound via
+ * @ref Particle::attach_to_store; see the PERFORMANCE note below). Its contract
  * mirrors @ref ParticleIterator / @ref ParticleRange :
  *   - @c value_type is @ref Particle and @c reference is @c Particle& (as in
  *     @ref ParticleIterator, whose @c dereference() returns @c Particle&);
@@ -54,20 +51,16 @@
  * reference stays valid for as long as the iterator object lives and is not
  * incremented; incrementing or destroying the iterator invalidates it. This
  * lets a caller bind @c Particle &p = *it and keep using @c p across a loop
- * body (the pattern the bond handlers rely on -- see the phase 7a task-1
- * audit), which a by-value @c operator* returning a temporary could not
- * support. The referenced view itself aliases the store; it is invalidated by
- * a store rebuild just like any other view.
+ * body (the pattern the bond handlers rely on), which a by-value @c operator*
+ * returning a temporary could not support. The referenced view itself aliases
+ * the store; it is invalidated by a store rebuild just like any other view.
  *
- * PERFORMANCE (phase 7a perf fix): dereference REBINDS the cached view (sets
- * the two store-handle fields via @ref Particle::attach_to_store) instead of
- * CONSTRUCTING + copy-assigning a fresh @ref Particle. The old @c m_view =
- * make_view(...) built a full Particle (all migration carriers, incl. the
- * heap-owning BondList/exclusion members) and copy-assigned it -- two full
- * Particle materialisations per dereference, per element, in every core
- * particle loop (the measured 2-3x regression). Rebinding touches only the two
- * handle fields; the carriers stay default-constructed and are never read
- * while the view is attached (every accessor takes the store-attached branch).
+ * PERFORMANCE: dereference REBINDS the cached view (sets the two store-handle
+ * fields via @ref Particle::attach_to_store) instead of CONSTRUCTING +
+ * copy-assigning a fresh @ref Particle. Rebinding touches only the two handle
+ * fields; the heap-owning BondList/exclusion members stay default-constructed
+ * and are never read while the view is attached (every accessor takes the
+ * store-attached branch).
  *
  * The cache is a @c std::optional<Particle> so that DEFAULT / COPY / end
  * construction and @c begin() (all frequent: @ref ParticleIterator reassigns
@@ -148,9 +141,9 @@ private:
   // iterator, which is never dereferenced, never builds one), then REBIND it to
   // the current row. Rebinding sets ONLY the two store-handle fields
   // (attach_to_store) -- it never copy-assigns a Particle, so the heap-owning
-  // migration carriers are neither reallocated nor touched. The view lives in
-  // m_view so the returned reference outlives the expression, honouring the
-  // lifetime contract documented on the class.
+  // BondList/exclusion members are neither reallocated nor touched. The view
+  // lives in m_view so the returned reference outlives the expression,
+  // honouring the lifetime contract documented on the class.
   Particle &dereference() const {
     auto const row = static_cast<int>(m_row);
     if (not m_view) {
@@ -168,12 +161,11 @@ private:
 /**
  * @brief Range of @ref Particle views over a @ref Cell's store-row range.
  *
- * The live return type of @ref Cell::particles() since the phase-7a flip
- * (backed by an arithmetic row range since the phase-7c collapse). Modelled on
- * @ref ParticleRange (a @c boost::iterator_range with a cached size). Iterating
- * it yields the cell's LIVE particles (pending-removed rows skipped) in
- * cell-traversal order, each as a live @ref Particle view aliasing the @ref
- * ParticleStore columns.
+ * The return type of @ref Cell::particles(), backed by an arithmetic row range.
+ * Modelled on @ref ParticleRange (a @c boost::iterator_range with a cached
+ * size). Iterating it yields the cell's LIVE particles (pending-removed rows
+ * skipped) in cell-traversal order, each as a live @ref Particle view aliasing
+ * the @ref ParticleStore columns.
  */
 class RowParticleRange : public boost::iterator_range<RowParticleIterator> {
   using base_type = boost::iterator_range<RowParticleIterator>;

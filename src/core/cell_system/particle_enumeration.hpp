@@ -58,7 +58,7 @@ inline void enumerate_local_particles(CellStructure const &cs,
     Kokkos::parallel_for(
         "enumerate_local_particles", local_cells.size(), [&](auto cell_idx) {
           auto const base_offset = cell_offsets[cell_idx];
-          // Phase 7c: the cell's committed rows are the contiguous range
+          // The cell's committed rows are the contiguous range
           // [offset, offset+count); index it directly (this runs on a clean
           // store, so no pending-removed rows). Each cell gets its own view so
           // this stays thread-safe under the parallel_for over cells.
@@ -69,8 +69,8 @@ inline void enumerate_local_particles(CellStructure const &cs,
           // Reuse one cached view across this cell's rows (this inner loop is
           // sequential -- one thread per cell -- so a single rebound view is
           // safe), REBOUND per row via attach_to_store instead of constructing
-          // a fresh Particle per row (phase 7a perf fix). Carriers stay default
-          // and are never read while attached.
+          // a fresh Particle per row. The heap-owning members stay
+          // default-constructed and are never read while attached.
           Particle view;
           for (std::size_t p_index{0}; p_index < n_part; ++p_index) {
             auto global_index = base_offset + p_index;

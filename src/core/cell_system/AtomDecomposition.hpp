@@ -67,9 +67,8 @@ public:
   AtomDecomposition(BoxGeometry const &m_box);
   AtomDecomposition(boost::mpi::communicator comm, BoxGeometry const &box_geo);
 
-  /** @brief Install the staging-store handle (phase 7b flip); see
-   *  @ref MigrationStaging. Set by @ref CellStructure / @ref
-   * HybridDecomposition.
+  /** @brief Install the staging-store handle; see @ref MigrationStaging.
+   *  Set by @ref CellStructure / @ref HybridDecomposition.
    */
   void set_migration_staging(MigrationStaging staging) {
     m_migration_staging = std::move(staging);
@@ -162,6 +161,6 @@ private:
    */
   bool has_id(int id) const { return id_to_rank(id) == m_comm.rank(); }
 
-  /** Staging-store handle for the per-field migration wire (phase 7b flip). */
+  /** Staging-store handle for the per-field migration wire. */
   MigrationStaging m_migration_staging;
 };
