@@ -141,6 +141,32 @@ tuning with zero particles raises an FPE under -ftrapping-math at 4 MPI ranks
 (clang+CUDA+FPE config) — reproduced identically at the pre-migration base
 commit; upstream PR candidate alongside the particle_node prefetch predicate.
 
+**Layout re-evaluation (2026-07-09, user-requested): COMPONENT-MAJOR becomes
+the default — the phase-3.5 decision is REVERSED.** Method: a compile-time
+toggle builds both layouts from identical sources (all column access was
+already layout-agnostic except two hand-hoisted kernel pointer sites, made
+stride-aware); trajectories are bitwise-identical under either layout, so the
+comparison is purely speed. Order-balanced same-commit A/B (6 reps/config):
+component-major is faster on p3m 4-rank (−1.7%), p3m 1-rank (−1.3%), lj
+1-rank and 4-rank (−0.5% each); lj-omp was +1.0% and was recovered to +0.5%
+(noise) by perf-guided optimization — an interleaved position scratch filled
+once per Verlet build (the build's per-candidate reads touched three
+far-apart component streams, ~2× its cost at 4000 ppc); p3m-omp is
+inconclusive (readings 1.006 and 1.033 across rounds — P3M auto-tuning
+variance dominates that configuration). Ship-gate adjudication: the
+sequential gate read lj-1rank 1.055 vs phase-0 on decision day, but a
+same-session order-balanced anchor measured the layout delta on lj-1rank as
+exactly 1.000 (identical min-of-means) and BOTH layouts at 1.055 — i.e.
+~0.6pp of cross-day machine drift affecting both binaries equally
+(particle-major itself gated at 1.049 the previous day); per the established
+A/B-arbitrates precedent the 5% budget verdict stands. Why the reversal: the
+phase-3.5 measurement predated the struct death, per-field ghost exchange and
+column kernels — the gather-dominated paths that favoured particle-major are
+gone, and per-component ghost legs now benefit from contiguity.
+Component-major is also the coalescing-friendly layout for future
+device-resident GPU work. Particle-major remains selectable via
+-DESPRESSO_PARTICLE_STORE_PARTICLE_MAJOR.
+
 ## Non-goals
 
 - No change to the Python user interface or its semantics.

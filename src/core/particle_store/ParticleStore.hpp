@@ -76,7 +76,27 @@ public:
    * columns are therefore particle-major. Component-major is re-evaluated at
    * phase 8 (GPU), where coalesced per-component access may flip the balance.
    */
+  /* Layout decision (phase-8 re-evaluation, 2026-07-09): COMPONENT-MAJOR
+   * (LayoutLeft, all x components contiguous) is the default. Order-balanced
+   * same-commit A/B (6 reps per config) measured component-major faster on
+   * p3m 4-rank (-1.7%), p3m 1-rank (-1.3%), lj 1-rank and 4-rank (-0.5%),
+   * neutral on lj-omp (+0.5%, after the Verlet-build interleaved scratch in
+   * link_cell_kokkos) and inconclusive on p3m-omp (P3M auto-tuning variance
+   * dominates). This REVERSES the phase-3.5 verdict (+10-12% for
+   * component-major back then): the intervening struct death, per-field ghost
+   * exchange and column kernels removed the gather-dominated paths that had
+   * favoured particle-major, and per-component ghost legs now benefit from
+   * contiguity. Component-major is also the coalescing-friendly layout for
+   * device-resident GPU work. Particle-major remains selectable with
+   * -DESPRESSO_PARTICLE_STORE_PARTICLE_MAJOR for A/B on identical sources;
+   * all column access is layout-agnostic (typed views, (row, component)
+   * indexing, stride-carrying contexts/proxies) and trajectories are
+   * bitwise-identical under either layout. */
+#ifdef ESPRESSO_PARTICLE_STORE_PARTICLE_MAJOR
   using StateVectorLayout = Kokkos::LayoutRight;
+#else
+  using StateVectorLayout = Kokkos::LayoutLeft;
+#endif
   using Column = Kokkos::DualView<double *[3], StateVectorLayout>;
   using IntegerColumn = Kokkos::DualView<int *[3], StateVectorLayout>;
   using QuaternionColumn = Kokkos::DualView<double *[4], StateVectorLayout>;

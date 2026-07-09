@@ -37,7 +37,9 @@
 
 #include <iterator>
 #include <span>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
 template <class KokkosRangePolicy = Kokkos::RangePolicy<>>
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
@@ -101,6 +103,32 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
   // but ghost particles from other ranks may have larger particle ids;
   // -1 is used as a sentinel value for particle ids from other threads
 
+  // Component-major layout only: gather the position column into an
+  // INTERLEAVED scratch buffer once per Verlet build. The build examines
+  // O(N * candidates) positions by row; under LayoutLeft each such read
+  // touches three far-apart component streams (three cache lines per
+  // candidate), which perf measured at ~2x the build cost at 4000
+  // particles/core. The O(N) sequential gather below is prefetch-friendly
+  // and runs at rebuild cadence only. The kernels consume base + runtime
+  // strides, so they read the scratch ({3, 1}) and the native column
+  // (view strides) through the same code path. Under particle-major the
+  // column is already interleaved and the scratch is skipped entirely.
+  std::vector<double> interleaved_positions;
+  if constexpr (std::is_same_v<ParticleStore::StateVectorLayout,
+                               Kokkos::LayoutLeft>) {
+    if (not cells.empty()) {
+      auto &store = cells.front()->store();
+      auto const &position_view = store.position_view();
+      auto const total = store.number_of_particles();
+      interleaved_positions.resize(3u * total);
+      for (std::size_t row = 0u; row < total; ++row) {
+        interleaved_positions[3u * row + 0u] = position_view(row, 0);
+        interleaved_positions[3u * row + 1u] = position_view(row, 1);
+        interleaved_positions[3u * row + 2u] = position_view(row, 2);
+      }
+    }
+  }
+
   // Phase 7a perf fix: iterate the cells' store-ROW bags directly and REBIND
   // two cached views (p1 + partner) per work item via
   // Particle::attach_to_store, instead of driving RowParticleRange iterators
@@ -109,7 +137,8 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
   // work item (one cell per Kokkos work item) is thread-safe. Iteration ORDER
   // is unchanged. Carriers stay default and are never read while attached.
   auto intra_kernel = [&cells, &box_geo, &verlet_criterion, &id_to_index,
-                       &intra_operator, max_id](const int i) {
+                       &intra_operator, &interleaved_positions,
+                       max_id](const int i) {
     auto &store = cells[i]->store();
     // Contiguous store-row range (phase 7c); clean store, so index directly.
     auto const offset = cells[i]->offset();
@@ -122,7 +151,23 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
     // Particle views stay attached for the verlet_criterion (it may read
     // types/flags); iteration order and arithmetic are unchanged.
     auto const *const id_column = store.id_view().data();
-    auto const *const position_column = store.position_view().data();
+    // Layout-agnostic hoisted position access: base pointer plus the view's
+    // run-time strides (row stride, component stride). Particle-major
+    // (LayoutRight) gives {3, 1}; component-major (LayoutLeft) gives
+    // {1, padded extent}. See the StateVectorLayout toggle in ParticleStore.
+    auto const &position_view = store.position_view();
+    // Prefer the interleaved rebuild-cadence scratch when populated
+    // (component-major layout); otherwise read the native column. Same
+    // base-plus-strides consumption either way.
+    bool const use_scratch = not interleaved_positions.empty();
+    auto const *const position_column =
+        use_scratch ? interleaved_positions.data() : position_view.data();
+    auto const pos_row_stride =
+        use_scratch ? std::size_t{3u}
+                    : static_cast<std::size_t>(position_view.stride(0));
+    auto const pos_comp_stride =
+        use_scratch ? std::size_t{1u}
+                    : static_cast<std::size_t>(position_view.stride(1));
     Particle p1, p2;
     for (std::size_t a = 0u; a < n; ++a) {
       auto const row_a = offset + a;
@@ -132,18 +177,20 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
         if (ii >= 0) {
           // Hoist p1's position out of the inner loop (one read per outer
           // particle instead of per pair candidate).
-          auto const p1_pos = Utils::Vector3d{position_column[3u * row_a + 0u],
-                                              position_column[3u * row_a + 1u],
-                                              position_column[3u * row_a + 2u]};
+          auto const *const p1_base = position_column + row_a * pos_row_stride;
+          auto const p1_pos =
+              Utils::Vector3d{p1_base[0u], p1_base[pos_comp_stride],
+                              p1_base[2u * pos_comp_stride]};
           // pairs in this cell (j > i), same order as before
           for (std::size_t b = a + 1u; b < n; ++b) {
             auto const row_b = offset + b;
             if (id_column[row_b] <= max_id) {
               p2.attach_to_store(store, static_cast<int>(row_b));
+              auto const *const p2_base =
+                  position_column + row_b * pos_row_stride;
               auto const p2_pos =
-                  Utils::Vector3d{position_column[3u * row_b + 0u],
-                                  position_column[3u * row_b + 1u],
-                                  position_column[3u * row_b + 2u]};
+                  Utils::Vector3d{p2_base[0u], p2_base[pos_comp_stride],
+                                  p2_base[2u * pos_comp_stride]};
               if (verlet_criterion(p1, p2,
                                    box_geo.get_mi_dist2(p1_pos, p2_pos))) {
                 auto const jj = id_to_index(id_column[row_b]);
@@ -159,15 +206,29 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
   };
 
   auto inter_kernel = [&cells, &box_geo, &verlet_criterion, &id_to_index,
-                       &inter_operator, max_id](const int i) {
+                       &inter_operator, &interleaved_positions,
+                       max_id](const int i) {
     auto &store = cells[i]->store();
     // Contiguous store-row range (phase 7c); clean store, so index directly.
     auto const offset = cells[i]->offset();
     auto const n = cells[i]->count();
-    // Hoisted raw column pointers: see intra_kernel. All cells share the one
-    // active ParticleStore, so the pointers are valid for neighbor cells too.
+    // Hoisted raw column pointers: see intra_kernel (incl. the layout-agnostic
+    // stride note). All cells share the one active ParticleStore, so the
+    // pointers are valid for neighbor cells too.
     auto const *const id_column = store.id_view().data();
-    auto const *const position_column = store.position_view().data();
+    auto const &position_view = store.position_view();
+    // Prefer the interleaved rebuild-cadence scratch when populated
+    // (component-major layout); otherwise read the native column. Same
+    // base-plus-strides consumption either way.
+    bool const use_scratch = not interleaved_positions.empty();
+    auto const *const position_column =
+        use_scratch ? interleaved_positions.data() : position_view.data();
+    auto const pos_row_stride =
+        use_scratch ? std::size_t{3u}
+                    : static_cast<std::size_t>(position_view.stride(0));
+    auto const pos_comp_stride =
+        use_scratch ? std::size_t{1u}
+                    : static_cast<std::size_t>(position_view.stride(1));
     Particle p1, p2;
     for (std::size_t a = 0u; a < n; ++a) {
       auto const row_a = offset + a;
@@ -176,9 +237,10 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
         auto const ii = id_to_index(id_column[row_a]);
         if (ii >= 0) {
           // Hoist p1's position out of the inner loops (see intra_kernel).
-          auto const p1_pos = Utils::Vector3d{position_column[3u * row_a + 0u],
-                                              position_column[3u * row_a + 1u],
-                                              position_column[3u * row_a + 2u]};
+          auto const *const p1_base = position_column + row_a * pos_row_stride;
+          auto const p1_pos =
+              Utils::Vector3d{p1_base[0u], p1_base[pos_comp_stride],
+                              p1_base[2u * pos_comp_stride]};
           // pairs with neighboring cells, same order as before
           for (auto *neighbor : cells[i]->neighbors().red()) {
             auto &nb_store = neighbor->store();
@@ -188,10 +250,11 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
               auto const row_k = nb_offset + k;
               if (id_column[row_k] <= max_id) {
                 p2.attach_to_store(nb_store, static_cast<int>(row_k));
+                auto const *const p2_base =
+                    position_column + row_k * pos_row_stride;
                 auto const p2_pos =
-                    Utils::Vector3d{position_column[3u * row_k + 0u],
-                                    position_column[3u * row_k + 1u],
-                                    position_column[3u * row_k + 2u]};
+                    Utils::Vector3d{p2_base[0u], p2_base[pos_comp_stride],
+                                    p2_base[2u * pos_comp_stride]};
                 if (verlet_criterion(p1, p2,
                                      box_geo.get_mi_dist2(p1_pos, p2_pos))) {
                   auto const jj = id_to_index(id_column[row_k]);
