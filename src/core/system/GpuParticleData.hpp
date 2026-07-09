@@ -52,7 +52,7 @@
  * @note The AoS host-staging design (@ref pack_particles gathering fields
  * through the particle accessor API) remains the multi-rank CUDA data path.
  * The single-rank fast path fills per-field SoA staging buffers directly from
- * the @ref ParticleStore columns (@ref pack_particles_soa), bypassing the AoS
+ * the @ref ParticleStore columns (@c pack_particles_soa), bypassing the AoS
  * pack + split kernel.
  */
 class GpuParticleData : public System::Leaf<GpuParticleData>,
