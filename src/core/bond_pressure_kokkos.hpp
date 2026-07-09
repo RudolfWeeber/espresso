@@ -74,7 +74,7 @@ struct PairBondsPressureKernel {
 
     auto const i = bond_list(idx, 0);
     auto const j = bond_list(idx, 1);
-    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    // Translate pack indices to ParticleStore rows once.
     auto const row_i = aosoa.row(i);
     auto const row_j = aosoa.row(j);
     auto const &iaparams = *bonded_ias.at(bond_id);
@@ -86,8 +86,7 @@ struct PairBondsPressureKernel {
         calc_bonded_virial_pressure_tensor(
             iaparams, pos1, pos2, box_geo, coulomb_f_kernel,
 #ifdef ESPRESSO_ELECTROSTATICS
-            // phase 5: charge aliases the store
-            // column; read by *store row*.
+            // charge aliases the store column; read by *store row*.
             aosoa.charge(row_i) * aosoa.charge(row_j)
 #else
             0.0
@@ -134,7 +133,7 @@ struct AngleBondsPressureKernel {
     auto const i = bond_list(idx, 0);
     auto const j = bond_list(idx, 1);
     auto const k = bond_list(idx, 2);
-    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    // Translate pack indices to ParticleStore rows once.
     auto const row_i = aosoa.row(i);
     auto const row_j = aosoa.row(j);
     auto const row_k = aosoa.row(k);
@@ -189,7 +188,7 @@ struct DihedralBondsPressureKernel {
     auto const j = bond_list(idx, 1);
     auto const k = bond_list(idx, 2);
     auto const m = bond_list(idx, 3);
-    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    // Translate pack indices to ParticleStore rows once.
     auto const row_i = aosoa.row(i);
     auto const row_j = aosoa.row(j);
     auto const row_k = aosoa.row(k);

@@ -73,7 +73,7 @@ struct PairBondsEnergyKernel {
 
     auto const i = bond_list(idx, 0);
     auto const j = bond_list(idx, 1);
-    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    // Translate pack indices to ParticleStore rows once.
     auto const row_i = aosoa.row(i);
     auto const row_j = aosoa.row(j);
     auto const &iaparams = *bonded_ias.at(bond_id);
@@ -85,7 +85,7 @@ struct PairBondsEnergyKernel {
     std::optional<double> energy = calc_pair_bonded_energy(
         iaparams, dx, pos1, pos2,
 #ifdef ESPRESSO_ELECTROSTATICS
-        // phase 5: charge aliases the store column; read by *store row*.
+        // charge aliases the store column; read by *store row*.
         aosoa.charge(row_i) * aosoa.charge(row_j), coulomb_u_kernel
 #else
         0.0, nullptr
@@ -128,7 +128,7 @@ struct AngleBondsEnergyKernel {
     auto const i = bond_list(idx, 0);
     auto const j = bond_list(idx, 1);
     auto const k = bond_list(idx, 2);
-    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    // Translate pack indices to ParticleStore rows once.
     auto const row_i = aosoa.row(i);
     auto const row_j = aosoa.row(j);
     auto const row_k = aosoa.row(k);
@@ -180,7 +180,7 @@ struct DihedralBondsEnergyKernel {
     auto const j = bond_list(idx, 1);
     auto const k = bond_list(idx, 2);
     auto const m = bond_list(idx, 3);
-    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    // Translate pack indices to ParticleStore rows once.
     auto const row_i = aosoa.row(i);
     auto const row_j = aosoa.row(j);
     auto const row_k = aosoa.row(k);

@@ -46,12 +46,11 @@
 
 /** @brief Propagate angular velocities and update quaternions (value form).
  *
- *  Phase-8a VV-rotation column-kernel core: operates on quaternion / omega
- *  value references (in/out) plus rinertia / torque / rotation values read
- *  from the store columns by the caller. The omega is axis-masked internally
- *  (phase-4 mask-ordering lesson) before the quaternion-derivative step; the
- *  caller writes the masked omega back to the column BEFORE this runs (see the
- *  VV-rotation kernel below). Arithmetic identical to the pre-8a body.
+ *  VV-rotation column-kernel core: operates on quaternion / omega value
+ *  references (in/out) plus rinertia / torque / rotation values read from
+ *  the store columns by the caller. The omega is axis-masked internally
+ *  before the quaternion-derivative step; the caller writes the masked omega
+ *  back to the column BEFORE this runs (see the VV-rotation kernel below).
  */
 void propagate_omega_quat_values(Utils::Quaternion<double> &quat,
                                  Utils::Vector3d &omega,
@@ -61,8 +60,8 @@ void propagate_omega_quat_values(Utils::Quaternion<double> &quat,
 
 /** @brief Convert torques and propagate angular velocities (value form).
  *
- *  Phase-8a VV-rotation column-kernel core. The caller has ALREADY converted
- *  the torque to the body frame and applied the fix (via
+ *  VV-rotation column-kernel core. The caller has ALREADY converted the torque
+ *  to the body frame and applied the fix (via
  *  @ref convert_torque_to_body_frame_apply_fix) and passes that torque here.
  */
 void convert_torque_propagate_omega_values(Utils::Vector3d &omega,
@@ -95,10 +94,9 @@ inline Utils::Vector3d convert_vector_space_to_body(const Particle &p,
   return rotation_matrix(quaternion).transposed() * v;
 }
 
-// Phase-8a value-parameter overloads of the frame-conversion routines: the
-// Brownian column kernels have the quaternion in a local (read from the column
-// once) so they pass it directly instead of a Particle view. Arithmetic
-// identical to the view overloads above.
+// Value-parameter overloads of the frame-conversion routines: the Brownian
+// column kernels have the quaternion in a local (read from the column once) so
+// they pass it directly instead of a Particle view.
 inline Utils::Vector3d
 convert_vector_body_to_space(Utils::Quaternion<double> const &quat,
                              const Utils::Vector3d &vec) {
@@ -176,12 +174,11 @@ local_rotate_particle_body(Particle const &p,
   return Utils::Quaternion<double>(p.quat());
 }
 
-/** @brief Value-parameter OVERLOAD of @ref local_rotate_particle_body.
+/** @brief Value-parameter overload of @ref local_rotate_particle_body.
  *
- *  Phase-8a: the Brownian rotation column kernel has the quaternion and the
- *  rotation bitfield in locals (read from the columns once) and passes them
- *  directly. The existing Particle-view overload is retained unchanged (unit
- *  tests and other callers). Arithmetic identical.
+ *  The Brownian rotation column kernel has the quaternion and the rotation
+ *  bitfield in locals (read from the columns once) and passes them directly.
+ *  The Particle-view overload is retained for other callers.
  */
 inline Utils::Quaternion<double> local_rotate_particle_body(
     Utils::Quaternion<double> const &quat, std::uint8_t const rotation,
@@ -215,11 +212,10 @@ inline void convert_torque_to_body_frame_apply_fix(Particle &p) {
 /** @brief Value-parameter overload of @ref
  * convert_torque_to_body_frame_apply_fix.
  *
- *  Phase-8a: converts the space-frame @p torque to the body frame using @p quat
- *  and applies the rotation-axis fix, returning the masked body-frame torque.
- *  No @ref Particle view -- the column kernel reads quat / torque / rotation
- *  from the store columns and writes the result back. Arithmetic identical to
- *  the view overload above.
+ *  Converts the space-frame @p torque to the body frame using @p quat and
+ *  applies the rotation-axis fix, returning the masked body-frame torque.
+ *  The column kernel reads quat / torque / rotation from the store columns
+ *  and writes the result back.
  */
 inline Utils::Vector3d
 convert_torque_to_body_frame_apply_fix(Utils::Quaternion<double> const &quat,
@@ -229,12 +225,11 @@ convert_torque_to_body_frame_apply_fix(Utils::Quaternion<double> const &quat,
   return mask(rotation, torque_body);
 }
 
-// -- phase-8a VV-rotation column kernels ----------------------------------
+// -- VV-rotation column kernels -------------------------------------------
 // The caller (integrator_step_1 / _2) hoists the quaternion / angular-velocity
 // / rinertia / torque / rotation *_view() handles ONCE and calls these per-row
-// kernels. Columns are read into locals, the value-form cores run the math, and
-// results are written back. The rotation-axis mask, the omega write-back order
-// and the arithmetic are IDENTICAL to the pre-8a Particle-view bodies.
+// kernels. Columns are read into locals, the value-form cores run the math,
+// and results are written back.
 
 template <class QuatView, class OmegaView, class RinertiaView, class TorqueView,
           class RotationView>
@@ -263,10 +258,10 @@ inline void velocity_verlet_rotator_1_kernel(QuatView const &quat_view,
                                torque_view(row, 2)};
 
   // The masked omega must be written back to the column BEFORE the quaternion
-  // update, exactly as the pre-8a body did (phase-4 mask-ordering lesson).
-  // propagate_omega_quat_values masks the local omega first, so writing that
-  // masked value back here reproduces the ordering; the value core then
-  // finishes the omega/quaternion propagation on the same local.
+  // update. propagate_omega_quat_values masks the local omega first, so
+  // writing that masked value back here establishes the correct ordering;
+  // the value core then finishes the omega/quaternion propagation on the same
+  // local.
   auto const omega_masked = Utils::mask(rotation, omega);
   for (unsigned int j = 0u; j < 3u; ++j)
     omega_view(row, j) = omega_masked[j];

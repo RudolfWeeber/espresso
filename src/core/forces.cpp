@@ -93,9 +93,8 @@ static ParticleForce external_force(Particle const &p) {
 // [[gnu::flatten]]: the per-particle lambda below exceeds gcc's bottom-up
 // inlining budget, which turns trivial helpers (Utils::hadamard_product,
 // Utils::Vector constructors) into per-particle PLT calls inside the Langevin
-// friction path -- measured at 15% of core time on the lj benchmark (perf,
-// phase 8). Flattening forces the whole call tree inline; same arithmetic,
-// bitwise-identical trajectories.
+// friction path. Flattening forces the whole call tree inline; same
+// arithmetic, bitwise-identical trajectories.
 [[gnu::flatten]] static void
 init_forces_and_thermostat(System::System const &system) {
 #ifdef ESPRESSO_CALIPER
@@ -114,11 +113,11 @@ init_forces_and_thermostat(System::System const &system) {
       (propagation.used_propagations &
        (PropagationMode::TRANS_LANGEVIN | PropagationMode::ROT_LANGEVIN));
 
-  // Phase-8a: hoist the Langevin column-view handles ONCE outside the
-  // parallel_for. The Langevin friction is a column kernel (velocity / omega /
-  // id (+ gamma, quaternion) read by row); external-force init and the
-  // body->space torque rotation stay on the view path (external_force reads the
-  // engine sidecar; the rotation needs the quaternion).
+  // Hoist the Langevin column-view handles ONCE outside the parallel_for. The
+  // Langevin friction is a column kernel (velocity / omega / id (+ gamma,
+  // quaternion) read by row); external-force init and the body->space torque
+  // rotation stay on the view path (external_force reads the engine sidecar;
+  // the rotation needs the quaternion).
   auto &store = cell_structure.particle_store();
   auto vel_view = store.velocity_view();
   auto id_view = store.id_view();
@@ -371,9 +370,9 @@ void System::System::calculate_forces() {
   update_cabana_state(*cell_structure, verlet_criterion,
                       get_interaction_range(), propagation->integ_switch);
 #ifdef ESPRESSO_ELECTROSTATICS
-  // phase-5 perf recovery: refresh the pack-owned charge column once per step,
-  // ONLY when a coulomb actor is active (both the P3M long-range gather below
-  // and the real-space pair kernel read it contiguously). Pure-LJ runs skip it.
+  // Refresh the pack-owned charge column once per step, ONLY when a coulomb
+  // actor is active (both the P3M long-range gather below and the real-space
+  // pair kernel read it contiguously). Pure-LJ runs skip it.
   if (coulomb.impl->solver) {
     refresh_pack_charges(*cell_structure);
   }
@@ -382,8 +381,7 @@ void System::System::calculate_forces() {
   }
 #endif // ESPRESSO_ELECTROSTATICS
 #ifdef ESPRESSO_DIPOLES
-  // phase-5 perf recovery: pack-owned dipm refresh, guarded by an active
-  // dipolar actor.
+  // Refresh the pack-owned dipm column, guarded by an active dipolar actor.
   if (dipoles.impl->solver) {
     refresh_pack_dipm(*cell_structure);
   }

@@ -69,10 +69,8 @@ constexpr GammaType gamma_null{0.0};
 #endif
 
 #ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-// Returns BY VALUE (phase 5): the caller now passes a temporary GammaType built
-// from the particle's gamma()/gamma_rot() accessor, which returns a value/proxy
-// (not an lvalue reference into the particle) once the friction coefficient
-// lives in the ParticleStore columns. Returning a reference here would dangle
+// Returns BY VALUE: the caller passes a temporary GammaType built from the
+// particle's gamma()/gamma_rot() accessor. Returning a reference would dangle
 // once that temporary is destroyed at the end of the full expression.
 inline GammaType handle_particle_gamma(GammaType const &particle_gamma,
                                        GammaType const &default_gamma) {

@@ -36,15 +36,15 @@
 #include <cstdint>
 
 // The Brownian sub-kernels (thermostats/brownian_inline.hpp) and the two
-// drivers below are templated on a "particle-like" accessor type. The pre-8a
-// path passes a Particle view; the phase-8a column path passes a
-// BrownianRowView built from hoisted *_view() column handles + a store row.
-// The row-view exposes the SAME accessor names/semantics the drivers and
-// sub-kernels use, but each access indexes the pre-resolved view handle by row
-// instead of paying view_host() on a Particle proxy. All write-through
-// references (pos/v/quat/omega/torque) alias the columns, so the multi-stage
-// quaternion update (bd_drag_rot then bd_random_walk_rot reading it back) and
-// every arithmetic step are bitwise identical to the Particle-view path.
+// drivers below are templated on a "particle-like" accessor type. The column
+// path passes a BrownianRowView built from hoisted *_view() column handles +
+// a store row. The row-view exposes the SAME accessor names/semantics the
+// drivers and sub-kernels use, but each access indexes the pre-resolved view
+// handle by row instead of paying view_host() on a Particle proxy. All
+// write-through references (pos/v/quat/omega/torque) alias the columns, so
+// the multi-stage quaternion update (bd_drag_rot then bd_random_walk_rot
+// reading it back) and every arithmetic step are bitwise identical to the
+// Particle-view path.
 
 /** @brief Non-owning column-view of one particle for the Brownian kernels. */
 template <class PosView, class VelView, class ForceView, class TorqueView,
@@ -181,9 +181,9 @@ inline auto make_brownian_row_view(
       ext_flag, gamma, gamma_rot, row);
 }
 
-// Templated drivers: work with a Particle view (pre-8a callers) or a
-// BrownianRowView (phase-8a column path). The torque conversion uses the
-// value-parameter overload so the body compiles against either type.
+// Templated drivers: work with a Particle view or a BrownianRowView. The
+// torque conversion uses the value-parameter overload so the body compiles
+// against either type.
 template <class ParticleLike>
 inline void brownian_dynamics_propagator(BrownianThermostat const &brownian,
                                          ParticleLike &&p, double time_step,

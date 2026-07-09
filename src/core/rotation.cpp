@@ -52,11 +52,10 @@
  *  notation for quaternions, while @cite sonnenschein85a uses scalar-last
  *  notation.
  *
- *  Phase-8a: value-parameter form. The VV-rotation column kernel reads the
+ *  Value-parameter form. The VV-rotation column kernel reads the
  *  quaternion / omega / rinertia / torque / rotation columns into locals once
- *  and passes them here, so this helper no longer touches a @ref Particle view.
- *  The arithmetic, the per-axis @c can_rotate_around branch (now a bit-test on
- *  the rotation byte) and the argument set are IDENTICAL to the pre-8a body.
+ *  and passes them here. The arithmetic and the per-axis @c can_rotate_around
+ *  branch (a bit-test on the rotation byte) operate on the passed values.
  *  @param[in]  quaternion   Particle quaternion
  *  @param[in]  omega        Particle angular velocity (already axis-masked)
  *  @param[in]  rinertia     Particle rotational inertia
@@ -152,8 +151,8 @@ void propagate_omega_quat_values(Utils::Quaternion<double> &quat,
   // be the value define_Qdd sees (particles with a blocked axis carrying
   // non-zero omega must see the zeroed component during quaternion-derivative
   // computation) -- the caller writes this masked value back to the omega
-  // column before define_Qdd runs (phase-4 mask-ordering lesson), reproduced
-  // here by masking the local omega before the define_Qdd call below.
+  // column before define_Qdd runs, reproduced here by masking the local omega
+  // before the define_Qdd call below.
   omega = Utils::mask(rotation, omega);
 
   define_Qdd(quat, omega, rinertia, torque, rotation, Qd, Qdd, S, Wd);

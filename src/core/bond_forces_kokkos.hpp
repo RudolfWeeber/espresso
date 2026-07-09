@@ -74,7 +74,7 @@ struct PairBondsKernel {
 
     auto const i = bond_list(idx, 0);
     auto const j = bond_list(idx, 1);
-    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    // Translate pack indices to ParticleStore rows once.
     auto const row_i = aosoa.row(i);
     auto const row_j = aosoa.row(j);
     auto const &iaparams = *bonded_ias.at(bond_id);
@@ -93,12 +93,12 @@ struct PairBondsKernel {
     if (auto const *iap = std::get_if<ThermalizedBond>(&iaparams)) {
       auto const result = iap->forces(
 #ifdef ESPRESSO_MASS
-          // phase 5: mass aliases the store column; read by *store row*.
+          // mass aliases the store column; read by *store row*.
           aosoa.mass(row_i), aosoa.mass(row_j),
 #else
           1.0, 1.0,
 #endif
-          // phase 4: velocity aliases the store column; read by *store row*.
+          // velocity aliases the store column; read by *store row*.
           aosoa.get_vector_at(aosoa.velocity, row_i),
           aosoa.get_vector_at(aosoa.velocity, row_j), aosoa.id(row_i),
           aosoa.id(row_j), dx);
@@ -172,7 +172,7 @@ struct AngleBondsKernel {
     auto const i = bond_list(idx, 0);
     auto const j = bond_list(idx, 1);
     auto const k = bond_list(idx, 2);
-    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    // Translate pack indices to ParticleStore rows once.
     auto const row_i = aosoa.row(i);
     auto const row_j = aosoa.row(j);
     auto const row_k = aosoa.row(k);
@@ -239,7 +239,7 @@ struct DihedralBondsKernel {
     auto const j = bond_list(idx, 1);
     auto const k = bond_list(idx, 2);
     auto const m = bond_list(idx, 3);
-    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    // Translate pack indices to ParticleStore rows once.
     auto const row_i = aosoa.row(i);
     auto const row_j = aosoa.row(j);
     auto const row_k = aosoa.row(k);
@@ -250,7 +250,7 @@ struct DihedralBondsKernel {
     auto const pos2 = aosoa.get_vector_at(aosoa.position, row_j);
     auto const pos3 = aosoa.get_vector_at(aosoa.position, row_k);
     auto const pos4 = aosoa.get_vector_at(aosoa.position, row_m);
-    // phase 4: velocity aliases the store column; read by *store row*.
+    // velocity aliases the store column; read by *store row*.
     auto const vel1 = aosoa.get_vector_at(aosoa.velocity, row_i);
     auto const vel3 = aosoa.get_vector_at(aosoa.velocity, row_k);
     auto const image1 = aosoa.get_vector_at(aosoa.image, row_i);

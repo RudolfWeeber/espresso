@@ -35,8 +35,8 @@
 /** Get real particle tracked by a virtual site.
  *  @param cell_structure Cell structure.
  *  @param p Virtual site.
- *  @return A by-value view of the real particle (phase 7e), or std::nullopt if
- *          lookup fails.
+ *  @return A by-value view of the real particle, or std::nullopt if lookup
+ *          fails.
  */
 std::optional<Particle> get_reference_particle(CellStructure &cell_structure,
                                                Particle const &p);

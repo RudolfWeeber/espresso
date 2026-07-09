@@ -58,31 +58,23 @@ kokkos_parallel_range_for(auto const &name, auto start, auto end,
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 commit_particle(Particle const &p, auto const index,
                 CellStructure::AoSoA_pack &aosoa, bool const rebuild) {
-  // phase 3.5: position/image/director are no longer copied here. Kernels read
-  // them directly from the ParticleStore columns (via the pack-index->store-row
-  // translation view) and the store-side derived director view.
-  // phase 4: velocity is no longer copied here either. It aliases the
-  // ParticleStore velocity column; velocity-dependent kernels read it by *store
-  // row* via row(i), just like position.
-  // phase 5: id/mass are no longer copied here — they alias the ParticleStore
-  // id/mass columns, read by *store row* via row(i) on the cold bond path.
+  // position/image/director/velocity/id/mass alias the authoritative
+  // ParticleStore columns and are read by *store row* via row(i); they are
+  // never copied here.
   // charge/dipm are refreshed per step (when a solver is active) in
   // refresh_pack_charges / refresh_pack_dipm, not here.
-  // phase-5 perf recovery: `type` is once again PACK-OWNED and written here on
-  // rebuild (it is read pack-indexed by the hot pair kernels). The
-  // ParticleStore type column stays authoritative; a mid-run type change forces
-  // a rebuild (on_particle_type_change -> set_resort_particles), so this cache
-  // is refreshed before it is next read.
-  // phase 6: the has-exclusion flag (like `type`) is written ONLY on rebuild.
-  // Exclusions cannot change between rebuilds: every add/delete goes through
+  // `type` is PACK-OWNED and written here on rebuild (read pack-indexed by the
+  // hot pair kernels). The ParticleStore type column stays authoritative; a
+  // mid-run type change forces a rebuild (on_particle_type_change ->
+  // set_resort_particles), so this cache is refreshed before it is next read.
+  // The has-exclusion flag (like `type`) is written ONLY on rebuild. Exclusions
+  // cannot change between rebuilds: every add/delete goes through
   // on_particle_change -> set_resort_particles(RESORT_LOCAL), which forces the
   // next update_cabana_state onto the full-commit branch. The pack-owned
   // `flags` column persists across partial-update steps (per-step force reset
   // does not touch it; clear_local_properties zeroes it but also forces a
   // resort/rebuild). Reading the exclusions sidecar per particle per step was
-  // pure waste -- and, post-eviction, that read is a ParticleStore column
-  // indirection rather than the old inline member, so keeping it out of the
-  // partial-update hot loop matters.
+  // pure waste -- keeping it out of the partial-update hot loop matters.
   if (rebuild) {
     aosoa.type(index) = p.type();
 #ifdef ESPRESSO_EXCLUSIONS
@@ -129,27 +121,26 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
     }
   }
 
-  // Phase 7a perf fix: iterate the cells' store-ROW bags directly and REBIND
-  // two cached views (p1 + partner) per work item via
-  // Particle::attach_to_store, instead of driving RowParticleRange iterators
-  // (each embeds a Particle by value, so std::next(it) and per-neighbour range
-  // begin()/end() would build fresh Particles). One reused view per role per
-  // work item (one cell per Kokkos work item) is thread-safe. Iteration ORDER
-  // is unchanged. Carriers stay default and are never read while attached.
+  // Iterate the cells' store-ROW bags directly and REBIND two cached views
+  // (p1 + partner) per work item via Particle::attach_to_store, instead of
+  // driving RowParticleRange iterators (each embeds a Particle by value, so
+  // std::next(it) and per-neighbour range begin()/end() would build fresh
+  // Particles). One reused view per role per work item (one cell per Kokkos
+  // work item) is thread-safe. Iteration ORDER is unchanged.
   auto intra_kernel = [&cells, &box_geo, &verlet_criterion, &id_to_index,
                        &intra_operator, &interleaved_positions,
                        max_id](const int i) {
     auto &store = cells[i]->store();
-    // Contiguous store-row range (phase 7c); clean store, so index directly.
+    // Contiguous store-row range; clean store, so index directly.
     auto const offset = cells[i]->offset();
     auto const n = cells[i]->count();
-    // Phase-8 perf (perf-guided): hoist raw id/position column pointers once
-    // per work item -- the per-candidate id and position reads are the
-    // hottest loads of the Verlet build, and the Particle accessors cost an
-    // attached-branch + view deref per candidate. LayoutRight vector columns
-    // are row-contiguous (element (row, j) at data() + 3 * row + j). The
-    // Particle views stay attached for the verlet_criterion (it may read
-    // types/flags); iteration order and arithmetic are unchanged.
+    // Hoist raw id/position column pointers once per work item -- the
+    // per-candidate id and position reads are the hottest loads of the Verlet
+    // build, and the Particle accessors cost an attached-branch + view deref
+    // per candidate. LayoutRight vector columns are row-contiguous (element
+    // (row, j) at data() + 3 * row + j). The Particle views stay attached for
+    // the verlet_criterion (it may read types/flags); iteration order and
+    // arithmetic are unchanged.
     auto const *const id_column = store.id_view().data();
     // Layout-agnostic hoisted position access: base pointer plus the view's
     // run-time strides (row stride, component stride). Particle-major
@@ -209,7 +200,7 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
                        &inter_operator, &interleaved_positions,
                        max_id](const int i) {
     auto &store = cells[i]->store();
-    // Contiguous store-row range (phase 7c); clean store, so index directly.
+    // Contiguous store-row range; clean store, so index directly.
     auto const offset = cells[i]->offset();
     auto const n = cells[i]->count();
     // Hoisted raw column pointers: see intra_kernel (incl. the layout-agnostic
@@ -289,9 +280,9 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
   auto const &unique_particles = cell_structure.get_unique_particles();
   auto const n_part = unique_particles.size();
   auto const max_id = cell_structure.get_cached_max_local_particle_id();
-  // phase 3.5: recompute the store-side derived director (same cadence as the
-  // old commit-loop director write), then point the pack's store-aliased views
-  // at the current store columns + translation/director views.
+  // Recompute the store-side derived director, then point the pack's
+  // store-aliased views at the current store columns + translation/director
+  // views.
 #if defined(ESPRESSO_GAY_BERNE) or defined(ESPRESSO_DIPOLES)
   cell_structure.update_director_view();
 #endif
@@ -390,24 +381,21 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
     CALI_MARK_END("Verlet list creation");
 #endif
   }
-  // Partial-update (no-rebuild) branch: NOTHING to commit. Since phase 3.5 the
-  // pack no longer owns per-step particle data (position/velocity/etc. alias
-  // the ParticleStore columns, read by store row), and the only remaining
-  // pack-owned commit writes -- `type` and the has-exclusion `flags` -- are
-  // rebuild-cadence data written on the full-commit branch above (both are
-  // refreshed by a forced rebuild whenever they can change). The old per-step
-  // commit_particle(rebuild=false) loop therefore had no work left to do; it
-  // iterated every unique particle each non-rebuild step doing nothing. Dropped
-  // (was an O(N)-per-step no-op). The store-view rebind (bind_pack_store_views
+  // Partial-update (no-rebuild) branch: NOTHING to commit. The pack does not
+  // own per-step particle data (position/velocity/etc. alias the ParticleStore
+  // columns, read by store row), and the only pack-owned commit writes --
+  // `type` and the has-exclusion `flags` -- are rebuild-cadence data written
+  // on the full-commit branch above (both are refreshed by a forced rebuild
+  // whenever they can change). The store-view rebind (bind_pack_store_views
   // above) already repointed the aliased views for this step.
 }
 
 #ifdef ESPRESSO_ELECTROSTATICS
-// phase-5 perf recovery: refresh the PACK-OWNED contiguous charge column from
-// the authoritative ParticleStore q column. This runs once per step (O(N))
-// ONLY when a coulomb actor is active; the hot pair loop and the P3M
-// gather/spread loops then read `aosoa.charge(pack_index)` contiguously, which
-// is O(pairs) >> O(N). Pure-LJ runs never call this and pay zero cost.
+// Refresh the PACK-OWNED contiguous charge column from the authoritative
+// ParticleStore q column. This runs once per step (O(N)) ONLY when a coulomb
+// actor is active; the hot pair loop and the P3M gather/spread loops then read
+// `aosoa.charge(pack_index)` contiguously, which is O(pairs) >> O(N).
+// Pure-LJ runs never call this and pay zero cost.
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 refresh_pack_charges(CellStructure &cell_structure) {
   using execution_space = Kokkos::DefaultExecutionSpace;
@@ -424,8 +412,8 @@ refresh_pack_charges(CellStructure &cell_structure) {
 #endif
 
 #ifdef ESPRESSO_DIPOLES
-// phase-5 perf recovery: pack-owned dipm column refresh, guarded by an active
-// dipolar actor (see refresh_pack_charges for the rationale).
+// Pack-owned dipm column refresh, guarded by an active dipolar actor
+// (see refresh_pack_charges for the rationale).
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 refresh_pack_dipm(CellStructure &cell_structure) {
   using execution_space = Kokkos::DefaultExecutionSpace;

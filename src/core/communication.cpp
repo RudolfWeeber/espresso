@@ -142,9 +142,9 @@ CommunicationEnvironment::~CommunicationEnvironment() {
   // (and its runtime co-ownership) while Kokkos is still alive. The store is a
   // translation-unit static (particle_node.cpp) whose destructor would
   // otherwise run at program teardown AFTER Kokkos::finalize(), freeing its
-  // DualViews post-finalize and aborting (phase 3: the store now holds the
-  // authoritative position/quaternion/Lees-Edwards columns, so a plain
-  // position read populates it). Mirrors CellStructure's destructor.
+  // DualViews post-finalize and aborting (the store holds the authoritative
+  // position/quaternion/Lees-Edwards columns, so a plain position read
+  // populates it). Mirrors CellStructure's destructor.
   invalidate_fetch_cache();
   kokkos_handle.reset();
 

@@ -105,10 +105,9 @@ ResultType reduce_over_local_particles(
         [&cells, add_partial](std::size_t const c_index, ResultType &res) {
           // One reused view per cell (per thread), REBOUND per row via
           // attach_to_store instead of materialising a Particle per cell
-          // through the row-range iterator (phase 7a perf fix). The cell's
-          // committed rows are the contiguous range [offset, offset+count)
-          // (phase 7c); this runs on a clean store, so index it directly.
-          // Carriers stay default and are never read while attached.
+          // through the row-range iterator. The cell's committed rows are the
+          // contiguous range [offset, offset+count); this runs on a clean
+          // store, so index it directly.
           auto *cell = cells[c_index];
           auto const offset = cell->offset();
           auto const n_part = cell->count();
@@ -124,9 +123,9 @@ ResultType reduce_over_local_particles(
         "reduce_on_local_particle", cells.size(), reducer, result);
     return result;
   }
-  // single cell case: parallel over particles, each index building its OWN view
-  // (phase 7a; a shared cached-view iterator would not be thread-safe). The
-  // committed rows are the contiguous range [offset, offset+count) (phase 7c).
+  // single cell case: parallel over particles, each index building its OWN
+  // view (a shared cached-view iterator would not be thread-safe). The
+  // committed rows are the contiguous range [offset, offset+count).
   auto const offset = cells.front()->offset();
   auto const n_part = cells.front()->count();
   auto &store = cells.front()->store();

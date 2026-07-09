@@ -27,21 +27,15 @@
 
 #include <cstdint>
 
-// Phase-8a de-proxy (perf-iterate): the velocity-Verlet translation steps take
-// per-row VectorReference bundles (one row-base pointer + stride, resolved ONCE
-// per particle by the caller via p.v()/p.pos()/p.force()) instead of a rebound
-// Particle proxy or a 2D column view subscripted per component. This is the
-// fastest access form: the inner axis loop is pure stride-1 pointer arithmetic
-// (vel[j] == base[j] on LayoutRight) with the row base computed once, so the
-// compiler does not re-derive row*stride per component and does not keep three
-// heavyweight 2D-view handles live across the loop. (The initial phase-8a form
-// passed vel(row,j)/pos(row,j)/force(row,j) 2D subscripts; that measured ~+35%
-// on integrator_step_1+2 at N=1000 vs the pre-8a VectorReference path -- the
-// Kokkos 2D operator() defeated the row-base hoist. See phase8a-perf-iterate.)
-// The arithmetic, iteration order and per-axis fixed-coordinate branch are
-// IDENTICAL to the pre-8a bodies, so bitwise trajectory identity holds. Scalar
-// fallbacks (mass 1.0, fixed byte 0u) are supplied by the caller under the same
-// ifdefs the Particle accessors used.
+// The velocity-Verlet translation steps take per-row VectorReference bundles
+// (one row-base pointer + stride, resolved ONCE per particle by the caller via
+// p.v()/p.pos()/p.force()) instead of a 2D column view subscripted per
+// component. This is the fastest access form: the inner axis loop is pure
+// stride-1 pointer arithmetic (vel[j] == base[j] on LayoutRight) with the row
+// base computed once, so the compiler does not re-derive row*stride per
+// component and does not keep three heavyweight 2D-view handles live across
+// the loop. Scalar fallbacks (mass 1.0, fixed byte 0u) are supplied by the
+// caller under the same ifdefs the Particle accessors used.
 
 /** Propagate the velocities and positions. Integration steps before force
  *  calculation of the Velocity Verlet integrator: <br> \f[ v(t+0.5 \Delta t) =
@@ -81,11 +75,10 @@ inline void velocity_verlet_propagator_2(VectorReference vel,
 }
 
 #ifdef ESPRESSO_ROTATION
-// Phase-8a: the VV-rotation steps are column kernels (rotation.hpp). The caller
+// The VV-rotation steps are column kernels (rotation.hpp). The caller
 // hoists the quaternion / angular-velocity / rinertia / torque / rotation view
 // handles ONCE and passes them + the store row; the kernels guard the
-// can_rotate() (rotation != 0) case per-row internally, matching the pre-8a
-// velocity_verlet_rotator_* guard exactly.
+// can_rotate() (rotation != 0) case per-row internally.
 template <class QuatView, class OmegaView, class RinertiaView, class TorqueView,
           class RotationView>
 inline void velocity_verlet_rotator_1(QuatView const &quat_view,

@@ -111,7 +111,7 @@ struct ForcesKernel {
   ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION void
   operator()(std::size_t i, std::size_t j) const {
 
-    // Translate pack indices to ParticleStore rows once (phase 3.5); every
+    // Translate pack indices to ParticleStore rows once; every
     // position/image/director read below indexes the store columns by row.
     auto const row_i = aosoa.row(i);
     auto const row_j = aosoa.row(j);
@@ -129,8 +129,8 @@ struct ForcesKernel {
     if (dist_sq > system_max_cutoff_sq)
       return;
     auto const dist = std::sqrt(dist_sq);
-    // phase-5 perf recovery: type is pack-owned and read PACK-INDEXED (i/j),
-    // contiguous, not translated to store rows.
+    // type is pack-owned and read PACK-INDEXED (i/j), contiguous, not
+    // translated to store rows.
     auto const &ia_params =
         nonbonded_ias.get_ia_param(aosoa.type(i), aosoa.type(j));
 
@@ -210,7 +210,7 @@ struct ForcesKernel {
     if (dpd_active(ia_params, thermostat.thermo_switch)) {
       auto const pos1 = aosoa.get_vector_at(aosoa.position, row_i);
       auto const pos2 = aosoa.get_vector_at(aosoa.position, row_j);
-      // phase 4: velocity aliases the store column; read by *store row*.
+      // velocity aliases the store column; read by *store row*.
       auto const vel1 = aosoa.get_vector_at(aosoa.velocity, row_i);
       auto const vel2 = aosoa.get_vector_at(aosoa.velocity, row_j);
       auto const force = dpd_pair_force(pos1, vel1, aosoa.id(row_i), pos2, vel2,
@@ -225,9 +225,9 @@ struct ForcesKernel {
     Utils::Vector3d f2_asym{};
     // real-space electrostatic charge-charge interaction
     if (coulomb_kernel != nullptr) {
-      // phase-5 perf recovery: charge is read from the pack-owned pair_charge
-      // column PACK-INDEXED (refreshed this step because a coulomb solver is
-      // active whenever coulomb_kernel != nullptr).
+      // charge is read from the pack-owned pair_charge column PACK-INDEXED
+      // (refreshed this step because a coulomb solver is active whenever
+      // coulomb_kernel != nullptr).
       if ((aosoa.pair_charge(i) != 0.) and (aosoa.pair_charge(j) != 0.)) {
         auto const q1q2 = aosoa.pair_charge(i) * aosoa.pair_charge(j);
 #ifdef ESPRESSO_P3M
@@ -257,10 +257,10 @@ struct ForcesKernel {
     // Only call dipole force kernel if active
 #ifdef ESPRESSO_DIPOLES
     if (dipoles_kernel != nullptr) {
-      // phase-5 perf recovery: dipm is read from the pack-owned pair_dipm
-      // column PACK-INDEXED (refreshed this step because a dipolar solver is
-      // active whenever dipoles_kernel != nullptr); the director stays
-      // store-derived and indexed by store row.
+      // dipm is read from the pack-owned pair_dipm column PACK-INDEXED
+      // (refreshed this step because a dipolar solver is active whenever
+      // dipoles_kernel != nullptr); the director stays store-derived and
+      // indexed by store row.
       auto const d1d2 = aosoa.pair_dipm(i) * aosoa.pair_dipm(j);
       if (d1d2 != 0.) {
         auto const dir1 = aosoa.get_vector_at(aosoa.director, row_i);

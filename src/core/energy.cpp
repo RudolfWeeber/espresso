@@ -91,8 +91,8 @@ std::shared_ptr<Observable_stat> System::calculate_energy() {
   update_cabana_state(*cell_structure, verlet_criterion,
                       get_interaction_range(), propagation->integ_switch);
 #ifdef ESPRESSO_ELECTROSTATICS
-  // phase-5 perf recovery: refresh the pack-owned charge column once, guarded
-  // by an active coulomb actor (the energy pair kernel reads it contiguously).
+  // Refresh the pack-owned charge column once, guarded by an active coulomb
+  // actor (the energy pair kernel reads it contiguously).
   if (coulomb.impl->solver) {
     refresh_pack_charges(*cell_structure);
   }
@@ -187,9 +187,9 @@ double System::particle_short_range_energy_contribution(int pid) {
   }
 
   auto ret = 0.0;
-  // Phase 7e: get_local_particle returns a by-value view (optional). Name the
-  // outer view distinctly so it does not shadow the kernel's `p` parameter
-  // (-Werror=shadow=compatible-local now that both are Particle-typed).
+  // get_local_particle returns a by-value view (optional). Name the outer view
+  // distinctly so it does not shadow the kernel's `p` parameter
+  // (-Werror=shadow=compatible-local, since both are Particle-typed).
   if (auto const target = cell_structure->get_local_particle(pid)) {
     auto const coulomb_kernel = coulomb.pair_energy_kernel();
     auto kernel = [&ret, this](Particle const &p, Particle const &p1,
@@ -213,14 +213,14 @@ std::optional<double> System::particle_bond_energy(int pid, int bond_id,
   if (cell_structure->get_resort_particles()) {
     cell_structure->update_ghosts_and_resort_particle(get_global_ghost_flags());
   }
-  // Phase 7e: get_local_particle returns a by-value view (optional).
+  // get_local_particle returns a by-value view (optional).
   auto const p = cell_structure->get_local_particle(pid);
   if (not p or p->is_ghost())
     return {}; // not available on this MPI rank or ghost
   auto const &iaparams = *bonded_ias->at(bond_id);
   try {
-    // Phase 7e: resolve_bond_partners yields by-value views; calc_bonded_energy
-    // wants a span<Particle*>, so build a pointer span into the owned buffer.
+    // resolve_bond_partners yields by-value views; calc_bonded_energy wants a
+    // span<Particle*>, so build a pointer span into the owned buffer.
     auto resolved_partners = cell_structure->resolve_bond_partners(partners);
     boost::container::static_vector<Particle *, 4> partner_ptrs;
     for (auto &partner : resolved_partners) {

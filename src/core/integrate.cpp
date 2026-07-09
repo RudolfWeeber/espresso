@@ -389,10 +389,10 @@ static bool integrator_step_1(CellStructure &cell_structure,
 
   auto const &thermostat = *system.thermostat;
   auto const kT = thermostat.kT;
-  // Phase-8a: hoist the velocity-Verlet translation column-view handles ONCE
-  // outside the parallel_for (the handle copy here is fine; per-element view
-  // rebinding is not). The still-view-path operations (symplectic Euler,
-  // rotation, Brownian) rebind a Particle lazily inside their branches only.
+  // Hoist the velocity-Verlet translation column-view handles ONCE outside the
+  // parallel_for (the handle copy here is fine; per-element view rebinding is
+  // not). The still-view-path operations (symplectic Euler, rotation,
+  // Brownian) rebind a Particle lazily inside their branches only.
   auto &store = cell_structure.particle_store();
   auto vel_view = store.velocity_view();
   auto pos_view = store.position_view();
@@ -568,10 +568,10 @@ static void integrator_step_2(CellStructure &cell_structure,
   if (propagation.integ_switch == INTEG_METHOD_STEEPEST_DESCENT)
     return;
 
-  // Phase-8a: hoist the per-particle scalar/rotation column-view handles ONCE
-  // (see integrator_step_1). The VV translation velocity/force rows are
-  // resolved per row via velocity_reference/force_reference (VectorReference),
-  // so no 2D velocity/force view handle is hoisted here.
+  // Hoist the per-particle scalar/rotation column-view handles ONCE outside the
+  // parallel_for (see integrator_step_1). The VV translation velocity/force
+  // rows are resolved per row via velocity_reference/force_reference
+  // (VectorReference), so no 2D velocity/force view handle is hoisted here.
   auto &store = cell_structure.particle_store();
 #ifdef ESPRESSO_MASS
   auto mass_view = store.mass_view();

@@ -32,15 +32,13 @@
 
 #include <cmath>
 
-// Phase-8a de-proxy: the Brownian sub-kernels are templated on a
-// "particle-like" accessor type. The pre-8a callers pass a Particle view
-// (unchanged -- unit tests still exercise these); the column kernel
-// (integrators/brownian_inline. hpp) passes a BrownianRowView adapter that
-// reads the store columns via hoisted
-// *_view() handles by row and exposes the SAME accessor names. The frame-
-// conversion and local_rotate_particle_body calls use the value-parameter
-// (quaternion / rotation-byte) overloads so the body compiles against either
-// type. Arithmetic, branches and the RNG key (id -> Philox key1) are identical.
+// The Brownian sub-kernels are templated on a "particle-like" accessor type.
+// Callers may pass a Particle view or a BrownianRowView adapter that reads
+// the store columns via hoisted *_view() handles by row and exposes the SAME
+// accessor names. The frame-conversion and local_rotate_particle_body calls
+// use the value-parameter (quaternion / rotation-byte) overloads so the body
+// compiles against either type. The RNG key uses the particle id as the Philox
+// key1, so the per-particle noise stream is independent of iteration order.
 
 /** Determine position: viscous drag driven by conservative forces.
  *  From eq. (14.39) in @cite schlick10a.

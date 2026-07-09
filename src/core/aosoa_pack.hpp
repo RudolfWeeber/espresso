@@ -34,32 +34,18 @@ struct CellStructure::AoSoA_pack {
   // Particle-major (@ref ParticleStore::StateVectorLayout, LayoutRight) to
   // match the ParticleStore columns these views alias / are derived from.
   //
-  // phase 3.5: position/image/director are no longer owned here. They alias
-  // the authoritative ParticleStore host columns (position/image) and the
-  // store-side derived director view. Kernels index them by *store row*, which
-  // is obtained by translating a pack index i through row(i) (see
-  // pack_index_to_store_row). For i < n_local the translation is the identity
-  // (both are built in cell-traversal order); only the deduped ghost tail is
-  // remapped. commit_particle no longer copies position/image/director.
+  // position/image/director/velocity/id/mass alias the authoritative
+  // ParticleStore host columns and are indexed by *store row*, obtained by
+  // translating a pack index i through row(i). For i < n_local the translation
+  // is the identity (both are built in cell-traversal order); only the deduped
+  // ghost tail is remapped.
   //
-  // phase 4: velocity joins the store-aliased views — it aliases the
-  // authoritative ParticleStore velocity host column and is likewise indexed by
-  // *store row* via row(i). commit_particle no longer copies velocity, and
-  // resize() no longer allocates it.
-  //
-  // phase 5: id/mass join the store-aliased views — they alias the
-  // authoritative ParticleStore id/mass columns and are indexed by *store row*
-  // via row(i). They are read only on cold paths (bond kernels), so the strided
-  // store gather is acceptable. The rebuild-time id/mass writes in
-  // commit_particle DIE.
-  //
-  // phase-5 perf recovery: `type` is once again a PACK-OWNED contiguous array,
-  // written at pack-rebuild time in commit_particle (`type(index)=p.type()`)
-  // and read pack-indexed by the hot pair kernels
-  // (forces/energy/pressure_cabana). The ParticleStore type column REMAINS
-  // authoritative; this pack copy is a derived cache refreshed on rebuild (a
-  // mid-run type change forces a rebuild via on_particle_type_change ->
-  // set_resort_particles).
+  // `type` is a PACK-OWNED contiguous array, written at pack-rebuild time in
+  // commit_particle (`type(index)=p.type()`) and read pack-indexed by the hot
+  // pair kernels (forces/energy/pressure_cabana). The ParticleStore type column
+  // REMAINS authoritative; this pack copy is a derived cache refreshed on
+  // rebuild (a mid-run type change forces a rebuild via on_particle_type_change
+  // -> set_resort_particles).
   //
   // Likewise `charge`/`dipm` are pack-owned contiguous arrays, refreshed per
   // step ONLY when a coulomb (resp. dipolar) actor is active (see
@@ -126,11 +112,10 @@ struct CellStructure::AoSoA_pack {
   }
 
   void resize(std::size_t num_particles) {
-    // phase 5: id/mass/charge are store-aliased (bound in
-    // bind_pack_store_views), not allocated here.
-    // `type`/`pair_charge`/`pair_dipm`/`flags` are pack-owned contiguous
-    // columns allocated here; `flags` serves as the allocation sentinel (all
-    // four are resized together).
+    // id/mass/charge are store-aliased (bound in bind_pack_store_views), not
+    // allocated here. `type`/`pair_charge`/`pair_dipm`/`flags` are pack-owned
+    // contiguous columns allocated here; `flags` serves as the allocation
+    // sentinel (all four are resized together).
     if (flags.extent(0) == 0) {
       // First allocation
       type =
@@ -200,15 +185,11 @@ struct CellStructure::AoSoA_pack {
    * The hot Coulomb pair kernels and the P3M real-space charge gather read
    * @ref pair_charge PACK-INDEXED, trusting that it was resynced from the
    * authoritative ParticleStore q column this step (via refresh_pack_charges).
-   * The phase-6 ICC bug (commit f8350d0) violated exactly this: q was mutated
-   * in place on an observable-calc path with no intervening refresh, so the
-   * gather consumed stale charges. This is the cheap freshness token asked for
-   * by the phase-8d cleanup: the store-aliased @ref charge view (indexed by
-   * store row) IS the current authoritative charge, so a fresh @ref pair_charge
-   * must equal it element-for-element. O(n_part) and debug-only
-   * (ESPRESSO_ADDITIONAL_CHECKS), i.e. negligible vs the O(mesh)/O(pairs)
-   * P3M work. @p n_part is the local particle count the caller is about to
-   * gather over.
+   * The store-aliased @ref charge view (indexed by store row) IS the current
+   * authoritative charge, so a fresh @ref pair_charge must equal it
+   * element-for-element. O(n_part) and debug-only (ESPRESSO_ADDITIONAL_CHECKS),
+   * i.e. negligible vs the O(mesh)/O(pairs) P3M work. @p n_part is the local
+   * particle count the caller is about to gather over.
    */
   void assert_pair_charge_fresh([[maybe_unused]] std::size_t n_part) const {
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
@@ -216,7 +197,7 @@ struct CellStructure::AoSoA_pack {
       assert(pair_charge(i) == charge(row(i)) &&
              "P3M/Coulomb gather read a STALE pack charge column: "
              "refresh_pack_charges was not called after the store q column "
-             "last changed (see the phase-6 ICC stale-charge bug, f8350d0)");
+             "last changed");
     }
 #endif
   }

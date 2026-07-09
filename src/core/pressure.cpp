@@ -87,9 +87,8 @@ std::shared_ptr<Observable_stat> System::calculate_pressure() {
   update_cabana_state(*cell_structure, verlet_criterion,
                       get_interaction_range(), propagation->integ_switch);
 #ifdef ESPRESSO_ELECTROSTATICS
-  // phase-5 perf recovery: refresh the pack-owned charge column once, guarded
-  // by an active coulomb actor (the pressure pair kernel reads it
-  // contiguously).
+  // Refresh the pack-owned charge column once, guarded by an active coulomb
+  // actor (the pressure pair kernel reads it contiguously).
   if (coulomb.impl->solver) {
     refresh_pack_charges(*cell_structure);
   }

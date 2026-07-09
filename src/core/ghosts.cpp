@@ -209,9 +209,6 @@ struct MomentumRowContext {
  * is present and clean, WITHOUT the data_parts==POSITION restriction of
  * columnar_eligible), passed to serialize_and_reduce as an optional pointer
  * (nullptr = accessor fallback), and consulted only when p.store_row() >= 0.
- * Kept INERT behind parameter_columns_authoritative == false until the Task-4
- * flip makes the parameter accessors authoritative over the columns/sidecars
- * (same staging as the phase-4 velocity context).
  */
 struct ParameterRowContext {
   ParticleStore *store; ///< sidecar access for the cold PODs, by row
@@ -304,25 +301,23 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
      * (policy, direction) combinations of the previous policy-blind
      * `ar & p.id() & ...`:
      *   (MOVE,  SAVE): write each field to the archive from the particle.
-     *   (UPDATE,SAVE): identical -- the old `ar & ...` never consulted policy.
+     *   (UPDATE,SAVE): identical -- policy is not consulted.
      *   (MOVE,  LOAD): read each field FROM the archive, overwriting.
      *   (UPDATE,LOAD): identical -- overwrite, NO accumulation (no `+=`).
      * So on LOAD we always write the received value INTO the particle
      * regardless of policy; on SAVE we always read the value FROM the particle.
-     * Never bind particle-struct memory to the archive directly, so a future
-     * field-storage flip cannot serialize a proxy. Local copies are made
-     * for/from the archive, so the assignment semantics are exactly as before,
-     * and the wire layout is byte-identical (same field order, same ifdef
-     * structure, same tightly packed field sizes: the three PODs are
+     * Never bind field-storage memory to the archive directly (it may be a
+     * proxy, which cannot be serialized): local copies are made for/from the
+     * archive. The wire layout is byte-packed (fixed field order, fixed ifdef
+     * structure, tightly packed field sizes: the three PODs are
      * bitwise-serializable, so each is packed whole as sizeof(T)).
      *
      * When a ParameterRowContext is present AND the particle is attached
      * (store_row() >= 0), read/write the hot parameter columns and the cold POD
      * sidecars directly by row rather than through the per-field accessor
-     * proxies -- this is the mixed-parts hot path. A detached particle
+     * proxies -- this is the mixed-parts hot path. An unattached particle
      * (resort-step fresh ghost) or an absent context falls back to the
-     * accessor, which uses the migration carriers / struct. See
-     * make_parameter_row_context for the pre-flip inertness gate. */
+     * accessor. */
     auto const row = p.store_row();
     bool const use_ctx = param_ctx != nullptr and row >= 0;
     auto const urow = static_cast<std::size_t>(row);
@@ -632,21 +627,20 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
   }
   if (data_parts & GHOSTTRANS_POSITION) {
     /* Position has no reduction policy: it is MOVE semantics for both
-     * ReductionPolicy values. Branch on direction first (the lesson from the
-     * FORCE path): on LOAD we always write the received value INTO the
-     * particle; on SAVE we read the value FROM the particle, optionally with
-     * the ghost shift + fold applied. Never bind particle-struct memory to the
-     * archive directly, so a future field-storage flip cannot serialize a
-     * proxy. Wire layout is byte-identical to the previous implementation.
+     * ReductionPolicy values. Branch on direction first: on LOAD we always
+     * write the received value INTO the particle; on SAVE we read the value
+     * FROM the particle, optionally with the ghost shift + fold applied. Never
+     * bind field-storage memory to the archive directly (it may be a proxy,
+     * which cannot be serialized). Wire layout is byte-packed.
      *
      * When a PositionRowContext is present AND the particle is attached
      * (store_row() >= 0), read/write pos/image (and quat, pos_last_time_step)
      * directly through the raw column pointers rather than the per-field
      * accessor proxies -- this is the mixed-parts (POSITION|PROPERTIES) hot
-     * path. A detached particle (resort-step fresh ghost) or an absent context
-     * falls back to the accessor, which uses the migration carriers. Local
-     * copies are still made for the archive (SAVE) / from the archive (LOAD),
-     * so the shift+fold and the assignment semantics are exactly as before. */
+     * path. An unattached particle (resort-step fresh ghost) or an absent
+     * context falls back to the accessor. Local copies are made for the archive
+     * (SAVE) / from the archive (LOAD), so the shift+fold and the assignment
+     * semantics are preserved. */
     auto const row = p.store_row();
     bool const use_ctx = pos_ctx != nullptr and row >= 0;
 #ifndef NDEBUG
@@ -773,17 +767,16 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
      *   (UPDATE,LOAD): identical -- overwrite, NO accumulation (no `+=`).
      * So on LOAD we always write the received value INTO the particle
      * regardless of policy; on SAVE we always read the value FROM the particle.
-     * Never bind particle-struct memory to the archive directly, so a future
-     * field-storage flip cannot serialize a proxy. Wire layout is
-     * byte-identical to the previous implementation.
+     * Never bind field-storage memory to the archive directly (it may be a
+     * proxy, which cannot be serialized). Wire layout is byte-packed.
      *
      * When a MomentumRowContext is present AND the particle is attached
      * (store_row() >= 0), read/write the velocity (and angular-velocity)
      * columns directly through the raw column pointers rather than through the
-     * per-field accessor proxies -- this is the mixed-parts hot path. A
-     * detached particle (resort-step fresh ghost) or an absent context falls
-     * back to the accessor. Local copies are still made for/from the archive,
-     * so the assignment semantics are exactly as before. */
+     * per-field accessor proxies -- this is the mixed-parts hot path. An
+     * unattached particle (resort-step fresh ghost) or an absent context falls
+     * back to the accessor. Local copies are made for/from the archive, so the
+     * assignment semantics are preserved. */
     auto const row = p.store_row();
     bool const use_ctx = mom_ctx != nullptr and row >= 0;
 #ifndef NDEBUG
@@ -879,11 +872,11 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
   }
 #ifdef ESPRESSO_BOND_CONSTRAINT
   if (data_parts & GHOSTTRANS_RATTLE) {
-    // rattle_correction() is now a ParticleStore column accessor (returns a
+    // rattle_correction() is a ParticleStore column accessor (returns a
     // VectorReference / value proxy, not a raw Vector3d&), so a local Vector3d
     // is used for/from the archive -- never bind the proxy to the archive
-    // (mirrors the FORCE branch above). Wire layout is one Utils::Vector3d,
-    // byte-identical to the previous implementation.
+    // (mirrors the FORCE branch above). Wire layout is one Utils::Vector3d
+    // (24 B).
     if (policy == ReductionPolicy::UPDATE and
         direction == SerializationDirection::LOAD) {
       Utils::Vector3d correction{};
@@ -895,7 +888,7 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
       p.rattle_correction() = correction;
     } else {
       // SAVE. rattle_correction() asserts an attached particle (it is a
-      // column-only observable, no detached carrier -- like force()). The only
+      // column-only observable -- like force()). The only
       // caller that reaches here with a DETACHED particle is the
       // SerializationSizeCalculator (a throwaway Particle p{}), which cares
       // only about the byte count; a zero placeholder there is correct because
@@ -973,9 +966,9 @@ static ParticleStore *active_particle_store() {
  * with a clear message. */
 static std::optional<std::pair<int, std::size_t>>
 contiguous_store_rows(Cell const &cell) {
-  // Phase 7c: the cell's committed rows ARE the contiguous store range
+  // The cell's committed rows ARE the contiguous store range
   // [offset, offset+count) by construction (the permutation rebuild lays cells
-  // back-to-back), so contiguity is now structural rather than checked. An
+  // back-to-back), so contiguity is structural rather than checked. An
   // empty range yields nullopt. This runs on a clean store (no pending-removed
   // rows), so the raw range is the live range.
   auto const size = cell.count();
@@ -1074,8 +1067,7 @@ static bool columnar_eligible(unsigned int data_parts) {
  *  whose POSITION branch would otherwise route every pos/image/quat/pos_last
  *  field through a per-field VectorReference/QuaternionReference proxy (SAVE:
  *  proxy construct + materialize per field; LOAD: proxy construct + write per
- *  field), ~2k ghosts x both sides x per step -- the measured +49% regression
- *  in update_ghosts_and_resort_particle.
+ *  field), ~2k ghosts x both sides x per step.
  *
  *  The context captures, ONCE per ghost_communicator/cell_cell_transfer
  *  invocation (only when the store is present and clean, WITHOUT the
@@ -1091,7 +1083,7 @@ static bool columnar_eligible(unsigned int data_parts) {
  *  fallback), and consulted only when p.store_row() >= 0 (an attached
  *  particle). Detached ghosts during a resort-step update (store()==nullptr /
  *  store_row() < 0) and any dirty-store situation fall back to the accessor,
- *  which correctly reads/writes their migration carriers.
+ *  which falls back to the accessor.
  * ------------------------------------------------------------------------- */
 
 /** @brief Build a PositionRowContext for the current clean store, or
@@ -1192,22 +1184,13 @@ make_position_row_context_unchecked(ParticleStore &store) {
  *  columns; meant for the mixed-parts (POSITION|PROPERTIES|MOMENTUM) per-step
  *  update.
  *
- *  PHASE-4 FLIP GATE: pre-flip, the velocity accessor Particle::v() still reads
- *  the Particle-struct field m.v (the ParticleStore velocity column is seeded
- *  to zero from the dormant migration carriers and is NOT kept in sync with
- *  m.v), so a context that reads/writes the STORE column would diverge from the
- *  accessor and send stale/zero velocities. The context therefore stays inert
- *  until the Task-4 flip makes v()/omega() authoritative over the columns; at
- *  that point the early `return std::nullopt` below is removed and the context
- *  engages exactly like the POSITION one. All the wiring (serialize_and_reduce
- *  use_ctx branch, the three call sites, calc_transmit_size masking) is already
- *  in place, so the flip is a one-line change here. */
+ */
 static std::optional<MomentumRowContext> make_momentum_row_context() {
-  // FLIPPED (Task 4): the ParticleStore velocity/angular-velocity columns are
-  // now authoritative (Particle::v()/omega() read/write them), so this context
-  // reads/writes the same memory as the accessors. The MOMENTUM ghost value
-  // path may therefore route through the columnar row-context when the store is
-  // clean and attached, exactly like the POSITION path.
+  // The ParticleStore velocity/angular-velocity columns are authoritative
+  // (Particle::v()/omega() read/write them), so this context reads/writes the
+  // same memory as the accessors. The MOMENTUM ghost value path routes through
+  // the columnar row-context when the store is clean and attached, exactly
+  // like the POSITION path.
   static constexpr bool velocity_columns_authoritative = true;
   auto *store = active_particle_store();
   if (not velocity_columns_authoritative or store == nullptr or
@@ -1235,24 +1218,13 @@ static std::optional<MomentumRowContext> make_momentum_row_context() {
  *  cold POD sidecars. Meant for the mixed-parts (POSITION|PROPERTIES|MOMENTUM)
  *  per-step update and the resort-driven / reaction-driven PROPERTIES comms.
  *
- *  PHASE-4 FLIP GATE: pre-flip, the parameter accessors (p.id(), p.type(),
- *  p.mass(), ..., and the cold-POD accessors) still read/write the
- *  ParticleProperties struct member `p`; the ParticleStore parameter columns
- *  and host sidecars are seeded to defaults/carriers and are NOT kept in sync
- *  with the struct, so a context that read/wrote the STORE would diverge from
- *  the accessor and ship stale/default parameters. The context therefore stays
- *  inert until the Task-4 flip makes the parameter accessors authoritative over
- *  the columns/sidecars; at that point the early `return std::nullopt` guarded
- *  by parameter_columns_authoritative is removed and the context engages
- * exactly like the POSITION/MOMENTUM ones. All the wiring (serialize_and_reduce
- * use_ctx branch, the three call sites, calc_transmit_size masking) is already
- * in place, so the flip is a one-line change here. */
+ */
 static std::optional<ParameterRowContext> make_parameter_row_context() {
-  // FLIPPED (Task 4): the ParticleStore parameter columns and host sidecars are
-  // now authoritative (the Particle parameter accessors read/write them), so
-  // this context reads/writes the same memory as the accessors. The PROPERTIES
-  // ghost value path may therefore route through the columnar row-context when
-  // the store is clean and attached, exactly like the POSITION/MOMENTUM paths.
+  // The ParticleStore parameter columns and host sidecars are authoritative
+  // (the Particle parameter accessors read/write them), so this context
+  // reads/writes the same memory as the accessors. The PROPERTIES ghost value
+  // path routes through the columnar row-context when the store is clean and
+  // attached, exactly like the POSITION/MOMENTUM paths.
   auto *store = active_particle_store();
   if (store == nullptr or store->is_dirty() or
       store->number_of_particles() == 0u) {
@@ -1328,8 +1300,8 @@ static std::optional<ParameterRowContext> make_parameter_row_context() {
  * unpack_momentum_range helpers: the only PURE GHOSTTRANS_MOMENTUM comm is
  * RATTLE's correct_velocity_shake ghosts_update(DATA_PART_MOMENTUM), a
  * low-frequency correction loop, not a per-step hot path like the POSITION
- * distribution or the FORCE reduction that justified their columnar bulk paths
- * (the measured +49% / +10.6s regressions). The mixed-parts MomentumRowContext
+ * distribution or the FORCE reduction that justify their columnar bulk paths.
+ * The mixed-parts MomentumRowContext
  * in serialize_and_reduce covers every MOMENTUM comm (pure and mixed) without a
  * separate whole-communication columnar path; if profiling later flags the
  * velocity shake, the _unchecked builder + pack/unpack_momentum_range + a
@@ -1607,7 +1579,7 @@ static auto calc_transmit_size(BoxGeometry const &box_geo,
    * on MOVE/SAVE, which the MemcpyArchive packs tightly as 3 doubles = 24 B --
    * the same compositional constant the POSITION/MOMENTUM legs above use, so
    * the generic SerializationSizeCalculator fallback (and a live Particle) is
-   * no longer needed here (phase 7c carry 7b-M2). */
+   * not needed here. */
   std::size_t rattle_size = 0ul;
 #ifdef ESPRESSO_BOND_CONSTRAINT
   if (data_parts & GHOSTTRANS_RATTLE) {
@@ -1716,17 +1688,14 @@ static void prepare_send_buffer(CommBuf &send_buffer,
   auto const *pos_ctx_ptr = pos_ctx.has_value() ? &(*pos_ctx) : nullptr;
   /* Mixed-parts MOMENTUM fast path: read velocity/omega straight from the
    * (clean) store columns by row. nullptr when MOMENTUM is absent, the store is
-   * dirty/absent, or the velocity columns are not yet authoritative (pre-flip;
-   * see make_momentum_row_context) -- accessor fallback, per-particle. */
+   * dirty/absent -- accessor fallback, per-particle. */
   auto const mom_ctx = (data_parts & GHOSTTRANS_MOMENTUM)
                            ? make_momentum_row_context()
                            : std::nullopt;
   auto const *mom_ctx_ptr = mom_ctx.has_value() ? &(*mom_ctx) : nullptr;
   /* Mixed-parts PROPERTIES fast path: read the parameter columns/POD sidecars
    * straight from the (clean) store by row. nullptr when PROPERTIES is absent,
-   * the store is dirty/absent, or the parameter columns are not yet
-   * authoritative (pre-flip; see make_parameter_row_context) -- accessor
-   * fallback, per-particle. */
+   * the store is dirty/absent -- accessor fallback, per-particle. */
   auto const param_ctx = (data_parts & GHOSTTRANS_PROPRTS)
                              ? make_parameter_row_context()
                              : std::nullopt;
@@ -1743,7 +1712,7 @@ static void prepare_send_buffer(CommBuf &send_buffer,
     if (data_parts & GHOSTTRANS_PARTNUM) {
       // Total count (committed rows + staged): a source cell resized earlier in
       // this pass as a ghost destination has its ghosts staged, not yet
-      // committed (phase 7a). The receiver resizes to this pending count.
+      // committed. The receiver resizes to this pending count.
       assert(part_list->size() <= std::numeric_limits<unsigned int>::max());
       auto np = static_cast<unsigned int>(part_list->size());
       archiver << np;
@@ -1876,10 +1845,9 @@ add_rattle_correction_from_recv_buffer(CommBuf &recv_buffer,
   auto archiver = Utils::MemcpyIArchive{recv_buffer.make_span()};
   for (auto &part_list : ghost_comm.part_lists) {
     for (Particle &part : part_list->particles()) {
-      // The RATTLE correction is now a ParticleStore column (phase 6); the
-      // wire carries one Utils::Vector3d (byte-identical to the previous
-      // ParticleRattle payload, which held only the correction Vector3d).
-      // Reduce it into the local column through the accessor.
+      // The RATTLE correction is a ParticleStore column; the wire carries
+      // one Utils::Vector3d. Reduce it into the local column through the
+      // accessor.
       Utils::Vector3d correction{};
       archiver >> correction;
       part.rattle_correction() += correction;
@@ -2019,7 +1987,7 @@ static bool columnar_cell_cell_transfer(GhostCommunication const &ghost_comm,
                                         BoxGeometry const &box_geo,
                                         unsigned int data_parts) {
   auto const offset = ghost_comm.part_lists.size() / 2;
-  // Phase 1: resolve every src/dst range pair; bail before mutating on break.
+  // Resolve every src/dst range pair; bail before mutating on break.
   std::vector<std::pair<int, int>> pairs; // (src_first, dst_first); n implicit
   std::vector<std::size_t> sizes;
   pairs.reserve(offset);
@@ -2041,7 +2009,7 @@ static bool columnar_cell_cell_transfer(GhostCommunication const &ghost_comm,
     pairs.emplace_back(src_range->first, dst_range->first);
     sizes.push_back(src_range->second);
   }
-  // Phase 2: apply the transfers. data_parts is a single fixed value for the
+  // Apply the transfers. data_parts is a single fixed value for the
   // whole columnar-eligible call (POSITION xor FORCE), so build the one
   // plain-value row context the branch needs rather than a per-branch
   // std::optional. Using the value type directly (like the
@@ -2122,7 +2090,7 @@ static void cell_cell_transfer(GhostCommunication const &ghost_comm,
       // ghost layer reading it as a source must see that pending size.
       CellParticleStorage::resize_ghost_storage(*dst_list, src_list->size());
     } else {
-      // Contiguous store-row ranges (phase 7c); clean store, so index directly.
+      // Contiguous store-row ranges; clean store, so index directly.
       auto const src_offset = src_list->offset();
       auto const dst_offset = dst_list->offset();
       auto const n_rows = src_list->count();
@@ -2131,14 +2099,12 @@ static void cell_cell_transfer(GhostCommunication const &ghost_comm,
 
       // Reuse two cached views across the row loop, REBOUND per row via
       // attach_to_store (two handle-field writes) instead of constructing a
-      // fresh Particle per row per side (phase 7a perf fix). This loop runs on
-      // every ghost update; the carriers stay default and are never read while
-      // attached.
+      // fresh Particle per row per side. This loop runs on every ghost update.
       Particle p1, p2;
       for (std::size_t i = 0; i < n_rows; i++) {
         auto ar_out = Utils::MemcpyOArchive{buffer.make_span()};
         auto ar_in = Utils::MemcpyIArchive{buffer.make_span()};
-        // Views over the source and destination store rows (phase 7c).
+        // Views over the source and destination store rows.
         p1.attach_to_store(store, static_cast<int>(src_offset + i));
         p2.attach_to_store(store, static_cast<int>(dst_offset + i));
         serialize_and_reduce(ar_out, p1, data_parts, ReductionPolicy::UPDATE,

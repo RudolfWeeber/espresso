@@ -32,20 +32,16 @@
 #include <utils/Vector.hpp>
 #include <utils/matrix.hpp>
 
-// Phase-8a de-proxy: the Langevin friction kernels have column-kernel overloads
-// (below) that read the velocity / angular-velocity / id (+ gamma, quaternion)
-// columns via hoisted *_view() handles indexed by row, instead of a Particle
-// view. The RNG key is unchanged: the id column feeds the Philox key1 exactly
-// as p.id() did (same field, same order), so the per-particle noise stream --
-// and thus the trajectory -- is bitwise identical regardless of iteration
-// order. The Particle-view overloads are retained for non-hot / unit-test
-// callers.
+// The Langevin friction kernels have column-kernel overloads (below) that read
+// the velocity / angular-velocity / id (+ gamma, quaternion) columns via
+// hoisted *_view() handles indexed by row. The RNG key uses the id column as
+// the Philox key1, so the per-particle noise stream is bitwise identical
+// regardless of iteration order. The Particle-view overloads are retained for
+// non-hot / unit-test callers.
 
-// phase 3.5 (perf reclamation): force-inline the Langevin friction kernels.
-// The init_forces_and_thermostat lambda (forces.cpp) grew past gcc's inline
-// budget after the phase-3 proxy hoists, so friction_thermo_langevin surfaced
-// as a 3.6% out-of-line frame in the profile diff -- it was fully inlined in
-// the phase-0 baseline. Restore that by pinning always-inline; see
+// Force-inline the Langevin friction kernels: friction_thermo_langevin must
+// stay within gcc's inline budget for the init_forces_and_thermostat lambda
+// (forces.cpp) to avoid an out-of-line call overhead. See
 // src/core/attributes.hpp for the macro definition.
 
 /** Langevin thermostat for particle translational velocities.
@@ -118,11 +114,10 @@ friction_thermo_langevin_rotation(LangevinThermostat const &langevin,
 }
 #endif // ESPRESSO_ROTATION
 
-// -- phase-8a column-kernel overloads -------------------------------------
+// -- column-kernel overloads ----------------------------------------------
 // Same arithmetic as the Particle-view overloads above; velocity / omega / id
 // (+ gamma, quaternion) are read from hoisted *_view() handles by row. The RNG
-// key uses id_view(row) -- the same field p.id() fed the Philox key1 with, in
-// the same order.
+// key uses id_view(row) as the Philox key1.
 
 /** Langevin thermostat for particle translational velocities (column form). */
 template <class VelView, class IdView

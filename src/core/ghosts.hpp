@@ -98,7 +98,7 @@
 #include <utility>
 #include <vector>
 
-class Cell; // phase 7a: GhostCommunication::part_lists holds cells, not lists
+class Cell; // GhostCommunication::part_lists holds cells
 
 /** \name Transfer types, for \ref GhostCommunicator::type */
 /************************************************************/
@@ -160,8 +160,7 @@ struct GhostCommunication {
   /** Node to communicate with (to use with all MPI operations). */
   int node;
 
-  /** Cells whose particles participate in this communication (phase 7a). Since
-   *  the flip the cell no longer owns a @c ParticleList, so the ghost paths
+  /** Cells whose particles participate in this communication. The ghost paths
    *  iterate @ref Cell::particles (row views) and resize via
    *  @ref CellParticleStorage::resize_ghost_storage. */
   std::vector<Cell *> part_lists = {};

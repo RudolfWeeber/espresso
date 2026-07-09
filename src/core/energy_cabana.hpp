@@ -110,7 +110,7 @@ struct EnergyKernel {
 
   KOKKOS_INLINE_FUNCTION
   void operator()(std::size_t i, std::size_t j) const {
-    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    // Translate pack indices to ParticleStore rows once.
     auto const row_i = aosoa.row(i);
     auto const row_j = aosoa.row(j);
     auto const d = box_geo.get_mi_vector(
@@ -122,7 +122,7 @@ struct EnergyKernel {
       return;
     auto const dist = std::sqrt(dist_sq);
 
-    // phase-5 perf recovery: type is pack-owned and read PACK-INDEXED (i/j).
+    // type is pack-owned and read PACK-INDEXED (i/j).
     auto const t1 = aosoa.type(i);
     auto const t2 = aosoa.type(j);
     auto const &ia_params = nonbonded_ias.get_ia_param(t1, t2);
@@ -185,8 +185,8 @@ struct EnergyKernel {
 
 #ifdef ESPRESSO_ELECTROSTATICS
     if (coulomb_u_kernel != nullptr) {
-      // phase-5 perf recovery: charge is read from the pack-owned pair_charge
-      // column PACK-INDEXED (refreshed this step; coulomb solver active).
+      // charge is read from the pack-owned pair_charge column PACK-INDEXED
+      // (refreshed this step; coulomb solver active).
       auto const q1 = aosoa.pair_charge(i), q2 = aosoa.pair_charge(j);
       if (q1 != 0. and q2 != 0.) {
         auto const pos1 = aosoa.get_vector_at(aosoa.position, row_i);
@@ -199,9 +199,9 @@ struct EnergyKernel {
 
 #ifdef ESPRESSO_DIPOLES
     if (dipoles_u_kernel != nullptr) {
-      // phase-5 perf recovery: dipm is read from the pack-owned pair_dipm
-      // column PACK-INDEXED (refreshed this step; dipolar solver active); the
-      // director stays store-derived and indexed by store row.
+      // dipm is read from the pack-owned pair_dipm column PACK-INDEXED
+      // (refreshed this step; dipolar solver active); the director stays
+      // store-derived and indexed by store row.
       if (aosoa.pair_dipm(i) != 0. and aosoa.pair_dipm(j) != 0.) {
         auto const dir1 = aosoa.get_vector_at(aosoa.director, row_i);
         auto const dir2 = aosoa.get_vector_at(aosoa.director, row_j);

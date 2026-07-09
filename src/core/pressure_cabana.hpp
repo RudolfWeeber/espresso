@@ -131,7 +131,7 @@ struct PressureKernel {
 
   KOKKOS_INLINE_FUNCTION
   void operator()(std::size_t i, std::size_t j) const {
-    // Translate pack indices to ParticleStore rows once (phase 3.5).
+    // Translate pack indices to ParticleStore rows once.
     auto const row_i = aosoa.row(i);
     auto const row_j = aosoa.row(j);
     auto const pos1 = aosoa.get_vector_at(aosoa.position, row_i);
@@ -141,7 +141,7 @@ struct PressureKernel {
     if (dist > system_max_cutoff)
       return;
 
-    // phase-5 perf recovery: type is pack-owned and read PACK-INDEXED (i/j).
+    // type is pack-owned and read PACK-INDEXED (i/j).
     auto const t1 = aosoa.type(i);
     auto const t2 = aosoa.type(j);
     auto const &ia_params = nonbonded_ias.get_ia_param(t1, t2);
@@ -183,7 +183,7 @@ struct PressureKernel {
 
 #ifdef ESPRESSO_DPD
         if (dpd_active(ia_params, thermo_switch)) {
-          // phase 4: velocity aliases the store column; read by *store row*.
+          // velocity aliases the store column; read by *store row*.
           auto const vel1 = aosoa.get_vector_at(aosoa.velocity, row_i);
           auto const vel2 = aosoa.get_vector_at(aosoa.velocity, row_j);
           auto const v21 = box_geo.velocity_difference(pos1, pos2, vel1, vel2);
@@ -204,8 +204,8 @@ struct PressureKernel {
 
 #ifdef ESPRESSO_ELECTROSTATICS
     if (coulomb_p_kernel != nullptr) {
-      // phase-5 perf recovery: charge is read from the pack-owned pair_charge
-      // column PACK-INDEXED (refreshed this step; coulomb solver active).
+      // charge is read from the pack-owned pair_charge column PACK-INDEXED
+      // (refreshed this step; coulomb solver active).
       auto const q1 = aosoa.pair_charge(i), q2 = aosoa.pair_charge(j);
       if (q1 != 0. and q2 != 0.) {
         auto const p_c = Utils::flatten((*coulomb_p_kernel)(q1 * q2, d, dist));

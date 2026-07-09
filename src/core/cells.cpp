@@ -143,10 +143,10 @@ static auto get_interacting_neighbors(System::System const &system,
   auto &cell_structure = *system.cell_structure;
   auto const distance = std::ranges::min(cell_structure.max_range());
   detail::search_neighbors_sanity_checks(system, distance);
-  // Phase 7a: collect neighbor IDS, not Particle pointers. The kernel receives
-  // p2 as a transient cached VIEW (short_range_neighbor_loop iterates row-range
-  // views), so storing &p2 would dangle after the loop increment. Ids are read
-  // by value here and are all the caller needs.
+  // Collect neighbor IDs, not Particle pointers. The kernel receives p2 as a
+  // transient row VIEW (short_range_neighbor_loop iterates row-range views),
+  // so storing &p2 would dangle after the loop increment. Ids are read by
+  // value here and are all the caller needs.
   std::vector<int> ret;
   auto const cutoff2 = Utils::sqr(distance);
   auto const kernel = [cutoff2, &ret](Particle const &, Particle const &p2,
