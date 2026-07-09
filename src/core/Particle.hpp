@@ -47,7 +47,7 @@ inline bool get_nth_bit(uint8_t const bitfield, unsigned int const bit_idx) {
 // ParticleParametersSwimming, ThermalStonerWohlfarthParameters and
 // VirtualSitesRelativeParameters (the cold parameter PODs) are defined in
 // particle_store/ParticleParameters.hpp so that both this header and
-// ParticleStore can name the complete types (migration phase 5).
+// ParticleStore can name the complete types.
 
 /** Properties of a particle which are not supposed to
  *  change during the integration, but have to be known
@@ -55,15 +55,14 @@ inline bool get_nth_bit(uint8_t const bitfield, unsigned int const bit_idx) {
  *  needed in the interaction calculation, but are just copies of
  *  particles stored on different nodes.
  *
- *  Migration phase 5: these parameter fields have left the @ref Particle
- *  struct; they live only in the @ref ParticleStore columns / host sidecars
- *  (single ownership, spec section 4). @ref ParticleProperties is retained
- *  purely as a type anchor: several call sites name its field types via
- *  @c decltype(ParticleProperties::identity) etc., the
- *  @c ParticleProperties::VirtualSitesRelativeParameters member typedef keeps
- *  the historical script-interface spelling compiling, and the standalone
- *  properties-serialization unit test exercises it. It is no longer a member
- *  of @ref Particle nor part of @ref Particle serialization.
+ *  These parameter fields are not @ref Particle members; they live only in the
+ *  @ref ParticleStore columns / host sidecars (single ownership).
+ *  @ref ParticleProperties is retained purely as a type anchor: several call
+ *  sites name its field types via @c decltype(ParticleProperties::identity)
+ *  etc., the @c ParticleProperties::VirtualSitesRelativeParameters member
+ *  typedef keeps the script-interface spelling compiling, and the standalone
+ *  properties-serialization unit test exercises it. It is neither a member of
+ *  @ref Particle nor part of @ref Particle serialization.
  */
 struct ParticleProperties {
   /** unique identifier for the particle. */
@@ -143,9 +142,8 @@ struct ParticleProperties {
 #ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
   /** @see ::VirtualSitesRelativeParameters (defined in
    *  particle_store/ParticleParameters.hpp). Kept as a member typedef so that
-   *  the historical spelling @c
-   * ParticleProperties::VirtualSitesRelativeParameters used by the script
-   * interface keeps compiling. */
+   *  the spelling @c ParticleProperties::VirtualSitesRelativeParameters used by
+   *  the script interface keeps compiling. */
   using VirtualSitesRelativeParameters = ::VirtualSitesRelativeParameters;
   VirtualSitesRelativeParameters vs_relative;
 #endif // ESPRESSO_VIRTUAL_SITES_RELATIVE
@@ -238,11 +236,10 @@ struct ParticleProperties {
 /** Positional information on a particle. Information that is
  *  communicated to calculate interactions with ghost particles.
  *
- *  Migration phase 3: the position, image box, quaternion and
- *  position-at-last-time-step fields have left this struct; they live only in
- *  the @ref ParticleStore columns (single ownership, spec section 4). The
- *  struct is retained (empty) for the ghost-transfer documentation reference in
- *  ghosts.hpp; it is no longer a member of @ref Particle nor serialized.
+ *  The position, image box, quaternion and position-at-last-time-step fields
+ *  live in the @ref ParticleStore columns (single ownership). This empty struct
+ *  is retained as the ghost-transfer documentation anchor referenced in
+ *  ghosts.hpp; it is neither a member of @ref Particle nor serialized.
  */
 struct ParticlePosition {};
 
@@ -293,49 +290,41 @@ struct ParticleForce {
 /** Momentum information on a particle. Information communicated to calculate
  *  velocity-dependent interactions with ghost particles.
  *
- *  Migration phase 4: the velocity and angular-velocity fields have left this
- *  struct; they live only in the @ref ParticleStore columns (single ownership,
- *  spec section 4). The struct is retained (empty) for the ghost-transfer
- *  documentation reference in ghosts.hpp; it is no longer a member of @ref
- *  Particle nor serialized.
+ *  The velocity and angular-velocity fields live in the @ref ParticleStore
+ *  columns (single ownership). This empty struct is retained as the
+ *  ghost-transfer documentation anchor referenced in ghosts.hpp; it is neither
+ *  a member of @ref Particle nor serialized.
  */
 struct ParticleMomentum {};
 
 #ifdef ESPRESSO_BOND_CONSTRAINT
-/** Migration phase 6: the position/velocity RATTLE correction has left this
- *  struct; it lives only in a @ref ParticleStore observable column (single
- *  ownership, spec section 4). The struct is retained (empty) purely as a type
- *  anchor for the @ref GHOSTTRANS_RATTLE documentation reference in ghosts.hpp;
- *  it is no longer a member of @ref Particle nor part of @ref Particle
- *  serialization (it was never serialized), and the RATTLE ghost wire now
- *  archives one @ref Utils::Vector3d directly via @ref
- * Particle::rattle_correction().
+/** The position/velocity RATTLE correction lives in a @ref ParticleStore
+ *  observable column (single ownership); it is neither a member of @ref
+ *  Particle nor serialized. The RATTLE ghost wire archives one
+ *  @ref Utils::Vector3d (24 B) directly via @ref Particle::rattle_correction().
  *
- *  KEPT (phase 8d): still the doxygen anchor for GHOSTTRANS_RATTLE
- *  (`ghosts.hpp` lines 49, 138), exactly parallel to @ref ParticleMomentum for
- *  GHOSTTRANS_MOMENTUM; removing it would dangle those live cross-references.
- *  Its sibling `ParticleLocal`, which had NO such reference, was removed in 8d.
+ *  This empty struct is retained purely as the doxygen anchor for
+ *  @ref GHOSTTRANS_RATTLE in ghosts.hpp, parallel to @ref ParticleMomentum for
+ *  GHOSTTRANS_MOMENTUM; removing it would dangle those cross-references.
  */
 struct ParticleRattle {};
 #endif
 
 /** @brief Non-owning VIEW of one particle stored in a @ref ParticleStore.
  *
- *  Migration phase 7b (Task 4): the migration envelope is dead. @ref Particle
- *  is now a two-word view {store pointer, store row}; ALL per-field data lives
- *  in the @ref ParticleStore columns / host sidecars (single ownership). There
- *  is no such thing as a detached, data-carrying @c Particle any more: every
- *  accessor is an unconditional store read at @c m_store_row, guarded (in
- *  debug builds) by @c assert(m_particle_store != nullptr). Cross-rank
- *  migration and the head-node fetch cache transfer data per field (see
- *  particle_store/MigrationPack) sourced/sunk directly from store columns; the
- *  boost whole-Particle serializer and every @c m_migration_ carrier are gone.
+ *  @ref Particle is a two-word view {store pointer, store row}; ALL per-field
+ *  data lives in the @ref ParticleStore columns / host sidecars (single
+ *  ownership). A @c Particle never carries data: every accessor is an
+ *  unconditional store read at @c m_store_row, guarded (in debug builds) by
+ *  @c assert(m_particle_store != nullptr). Cross-rank migration and the
+ *  head-node fetch cache transfer data per field (see
+ *  particle_store/MigrationPack) sourced/sunk directly from store columns.
  *
  *  A default-constructed @c Particle is an UNBOUND view (null store, row -1);
  *  it must be bound via @ref attach_to_store (or produced by
  *  @ref ParticleStore::make_view) before any accessor is used. Copying a
  *  @c Particle copies the two handle words -- two views over the SAME row alias
- *  the same columns (they no longer snapshot). The
+ *  the same columns (they do not snapshot). The
  *  constexpr-when-a-feature-is-disabled accessors keep their static fallbacks
  *  (there is no column when the feature is off, so nothing to read).
  */
@@ -350,7 +339,7 @@ private:
   /** Static fallbacks for the constexpr-when-disabled parameter accessors.
    *  When the feature is off there is no ParticleStore column; the accessor
    *  returns a reference to this immutable default so the read-only accessor
-   *  keeps its pre-migration constexpr semantics. */
+   *  keeps its constexpr semantics. */
 #ifndef ESPRESSO_MASS
   static constexpr double mass_fallback{1.0};
 #endif
@@ -443,11 +432,10 @@ public:
 
   /** @brief Whether this is a ghost particle.
    *
-   *  Phase 7b: ghost-ness is STRUCTURAL. The store lays out local rows
-   *  @c [0, n_local) first and ghost rows @c [n_local, n_total) after, so a
-   *  view is a ghost iff its row is in the ghost suffix. This is the sole
-   *  source of truth (the old @c l.ghost carrier is gone); it requires an
-   *  attached view (asserted). */
+   *  Ghost-ness is STRUCTURAL. The store lays out local rows @c [0, n_local)
+   *  first and ghost rows @c [n_local, n_total) after, so a view is a ghost iff
+   *  its row is in the ghost suffix. This is the sole source of truth; it
+   *  requires an attached view (asserted). */
   bool is_ghost() const {
     assert(m_particle_store != nullptr);
     return static_cast<std::size_t>(m_store_row) >=
@@ -790,10 +778,10 @@ public:
     assert(m_particle_store != nullptr);
     return m_particle_store->position_last_time_step_reference(m_store_row);
   }
-  // RATTLE/SHAKE correction (phase 6): a ParticleStore observable column
-  // (structurally like force). It is per-iteration SHAKE scratch -- never
-  // persisted, never migrated, never checkpointed -- so the accessor is
-  // attached-only (asserts a store), exactly like force().
+  // RATTLE/SHAKE correction: a ParticleStore observable column (structurally
+  // like force). It is per-iteration SHAKE scratch -- never persisted, never
+  // migrated, never checkpointed -- so the accessor is attached-only (asserts a
+  // store), exactly like force().
   VectorReference rattle_correction() {
     assert(m_particle_store != nullptr);
     return m_particle_store->rattle_correction_reference(m_store_row);
@@ -819,11 +807,10 @@ public:
 #endif
 };
 
-// The migration envelope is dead (phase 7b, Task 4): a Particle is a two-word
-// view {ParticleStore* + int row}. sizeof therefore collapses to a pointer, an
-// int, and the alignment padding between them (8 + 4 + 4 = 16 on LP64). The
-// assertion documents and pins this ABI so a stray data member can never sneak
-// back in.
+// A Particle is a two-word view {ParticleStore* + int row}. sizeof therefore
+// collapses to a pointer, an int, and the alignment padding between them
+// (8 + 4 + 4 = 16 on LP64). The assertion documents and pins this ABI so a
+// stray data member can never sneak back in.
 static_assert(sizeof(Particle) <= 2u * sizeof(void *),
               "Particle must be a two-word view (store pointer + row)");
 

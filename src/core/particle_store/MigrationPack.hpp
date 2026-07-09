@@ -21,19 +21,17 @@
 
 /**
  * @file
- * @brief Per-field particle migration pack (migration phase 7b).
+ * @brief Per-field particle migration pack.
  *
  * Serializes a set of @ref ParticleStore rows into a flat byte buffer and back,
- * field-by-field, WITHOUT constructing a whole @ref Particle or touching the
- * boost migration envelope. This is the replacement wire for the whole-Particle
- * boost serialization used by the global-resort migration and the head-node
- * fetch cache (the flip happens in phase-7b Task 3; this machinery is DORMANT
- * until then -- production still ships the boost envelope).
+ * field-by-field, WITHOUT constructing a whole @ref Particle. This is the wire
+ * for cross-rank particle migration (the global-resort migration and the
+ * head-node fetch cache).
  *
  * Wire layout (native-endian POD @c memcpy, matching the ghost wire practice):
  *
- *   [ header : row-count (u64) ]   (phase 7c: the per-row id list was dropped;
- *                                   the id travels in the PROPRTS leg and the
+ *   [ header : row-count (u64) ]   (the id is not listed per row in the header;
+ *                                   it travels in the PROPRTS leg and the
  *                                   receiver peeks this count to reserve rows)
  *   [ fixed-width legs, grouped like the GHOSTTRANS groups, one contiguous
  *     block per group across all rows:
@@ -74,10 +72,9 @@ namespace MigrationPack {
 /**
  * @brief Exact byte size @ref pack_rows will produce for @p rows of @p store.
  *
- * The future replacement of the sizer-@c Particle in ghosts.cpp: a constant
- * fixed part per row (the enabled fixed-width legs, determined at compile time
- * by the ifdef config) plus the row-count header (u64) and the ragged
- * bond/exclusion actuals summed over @p rows.
+ * A constant fixed part per row (the enabled fixed-width legs, determined at
+ * compile time by the ifdef config) plus the row-count header (u64) and the
+ * ragged bond/exclusion actuals summed over @p rows.
  */
 std::size_t packed_size(ParticleStore const &store, std::span<int const> rows);
 

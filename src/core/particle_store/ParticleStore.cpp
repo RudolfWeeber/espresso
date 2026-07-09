@@ -32,10 +32,10 @@
 namespace {
 // Generalized per-column rebuild copy: fill row @p row of the freshly
 // allocated @p new_column either from @p old_column at @p old_row (row
-// survived a rank-local rebuild) or from @p seed (the migration carrier /
-// default for a detached or brand-new particle). @tparam N is the number of
-// component columns (1 for scalars, 3 for vectors, 4 for quaternions); the
-// seed is an object indexable with operator[] over [0, N).
+// survived a rank-local rebuild) or from @p seed (the default for a brand-new
+// particle). @tparam N is the number of component columns (1 for scalars, 3 for
+// vectors, 4 for quaternions); the seed is an object indexable with operator[]
+// over [0, N).
 template <std::size_t N, class ColumnType, class SeedType>
 void preserve_or_seed(ColumnType &new_column, ColumnType const &old_column,
                       int const row, int const old_row, bool const preserve,
@@ -74,7 +74,7 @@ void preserve_or_seed_scalar(ColumnType &new_column,
 
 // Host-sidecar (std::vector of POD) counterpart of preserve_or_seed_scalar:
 // copy the whole POD from the old vector at @p old_row (row survived) or from
-// the migration carrier @p seed (detached / brand-new particle).
+// the default @p seed (brand-new particle).
 template <class SidecarVector, class SeedType>
 void preserve_or_seed_sidecar(SidecarVector &new_sidecar,
                               SidecarVector const &old_sidecar, int const row,
@@ -94,9 +94,8 @@ void preserve_or_seed_sidecar(SidecarVector &new_sidecar,
 // is MOVED out of the old vector (transfers the buffer -- no reallocation /
 // deep copy of a ragged run) instead of copied. The old vector is discarded
 // after the rebuild (retired as the spare), so leaving a moved-from element
-// behind is harmless. On seed the carrier value is copied (it is still owned by
-// the migrating particle). @p old_sidecar is a non-const reference here because
-// the move reads (and empties) its element.
+// behind is harmless. On seed the default value is copied. @p old_sidecar is a
+// non-const reference here because the move reads (and empties) its element.
 template <class SidecarVector, class SeedType>
 void preserve_or_move_sidecar(SidecarVector &new_sidecar,
                               SidecarVector &old_sidecar, int const row,
@@ -110,7 +109,7 @@ void preserve_or_move_sidecar(SidecarVector &new_sidecar,
   }
 }
 
-// -- per-column permute kernels (phase 7c) --------------------------------
+// -- per-column permute kernels -------------------------------------------
 // One column swept in row order: new_view(new_row, .) = old_view(perm[new_row],
 // .) for every SURVIVOR (perm[new_row] >= 0). Non-survivor rows (perm < 0) are
 // left untouched here -- permute_rebuild seeds them once, whole-row, via
@@ -203,11 +202,11 @@ void grow_without_init(ColumnType &column, std::size_t const total,
 }
 } // namespace
 
-// Capacity-cached double buffering (phase 3.5 perf reclamation). Instead of
-// freshly allocating all columns on every rebuild (every resort), keep two
-// generations and SWAP them: the previous-generation columns become the write
-// target for the new generation, and the just-current columns become the
-// read source ("old") for preserve_or_seed. A (re)allocation happens ONLY when
+// Capacity-cached double buffering. Instead of freshly allocating all columns
+// on every rebuild (every resort), keep two generations and SWAP them: the
+// previous-generation columns become the write target for the new generation,
+// and the just-current columns become the read source ("old") for
+// preserve_or_seed. A (re)allocation happens ONLY when
 // the swapped-in write target is too small for the new particle count; growth
 // uses WithoutInitializing since every logical row is overwritten by assign_row
 // before it is read. Column extents therefore track CAPACITY (a high-water
@@ -249,7 +248,7 @@ void ParticleStore::swap_and_grow_generations(
 #ifdef ESPRESSO_ROTATION
   swap(m_angular_velocity, m_old_angular_velocity);
 #endif
-  // Parameter columns (phase 5).
+  // Parameter columns.
   swap(m_id, m_old_id);
   swap(m_mol_id, m_old_mol_id);
   swap(m_type, m_old_type);
@@ -318,7 +317,7 @@ void ParticleStore::swap_and_grow_generations(
   // Grow the (swapped-in) write target only when it cannot hold the new count.
   // NOTE: rows are NOT zero-initialized; assign_row seeds/preserves every row.
   // A quaternion row that survives is preserved; a genuinely-new row is seeded
-  // to identity (1,0,0,0) from the migration carrier (never the zero-init).
+  // to identity (1,0,0,0) (never the zero-init).
   grow_without_init(m_force, total, "particle_store::force");
 #ifdef ESPRESSO_ROTATION
   grow_without_init(m_torque, total, "particle_store::torque");
@@ -347,7 +346,7 @@ void ParticleStore::swap_and_grow_generations(
   grow_without_init(m_angular_velocity, total,
                     "particle_store::angular_velocity");
 #endif
-  // Parameter columns (phase 5).
+  // Parameter columns.
   grow_without_init(m_id, total, "particle_store::id");
   grow_without_init(m_mol_id, total, "particle_store::mol_id");
   grow_without_init(m_type, total, "particle_store::type");
@@ -412,7 +411,7 @@ void ParticleStore::swap_and_grow_generations(
   m_exclusions_sidecar.resize(total);
 #endif
 
-  // Pending-removal mask (phase 7c): a fresh generation starts with no row
+  // Pending-removal mask: a fresh generation starts with no row
   // pending-removed. Resize to the new count and clear every entry (assign to a
   // zero-filled vector so any stale marks from the retired generation are
   // dropped -- rows are renumbered, so old positions are meaningless).
@@ -420,16 +419,16 @@ void ParticleStore::swap_and_grow_generations(
   m_pending_removal_count = 0u;
 }
 
-// Phase 7c permutation rebuild. The per-column permute list below is one of the
-// four field-list consumers (four-way sync note above assign_row): every field
+// Permutation rebuild. The per-column permute list below is one of the four
+// field-list consumers (four-way sync note above assign_row): every field
 // assign_row / copy_row / MigrationPack touches is permuted here. A new row
 // whose permutation entry is >= 0 is a SURVIVOR: its data is moved from the
 // named retired-generation row, one column at a time (contiguous, vectorizable,
-// no per-row branch on the field kind -- the win over assign_row). A new row
-// whose entry is < 0 is a non-survivor (staged / brand-new / fresh ghost) and
-// is seeded to the new-particle defaults, whole-row, once. The ghost tail is
-// freshly seeded to defaults whenever its entries are negative (ghost exchange
-// re-seeds it after the rebuild), matching the assign_row fresh-ghost contract.
+// no per-row branch on the field kind). A new row whose entry is < 0 is a
+// non-survivor (staged / brand-new / fresh ghost) and is seeded to the
+// new-particle defaults, whole-row, once. The ghost tail is freshly seeded to
+// defaults whenever its entries are negative (ghost exchange re-seeds it after
+// the rebuild), matching the assign_row fresh-ghost contract.
 void ParticleStore::permute_rebuild(std::span<int const> const permutation,
                                     std::size_t const n_local,
                                     std::size_t const n_ghost) {
@@ -443,7 +442,7 @@ void ParticleStore::permute_rebuild(std::span<int const> const permutation,
 
   // Every survivor column/sidecar is permuted from the retired generation.
   // Field order/coverage IDENTICAL to assign_row (four-way sync).
-  // Observable columns (phase 2).
+  // Observable columns.
   permute_column<3u>(m_force, m_old_force, permutation);
 #ifdef ESPRESSO_ROTATION
   permute_column<3u>(m_torque, m_old_torque, permutation);
@@ -452,7 +451,7 @@ void ParticleStore::permute_rebuild(std::span<int const> const permutation,
   permute_column<3u>(m_rattle_correction, m_old_rattle_correction, permutation);
 #endif
 
-  // State columns (phase 3).
+  // State columns.
   permute_column<3u>(m_position, m_old_position, permutation);
   permute_column<3u>(m_image_box, m_old_image_box, permutation);
 #ifdef ESPRESSO_ROTATION
@@ -469,13 +468,13 @@ void ParticleStore::permute_rebuild(std::span<int const> const permutation,
   permute_column_scalar(m_lees_edwards_flag, m_old_lees_edwards_flag,
                         permutation);
 
-  // Momentum columns (phase 4).
+  // Momentum columns.
   permute_column<3u>(m_velocity, m_old_velocity, permutation);
 #ifdef ESPRESSO_ROTATION
   permute_column<3u>(m_angular_velocity, m_old_angular_velocity, permutation);
 #endif
 
-  // Parameter columns (phase 5).
+  // Parameter columns.
   permute_column_scalar(m_id, m_old_id, permutation);
   permute_column_scalar(m_mol_id, m_old_mol_id, permutation);
   permute_column_scalar(m_type, m_old_type, permutation);
@@ -524,7 +523,7 @@ void ParticleStore::permute_rebuild(std::span<int const> const permutation,
 #endif // ESPRESSO_PARTICLE_ANISOTROPY
 #endif // ESPRESSO_THERMOSTAT_PER_PARTICLE
 
-  // Host POD sidecars (phase 5): whole-POD move by permutation.
+  // Host POD sidecars: whole-POD move by permutation.
 #ifdef ESPRESSO_ENGINE
   permute_sidecar(m_swimming, m_old_swimming, permutation);
 #endif
@@ -535,7 +534,7 @@ void ParticleStore::permute_rebuild(std::span<int const> const permutation,
   permute_sidecar(m_vs_relative, m_old_vs_relative, permutation);
 #endif
 
-  // Ragged host sidecars (phase 6): surviving element MOVED out of the old
+  // Ragged host sidecars: surviving element MOVED out of the old
   // vector (transfers the heap buffer -- no deep copy of the ragged run).
   permute_ragged_sidecar(m_bonds_sidecar, m_old_bonds_sidecar, permutation);
 #ifdef ESPRESSO_EXCLUSIONS
@@ -566,23 +565,19 @@ void ParticleStore::permute_rebuild(std::span<int const> const permutation,
 // this. This is the four-way sync: assign_row <-> copy_row <-> permute_rebuild
 // <-> MigrationPack.
 //
-// Phase 7b (Task 4): the migration envelope is dead, so a Particle can no
-// longer carry data. assign_row therefore only ever PRESERVES a surviving row
-// (copy old row -> new row, rank-local rebuild); a non-surviving row is a
-// genuinely-new / fresh-ghost particle and is seeded to the DEFAULTS (the exact
-// values the deleted migration carriers held) via seed_default_row. Migration
-// and the new-particle creation path deliver data by copying a source (staging)
-// store row into the target row (copy_row), never through assign_row.
+// assign_row only ever PRESERVES a surviving row (copy old row -> new row,
+// rank-local rebuild); a non-surviving row is a genuinely-new / fresh-ghost
+// particle and is seeded to the DEFAULTS via seed_default_row. Cross-rank
+// migration and the new-particle creation path deliver data by copying a source
+// (staging) store row into the target row (copy_row), never through assign_row.
 //
-// Phase 7c: assign_row is RETIRED from the resort rebuild hot path -- the flip
-// drives the resort through permute_rebuild (per-column permute) instead of the
-// per-particle branchy assign_row loop. It is KEPT as a store primitive for the
-// standalone single-row fill (a detached particle -> a fresh one-row store):
-// the only production caller left is ShapeBasedConstraint's part_rep store
-// (which seeds one default row and attaches the detached representation), plus
-// the hand-built stores in the unit-test fixtures. The four-way sync note above
-// still applies (assign_row's field coverage must equal copy_row /
-// permute_rebuild / MigrationPack).
+// assign_row is not on the resort rebuild hot path -- the resort runs through
+// permute_rebuild (per-column permute) instead of the per-particle branchy
+// assign_row loop. assign_row is a store primitive for the standalone
+// single-row fill (a detached particle -> a fresh one-row store): the only
+// production caller is ShapeBasedConstraint's part_rep store (which seeds one
+// default row and attaches the detached representation), plus the hand-built
+// stores in the unit-test fixtures.
 void ParticleStore::assign_row(Particle &particle, int const row) {
   assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
   auto const old_row = particle.store_row();
@@ -600,7 +595,7 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
   }
 
   // Surviving row: copy every field from the retired generation at old_row.
-  // Observable columns (phase 2).
+  // Observable columns.
   preserve_or_seed<3u>(m_force, m_old_force, row, old_row, preserve,
                        Utils::Vector3d{0., 0., 0.});
 #ifdef ESPRESSO_ROTATION
@@ -612,7 +607,7 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
                        old_row, preserve, Utils::Vector3d{0., 0., 0.});
 #endif
 
-  // State columns (phase 3).
+  // State columns.
   preserve_or_seed<3u>(m_position, m_old_position, row, old_row, preserve,
                        Utils::Vector3d{0., 0., 0.});
   preserve_or_seed<3u>(m_image_box, m_old_image_box, row, old_row, preserve,
@@ -633,7 +628,7 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
   preserve_or_seed_scalar(m_lees_edwards_flag, m_old_lees_edwards_flag, row,
                           old_row, preserve, short{0});
 
-  // Momentum columns (phase 4).
+  // Momentum columns.
   preserve_or_seed<3u>(m_velocity, m_old_velocity, row, old_row, preserve,
                        Utils::Vector3d{0., 0., 0.});
 #ifdef ESPRESSO_ROTATION
@@ -641,7 +636,7 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
                        preserve, Utils::Vector3d{0., 0., 0.});
 #endif
 
-  // Parameter columns (phase 5).
+  // Parameter columns.
   preserve_or_seed_scalar(m_id, m_old_id, row, old_row, preserve, -1);
   preserve_or_seed_scalar(m_mol_id, m_old_mol_id, row, old_row, preserve, 0);
   preserve_or_seed_scalar(m_type, m_old_type, row, old_row, preserve, 0);
@@ -702,7 +697,7 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
 #endif // ESPRESSO_PARTICLE_ANISOTROPY
 #endif // ESPRESSO_THERMOSTAT_PER_PARTICLE
 
-  // Host sidecars (phase 5): whole-POD preserve-by-old-row.
+  // Host sidecars: whole-POD preserve-by-old-row.
 #ifdef ESPRESSO_ENGINE
   preserve_or_seed_sidecar(m_swimming, m_old_swimming, row, old_row, preserve,
                            ParticleParametersSwimming{});
@@ -717,7 +712,7 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
                            preserve, VirtualSitesRelativeParameters{});
 #endif
 
-  // Ragged host sidecars (phase 6): a surviving row is MOVED out of the old
+  // Ragged host sidecars: a surviving row is MOVED out of the old
   // vector element (transfers the heap buffer -- no deep copy of the ragged
   // run).
   preserve_or_move_sidecar(m_bonds_sidecar, m_old_bonds_sidecar, row, old_row,
@@ -730,15 +725,14 @@ void ParticleStore::assign_row(Particle &particle, int const row) {
   particle.attach_to_store(*this, row);
 }
 
-// Seed @p row with the default new-particle values (the exact defaults the
-// deleted migration carriers held). Field coverage IDENTICAL to assign_row /
-// copy_row (see the sync note above assign_row). Writes directly through the
-// element references (the row must already be a valid index; begin_rebuild
-// allocated it). Also clears the ragged bond/exclusion sidecars.
+// Seed @p row with the default new-particle values. Field coverage IDENTICAL to
+// assign_row / copy_row (see the sync note above assign_row). Writes directly
+// through the element references (the row must already be a valid index;
+// begin_rebuild allocated it). Also clears the ragged bond/exclusion sidecars.
 void ParticleStore::seed_default_row(int const row) {
   assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
 
-  // Observable columns (phase 2).
+  // Observable columns.
   force_reference(row) = Utils::Vector3d{0., 0., 0.};
 #ifdef ESPRESSO_ROTATION
   torque_reference(row) = Utils::Vector3d{0., 0., 0.};
@@ -747,7 +741,7 @@ void ParticleStore::seed_default_row(int const row) {
   rattle_correction_reference(row) = Utils::Vector3d{0., 0., 0.};
 #endif
 
-  // State columns (phase 3). Quaternion seeds to IDENTITY (1,0,0,0).
+  // State columns. Quaternion seeds to IDENTITY (1,0,0,0).
   position_reference(row) = Utils::Vector3d{0., 0., 0.};
   image_box_reference(row) = Utils::Vector3i{0, 0, 0};
 #ifdef ESPRESSO_ROTATION
@@ -760,13 +754,13 @@ void ParticleStore::seed_default_row(int const row) {
   lees_edwards_offset(row) = 0.;
   lees_edwards_flag(row) = short{0};
 
-  // Momentum columns (phase 4).
+  // Momentum columns.
   velocity_reference(row) = Utils::Vector3d{0., 0., 0.};
 #ifdef ESPRESSO_ROTATION
   angular_velocity_reference(row) = Utils::Vector3d{0., 0., 0.};
 #endif
 
-  // Parameter columns (phase 5).
+  // Parameter columns.
   id(row) = -1;
   mol_id(row) = 0;
   type(row) = 0;
@@ -815,7 +809,7 @@ void ParticleStore::seed_default_row(int const row) {
 #endif // ESPRESSO_PARTICLE_ANISOTROPY
 #endif // ESPRESSO_THERMOSTAT_PER_PARTICLE
 
-  // Host POD sidecars (phase 5): default-constructed.
+  // Host POD sidecars: default-constructed.
 #ifdef ESPRESSO_ENGINE
   swimming(row) = ParticleParametersSwimming{};
 #endif
@@ -826,7 +820,7 @@ void ParticleStore::seed_default_row(int const row) {
   vs_relative(row) = VirtualSitesRelativeParameters{};
 #endif
 
-  // Ragged host sidecars (phase 6): empty.
+  // Ragged host sidecars: empty.
   bonds_sidecar_reference(row).clear();
 #ifdef ESPRESSO_EXCLUSIONS
   exclusions_sidecar_reference(row).clear();
@@ -852,7 +846,7 @@ void ParticleStore::copy_row(ParticleStore const &source, int const src,
          static_cast<std::size_t>(src) < source.number_of_particles());
   assert(dst >= 0 and static_cast<std::size_t>(dst) < number_of_particles());
 
-  // Observable columns (phase 2).
+  // Observable columns.
   force_reference(dst) = source.force_value(src);
 #ifdef ESPRESSO_ROTATION
   torque_reference(dst) = source.torque_value(src);
@@ -861,7 +855,7 @@ void ParticleStore::copy_row(ParticleStore const &source, int const src,
   rattle_correction_reference(dst) = source.rattle_correction_value(src);
 #endif
 
-  // State columns (phase 3).
+  // State columns.
   position_reference(dst) = source.position_value(src);
   image_box_reference(dst) = source.image_box_value(src);
 #ifdef ESPRESSO_ROTATION
@@ -876,13 +870,13 @@ void ParticleStore::copy_row(ParticleStore const &source, int const src,
   lees_edwards_offset(dst) = source.lees_edwards_offset(src);
   lees_edwards_flag(dst) = source.lees_edwards_flag(src);
 
-  // Momentum columns (phase 4).
+  // Momentum columns.
   velocity_reference(dst) = source.velocity_value(src);
 #ifdef ESPRESSO_ROTATION
   angular_velocity_reference(dst) = source.angular_velocity_value(src);
 #endif
 
-  // Parameter columns (phase 5).
+  // Parameter columns.
   id(dst) = source.id(src);
   mol_id(dst) = source.mol_id(src);
   type(dst) = source.type(src);
@@ -924,7 +918,7 @@ void ParticleStore::copy_row(ParticleStore const &source, int const src,
 #endif
 #endif
 
-  // Host POD sidecars (phase 5).
+  // Host POD sidecars.
 #ifdef ESPRESSO_ENGINE
   swimming(dst) = source.swimming(src);
 #endif
@@ -935,7 +929,7 @@ void ParticleStore::copy_row(ParticleStore const &source, int const src,
   vs_relative(dst) = source.vs_relative(src);
 #endif
 
-  // Ragged host sidecars (phase 6): copied by value (deep copy of the run).
+  // Ragged host sidecars: copied by value (deep copy of the run).
   bonds_sidecar_reference(dst) = source.bonds_sidecar_reference(src);
 #ifdef ESPRESSO_EXCLUSIONS
   exclusions_sidecar_reference(dst) = source.exclusions_sidecar_reference(src);

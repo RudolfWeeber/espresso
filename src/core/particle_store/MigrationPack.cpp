@@ -230,7 +230,7 @@ std::size_t fixed_size_per_row() {
 
 void append_row_fixed(WriteCursor &cursor, ParticleStore const &store,
                       int const row) {
-  // POSITION leg (+ the three migration-only fields, per the T1 audit).
+  // POSITION leg (+ the three migration-only fields).
   put_vector(cursor, store.position_value(row));
   put_ivector(cursor, store.image_box_value(row));
 #ifdef ESPRESSO_ROTATION
@@ -447,9 +447,8 @@ void read_row_exclusions(ReadCursor &cursor, ParticleStore &store,
 
 std::size_t packed_size(ParticleStore const &store, std::span<int const> rows) {
   // Fixed part: the row-count header (u64) + the constant-per-row fixed legs.
-  // Phase 7c (carry 7b-M3): the per-row id list is gone from the header (the id
-  // is re-read from the PROPRTS leg on unpack), so the header is just the
-  // count.
+  // The header carries no per-row id list (the id is re-read from the PROPRTS
+  // leg on unpack), so the header is just the count.
   std::size_t size = sizeof(LengthType) + rows.size() * fixed_size_per_row();
   // Ragged actuals.
   for (auto const row : rows) {
@@ -469,8 +468,8 @@ void pack_rows(ParticleStore const &store, std::span<int const> rows,
   buffer.resize(total);
   WriteCursor cursor{buffer};
 
-  // Header: row count only (phase 7c carry 7b-M3; the per-row id is carried in
-  // the PROPRTS leg and re-read on unpack, so no separate id list is packed).
+  // Header: row count only (the per-row id is carried in the PROPRTS leg and
+  // re-read on unpack, so no separate id list is packed).
   cursor.put(static_cast<LengthType>(rows.size()));
 
   // Fixed-width legs, one contiguous block per row.
@@ -495,10 +494,10 @@ std::size_t unpack_rows(ParticleStore &store, int const first_row,
                         std::vector<char> const &buffer) {
   ReadCursor cursor{buffer};
 
-  // Header: row count (phase 7c carry 7b-M3). The receiver peeks this same u64
-  // to reserve the target rows before unpacking (see
-  // RegularDecomposition::exchange_neighbors); the per-row id is re-read from
-  // the PROPRTS leg below, so no separate id list travels in the header.
+  // Header: row count. The receiver peeks this same u64 to reserve the target
+  // rows before unpacking (see RegularDecomposition::exchange_neighbors); the
+  // per-row id is re-read from the PROPRTS leg below, so no separate id list
+  // travels in the header.
   auto const count = static_cast<std::size_t>(cursor.get<LengthType>());
 
   for (std::size_t i = 0u; i < count; ++i) {

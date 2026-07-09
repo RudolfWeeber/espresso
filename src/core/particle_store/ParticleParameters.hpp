@@ -22,15 +22,12 @@
 /**
  * @file
  * @brief Cold per-particle parameter PODs stored in @ref ParticleStore host
- * sidecars (migration phase 5).
+ * sidecars.
  *
- * These structs used to live inside @ref ParticleProperties (Particle.hpp).
- * They are lifted into this shared header so both @ref ParticleStore (which
- * owns the sidecar @c std::vector storage) and @ref Particle (which keeps a
- * dormant migration carrier for each) can name the complete type. The
- * definitions are byte-for-byte the pre-migration ones (defaults and
- * serialization unchanged) so the checkpoint/inter-rank wire format is
- * untouched.
+ * These structs live in this shared header so both @ref ParticleStore (which
+ * owns the sidecar @c std::vector storage) and @ref Particle can name the
+ * complete type. Their @c serialize members define the checkpoint / inter-rank
+ * wire format.
  */
 
 #include <config/config.hpp>

@@ -46,46 +46,36 @@ struct Particle; // attach_to_store is defined in Particle.hpp
  *
  * Owns per-particle quantities in a single index space: local particles
  * first (cell-traversal order), ghosts appended. Vector/quaternion fields are
- * component-major (@ref StateVectorLayout) Kokkos columns by default; see
- * docs/superpowers/specs/2026-07-03-array-based-particle-storage-design.md
+ * component-major (@ref StateVectorLayout) Kokkos columns by default; the
+ * remaining scalar and cold parameters live in scalar columns and host
+ * sidecars. The columns are the source of truth for attached particles.
  *
- * Migration phase 2: force and torque columns (observables). Phase 3 adds the
- * STATE columns (position, image box, quaternion, position-at-last-verlet-
- * update, position-at-last-time-step, Lees-Edwards offset and flag). Rebuild
- * protocol: mark_dirty() on any topology change; the owner (CellStructure)
- * later runs begin_rebuild / assign_row-per-particle / finish_rebuild.
- * Rebuild preserves values by old row and seeds new rows from the particle's
- * migration carrier (defaults for genuinely new particles).
+ * Rebuild protocol: mark_dirty() on any topology change; the owner
+ * (CellStructure) later renumbers the rows via @ref permute_rebuild (or the
+ * standalone @ref begin_rebuild / @ref assign_row / @ref finish_rebuild fills).
+ * A rebuild preserves surviving rows by their old row index and seeds
+ * genuinely-new rows to the new-particle defaults (@ref seed_default_row).
  * Rebuilds are purely rank-local (no MPI).
- *
- * Since the phase-3 flip, state and observable columns are the source of
- * truth for attached particles; detached particles live in their carriers.
  */
 class ParticleStore {
 public:
   /**
    * @brief Memory layout of the vector/quaternion state columns.
    *
-   * Component-major (LayoutLeft): each component's values are contiguous
-   * across particles. (The phase-3.5 particle-major decision was superseded
-   * by the phase-8 re-evaluation below.)
+   * COMPONENT-MAJOR (LayoutLeft): each component's values are contiguous
+   * across particles. This is the default; it measures slightly faster
+   * (order-balanced A/B: p3m 4-rank -1.7%, p3m 1-rank -1.3%, lj 1-rank and
+   * 4-rank -0.5%, lj-omp neutral) because per-field ghost exchange and column
+   * kernels leave no gather-dominated paths that would favour particle-major,
+   * and per-component ghost legs benefit from contiguity. Component-major is
+   * also the coalescing-friendly layout for device-resident GPU work.
+   *
+   * Particle-major (LayoutRight) remains selectable with
+   * -DESPRESSO_PARTICLE_STORE_PARTICLE_MAJOR for A/B on identical sources; all
+   * column access is layout-agnostic (typed views, (row, component) indexing,
+   * stride-carrying contexts/proxies) and trajectories are bitwise-identical
+   * under either layout.
    */
-  /* Layout decision (phase-8 re-evaluation, 2026-07-09): COMPONENT-MAJOR
-   * (LayoutLeft, all x components contiguous) is the default. Order-balanced
-   * same-commit A/B (6 reps per config) measured component-major faster on
-   * p3m 4-rank (-1.7%), p3m 1-rank (-1.3%), lj 1-rank and 4-rank (-0.5%),
-   * neutral on lj-omp (+0.5%, after the Verlet-build interleaved scratch in
-   * link_cell_kokkos) and inconclusive on p3m-omp (P3M auto-tuning variance
-   * dominates). This REVERSES the phase-3.5 verdict (+10-12% for
-   * component-major back then): the intervening struct death, per-field ghost
-   * exchange and column kernels removed the gather-dominated paths that had
-   * favoured particle-major, and per-component ghost legs now benefit from
-   * contiguity. Component-major is also the coalescing-friendly layout for
-   * device-resident GPU work. Particle-major remains selectable with
-   * -DESPRESSO_PARTICLE_STORE_PARTICLE_MAJOR for A/B on identical sources;
-   * all column access is layout-agnostic (typed views, (row, component)
-   * indexing, stride-carrying contexts/proxies) and trajectories are
-   * bitwise-identical under either layout. */
 #ifdef ESPRESSO_PARTICLE_STORE_PARTICLE_MAJOR
   using StateVectorLayout = Kokkos::LayoutRight;
 #else
@@ -96,14 +86,14 @@ public:
   using QuaternionColumn = Kokkos::DualView<double *[4], StateVectorLayout>;
   using ScalarColumn = Kokkos::DualView<double *>;
   using ShortColumn = Kokkos::DualView<short *>;
-  // Phase-5 parameter scalar columns: int-typed (id/mol_id/type/propagation)
-  // and uint8-typed bitfields (rotation/ext_flag).
+  // Parameter scalar columns: int-typed (id/mol_id/type/propagation) and
+  // uint8-typed bitfields (rotation/ext_flag).
   using IntScalarColumn = Kokkos::DualView<int *>;
   using Uint8Column = Kokkos::DualView<std::uint8_t *>;
 
-  // Phase-5 per-particle friction (gamma/gamma_rot): scalar when isotropic,
-  // a 3-vector column when ESPRESSO_PARTICLE_ANISOTROPY selects per-axis
-  // friction. The value type and column follow the same switch as the
+  // Per-particle friction (gamma/gamma_rot): scalar when isotropic, a 3-vector
+  // column when ESPRESSO_PARTICLE_ANISOTROPY selects per-axis friction. The
+  // value type and column follow the same switch as the
   // ParticleProperties::gamma member (see Particle.hpp).
 #ifdef ESPRESSO_PARTICLE_ANISOTROPY
   using GammaValue = Utils::Vector3d;
@@ -130,18 +120,17 @@ public:
   std::uint64_t generation() const { return m_generation; }
   bool is_dirty() const { return m_dirty; }
 
-  // -- mid-epoch pending removal (phase 7c) ---------------------------------
-  // Since cells collapsed to contiguous (offset, count) ranges, a row cannot be
+  // -- mid-epoch pending removal --------------------------------------------
+  // Cells are contiguous (offset, count) ranges, so a row cannot be
   // swap-removed from a cell between rebuilds (a range has no shuffling op). A
   // removal instead marks the store row PENDING-REMOVED here: iteration
   // (@ref RowParticleRange / @ref CellRowSpan) skips such rows immediately, and
   // the next permutation rebuild resolves it by NOT including the row in the
   // permutation (the row is dropped). The mask is indexed by store row and is
   // cleared on every rebuild (begin_rebuild / permute_rebuild size it fresh and
-  // finish_rebuild leaves it all-clear for the new generation). This is the T1
-  // pending-removal adjudication: iteration must not see a removed particle
-  // before the rebuild renumbers rows. Identity histories are removal-free, so
-  // the mask is never set on the identity path.
+  // finish_rebuild leaves it all-clear for the new generation). Invariant:
+  // iteration must not see a removed particle before the rebuild renumbers
+  // rows.
   void mark_pending_removal(int const row) {
     assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
     if (m_pending_removal[static_cast<std::size_t>(row)] == char{0}) {
@@ -171,9 +160,9 @@ public:
    * Copies EVERY column, POD sidecar and ragged sidecar (bonds / exclusions,
    * under matching ifdefs) of @p source_row in @p source into @p
    * destination_row of THIS store, row-to-row, without going through a @ref
-   * Particle or the migration carriers. @p source and @c *this may be the same
-   * store (a row can be copied within one store) or two different stores. Both
-   * rows must be currently valid indices in their respective stores.
+   * Particle. @p source and @c *this may be the same store (a row can be copied
+   * within one store) or two different stores. Both rows must be currently
+   * valid indices in their respective stores.
    *
    * This is the machinery shared by the migration `extract` (live store ->
    * staging store) and `receive` (staging store -> live store) paths: a full,
@@ -190,16 +179,15 @@ public:
                 int destination_row);
 
   /**
-   * @brief Rebuild the store by permuting surviving rows (phase 7c).
+   * @brief Rebuild the store by permuting surviving rows.
    *
-   * The resort-as-permutation path that replaces the per-particle branchy
-   * @ref assign_row rebuild loop with contiguous, vectorizable per-column
-   * permute kernels (`col_new[new_row] = col_old[perm[new_row]]`). Like
+   * The resort-as-permutation path: contiguous, vectorizable per-column permute
+   * kernels (`col_new[new_row] = col_old[perm[new_row]]`). Like
    * @ref begin_rebuild it swaps the current and spare generations (the retired
    * generation becomes the permute READ source) and grows the write target to
-   * @p n_local + @p n_ghost rows; unlike the assign_row loop it then, for every
-   * column / POD sidecar / ragged sidecar, moves the data from the old row
-   * named by @p permutation into the new row in one pass per column.
+   * @p n_local + @p n_ghost rows; it then, for every column / POD sidecar /
+   * ragged sidecar, moves the data from the old row named by @p permutation
+   * into the new row in one pass per column.
    *
    * @p permutation has exactly @p n_local + @p n_ghost entries, one per new
    * row. `permutation[new_row] >= 0` names the retired-generation row whose
@@ -218,9 +206,9 @@ public:
    * permute unit tests enforce it. On @ref finish_rebuild the generation is
    * bumped exactly as for an assign_row rebuild.
    *
-   * This is the LIVE resort rebuild path since the phase-7c flip:
+   * This is the live resort rebuild path:
    * @ref CellStructure::ensure_particle_store_synchronized builds the
-   * permutation and calls this instead of the per-particle assign_row loop.
+   * permutation and calls this.
    */
   void permute_rebuild(std::span<int const> permutation, std::size_t n_local,
                        std::size_t n_ghost);
@@ -229,11 +217,10 @@ public:
    * @brief Construct a non-owning view @ref Particle bound to a store row.
    *
    * Returns a @ref Particle whose accessors read/write the columns of THIS
-   * store at @p row (via the phase-2 attach handle).  This is the primary
-   * view factory after the phase-7a flip: @ref RowParticleRange /
-   * @ref RowParticleIterator call it for every element produced by
-   * @ref Cell::particles(), and decomposition resorts, @c for_each, and
-   * reduction kernels all consume views built here.
+   * store at @p row (via the attach handle).  This is the primary view
+   * factory: @ref RowParticleRange / @ref RowParticleIterator call it for
+   * every element produced by @ref Cell::particles(), and decomposition
+   * resorts, @c for_each, and reduction kernels all consume views built here.
    *
    * The row must be a currently-valid index; the returned view aliases the
    * store and is invalidated by the next rebuild (which may renumber or drop
@@ -242,14 +229,13 @@ public:
   Particle make_view(int row);
 
   /**
-   * @brief Seed @p row with the default new-particle values (phase 7b, Task 4).
+   * @brief Seed @p row with the default new-particle values.
    *
    * Writes the default value of every column / POD sidecar (and clears the
    * ragged bond/exclusion sidecars) at @p row -- the values a genuinely-new /
    * fresh-ghost particle starts from (id -1, mol_id 0, type 0, propagation
    * SYSTEM_DEFAULT, position/velocity/force zero, quaternion identity, mass 1,
-   * gamma -1, etc.). These are the exact defaults the (now-deleted) migration
-   * carriers held; they must match @ref assign_row's seed branch. The
+   * gamma -1, etc.). These must match @ref assign_row's seed branch. The
    * new-particle creation path (@ref CellStructure::add_particle via a staging
    * row) seeds a row, then the caller writes the fields it wants through a
    * view;
@@ -305,7 +291,7 @@ public:
 #ifdef ESPRESSO_ROTATION
     m_old_angular_velocity = Column{};
 #endif
-    // Parameter columns (phase 5).
+    // Parameter columns.
     m_id = IntScalarColumn{};
     m_mol_id = IntScalarColumn{};
     m_type = IntScalarColumn{};
@@ -346,7 +332,7 @@ public:
     m_gamma_rot = GammaColumn{};
 #endif
 #endif
-    // Parameter spares (phase 5).
+    // Parameter spares.
     m_old_id = IntScalarColumn{};
     m_old_mol_id = IntScalarColumn{};
     m_old_type = IntScalarColumn{};
@@ -387,7 +373,7 @@ public:
     m_old_gamma_rot = GammaColumn{};
 #endif
 #endif
-    // Host parameter sidecars (phase 5).
+    // Host parameter sidecars.
 #ifdef ESPRESSO_ENGINE
     m_swimming.clear();
     m_old_swimming.clear();
@@ -400,7 +386,7 @@ public:
     m_vs_relative.clear();
     m_old_vs_relative.clear();
 #endif
-    // Ragged host sidecars (phase 6).
+    // Ragged host sidecars.
     m_bonds_sidecar.clear();
     m_old_bonds_sidecar.clear();
 #ifdef ESPRESSO_EXCLUSIONS
@@ -415,7 +401,7 @@ public:
     m_dirty = true;
   }
 
-  // -- observable columns (phase 2) -----------------------------------------
+  // -- observable columns ---------------------------------------------------
   VectorReference force_reference(int const row) {
     return column_reference(m_force, row);
   }
@@ -431,11 +417,10 @@ public:
   }
 #endif
 #ifdef ESPRESSO_BOND_CONSTRAINT
-  // RATTLE/SHAKE correction accumulator (phase 6): a per-iteration scratch
-  // observable, structurally like force -- zeroed each SHAKE iteration,
-  // reduced into locals, then applied. No migration carrier (never persisted
-  // nor migrated); a genuinely-new row defaults to zero (preserve-or-default
-  // like dip_fld / force).
+  // RATTLE/SHAKE correction accumulator: a per-iteration scratch observable,
+  // structurally like force -- zeroed each SHAKE iteration, reduced into
+  // locals, then applied. Never persisted nor migrated; a genuinely-new row
+  // defaults to zero (preserve-or-default like dip_fld / force).
   VectorReference rattle_correction_reference(int const row) {
     return column_reference(m_rattle_correction, row);
   }
@@ -445,7 +430,7 @@ public:
   auto rattle_correction_view() { return m_rattle_correction.view_host(); }
 #endif
 
-  // -- state columns (phase 3) ----------------------------------------------
+  // -- state columns --------------------------------------------------------
   VectorReference position_reference(int const row) {
     return column_reference(m_position, row);
   }
@@ -493,7 +478,7 @@ public:
     return scalar_value(m_lees_edwards_flag, row);
   }
 
-  // -- host-view getters for kernel wiring (phase 7) ------------------------
+  // -- host-view getters for kernel wiring ----------------------------------
   auto force_view() { return m_force.view_host(); }
 #ifdef ESPRESSO_ROTATION
   auto torque_view() { return m_torque.view_host(); }
@@ -514,7 +499,7 @@ public:
   auto lees_edwards_offset_view() { return m_lees_edwards_offset.view_host(); }
   auto lees_edwards_flag_view() { return m_lees_edwards_flag.view_host(); }
 
-  // -- momentum columns (phase 4) -------------------------------------------
+  // -- momentum columns -----------------------------------------------------
   VectorReference velocity_reference(int const row) {
     return column_reference(m_velocity, row);
   }
@@ -532,7 +517,7 @@ public:
   auto angular_velocity_view() { return m_angular_velocity.view_host(); }
 #endif
 
-  // -- parameter columns (phase 5) ------------------------------------------
+  // -- parameter columns ----------------------------------------------------
   // Scalar-typed parameters expose a real element reference (like
   // lees_edwards_offset) plus a by-value getter and a host view. Vector-typed
   // parameters expose a VectorReference/value/view triple (like force).
@@ -675,19 +660,16 @@ public:
 #endif // ESPRESSO_ROTATION
 #endif // ESPRESSO_THERMOSTAT_PER_PARTICLE
 
-  // -- typed zero-extent dummy views (phase 8d hardening) -------------------
+  // -- typed zero-extent dummy views ----------------------------------------
   // When an optional feature (rotation, mass, per-particle friction, ...) is
   // compiled OUT, the integrator kernels still need to NAME a view handle for
   // that feature's column so the shared lambda signature stays fixed; the
   // handle is only ever passed to code paths that are themselves #ifdef'd out.
-  // Prior to phase 8d those disabled-feature handles reused an UNRELATED live
-  // column (e.g. rotation_view := id_view(), mass_view := velocity_view()), so
-  // a future edit that accidentally indexed such a handle would silently read
-  // the WRONG column type (int-as-uint8, double[3]-as-scalar, ...). These
-  // helpers instead hand back a zero-extent host view of the CORRECT column
-  // type: naming is safe, but any index into one traps under bounds checking
-  // (ESPRESSO_ADDITIONAL_CHECKS / Kokkos debug) instead of aliasing live data.
-  // A default-constructed column has extent 0; its host mirror is the dummy.
+  // These helpers hand back a zero-extent host view of the CORRECT column type
+  // (rather than aliasing an unrelated live column), so naming is safe but any
+  // index into one traps under bounds checking (ESPRESSO_ADDITIONAL_CHECKS /
+  // Kokkos debug) instead of silently reading the wrong column type. A
+  // default-constructed column has extent 0; its host mirror is the dummy.
   auto dummy_vector_view() { return Column{}.view_host(); }
   auto dummy_quaternion_view() { return QuaternionColumn{}.view_host(); }
   auto dummy_scalar_view() { return ScalarColumn{}.view_host(); }
@@ -696,10 +678,10 @@ public:
   auto dummy_gamma_view() { return GammaColumn{}.view_host(); }
 #endif
 
-  // -- host parameter sidecars (phase 5) ------------------------------------
+  // -- host parameter sidecars ----------------------------------------------
   // Cold PODs live in plain std::vector sidecars indexed by store row (not
   // Kokkos columns). Rebuilt with the store (old vector swapped like a column;
-  // preserve-by-old-row / seed-from-carrier in assign_row). Accessors return
+  // preserve-by-old-row / seed-default in assign_row). Accessors return
   // references by row.
 #ifdef ESPRESSO_ENGINE
   ParticleParametersSwimming &swimming(int const row) {
@@ -726,14 +708,14 @@ public:
   }
 #endif
 
-  // -- ragged host sidecars (phase 6) ---------------------------------------
+  // -- ragged host sidecars -------------------------------------------------
   // Owned per-particle variable-size data (bond list; exclusion list) lives in
-  // plain std::vector sidecars indexed by store row, following the phase-5 POD
-  // sidecar machinery (swap/resize in begin_rebuild; preserve-or-seed in
-  // assign_row; cleared in release_columns) with ONE difference: the element
-  // owns heap storage, so a surviving row is MOVED from the old vector element
-  // rather than copied. Accessors return a real element reference (same as the
-  // POD sidecars) via the shared sidecar_reference helper.
+  // plain std::vector sidecars indexed by store row, following the POD sidecar
+  // machinery (swap/resize in begin_rebuild; preserve-or-seed in assign_row;
+  // cleared in release_columns) with ONE difference: the element owns heap
+  // storage, so a surviving row is MOVED from the old vector element rather
+  // than copied. Accessors return a real element reference (same as the POD
+  // sidecars) via the shared sidecar_reference helper.
   BondList &bonds_sidecar_reference(int const row) {
     return sidecar_reference(m_bonds_sidecar, row);
   }
@@ -847,7 +829,7 @@ private:
   bool m_dirty = false;
   std::uint64_t m_generation = 0u;
 
-  // -- mid-epoch pending-removal mask (phase 7c) ----------------------------
+  // -- mid-epoch pending-removal mask ---------------------------------------
   // One byte per store row; 1 = row was dropped from its cell this epoch and is
   // invisible to iteration until the next rebuild resolves it. Sized to
   // number_of_particles() and zeroed by every rebuild (see the accessors and
@@ -881,7 +863,7 @@ private:
   Column m_angular_velocity;
 #endif
 
-  // -- current-generation parameter columns (phase 5) ----------------------
+  // -- current-generation parameter columns ---------------------------------
   IntScalarColumn m_id;
   IntScalarColumn m_mol_id;
   IntScalarColumn m_type;
@@ -923,11 +905,11 @@ private:
 #endif
 #endif
 
-  // -- host parameter sidecars (phase 5) ------------------------------------
+  // -- host parameter sidecars ----------------------------------------------
   // Cold PODs (indexed by store row). Rebuilt with the store: the current
   // vector is swapped with its spare in begin_rebuild (holding the old-row
   // values as the preserve source), grown to the new count, and each row is
-  // preserved-by-old-row / seeded-from-carrier in assign_row.
+  // preserved-by-old-row / seeded-to-default in assign_row.
 #ifdef ESPRESSO_ENGINE
   std::vector<ParticleParametersSwimming> m_swimming;
 #endif
@@ -938,24 +920,24 @@ private:
   std::vector<VirtualSitesRelativeParameters> m_vs_relative;
 #endif
 
-  // -- ragged host sidecars (phase 6) ---------------------------------------
+  // -- ragged host sidecars -------------------------------------------------
   // Owned variable-size per-particle data (indexed by store row). Rebuilt with
   // the store like the POD sidecars (swap current <-> spare in begin_rebuild,
-  // resize to the new count, preserve-by-old-row / seed-from-carrier in
-  // assign_row) -- but the preserve step MOVES the element out of the old
-  // vector (the element owns heap storage) instead of copying it. Ghost/new
-  // rows default to empty. The exclusion sidecar exists only when EXCLUSIONS is
-  // enabled (its element type is the exact current type of Particle::el).
+  // resize to the new count, preserve-by-old-row / seed-default in assign_row)
+  // -- but the preserve step MOVES the element out of the old vector (the
+  // element owns heap storage) instead of copying it. Ghost/new rows default
+  // to empty. The exclusion sidecar exists only when EXCLUSIONS is enabled (its
+  // element type is the exact type of Particle::el).
   std::vector<BondList> m_bonds_sidecar;
 #ifdef ESPRESSO_EXCLUSIONS
   std::vector<Utils::compact_vector<int>> m_exclusions_sidecar;
 #endif
 
   // -- spare (previous-generation) columns ----------------------------------
-  // Capacity-cached double buffering (phase 3.5): these are kept alive across
-  // rebuilds as the swap-in write target. During a rebuild they hold the
-  // just-current data (the preserve_or_seed READ source); after finish_rebuild
-  // they hold the retired generation, reused as the spare on the next swap.
+  // Capacity-cached double buffering: these are kept alive across rebuilds as
+  // the swap-in write target. During a rebuild they hold the just-current data
+  // (the preserve_or_seed READ source); after finish_rebuild they hold the
+  // retired generation, reused as the spare on the next swap.
   Column m_old_force;
 #ifdef ESPRESSO_ROTATION
   Column m_old_torque;
@@ -979,7 +961,7 @@ private:
   Column m_old_angular_velocity;
 #endif
 
-  // -- spare (previous-generation) parameter columns (phase 5) --------------
+  // -- spare (previous-generation) parameter columns ------------------------
   IntScalarColumn m_old_id;
   IntScalarColumn m_old_mol_id;
   IntScalarColumn m_old_type;
@@ -1021,7 +1003,7 @@ private:
 #endif
 #endif
 
-  // -- spare (previous-generation) host sidecars (phase 5) ------------------
+  // -- spare (previous-generation) host sidecars ----------------------------
 #ifdef ESPRESSO_ENGINE
   std::vector<ParticleParametersSwimming> m_old_swimming;
 #endif
@@ -1032,7 +1014,7 @@ private:
   std::vector<VirtualSitesRelativeParameters> m_old_vs_relative;
 #endif
 
-  // -- spare (previous-generation) ragged host sidecars (phase 6) -----------
+  // -- spare (previous-generation) ragged host sidecars ---------------------
   std::vector<BondList> m_old_bonds_sidecar;
 #ifdef ESPRESSO_EXCLUSIONS
   std::vector<Utils::compact_vector<int>> m_old_exclusions_sidecar;
