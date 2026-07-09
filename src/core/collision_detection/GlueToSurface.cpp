@@ -116,7 +116,8 @@ void GlueToSurface::handle_collisions(
     // generation, so they must be re-resolved by id afterwards.
     std::optional<Particle> p1 = cell_structure.get_local_particle(pid1);
     std::optional<Particle> p2 = cell_structure.get_local_particle(pid2);
-    auto resolved_generation = cell_structure.particle_store().generation();
+    auto const resolved_generation =
+        cell_structure.particle_store().generation();
 
     // Only nodes take part in particle creation and binding
     // that see both particles
@@ -203,14 +204,12 @@ void GlueToSurface::handle_collisions(
                                       min_global_cut, current_vs_pid, pos,
                                       attach_vs_to_id);
       // Particle storage locations changed due to the added particle:
-      // re-resolve both base-particle views by id and re-stamp the generation.
+      // re-resolve both base-particle views by id. The re-resolved views are
+      // used immediately below with no further topology change in between, so
+      // no fresh generation stamp is needed (the per-iteration stamp above is
+      // const and guards the views held ACROSS the add).
       p1 = cell_structure.get_local_particle(pid1);
       p2 = cell_structure.get_local_particle(pid2);
-#ifndef NDEBUG
-      // Re-stamp for the generation guard; its only reader is the debug
-      // assert above, so the store would be dead code in release builds.
-      resolved_generation = cell_structure.particle_store().generation();
-#endif
       current_vs_pid++;
     }
     // Create bond between the virtual particles

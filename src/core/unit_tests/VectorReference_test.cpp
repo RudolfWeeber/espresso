@@ -33,9 +33,7 @@
 struct ColumnFixture {
   std::array<double, 12> storage{};
   static constexpr std::size_t stride = 4;
-  VectorReference row(std::size_t i) {
-    return VectorReference(storage.data() + i, stride);
-  }
+  VectorReference row(std::size_t i) { return {storage.data() + i, stride}; }
 };
 
 BOOST_FIXTURE_TEST_CASE(assignment_writes_through, ColumnFixture) {
@@ -123,7 +121,7 @@ struct IntColumnFixture {
   std::array<int, 12> storage{};
   static constexpr std::size_t stride = 4;
   IntegerVectorReference row(std::size_t i) {
-    return IntegerVectorReference(storage.data() + i, stride);
+    return {storage.data() + i, stride};
   }
 };
 
@@ -168,7 +166,7 @@ struct QuatColumnFixture {
   std::array<double, 16> storage{};
   static constexpr std::size_t stride = 4;
   QuaternionReference row(std::size_t i) {
-    return QuaternionReference(storage.data() + i, stride);
+    return {storage.data() + i, stride};
   }
 };
 
