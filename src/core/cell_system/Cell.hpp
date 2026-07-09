@@ -171,17 +171,17 @@ public:
    *  @ref RowParticleRange). */
   RowParticleRange particles() {
     assert(m_store != nullptr);
-    return RowParticleRange(m_offset, m_count, *m_store);
+    return {m_offset, m_count, *m_store};
   }
   RowParticleRange particles() const {
     assert(m_store != nullptr);
-    return RowParticleRange(m_offset, m_count, *m_store);
+    return {m_offset, m_count, *m_store};
   }
 
   /** @brief The cell's committed store-row range as a @ref CellRowSpan (phase
    *  7c). The live surface (@c begin/end/size/empty) skips pending-removed
    *  rows; @c offset()/count() expose the raw range. */
-  CellRowSpan rows() const { return CellRowSpan(m_offset, m_count, m_store); }
+  CellRowSpan rows() const { return {m_offset, m_count, m_store}; }
 
   /** @brief Raw store-row range of this cell's committed particles (phase 7c).
    *  Removal-agnostic; the resort loops iterate these directly and mark dropped

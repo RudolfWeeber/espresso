@@ -46,7 +46,7 @@ struct Particle; // attach_to_store is defined in Particle.hpp
  *
  * Owns per-particle quantities in a single index space: local particles
  * first (cell-traversal order), ghosts appended. Vector/quaternion fields are
- * particle-major (@ref StateVectorLayout, LayoutRight) Kokkos columns; see
+ * component-major (@ref StateVectorLayout) Kokkos columns by default; see
  * docs/superpowers/specs/2026-07-03-array-based-particle-storage-design.md
  *
  * Migration phase 2: force and torque columns (observables). Phase 3 adds the
@@ -66,15 +66,9 @@ public:
   /**
    * @brief Memory layout of the vector/quaternion state columns.
    *
-   * Particle-major (LayoutRight): one particle's components are contiguous.
-   *
-   * DECISION (phase 3.5): interleaved same-state A/B measurements (with and
-   * without AVX2) showed component-major (LayoutLeft) columns cost +10-12% on
-   * gather-dominated CPU paths -- pair-kernel neighbor gathers and ghost
-   * packing touch 3 cache lines per particle-vector under LayoutLeft instead
-   * of 1, with zero SIMD offset (vector_length == 1 on the host). The host
-   * columns are therefore particle-major. Component-major is re-evaluated at
-   * phase 8 (GPU), where coalesced per-component access may flip the balance.
+   * Component-major (LayoutLeft): each component's values are contiguous
+   * across particles. (The phase-3.5 particle-major decision was superseded
+   * by the phase-8 re-evaluation below.)
    */
   /* Layout decision (phase-8 re-evaluation, 2026-07-09): COMPONENT-MAJOR
    * (LayoutLeft, all x components contiguous) is the default. Order-balanced
@@ -783,7 +777,7 @@ private:
     // correct base under either layout, unlike view.data() + row (which
     // assumes LayoutLeft). stride(1) is the non-deprecated spelling of
     // stride_1() in the installed Kokkos version.
-    return VectorReference(&view(row, 0), view.stride(1));
+    return {&view(row, 0), view.stride(1)};
   }
   Utils::Vector3d column_value(Column const &column, int const row) const {
     assert(row >= 0 and static_cast<std::size_t>(row) < number_of_particles());
@@ -796,7 +790,7 @@ private:
     // Const-ref binding: see column_reference for the view_host() by-value vs
     // by-reference compatibility rationale and the shallow-const write-through.
     auto const &view = column.view_host();
-    return IntegerVectorReference(&view(row, 0), view.stride(1));
+    return {&view(row, 0), view.stride(1)};
   }
   Utils::Vector3i integer_column_value(IntegerColumn const &column,
                                        int const row) const {
@@ -810,7 +804,7 @@ private:
     // Const-ref binding: see column_reference for the view_host() by-value vs
     // by-reference compatibility rationale and the shallow-const write-through.
     auto const &view = column.view_host();
-    return QuaternionReference(&view(row, 0), view.stride(1));
+    return {&view(row, 0), view.stride(1)};
   }
   Utils::Quaternion<double>
   quaternion_column_value(QuaternionColumn const &column, int const row) const {

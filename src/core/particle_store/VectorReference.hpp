@@ -67,7 +67,13 @@ public:
 
   // Copy-assignment writes VALUES through (like std::vector<bool>::reference),
   // not the pointer/stride. The copy CONSTRUCTOR remains implicit and rebinds.
+  // Self-assignment is benign for a write-through proxy (elements are copied
+  // onto themselves); the guard makes that explicit (clang-tidy
+  // bugprone-unhandled-self-assignment).
   BasicVectorReference &operator=(BasicVectorReference const &other) {
+    if (this == &other) {
+      return *this;
+    }
     return *this = Utils::Vector<T, 3>(other);
   }
 
@@ -155,7 +161,11 @@ public:
 
   // Copy-assignment writes VALUES through (like std::vector<bool>::reference),
   // not the pointer/stride. The copy CONSTRUCTOR remains implicit and rebinds.
+  // Self-assignment guard: see BasicVectorReference::operator=.
   QuaternionReference &operator=(QuaternionReference const &other) {
+    if (this == &other) {
+      return *this;
+    }
     return *this = Utils::Quaternion<double>(other);
   }
 

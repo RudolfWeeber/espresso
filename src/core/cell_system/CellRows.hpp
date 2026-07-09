@@ -111,12 +111,8 @@ public:
   /** @brief Raw committed row count (removal-agnostic). */
   std::size_t count() const { return m_count; }
 
-  const_iterator begin() const {
-    return const_iterator(skip_removed(m_offset), this);
-  }
-  const_iterator end() const {
-    return const_iterator(m_offset + m_count, this);
-  }
+  const_iterator begin() const { return {skip_removed(m_offset), this}; }
+  const_iterator end() const { return {m_offset + m_count, this}; }
 
   /** @brief Number of LIVE rows (raw count minus pending-removed). */
   std::size_t size() const {
