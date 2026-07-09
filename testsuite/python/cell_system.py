@@ -97,15 +97,12 @@ class CellSystem(ut.TestCase):
     @utx.skipIfMissingFeatures(["LENNARD_JONES"])
     def test_force_survives_migration(self):
         """
-        Phase 7b flip regression: a particle that MIGRATES during a global
-        resort must carry its force through the per-field migration pack (the
-        FORCE leg). We compute a non-trivial pair force, move a particle far
-        enough to leave its cell (and, on a multi-rank run, its subdomain --
-        a true inter-rank migration), then trigger a global resort WITHOUT
-        recomputing forces (cell_system.resort()). The migrated particle's force
-        must be exactly the pre-migration value -- which holds only if the pack
-        ferried the FORCE leg across the resort. Exercised for all three
-        decompositions.
+        Regression test: a particle that moves to a new cell (or subdomain on
+        a multi-rank run) during a global resort must carry its force with it.
+        We compute a non-trivial pair force, move a particle far enough to
+        leave its cell, then trigger a global resort WITHOUT recomputing forces
+        (cell_system.resort()). The particle's force must be exactly the
+        pre-resort value. Exercised for all three decompositions.
         """
         system = self.system
         system.part.clear()
@@ -138,14 +135,12 @@ class CellSystem(ut.TestCase):
                 self.assertGreater(np.linalg.norm(f0_before), 1e-6)
 
                 # Move p1 far across the box (and thus across any subdomain
-                # boundary on a multi-rank run) so a global resort MIGRATES it.
+                # boundary on a multi-rank run) so a global resort moves it.
                 p1.pos = np.array([0.5 * box_l + 1.1, 0.5 * box_l,
                                    0.5 * box_l]) + np.array([0., 0., box_l / 2.])
-                # Global resort MIGRATES the particle through the per-field pack
-                # but does NOT recompute forces. The force each particle carries
-                # must therefore be exactly its pre-migration value -- only true
-                # if the pack ferried the FORCE leg (and the local wrong-cell
-                # path preserved it too).
+                # Global resort moves the particle but does NOT recompute
+                # forces. The force each particle carries must therefore be
+                # exactly its pre-resort value.
                 system.cell_system.resort()
                 np.testing.assert_allclose(np.copy(p0.f), f0_before, atol=1e-12,
                                            err_msg=f"{name}: p0 force lost")

@@ -144,7 +144,7 @@ template <typename T, class F>
 T ParticleHandle::get_particle_property(F const &fun) const {
   auto &cell_structure = get_cell_structure()->get_cell_structure();
   auto const &comm = context()->get_comm();
-  // Phase 7e: get_real_particle returns a by-value optional view.
+  // get_real_particle returns a by-value optional view.
   auto const ptr = get_real_particle(comm, m_pid, cell_structure);
   std::optional<T> ret;
   if (not ptr) {
@@ -166,7 +166,7 @@ template <class F>
 void ParticleHandle::set_particle_property(F const &fun) const {
   auto &cell_structure = get_cell_structure()->get_cell_structure();
   auto const &comm = context()->get_comm();
-  // Phase 7e: mutable optional view -- fun() writes through it.
+  // mutable optional view -- fun() writes through it.
   auto ptr = get_real_particle(comm, m_pid, cell_structure);
   if (ptr) {
     fun(*ptr);
@@ -295,7 +295,7 @@ ParticleHandle::ParticleHandle() {
        [this](Variant const &value) {
          set_particle_property([&value](Particle &p) {
            auto const dip = get_value<Utils::Vector3d>(value);
-           // quat() is a write-through proxy returned by value (phase 3); it
+           // quat() is a write-through proxy returned by value; it
            // cannot be an std::tie target. Assign through it explicitly.
            auto const [quat, dipm] = convert_dip_to_quat(dip);
            p.quat() = quat;

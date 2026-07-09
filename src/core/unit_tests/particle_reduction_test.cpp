@@ -45,8 +45,8 @@ struct GlobalConfig : public EspressoCoreGlobalConfig {
     ::make_new_particle(0, Utils::Vector3d{0., 0., 0.});
     // make_new_particle ends with on_particle_change() (marks the store dirty /
     // schedules a resort), so the store must be re-synchronized before the
-    // id->row resolution reads a valid store row (phase 7e: get_local_particle
-    // returns a view over a store row rather than a stable pool pointer).
+    // id->row resolution reads a valid store row (get_local_particle returns
+    // a view over a store row).
     system->cell_structure->ensure_particle_store_synchronized();
     auto p = system->cell_structure->get_local_particle(0);
     assert(p);

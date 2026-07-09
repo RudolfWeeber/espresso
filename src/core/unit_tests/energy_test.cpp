@@ -31,8 +31,8 @@
 BOOST_AUTO_TEST_CASE(translational_kinetic_energy_) {
   // real particle
   {
-    // phase 7b: kinematic fields live in the ParticleStore; attach the
-    // hand-made particle to a standalone store before setting/reading them.
+    // Kinematic fields live in the ParticleStore; attach the hand-made
+    // particle to a standalone store before setting/reading them.
     ParticleStoreTestFixture fx;
     auto p = fx.make();
 #ifdef ESPRESSO_MASS

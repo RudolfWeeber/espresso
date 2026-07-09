@@ -49,8 +49,8 @@ BOOST_AUTO_TEST_CASE(test_shear_direction) {
 BOOST_AUTO_TEST_CASE(test_update_offset) {
   auto const prefactor = 2.5;
   auto const old_offset = 1.5;
-  // phase 3: position/image/Lees-Edwards state live in the ParticleStore
-  // columns; attach the hand-made particle to a standalone store.
+  // position/image/Lees-Edwards state live in the ParticleStore columns;
+  // attach the hand-made particle to a standalone store.
   ParticleStoreTestFixture fixture{};
   Particle p;
   fixture.attach(p);

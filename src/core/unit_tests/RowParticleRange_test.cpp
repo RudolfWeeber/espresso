@@ -17,7 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// Phase-7c tests for the range-collapsed cell iteration surface: a Cell holds a
+// Tests for the range-collapsed cell iteration surface: a Cell holds a
 // contiguous (offset, count) store-row range (CellRowSpan), and
 // RowParticleRange yields Particle views over it -- skipping rows marked
 // pending-removed on the store. All are standalone (no MPI, no decomposition):
@@ -51,9 +51,9 @@ struct GlobalConfig {
 BOOST_TEST_GLOBAL_CONFIGURATION(GlobalConfig);
 
 namespace {
-// Build a store with `n` rows and set row r's id to `first_id + r`. Returns the
-// detached seed particles kept alive so their carriers back the columns; the
-// caller only needs the store afterwards.
+// Build a store with `n` rows and set row r's id to `first_id + r`. The seed
+// particles must be kept alive by the caller (they back the store columns);
+// the caller only needs the store afterwards.
 void build_store(ParticleStore &store, std::vector<Particle> &seeds,
                  std::size_t n_local, std::size_t n_ghost, int first_id) {
   auto const n = n_local + n_ghost;
@@ -73,7 +73,7 @@ void build_store(ParticleStore &store, std::vector<Particle> &seeds,
 
 // Wire a cell to the store and give it the contiguous store-row range
 // [offset, offset+count), the way ensure_particle_store_synchronized's
-// (offset, count) write-back does (phase 7c).
+// (offset, count) write-back does.
 void fill_cell(Cell &cell, ParticleStore &store, std::size_t offset,
                std::size_t count) {
   cell.set_store(store);
@@ -175,10 +175,10 @@ BOOST_AUTO_TEST_CASE(row_range_empty) {
   BOOST_CHECK_EQUAL(count, 0u);
 }
 
-// PENDING-REMOVAL visibility semantics (phase 7c): a row marked pending-removed
-// is invisible to iteration and to the live size, BEFORE any rebuild resolves
-// it. Marking the middle / first / last row each drops exactly that particle
-// from the range while the range keeps its store-row order for the survivors.
+// PENDING-REMOVAL visibility semantics: a row marked pending-removed is
+// invisible to iteration and to the live size, BEFORE any rebuild resolves it.
+// Marking the middle / first / last row each drops exactly that particle from
+// the range while the range keeps its store-row order for the survivors.
 BOOST_AUTO_TEST_CASE(row_range_skips_pending_removed) {
   ParticleStore store{};
   std::vector<Particle> seeds;

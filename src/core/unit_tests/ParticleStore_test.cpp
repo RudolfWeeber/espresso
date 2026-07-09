@@ -109,12 +109,10 @@ BOOST_AUTO_TEST_CASE(ghost_rows_follow_locals) {
   BOOST_CHECK_EQUAL(store.number_of_ghost_particles(), 1ul);
 }
 
-// Regression guard (phase-2 hybrid/n_square 4-rank force bug): force/torque
-// live only in the store columns. A particle that migrates to another rank must
-// carry its force across. Phase 7b (Task 4): the migration envelope is dead;
-// the cross-rank transfer is now a row-to-row ParticleStore::copy_row from the
-// sending rank's (staging) store into a fresh row on the receiving rank's
-// store. This models that copy and asserts the force (and torque) survive it.
+// Force/torque live in the store columns. A particle that migrates to another
+// rank carries its force across via a row-to-row ParticleStore::copy_row from
+// the sending rank's store into a fresh row on the receiving rank's store.
+// This models that copy and asserts the force (and torque) survive it.
 BOOST_AUTO_TEST_CASE(rebuild_seeds_migrated_particle_force_from_carrier) {
   // 1) A row in a source store with a known force (models the sending rank
   //    right before a global resort).
@@ -146,10 +144,10 @@ BOOST_AUTO_TEST_CASE(rebuild_seeds_migrated_particle_force_from_carrier) {
 #endif
 }
 
-// Phase-3 state columns: a rank-local rebuild that shuffles the row order must
+// State columns: a rank-local rebuild that shuffles the row order must
 // preserve each particle's state (position, image box, quaternion, and the
 // Lees-Edwards offset) by old row, exactly as the force column does.
-// Phase-4 velocity columns are verified alongside.
+// Velocity columns are verified alongside.
 BOOST_AUTO_TEST_CASE(rebuild_preserves_state_columns_by_old_row) {
   ParticleStore store{};
   Particle p0{}, p1{};
@@ -209,7 +207,7 @@ BOOST_AUTO_TEST_CASE(rebuild_preserves_state_columns_by_old_row) {
                     static_cast<short>(-4));
   BOOST_CHECK_EQUAL(store.lees_edwards_flag(p0.store_row()),
                     static_cast<short>(3));
-  // Phase-4: velocity preserved by old row; new row zeroed.
+  // Velocity preserved by old row; new row zeroed.
   Utils::Vector3d const vel_p1 = store.velocity_value(p1.store_row());
   Utils::Vector3d const vel_p0 = store.velocity_value(p0.store_row());
   Utils::Vector3d const vel_p2 = store.velocity_value(p2.store_row());
@@ -223,7 +221,7 @@ BOOST_AUTO_TEST_CASE(rebuild_preserves_state_columns_by_old_row) {
       store.quaternion_value(p0.store_row());
   BOOST_CHECK_EQUAL(quat_p1[1], 1.);
   BOOST_CHECK_EQUAL(quat_p0[3], 0.5);
-  // Phase-4: angular velocity preserved by old row; new row zeroed.
+  // Angular velocity preserved by old row; new row zeroed.
   Utils::Vector3d const av_p1 = store.angular_velocity_value(p1.store_row());
   Utils::Vector3d const av_p0 = store.angular_velocity_value(p0.store_row());
   Utils::Vector3d const av_p2 = store.angular_velocity_value(p2.store_row());
@@ -237,7 +235,7 @@ BOOST_AUTO_TEST_CASE(rebuild_preserves_state_columns_by_old_row) {
 // the column) must default to sensible values that match Particle's member
 // defaults. The quaternion in particular must be the IDENTITY (1,0,0,0), NOT
 // the Kokkos zero-init (0,0,0,0) which is an invalid quaternion.
-// Phase-4: velocity and angular velocity must default to zero.
+// Velocity and angular velocity must default to zero.
 BOOST_AUTO_TEST_CASE(new_row_state_defaults) {
   ParticleStore store{};
   Particle p{};
@@ -254,8 +252,7 @@ BOOST_AUTO_TEST_CASE(new_row_state_defaults) {
   BOOST_CHECK_EQUAL(store.lees_edwards_offset(p.store_row()), 0.);
   BOOST_CHECK_EQUAL(store.lees_edwards_flag(p.store_row()),
                     static_cast<short>(0));
-  // Phase-4: velocity defaults to zero (from migration carrier default
-  // {0,0,0}).
+  // Velocity defaults to zero.
   Utils::Vector3d const vel = store.velocity_value(p.store_row());
   BOOST_CHECK_EQUAL(vel.norm2(), 0.);
 #ifdef ESPRESSO_ROTATION
@@ -264,16 +261,16 @@ BOOST_AUTO_TEST_CASE(new_row_state_defaults) {
   BOOST_CHECK_EQUAL(quat[1], 0.);
   BOOST_CHECK_EQUAL(quat[2], 0.);
   BOOST_CHECK_EQUAL(quat[3], 0.);
-  // Phase-4: angular velocity defaults to zero.
+  // Angular velocity defaults to zero.
   Utils::Vector3d const av = store.angular_velocity_value(p.store_row());
   BOOST_CHECK_EQUAL(av.norm2(), 0.);
 #endif
 }
 
-// Phase 7b (Task 4): a genuinely-new row's velocity column is seeded to the
-// default (zero) by assign_row's not-preserve branch (via seed_default_row).
-// This guards that assign_row seeds the velocity column (not skip it) and that
-// the default is exactly zero (not garbage from WithoutInitializing).
+// A genuinely-new row's velocity column is seeded to the default (zero) by
+// assign_row's not-preserve branch (via seed_default_row). This guards that
+// assign_row seeds the velocity column (not skip it) and that the default is
+// exactly zero (not garbage from WithoutInitializing).
 BOOST_AUTO_TEST_CASE(rebuild_seeds_velocity_from_carrier) {
   // Fresh (detached) particle -> assign_row seeds the defaults.
   Particle p{};
@@ -297,10 +294,10 @@ BOOST_AUTO_TEST_CASE(rebuild_seeds_velocity_from_carrier) {
 }
 
 // A row that migrates in from another rank must have all its state columns
-// carried across. Phase 7b (Task 4): the cross-rank transfer is a row-to-row
-// ParticleStore::copy_row from the sending rank's (staging) store into a fresh
-// row on the receiving rank's store. Set known state on a source row, copy it
-// into a target store row, and confirm every state field survives the copy.
+// carried across via a row-to-row ParticleStore::copy_row from the sending
+// rank's store into a fresh row on the receiving rank's store. Set known state
+// on a source row, copy it into a target store row, and confirm every state
+// field survives the copy.
 BOOST_AUTO_TEST_CASE(rebuild_seeds_migrated_particle_state_from_carrier) {
   ParticleStore source{};
   source.begin_rebuild(1u, 0u);
@@ -351,12 +348,11 @@ BOOST_AUTO_TEST_CASE(rebuild_seeds_migrated_particle_state_from_carrier) {
 
 // Head-node fetch-cache SNAPSHOT-STORE pattern: a batch of rows fetched from a
 // worker rank is materialized into a FIXED-capacity store built once per
-// invalidation epoch, with rows handed out monotonically. Phase 7b (Task 4):
-// the transfer is a row-to-row ParticleStore::copy_row, not a detached-particle
-// attach. Build a source store holding a batch of known rows, copy each into a
-// consecutive target-store row, and check each keeps its own data (never
-// another row's). The head-node cache itself is exercised end-to-end by the
-// multi-rank python gates.
+// invalidation epoch, with rows handed out monotonically via row-to-row
+// ParticleStore::copy_row. Build a source store holding a batch of known rows,
+// copy each into a consecutive target-store row, and check each keeps its own
+// data (never another row's). The head-node cache itself is exercised
+// end-to-end by the multi-rank python gates.
 BOOST_AUTO_TEST_CASE(snapshot_store_attaches_batch_of_detached_particles) {
   constexpr std::size_t capacity = 4u;
 
@@ -399,10 +395,10 @@ BOOST_AUTO_TEST_CASE(snapshot_store_attaches_batch_of_detached_particles) {
   }
 }
 
-// Phase-5 PARAMETER columns/sidecars: a rank-local rebuild that shuffles the
-// row order must preserve each particle's parameters (representative subset:
-// id, type, mass, gamma, ext_force, dip_fld) by old row, and seed a genuinely
-// new row from the migration carrier defaults, exactly as the state columns do.
+// Parameter columns/sidecars: a rank-local rebuild that shuffles the row order
+// must preserve each particle's parameters (representative subset: id, type,
+// mass, gamma, ext_force, dip_fld) by old row, and seed a genuinely new row
+// to the ParticleProperties defaults, exactly as the state columns do.
 BOOST_AUTO_TEST_CASE(rebuild_preserves_parameter_columns_by_old_row) {
   ParticleStore store{};
   Particle p0{}, p1{};
@@ -490,9 +486,9 @@ BOOST_AUTO_TEST_CASE(rebuild_preserves_parameter_columns_by_old_row) {
 #endif
 }
 
-// Phase-5 uint8 column (rotation / ext_flag): exercises the NEW element type.
-// Bitfield values must round-trip through the DualView<uint8_t*> column, write
-// through the element reference, and preserve by old row across a rebuild.
+// uint8 column (rotation / ext_flag): bitfield values must round-trip through
+// the DualView<uint8_t*> column, write through the element reference, and
+// preserve by old row across a rebuild.
 #if defined(ESPRESSO_ROTATION) || defined(ESPRESSO_EXTERNAL_FORCES)
 BOOST_AUTO_TEST_CASE(uint8_parameter_column_write_through_and_preserve) {
   ParticleStore store{};
@@ -544,9 +540,9 @@ BOOST_AUTO_TEST_CASE(uint8_parameter_column_write_through_and_preserve) {
 }
 #endif
 
-// Phase-5 host sidecar (POD std::vector): exercises the NEW sidecar machinery.
-// A POD written into a sidecar row must preserve by old row across a rebuild
-// and a genuinely-new row must default to a value-constructed POD.
+// Host sidecar (POD std::vector): a POD written into a sidecar row must
+// preserve by old row across a rebuild and a genuinely-new row must default to
+// a value-constructed POD.
 #ifdef ESPRESSO_ENGINE
 BOOST_AUTO_TEST_CASE(swimming_sidecar_preserve_and_default) {
   ParticleStore store{};
@@ -571,16 +567,16 @@ BOOST_AUTO_TEST_CASE(swimming_sidecar_preserve_and_default) {
   BOOST_CHECK_EQUAL(store.swimming(p1.store_row()).f_swim, -2.5);
   BOOST_CHECK_EQUAL(store.swimming(p0.store_row()).f_swim, 1.5);
   BOOST_CHECK(store.swimming(p0.store_row()).swimming);
-  // genuinely-new row: value-constructed POD default (matches the carrier /
+  // genuinely-new row: value-constructed POD default (matches the
   // ParticleParametersSwimming member defaults)
   BOOST_CHECK_EQUAL(store.swimming(p2.store_row()).f_swim, 0.);
   BOOST_CHECK(not store.swimming(p2.store_row()).swimming);
 }
 #endif
 
-// Phase-6 RATTLE observable column: a Vector3d written into the column must
-// preserve by old row across a rank-local rebuild that shuffles the order, and
-// a genuinely-new row must default to zero (there is NO migration carrier).
+// RATTLE observable column: a Vector3d written into the column must preserve
+// by old row across a rank-local rebuild that shuffles the order, and a
+// genuinely-new row must default to zero.
 #ifdef ESPRESSO_BOND_CONSTRAINT
 BOOST_AUTO_TEST_CASE(rattle_correction_column_preserve_and_default) {
   ParticleStore store{};
@@ -607,17 +603,17 @@ BOOST_AUTO_TEST_CASE(rattle_correction_column_preserve_and_default) {
               (Utils::Vector3d{-4.0, -5.0, -6.0}));
   BOOST_CHECK(store.rattle_correction_value(p0.store_row()) ==
               (Utils::Vector3d{1.0, 2.0, 3.0}));
-  // genuinely-new row: preserve-or-default seeds a zero vector (no carrier).
+  // genuinely-new row: preserve-or-default seeds a zero vector.
   BOOST_CHECK_EQUAL(store.rattle_correction_value(p2.store_row()).norm2(), 0.);
 }
 #endif
 
-// Phase-6 ragged bond sidecar: a non-empty BondList written into a sidecar row
-// must survive a rank-local rebuild that shuffles the row order, with its
-// contents intact. The preserve path MOVES the element out of the old vector
-// (the BondList owns heap storage), so this also exercises the move path
-// explicitly: the moved element's logical value (bonds + partner ids) is
-// unchanged in the new generation. A genuinely-new row defaults to empty.
+// Ragged bond sidecar: a non-empty BondList written into a sidecar row must
+// survive a rank-local rebuild that shuffles the row order, with its contents
+// intact. The preserve path MOVES the element out of the old vector (the
+// BondList owns heap storage), so this also exercises the move path explicitly:
+// the moved element's logical value (bonds + partner ids) is unchanged in the
+// new generation. A genuinely-new row defaults to empty.
 BOOST_AUTO_TEST_CASE(bonds_sidecar_preserve_moves_intact_and_default) {
   ParticleStore store{};
   Particle p0{}, p1{};
@@ -682,10 +678,9 @@ BOOST_AUTO_TEST_CASE(bonds_sidecar_preserve_moves_intact_and_default) {
 }
 
 #ifdef ESPRESSO_EXCLUSIONS
-// Phase-6 ragged exclusion sidecar: an exclusion id list written into a sidecar
-// row must preserve (move) by old row across a shuffling rebuild; a
-// genuinely-new / ghost row defaults to empty (exclusions are never
-// ghost-transferred).
+// Ragged exclusion sidecar: an exclusion id list written into a sidecar row
+// must preserve (move) by old row across a shuffling rebuild; a genuinely-new
+// / ghost row defaults to empty (exclusions are never ghost-transferred).
 BOOST_AUTO_TEST_CASE(exclusions_sidecar_preserve_moves_intact_and_default) {
   ParticleStore store{};
   Particle p0{}, p1{};
@@ -724,10 +719,10 @@ BOOST_AUTO_TEST_CASE(exclusions_sidecar_preserve_moves_intact_and_default) {
 }
 #endif // ESPRESSO_EXCLUSIONS
 
-// Phase 7b (Task 4): a row that migrates in carries its ragged sidecars (bond
-// list, exclusion list) via the row-to-row ParticleStore::copy_row transfer.
-// Set non-empty sidecars on a source row, copy it into a target store row, and
-// verify the sidecar contents survive.
+// A row that migrates in carries its ragged sidecars (bond list, exclusion
+// list) via the row-to-row ParticleStore::copy_row transfer. Set non-empty
+// sidecars on a source row, copy it into a target store row, and verify the
+// sidecar contents survive.
 BOOST_AUTO_TEST_CASE(rebuild_seeds_ragged_sidecars_from_carrier) {
   ParticleStore source{};
   source.begin_rebuild(1u, 0u);
@@ -759,9 +754,9 @@ BOOST_AUTO_TEST_CASE(rebuild_seeds_ragged_sidecars_from_carrier) {
 #endif
 }
 
-// Phase-5: a genuinely new row's parameter columns/sidecars must default to
-// ParticleProperties' member defaults, seeded from the migration carriers of a
-// freshly-constructed (detached) particle.
+// A genuinely new row's parameter columns/sidecars must default to
+// ParticleProperties' member defaults, seeded from a freshly-constructed
+// (detached) particle.
 BOOST_AUTO_TEST_CASE(new_row_parameter_defaults) {
   ParticleStore store{};
   Particle p{};
@@ -807,10 +802,9 @@ BOOST_AUTO_TEST_CASE(new_row_parameter_defaults) {
 #endif
 }
 
-// Phase 7b (Task 4): a row that migrates in carries its parameter columns and
-// POD sidecars via the row-to-row ParticleStore::copy_row transfer. Set known
-// parameters on a source row, copy it into a target store row, and verify they
-// survive.
+// A row that migrates in carries its parameter columns and POD sidecars via
+// the row-to-row ParticleStore::copy_row transfer. Set known parameters on a
+// source row, copy it into a target store row, and verify they survive.
 BOOST_AUTO_TEST_CASE(rebuild_seeds_parameters_from_carrier) {
   ParticleStore source{};
   source.begin_rebuild(1u, 0u);
@@ -840,9 +834,9 @@ BOOST_AUTO_TEST_CASE(rebuild_seeds_parameters_from_carrier) {
 #endif
 }
 
-// Phase-7a make_view factory: a view built for a row reads that row's columns
-// (identity: store.make_view(r).id() == store.id(r)) and writes through it (a
-// write via the view lands in the column, readable via the store by row).
+// make_view factory: a view built for a row reads that row's columns (identity:
+// store.make_view(r).id() == store.id(r)) and writes through it (a write via
+// the view lands in the column, readable via the store by row).
 BOOST_AUTO_TEST_CASE(make_view_identity_and_write_through) {
   ParticleStore store{};
   Particle p0{}, p1{};
@@ -902,7 +896,7 @@ BOOST_AUTO_TEST_CASE(scalar_column_references_write_through) {
                     static_cast<short>(-7));
 }
 
-// -- permute_rebuild (phase 7c) -------------------------------------------
+// -- permute_rebuild ----------------------------------------------------------
 // The permutation rebuild is the resort-as-permutation kernel: new-row data is
 // moved from old_row = permutation[new_row] (a survivor) or seeded to defaults
 // (a negative entry: staged / fresh ghost). These tests use the maximal-
@@ -1041,9 +1035,8 @@ BOOST_AUTO_TEST_CASE(permute_rebuild_ghost_tail_seeded) {
 }
 
 // A staged local (negative entry in the LOCAL range) is seeded to defaults by
-// permute_rebuild; the caller overwrites it via copy_row afterwards. Verify the
-// seed-then-copy composition reproduces the source row (the Task-3 flip's
-// staged-local commit path).
+// permute_rebuild; the caller overwrites it via copy_row afterwards. Verify
+// the seed-then-copy composition reproduces the source row.
 BOOST_AUTO_TEST_CASE(permute_rebuild_staged_local_seed_then_copy) {
   constexpr std::size_t n = 4u;
   auto const reference = make_maximal_store(n);

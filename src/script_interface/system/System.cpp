@@ -389,7 +389,7 @@ void System::do_construct(VariantMap const &params) {
 
 static void rotate_system(CellStructure &cell_structure, double phi,
                           double theta, double alpha) {
-  // phase 3: reading/writing p.pos() requires a valid ParticleStore row; this
+  // reading/writing p.pos() requires a valid ParticleStore row; this
   // script-facing call may follow a topology change. O(1) when clean.
   cell_structure.ensure_particle_store_synchronized();
   auto const particles = cell_structure.local_particles();

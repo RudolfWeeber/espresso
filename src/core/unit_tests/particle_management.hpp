@@ -37,10 +37,8 @@
  * @brief A particle VIEW that owns the standalone ParticleStore backing its
  * single row.
  *
- * Phase 7b (Task 4): the migration envelope died -- a @ref Particle is a
- * two-word non-owning view and can no longer be boost-serialized. A particle
- * copied to the head node therefore lands in a single-row standalone store
- * (populated via @ref MigrationPack::unpack_rows, the same per-field wire the
+ * A particle copied to the head node lands in a single-row standalone store
+ * (populated via @ref MigrationPack::unpack_rows, the per-field wire the
  * production head-node fetch uses); this class bundles that store so its
  * lifetime is tied to the copy, which matters because the store holds Kokkos
  * Views that must be destroyed before Kokkos::finalize(). Mimics the subset of
@@ -76,9 +74,8 @@ public:
   ParticleWithStore(ParticleWithStore const &) = delete;
   ParticleWithStore &operator=(ParticleWithStore const &) = delete;
 
-  /** Populate the single-row store from a per-field migration buffer produced
-   *  by @ref MigrationPack::pack_rows for a single row, and bind a view to it.
-   */
+  /** Populate the single-row store from a per-field wire buffer produced by
+   *  @ref MigrationPack::pack_rows for a single row, and bind a view to it. */
   void unpack_from(std::vector<char> const &buffer) {
     m_store.begin_rebuild(1u, 0u);
     m_store.finish_rebuild();
@@ -106,11 +103,10 @@ public:
 /**
  * @brief Copy a particle (with every per-particle field) to the head node.
  *
- * Phase 7b (Task 4): force/torque and all other fields live in the
- * @ref ParticleStore columns and are transmitted via the per-field
- * @ref MigrationPack wire (the same replacement wire the production head-node
- * fetch cache uses), NOT via a boost-serialized @ref Particle. The returned
- * copy owns a standalone single-row store so its accessors work.
+ * All fields live in the @ref ParticleStore columns and are transmitted via
+ * the per-field @ref MigrationPack wire (the same wire the production
+ * head-node fetch cache uses). The returned copy owns a standalone single-row
+ * store so its accessors work.
  */
 inline ParticleWithStore
 copy_particle_to_head_node(boost::mpi::communicator const &comm,

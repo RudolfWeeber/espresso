@@ -28,7 +28,7 @@
 #include <cstdlib>
 
 /** Attach hand-made particles to a standalone store so force/torque
- *  accessors work in unit tests (migration phase 2+).
+ *  accessors work in unit tests.
  *
  *  The ParticleStore allocates Kokkos Views, which require an initialized
  *  runtime. Tests that use this fixture but do not otherwise bring up a full
@@ -44,13 +44,12 @@ struct ParticleStoreTestFixture {
     store.finish_rebuild();
   }
   /** Attach an existing (freshly default-constructed) view to the next store
-   *  row. Phase 7b: a Particle carries no data, so this seeds the row to the
-   *  new-particle defaults and binds @p p to it (assign_row's not-preserve
-   *  branch). Any field the caller wants must be set AFTER this call, through
-   *  the now-attached view. */
+   *  row: seeds the row to the new-particle defaults and binds @p p to it
+   *  (assign_row's not-preserve branch). Any field the caller wants must be
+   *  set AFTER this call, through the now-attached view. */
   void attach(Particle &p) { store.assign_row(p, next_row++); }
   /** Reserve and default-seed the next store row and return a view bound to it
-   *  (phase 7b: the store owns the data; the returned view reads/writes it). */
+   *  (the store owns the data; the returned view reads/writes it). */
   Particle make() {
     auto const row = next_row++;
     store.seed_default_row(row);

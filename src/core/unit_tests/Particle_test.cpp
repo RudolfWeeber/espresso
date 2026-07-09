@@ -65,12 +65,10 @@ BOOST_AUTO_TEST_CASE(comparison) {
   }
 }
 
-// Phase 7b (Task 4): the migration envelope died -- a Particle is a two-word
-// non-owning view and can no longer be boost-serialized. The former whole-
-// Particle boost round-trip tests (id/state/momentum carrier round-trips) are
-// retired: the per-field cross-rank wire is now covered by
-// MigrationPack_test.cpp and the row-to-row migration copy by
-// ParticleStore::copy_row (exercised there and in ParticleStore_test.cpp).
+// A Particle is a two-word non-owning view and cannot be boost-serialized.
+// Per-field cross-rank transfer is covered by MigrationPack_test.cpp; the
+// row-to-row copy is exercised by ParticleStore::copy_row in
+// ParticleStore_test.cpp.
 
 namespace Utils {
 template <>
@@ -164,11 +162,9 @@ BOOST_AUTO_TEST_CASE(force_constructors) {
   }
 }
 
-// Migration phase 6: ParticleRattle no longer carries the correction Vector3d
-// (evicted to a ParticleStore observable column); the struct is now an empty
-// type anchor. Its standalone serialization/constructor unit tests are removed
-// -- the correction round-trip is exercised by the store column tests
-// (ParticleStore_test.cpp) and the RATTLE ghost path.
+// ParticleRattle is an empty type anchor; the correction Vector3d lives in a
+// ParticleStore observable column. The correction round-trip is exercised by
+// the store column tests (ParticleStore_test.cpp) and the RATTLE ghost path.
 
 #ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
 

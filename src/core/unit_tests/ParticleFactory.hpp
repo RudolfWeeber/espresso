@@ -55,7 +55,7 @@ struct ParticleFactory {
   void insert_particle_bond(int p_id, int bond_id,
                             std::vector<int> const &partner_ids) const {
     auto &system = System::get_system();
-    // Phase 7e: get_local_particle resolves an id to a store row and needs a
+    // get_local_particle resolves an id to a store row and needs a
     // synchronized store; a preceding create/move left the store dirty.
     system.cell_structure->ensure_particle_store_synchronized();
     auto p = system.cell_structure->get_local_particle(p_id);
@@ -69,7 +69,7 @@ struct ParticleFactory {
   void set_particle_property(int p_id, T &(Particle::*getter)(),
                              T const &value) const {
     auto &system = System::get_system();
-    // Phase 7e: get_local_particle resolves an id to a store row and needs a
+    // get_local_particle resolves an id to a store row and needs a
     // synchronized store; a preceding create/move left the store dirty.
     system.cell_structure->ensure_particle_store_synchronized();
     auto p = system.cell_structure->get_local_particle(p_id);
@@ -79,7 +79,7 @@ struct ParticleFactory {
   }
 
   /** Overload for accessors returning a write-through proxy by value
-   *  (migration phase 2: force/torque live in the ParticleStore columns). */
+   *  (force/torque live in the ParticleStore columns). */
   void set_particle_property(int p_id, VectorReference (Particle::*getter)(),
                              Utils::Vector3d const &value) const {
     auto &system = System::get_system();
@@ -93,7 +93,7 @@ struct ParticleFactory {
   template <typename T>
   auto get_particle_property(int p_id, T &(Particle::*getter)()) const {
     auto &system = System::get_system();
-    // Phase 7e: get_local_particle resolves an id to a store row and needs a
+    // get_local_particle resolves an id to a store row and needs a
     // synchronized store; a preceding create/move left the store dirty.
     system.cell_structure->ensure_particle_store_synchronized();
     auto p = system.cell_structure->get_local_particle(p_id);
@@ -105,9 +105,9 @@ struct ParticleFactory {
   }
 
   /** Overload for accessors returning a write-through proxy by value
-   *  (migration phase 2: force/torque live in the ParticleStore columns).
-   *  Ensures the store is synchronized so the returned proxy references a
-   *  valid row, and converts to a plain @ref Utils::Vector3d. */
+   *  (force/torque live in the ParticleStore columns). Ensures the store is
+   *  synchronized so the returned proxy references a valid row, and converts
+   *  to a plain @ref Utils::Vector3d. */
   auto get_particle_property(int p_id,
                              VectorReference (Particle::*getter)()) const {
     auto &system = System::get_system();

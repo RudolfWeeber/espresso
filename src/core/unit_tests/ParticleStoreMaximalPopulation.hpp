@@ -19,13 +19,12 @@
 
 #pragma once
 
-// Maximal-population store helpers shared by the field-completeness tests
-// (migration phase 7b/7c). fill_maximal() writes EVERY ifdef-guarded store
-// field to a distinct sentinel derived from a seed; check_row_equal() compares
-// two rows field-for-field (incl. ragged contents). A field missed by any
-// row-moving path (MigrationPack pack/unpack, copy_row, permute_rebuild) FAILS
-// a test rather than being silently dropped. Factored out of MigrationPack_test
-// so the permute_rebuild tests (ParticleStore_test) reuse the same enforcement.
+// Maximal-population store helpers shared by the field-completeness tests.
+// fill_maximal() writes EVERY ifdef-guarded store field to a distinct sentinel
+// derived from a seed; check_row_equal() compares two rows field-for-field
+// (incl. ragged contents). A field missed by any row-moving path (MigrationPack
+// pack/unpack, copy_row, permute_rebuild) FAILS a test rather than being
+// silently dropped. Shared between MigrationPack_test and ParticleStore_test.
 
 #include <config/config.hpp>
 
@@ -52,8 +51,7 @@ inline ParticleStore make_store(std::size_t const count) {
   ParticleStore store{};
   store.begin_rebuild(count, 0u);
   // assign_row every row so the columns/sidecars are seeded to their defaults
-  // (WithoutInitializing storage is otherwise garbage). A detached particle's
-  // carriers are the ParticleProperties defaults.
+  // (WithoutInitializing storage is otherwise garbage).
   std::vector<Particle> ps(count);
   for (std::size_t r = 0u; r < count; ++r) {
     store.assign_row(ps[r], static_cast<int>(r));
@@ -74,7 +72,7 @@ inline void fill_maximal(ParticleStore &store, int const row, double const seed,
     return Utils::Vector3d{s + a, s + b, s + c};
   };
 
-  // POSITION leg (incl. the three migration-only fields).
+  // POSITION leg.
   store.position_reference(row) = v(1., 2., 3.);
   store.image_box_reference(row) =
       Utils::Vector3i{static_cast<int>(s) + 1, static_cast<int>(s) - 2,

@@ -47,9 +47,9 @@ BOOST_AUTO_TEST_CASE(link_cell) {
 
   std::vector<Cell> cells(n_cells);
 
-  // Phase 7a store-attach pattern: cells hold store ROW indices and hand out
-  // views. Build a store with n_part local rows (ids 0..n_part-1 in cell-major
-  // order), wire each cell to it, and give each cell its consecutive row block.
+  // Cells hold store ROW indices and hand out views. Build a store with
+  // n_part local rows (ids 0..n_part-1 in cell-major order), wire each cell
+  // to it, and give each cell its consecutive row block.
   ParticleStore store{};
   {
     std::vector<Particle> seeds(n_part);
@@ -77,7 +77,7 @@ BOOST_AUTO_TEST_CASE(link_cell) {
     c.m_neighbors = Neighbors<Cell *>(neighbors, {});
 
     c.set_store(store);
-    // Phase 7c: a cell's committed rows are a contiguous (offset, count) range.
+    // A cell's committed rows are a contiguous (offset, count) range.
     // Each cell owns its consecutive block [row, row + n_part_per_cell).
     c.set_range(static_cast<std::size_t>(row), n_part_per_cell);
     row += static_cast<int>(n_part_per_cell);

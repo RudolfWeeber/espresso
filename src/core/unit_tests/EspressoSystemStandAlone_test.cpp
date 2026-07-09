@@ -172,9 +172,9 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
     auto const pid5 = 10;
     auto const pids = std::vector<int>{pid2, pid3, pid1, pid5};
     Observables::ParticleReferenceRange particle_range{};
-    // Phase 7e: get_local_particle returns by-value views, so the reference
-    // range must point into an owned buffer that outlives it (reserve so it
-    // never reallocates while references are taken).
+    // get_local_particle returns by-value views, so the reference range must
+    // point into an owned buffer that outlives it (reserve so it never
+    // reallocates while references are taken).
     std::vector<Particle> owned_views;
     owned_views.reserve(pids.size());
     for (int pid : pids) {
@@ -183,9 +183,9 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
         particle_range.emplace_back(owned_views.back());
       }
     }
-    // phase 7b: id/position/image live in the ParticleStore; attach this
-    // extra hand-made particle (not part of the cell structure) to a
-    // standalone store. It must outlive the particle_range that references it.
+    // id/position/image live in the ParticleStore; attach this extra
+    // hand-made particle (not part of the cell structure) to a standalone
+    // store. It must outlive the particle_range that references it.
     ParticleStoreTestFixture fx;
     auto p = fx.make();
     p.id() = pid5;
@@ -552,11 +552,9 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
   {
     auto constexpr global_resort = true;
     auto &cs = *system.cell_structure;
-    // Phase 7a: the id->view index is rebuilt wholesale from the ParticleStore
-    // on every store sync (which every topology-changing operation triggers),
-    // so it is CONSISTENT with the cells at all observation points -- unlike
-    // the pre-flip incremental (diff-based) index, which could be transiently
-    // stale between a cross-rank migration and its bookkeeping.
+    // The id->row index is rebuilt from the ParticleStore on every store sync
+    // (which every topology-changing operation triggers), so it is CONSISTENT
+    // with the cells at all observation points.
     // check_particle_index therefore does not throw here (pre-resort) on any
     // rank count.
     auto error_thrown_local = false;
@@ -721,7 +719,7 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
     } else {
       get_particle_node_parallel(12345);
     }
-    // phase 7b: bonded kernels read q/pos/v/image through the ParticleStore;
+    // Bonded kernels read q/pos/v/image through the ParticleStore;
     // attach every hand-made particle to a standalone store.
     ParticleStoreTestFixture fx{8u};
     std::vector<Particle> plist{};
@@ -775,12 +773,12 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
   }
 }
 
-// Phase 7e: id -> store-row resolution. get_local_particle resolves an id via
-// the id->store-row map and returns a by-value view; an absent id yields an
-// empty optional (the pre-7e nullptr equivalent). Exercises present-local,
-// absent, and after add/remove/resort. Under >1 rank it also exercises the
-// present-ghost path (a particle near a domain boundary is imaged as a ghost on
-// the neighbour rank, which must still resolve it by id).
+// id -> store-row resolution. get_local_particle resolves an id via the
+// id->store-row map and returns a by-value view; an absent id yields an empty
+// optional. Exercises present-local, absent, and after add/remove/resort.
+// Under >1 rank it also exercises the present-ghost path (a particle near a
+// domain boundary is imaged as a ghost on the neighbour rank, which must still
+// resolve it by id).
 BOOST_FIXTURE_TEST_CASE(id_to_row_resolution, ParticleFactory) {
   auto const comm = boost::mpi::communicator();
   auto const rank = comm.rank();
@@ -834,8 +832,8 @@ BOOST_FIXTURE_TEST_CASE(id_to_row_resolution, ParticleFactory) {
     }
   }
 
-  // After remove: removing a particle leaves NO readable stale entry (phase 7e
-  // eagerly invalidates the id->store-row entry in remove_particle).
+  // After remove: removing a particle leaves NO readable stale entry
+  // (remove_particle eagerly invalidates the id->store-row entry).
   {
     auto const owns_b_before = cs.get_local_particle(pid_b).has_value() and
                                not cs.get_local_particle(pid_b)->is_ghost();
@@ -867,7 +865,7 @@ BOOST_FIXTURE_TEST_CASE(id_to_row_resolution, ParticleFactory) {
   system.on_particle_change();
 }
 
-// Phase 7e collision re-resolution regression (the BindAtPointOfCollision /
+// Collision handler re-resolution hazard (the BindAtPointOfCollision /
 // GlueToSurface pattern). A collision handler resolves the base particles by
 // id, then calls add_particle (VS creation), whose commit rebuilds the store
 // and RENUMBERS the rows. A by-value view captured BEFORE the add is therefore
@@ -875,9 +873,9 @@ BOOST_FIXTURE_TEST_CASE(id_to_row_resolution, ParticleFactory) {
 // handlers must re-resolve by id after every add_particle (and snapshot any
 // scalar they need across the add, as GlueToSurface's attach_vs_to.id() fix
 // does). This test reproduces the exact hazard at the CellStructure API level:
-// it demonstrates (fail) that the pre-fix pattern (hold a view, read it after a
-// row-shifting add) reads a WRONG id, and (pass) that re-resolving by id after
-// the add is correct.
+// it demonstrates (fail) that the stale-view pattern (hold a view, read it
+// after a row-shifting add) reads a WRONG id, and (pass) that re-resolving by
+// id after the add is correct.
 BOOST_FIXTURE_TEST_CASE(collision_view_reresolution_regression,
                         ParticleFactory) {
   auto const comm = boost::mpi::communicator();
@@ -944,8 +942,8 @@ BOOST_FIXTURE_TEST_CASE(collision_view_reresolution_regression,
   BOOST_CHECK_EQUAL(reresolved->id(), pid_base);
   BOOST_CHECK_EQUAL(snapshot_id, pid_base);
   // The hazard is real iff the stale row now holds a different id; record it so
-  // a regression (rows no longer shifting) is visible rather than silently
-  // making the test vacuous.
+  // a row-no-longer-shifting precondition violation is visible rather than
+  // silently making the test vacuous.
   BOOST_TEST_MESSAGE("collision regression: captured_row="
                      << captured_row << " now holds id=" << stale_id_at_old_row
                      << " (base id=" << pid_base << ")");

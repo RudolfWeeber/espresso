@@ -174,8 +174,7 @@ class InteractionsBondedTest(ut.TestCase):
         The bonded-Coulomb energy/pressure/force kernels must translate the
         pack index to the store row before reading the charge; reading the
         charge by raw pack index yields the wrong store row (and hence the
-        wrong ``q1 * q2`` product) for the ghost partner. See phase-5 review
-        finding C1.
+        wrong ``q1 * q2`` product) for the ghost partner.
         """
         system = self.system
         system.part.clear()

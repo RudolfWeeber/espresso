@@ -62,7 +62,7 @@ BOOST_AUTO_TEST_CASE(convert_vector_space_to_body_test) {
     auto p = Particle();
     fixture.attach(p);
     Utils::Vector3d t_ref;
-    // quat() is a write-through proxy returned by value (phase 3): capture the
+    // quat() is a write-through proxy returned by value: capture the
     // quaternion into a local, then assign it through the proxy.
     auto [quat, t_ref_local] = Testing::setup_trivial_quat(i, t_in);
     p.quat() = quat;

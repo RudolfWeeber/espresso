@@ -46,10 +46,10 @@
 auto constexpr tol = 8. * 100. * std::numeric_limits<double>::epsilon();
 
 Particle particle_factory() {
-  // Migration phase 2: force/torque live in the ParticleStore. Attach every
-  // created particle to its own row of a persistent standalone store (large
-  // enough capacity) so several returned copies can be alive at once without
-  // their rows interfering.
+  // Force/torque live in the ParticleStore. Attach every created particle to
+  // its own row of a persistent standalone store (large enough capacity) so
+  // several returned copies can be alive at once without their rows
+  // interfering.
   static ParticleStoreTestFixture fixture{1024u};
   Particle p{};
   fixture.attach(p);

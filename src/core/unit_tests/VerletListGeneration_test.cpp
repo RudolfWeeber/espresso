@@ -17,17 +17,16 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// Phase-7a REGRESSION TEST for the store-row Verlet list + generation guard
-// (Task 3). The Verlet list now holds pairs of ParticleStore ROW indices held
-// across integration steps (CellStructure::m_verlet_list), stamped with the
-// store generation when the list was built. If the store is REBUILT between the
-// build and a consume (a rebuild renumbers/permutes rows and bumps the
-// generation) WITHOUT invalidating the list (i.e. without a Verlet rebuild),
-// the stored rows are STALE and resolving them aliases the WRONG particle.
+// Test for the store-row Verlet list + generation guard. The Verlet list holds
+// pairs of ParticleStore ROW indices held across integration steps
+// (CellStructure::m_verlet_list), stamped with the store generation when the
+// list was built. If the store is REBUILT between the build and a consume (a
+// rebuild renumbers/permutes rows and bumps the generation) WITHOUT
+// invalidating the list (i.e. without a Verlet rebuild), the stored rows are
+// STALE and resolving them aliases the WRONG particle.
 //
 // This standalone test (no MPI, no decomposition) drives a ParticleStore by
-// hand and reproduces exactly that build/permuting-rebuild/consume sequence at
-// the mechanism level:
+// hand and reproduces exactly that build/permuting-rebuild/consume sequence:
 //   * FAIL branch (guard disabled): resolving the stale rows after a permuting
 //     rebuild reads the wrong particle -- the accumulated pair result diverges
 //     from the correct one. This is the bug the guard exists to catch, shown
@@ -39,8 +38,7 @@
 //     the generation and resolves the correct particles.
 //
 // The identity gate is blind to this class of bug (positions can coincidentally
-// match after a permuting sort), so this targeted test is the real safety net,
-// per the phase-7a plan's Task 3.
+// match after a permuting sort), so this targeted test is the real safety net.
 
 #define BOOST_TEST_MODULE VerletList generation guard test
 #define BOOST_TEST_DYN_LINK
@@ -77,9 +75,8 @@ struct RowVerletList {
 };
 
 // Attach `ids` to `store` at rows [0, ids.size()), permuting: row r gets
-// ids[r]. `seeds` (detached carriers) are kept alive by the caller. This is one
-// store rebuild: it bumps the generation. Returns nothing; the store now maps
-// row r -> ids[r].
+// ids[r]. `seeds` are kept alive by the caller. This is one store rebuild: it
+// bumps the generation. Returns nothing; the store now maps row r -> ids[r].
 void rebuild_store_with_ids(ParticleStore &store, std::vector<Particle> &seeds,
                             std::vector<int> const &ids) {
   auto const n = ids.size();

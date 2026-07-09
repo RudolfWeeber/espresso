@@ -52,9 +52,9 @@ BOOST_AUTO_TEST_CASE(VerletCriterion_test) {
   VerletCriterion<GetZeroCutoff> criterion_long_range(
       system, skin, max_cut, coulomb_cut, dipolar_cut, collision_cut);
 
-  // phase 7b: id/charge/dipole moment live in the ParticleStore; attach both
-  // hand-made particles to a standalone store. The VerletCriterion only reads
-  // these fields by const ref, so a standalone fixture is sufficient.
+  // id/charge/dipole moment live in the ParticleStore; attach both hand-made
+  // particles to a standalone store. The VerletCriterion only reads these
+  // fields by const ref, so a standalone fixture is sufficient.
   ParticleStoreTestFixture fixture{};
   auto p1 = fixture.make();
   auto p2 = fixture.make();

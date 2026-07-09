@@ -17,14 +17,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// Phase 7a/7b: cells hold ParticleStore ROW indices + a staging buffer, not a
-// Bag<Particle>. Phase 7b (Task 4): the migration envelope died, so a cell no
-// longer stages a detached, data-carrying Particle -- it stages a
+// Cells hold ParticleStore ROW indices + a staging buffer. A cell stages a
 // StagedParticle (a reference to a SOURCE-store row, or a fresh-default
 // marker). The CellParticleStorage choke points therefore operate on a Cell
-// (row-ref staging inserts, row drops, clear, ghost resize) rather than on a
-// ParticleList. These tests pin that row/staging behaviour with a hand-built
-// store and cell (no MPI / decomposition).
+// (row-ref staging inserts, row drops, clear, ghost resize). These tests pin
+// that row/staging behaviour with a hand-built store and cell (no MPI /
+// decomposition).
 
 #define BOOST_TEST_MODULE ParticleListOperations test
 #define BOOST_TEST_DYN_LINK
@@ -74,11 +72,11 @@ struct SourceStore {
 
 // Commit a cell's staged rows into store rows, mirroring the staged loop of
 // CellStructure::ensure_particle_store_synchronized for a single-cell system
-// (phase 7c): the surviving committed rows (the live range, skipping any
-// pending-removed) come first, then one committed row per staged entry (copied
-// from its source row via copy_row, or seeded to defaults for a fresh-default
-// ghost). The cell's committed range is written back as (0, count). The rebuild
-// clears the pending-removal mask for the new generation.
+// The surviving committed rows (the live range, skipping any pending-removed)
+// come first, then one committed row per staged entry (copied from its source
+// row via copy_row, or seeded to defaults for a fresh-default ghost). The
+// cell's committed range is written back as (0, count). The rebuild clears
+// the pending-removal mask for the new generation.
 void commit(Cell &cell, ParticleStore &store) {
   // Snapshot the surviving live rows (skips pending-removed) before the swap.
   std::vector<int> survivors;
@@ -126,9 +124,9 @@ BOOST_AUTO_TEST_CASE(insert_staged_row_stages_a_row_reference) {
   BOOST_CHECK_EQUAL(cell.staged()[0].source_row, row);
 }
 
-// Phase 7c: drop_row marks the RAW range position pending-removed (no
-// swap-with-back). The live range keeps its store-row ORDER for the survivors;
-// a dropped row is skipped by iteration immediately.
+// drop_row marks the RAW range position pending-removed (no swap-with-back).
+// The live range keeps its store-row ORDER for the survivors; a dropped row
+// is skipped by iteration immediately.
 BOOST_AUTO_TEST_CASE(drop_row_marks_pending_and_preserves_order) {
   SourceStore src{3u};
   ParticleStore store{};
@@ -146,7 +144,7 @@ BOOST_AUTO_TEST_CASE(drop_row_marks_pending_and_preserves_order) {
   BOOST_REQUIRE_EQUAL(store.id(2), 3);
 
   // Drop the FIRST range position (row 0, id 1): the survivors keep their
-  // store-row order (rows 1, 2 -> ids 2, 3), unlike the pre-7c swap-with-back.
+  // store-row order (rows 1, 2 -> ids 2, 3).
   CellParticleStorage::drop_row(cell, 0u);
   BOOST_CHECK_EQUAL(cell.rows().size(), 2ul);
   BOOST_CHECK(store.is_pending_removal(0));

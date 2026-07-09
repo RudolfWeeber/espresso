@@ -117,15 +117,15 @@ class H5mdTests(ut.TestCase):
     @ut.skipIf(n_nodes > 1, "only runs for 1 MPI rank")
     def test_write_on_dirty_store(self):
         """
-        Regression test (migration phase 2): forces/torques live in the
-        ParticleStore, which is only rebuilt lazily. The H5MD "write" method
-        reads particle forces directly and must synchronize the store first
-        (like every other force-reading script-interface entry point). Writing
-        right after a resort marked the store dirty -- with no intervening
-        integrator step or particle-force read that would resynchronize it --
-        must not crash, and a freshly added particle (no force computed yet)
-        must have an all-zero force in the file. The write must NOT be preceded
-        by any operation that reads a particle force (e.g. ``system.part...f``),
+        Regression test: forces/torques live in the ParticleStore, which is
+        only rebuilt lazily. The H5MD "write" method reads particle forces
+        directly and must synchronize the store first (like every other
+        force-reading script-interface entry point). Writing right after a
+        resort marked the store dirty -- with no intervening integrator step
+        or particle-force read that would resynchronize it -- must not crash,
+        and a freshly added particle (no force computed yet) must have an
+        all-zero force in the file. The write must NOT be preceded by any
+        operation that reads a particle force (e.g. ``system.part...f``),
         which would resynchronize the store on its own.
         """
         new_id = N_PART + 1000

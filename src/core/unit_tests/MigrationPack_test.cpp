@@ -17,13 +17,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// Migration phase 7b: the maximally-populated round-trip in this file is the
-// FIELD-COMPLETENESS ENFORCEMENT for the per-field migration pack and for
+// The maximally-populated round-trip in this file is the FIELD-COMPLETENESS
+// ENFORCEMENT for the per-field migration pack and for
 // ParticleStore::copy_row. Every ifdef-guarded store field is written to a
 // distinct sentinel value in fill_maximal() and compared field-for-field in
 // check_row_equal(); a field missed by pack/unpack or by copy_row FAILS a test
-// rather than being silently dropped. Task 4 retires the boost
-// Particle_serialization tests in favor of these.
+// rather than being silently dropped.
 
 #define BOOST_TEST_MODULE MigrationPack test
 #define BOOST_TEST_DYN_LINK
