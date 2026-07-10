@@ -108,28 +108,15 @@ struct EnergyKernel {
         layout(layout_), aosoa(aosoa_), mol_id_view(std::move(mol_id_view_)),
         system_max_cutoff_sq(system_max_cutoff_ * system_max_cutoff_) {}
 
-  // Entry point for the Cabana neighbor loop and the Lees-Edwards fallback:
-  // compute the minimum-image vector scalar-wise and delegate.
   KOKKOS_INLINE_FUNCTION
   void operator()(std::size_t i, std::size_t j) const {
+    // Translate pack indices to ParticleStore rows once.
     auto const row_i = aosoa.row(i);
     auto const row_j = aosoa.row(j);
     auto const d = box_geo.get_mi_vector(
         aosoa.position(row_i, 0), aosoa.position(row_i, 1),
         aosoa.position(row_i, 2), aosoa.position(row_j, 0),
         aosoa.position(row_j, 1), aosoa.position(row_j, 2));
-    (*this)(i, j, d);
-  }
-
-  // WS1 batched-MI entry point: @p d is precomputed by the vectorized
-  // get_mi_vector_batch (orthorhombic non-Lees-Edwards fast path) and is
-  // bitwise-identical to the scalar get_mi_vector(i, j) above.
-  KOKKOS_INLINE_FUNCTION
-  void operator()(std::size_t i, std::size_t j,
-                  Utils::Vector3d const &d) const {
-    // Translate pack indices to ParticleStore rows once.
-    auto const row_i = aosoa.row(i);
-    auto const row_j = aosoa.row(j);
     auto const dist_sq = d.norm2();
     if (dist_sq > system_max_cutoff_sq)
       return;
