@@ -108,21 +108,37 @@ struct ForcesKernel {
   }
 #endif
 
+  // Entry point for the Cabana neighbor loop and the Lees-Edwards fallback:
+  // compute the minimum-image vector scalar-wise (component-wise, avoids
+  // constructing pos1/pos2 Vector3d on the hot early-exit path) and delegate.
   ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION void
   operator()(std::size_t i, std::size_t j) const {
+    // Translate pack indices to ParticleStore rows once; the position reads
+    // below index the store columns by row.
+    auto const row_i = aosoa.row(i);
+    auto const row_j = aosoa.row(j);
+    auto const d = box_geo.get_mi_vector(
+        aosoa.position(row_i, 0), aosoa.position(row_i, 1),
+        aosoa.position(row_i, 2), aosoa.position(row_j, 0),
+        aosoa.position(row_j, 1), aosoa.position(row_j, 2));
+    (*this)(i, j, d);
+  }
+
+  // WS1 batched-MI entry point: the caller precomputes the minimum-image
+  // vector @p d for this pair via the vectorized get_mi_vector_batch (the
+  // orthorhombic non-Lees-Edwards fast path). @p d is BITWISE-identical to the
+  // scalar box_geo.get_mi_vector(i, j) above, and the force accumulation order
+  // is unchanged (the caller preserves the neighbor order), so forces are
+  // bitwise-identical. All reads below still index the store columns by the
+  // pack->row translation.
+  ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION void
+  operator()(std::size_t i, std::size_t j, Utils::Vector3d const &d) const {
 
     // Translate pack indices to ParticleStore rows once; every
     // position/image/director read below indexes the store columns by row.
     auto const row_i = aosoa.row(i);
     auto const row_j = aosoa.row(j);
 
-    // calc distance (component-wise, avoids constructing pos1/pos2 Vector3d
-    // on the hot early-exit path; pos1/pos2 are built lazily below only
-    // where kernels actually require them)
-    auto const d = box_geo.get_mi_vector(
-        aosoa.position(row_i, 0), aosoa.position(row_i, 1),
-        aosoa.position(row_i, 2), aosoa.position(row_j, 0),
-        aosoa.position(row_j, 1), aosoa.position(row_j, 2));
     auto const dist_sq = d.norm2();
 
     // Early exit if distance > maximal global cutoff

@@ -129,14 +129,28 @@ struct PressureKernel {
         layout(layout_), aosoa(aosoa_), mol_id_view(std::move(mol_id_view_)),
         system_max_cutoff(system_max_cutoff_), thermo_switch(thermo_switch_) {}
 
+  // Entry point for the Cabana neighbor loop and the Lees-Edwards fallback:
+  // compute the minimum-image vector scalar-wise and delegate.
   KOKKOS_INLINE_FUNCTION
   void operator()(std::size_t i, std::size_t j) const {
+    auto const row_i = aosoa.row(i);
+    auto const row_j = aosoa.row(j);
+    auto const pos1 = aosoa.get_vector_at(aosoa.position, row_i);
+    auto const pos2 = aosoa.get_vector_at(aosoa.position, row_j);
+    (*this)(i, j, box_geo.get_mi_vector(pos1, pos2));
+  }
+
+  // WS1 batched-MI entry point: @p d is precomputed by the vectorized
+  // get_mi_vector_batch (orthorhombic non-Lees-Edwards fast path) and is
+  // bitwise-identical to the scalar get_mi_vector(pos1, pos2) above.
+  KOKKOS_INLINE_FUNCTION
+  void operator()(std::size_t i, std::size_t j,
+                  Utils::Vector3d const &d) const {
     // Translate pack indices to ParticleStore rows once.
     auto const row_i = aosoa.row(i);
     auto const row_j = aosoa.row(j);
     auto const pos1 = aosoa.get_vector_at(aosoa.position, row_i);
     auto const pos2 = aosoa.get_vector_at(aosoa.position, row_j);
-    auto const d = box_geo.get_mi_vector(pos1, pos2);
     auto const dist = d.norm();
     if (dist > system_max_cutoff)
       return;

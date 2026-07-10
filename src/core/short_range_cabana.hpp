@@ -23,6 +23,7 @@
 
 #include "cell_system/CellStructure.hpp"
 
+#include "algorithm/minimum_image_batch.hpp"
 #include "aosoa_pack.hpp"
 #include "bond_forces_kokkos.hpp"
 #include "custom_verlet_list.hpp"
@@ -127,9 +128,20 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
   // std::next(it) and per-neighbour range begin()/end() would build fresh
   // Particles). One reused view per role per work item (one cell per Kokkos
   // work item) is thread-safe. Iteration ORDER is unchanged.
+  // WS1: on the orthorhombic non-Lees-Edwards fast path, the candidate
+  // minimum-image squared distances of each outer particle's inner run are
+  // computed by the vectorized get_mi_dist2_batch into a per-work-item scratch,
+  // then the existing scalar loop consults dist2_scratch[.] in the SAME
+  // candidate order and passes it to verlet_criterion exactly as the scalar
+  // box_geo.get_mi_dist2 result was -> same criterion calls, same pair list,
+  // bitwise-identical build. When Lees-Edwards is active the batch primitive
+  // does not apply, so we keep the scalar box_geo.get_mi_dist2 call (fallback).
+  bool const mi_batch_ok = (box_geo.type() == BoxType::CUBOID);
+  auto const mi_box = Algorithm::OrthoBoxParams::from(box_geo);
+
   auto intra_kernel = [&cells, &box_geo, &verlet_criterion, &id_to_index,
-                       &intra_operator, &interleaved_positions,
-                       max_id](const int i) {
+                       &intra_operator, &interleaved_positions, &mi_box,
+                       mi_batch_ok, max_id](const int i) {
     auto &store = cells[i]->store();
     // Contiguous store-row range; clean store, so index directly.
     auto const offset = cells[i]->offset();
@@ -159,6 +171,17 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
     auto const pos_comp_stride =
         use_scratch ? std::size_t{1u}
                     : static_cast<std::size_t>(position_view.stride(1));
+    // Reusable scratch for the vectorized MI gate: component-major candidate
+    // positions and their squared MI distances. thread_local so the Verlet
+    // build does NO per-cell allocation (capacity only grows); each Kokkos/
+    // OpenMP thread owns its own buffers.
+    thread_local std::vector<double> cand_x, cand_y, cand_z, cand_d2;
+    if (mi_batch_ok and n > cand_x.size()) {
+      cand_x.resize(n);
+      cand_y.resize(n);
+      cand_z.resize(n);
+      cand_d2.resize(n);
+    }
     Particle p1, p2;
     for (std::size_t a = 0u; a < n; ++a) {
       auto const row_a = offset + a;
@@ -172,18 +195,41 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
           auto const p1_pos =
               Utils::Vector3d{p1_base[0u], p1_base[pos_comp_stride],
                               p1_base[2u * pos_comp_stride]};
+          // Vectorized MI-dist2 gate over the inner candidate run (b > a).
+          // Gather candidate positions component-major, then batch. The scalar
+          // loop below consumes cand_d2[b - (a + 1u)] in the SAME order.
+          auto const n_cand = n - (a + 1u);
+          if (mi_batch_ok and n_cand > 0u) {
+            for (std::size_t b = a + 1u; b < n; ++b) {
+              auto const *const pb =
+                  position_column + (offset + b) * pos_row_stride;
+              auto const c = b - (a + 1u);
+              cand_x[c] = pb[0u];
+              cand_y[c] = pb[pos_comp_stride];
+              cand_z[c] = pb[2u * pos_comp_stride];
+            }
+            double const ref[3] = {p1_pos[0], p1_pos[1], p1_pos[2]};
+            Algorithm::get_mi_dist2_batch(mi_box, ref, cand_x.data(),
+                                          cand_y.data(), cand_z.data(),
+                                          cand_d2.data(), n_cand);
+          }
           // pairs in this cell (j > i), same order as before
           for (std::size_t b = a + 1u; b < n; ++b) {
             auto const row_b = offset + b;
             if (id_column[row_b] <= max_id) {
               p2.attach_to_store(store, static_cast<int>(row_b));
-              auto const *const p2_base =
-                  position_column + row_b * pos_row_stride;
-              auto const p2_pos =
-                  Utils::Vector3d{p2_base[0u], p2_base[pos_comp_stride],
-                                  p2_base[2u * pos_comp_stride]};
-              if (verlet_criterion(p1, p2,
-                                   box_geo.get_mi_dist2(p1_pos, p2_pos))) {
+              double dist2;
+              if (mi_batch_ok) {
+                dist2 = cand_d2[b - (a + 1u)];
+              } else {
+                auto const *const p2_base =
+                    position_column + row_b * pos_row_stride;
+                auto const p2_pos =
+                    Utils::Vector3d{p2_base[0u], p2_base[pos_comp_stride],
+                                    p2_base[2u * pos_comp_stride]};
+                dist2 = box_geo.get_mi_dist2(p1_pos, p2_pos);
+              }
+              if (verlet_criterion(p1, p2, dist2)) {
                 auto const jj = id_to_index(id_column[row_b]);
                 if (jj >= 0) {
                   intra_operator(ii, jj);
@@ -197,8 +243,8 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
   };
 
   auto inter_kernel = [&cells, &box_geo, &verlet_criterion, &id_to_index,
-                       &inter_operator, &interleaved_positions,
-                       max_id](const int i) {
+                       &inter_operator, &interleaved_positions, &mi_box,
+                       mi_batch_ok, max_id](const int i) {
     auto &store = cells[i]->store();
     // Contiguous store-row range; clean store, so index directly.
     auto const offset = cells[i]->offset();
@@ -220,6 +266,10 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
     auto const pos_comp_stride =
         use_scratch ? std::size_t{1u}
                     : static_cast<std::size_t>(position_view.stride(1));
+    // Reusable scratch for the vectorized MI gate (see intra_kernel). Each
+    // neighbor cell's k-run is batched against p1. thread_local + grow-only so
+    // the build does NO per-cell allocation.
+    thread_local std::vector<double> cand_x, cand_y, cand_z, cand_d2;
     Particle p1, p2;
     for (std::size_t a = 0u; a < n; ++a) {
       auto const row_a = offset + a;
@@ -232,22 +282,49 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
           auto const p1_pos =
               Utils::Vector3d{p1_base[0u], p1_base[pos_comp_stride],
                               p1_base[2u * pos_comp_stride]};
+          double const ref[3] = {p1_pos[0], p1_pos[1], p1_pos[2]};
           // pairs with neighboring cells, same order as before
           for (auto *neighbor : cells[i]->neighbors().red()) {
             auto &nb_store = neighbor->store();
             auto const nb_offset = neighbor->offset();
             auto const nb_n = neighbor->count();
+            // Vectorized MI-dist2 gate over this neighbor cell's k-run. Gather
+            // component-major, batch, then the scalar loop consumes cand_d2[k]
+            // in the SAME order.
+            if (mi_batch_ok and nb_n > 0u) {
+              if (nb_n > cand_x.size()) {
+                cand_x.resize(nb_n);
+                cand_y.resize(nb_n);
+                cand_z.resize(nb_n);
+                cand_d2.resize(nb_n);
+              }
+              for (std::size_t k = 0u; k < nb_n; ++k) {
+                auto const *const pk =
+                    position_column + (nb_offset + k) * pos_row_stride;
+                cand_x[k] = pk[0u];
+                cand_y[k] = pk[pos_comp_stride];
+                cand_z[k] = pk[2u * pos_comp_stride];
+              }
+              Algorithm::get_mi_dist2_batch(mi_box, ref, cand_x.data(),
+                                            cand_y.data(), cand_z.data(),
+                                            cand_d2.data(), nb_n);
+            }
             for (std::size_t k = 0u; k < nb_n; ++k) {
               auto const row_k = nb_offset + k;
               if (id_column[row_k] <= max_id) {
                 p2.attach_to_store(nb_store, static_cast<int>(row_k));
-                auto const *const p2_base =
-                    position_column + row_k * pos_row_stride;
-                auto const p2_pos =
-                    Utils::Vector3d{p2_base[0u], p2_base[pos_comp_stride],
-                                    p2_base[2u * pos_comp_stride]};
-                if (verlet_criterion(p1, p2,
-                                     box_geo.get_mi_dist2(p1_pos, p2_pos))) {
+                double dist2;
+                if (mi_batch_ok) {
+                  dist2 = cand_d2[k];
+                } else {
+                  auto const *const p2_base =
+                      position_column + row_k * pos_row_stride;
+                  auto const p2_pos =
+                      Utils::Vector3d{p2_base[0u], p2_base[pos_comp_stride],
+                                      p2_base[2u * pos_comp_stride]};
+                  dist2 = box_geo.get_mi_dist2(p1_pos, p2_pos);
+                }
+                if (verlet_criterion(p1, p2, dist2)) {
                   auto const jj = id_to_index(id_column[row_k]);
                   if (jj >= 0) {
                     inter_operator(ii, jj);
@@ -429,6 +506,72 @@ refresh_pack_dipm(CellStructure &cell_structure) {
 }
 #endif
 
+// WS1 batched pair-kernel dispatch: replaces Cabana::neighbor_parallel_for
+// (FirstNeighbors + SerialOpTag) on the orthorhombic non-Lees-Edwards fast
+// path. For each particle i, the minimum-image vectors of its contiguous
+// Verlet-neighbor run are computed by the vectorized get_mi_vector_batch into
+// a per-work-item scratch, then the existing force loop runs via the kernel's
+// 3-arg overload consuming the precomputed vector. The neighbor ORDER and the
+// force ACCUMULATION order are unchanged (same i, same neighbor sequence, same
+// kernel body / += sequence), and each batched vector is bitwise-identical to
+// the scalar box_geo.get_mi_vector, so forces are bitwise-identical to the
+// scalar Cabana loop. Mirrors the SerialOpTag traversal exactly:
+//   for i: for nn in [0, numNeighbor(i)): kernel(i, getNeighbor(i, nn)).
+template <class ExecutionSpace>
+ESPRESSO_ATTR_ALWAYS_INLINE inline void cabana_batched_neighbor_for(
+    auto const &kernel, auto const &verlet_list, BoxGeometry const &box_geo,
+    CellStructure::AoSoA_pack const &aosoa, std::size_t n_part) {
+  using list_traits =
+      Cabana::NeighborList<std::remove_cvref_t<decltype(verlet_list)>>;
+  auto const mi_box = Algorithm::OrthoBoxParams::from(box_geo);
+  // The per-particle neighbor run is bounded by the list's max-neighbor
+  // capacity; size the scratch to that ONCE (per thread) so the hot loop does
+  // NO per-particle allocation (a per-particle malloc/free churn otherwise
+  // dominates and regresses the kernel). thread_local keeps it correct under
+  // the Kokkos/OpenMP parallel path (each thread owns its buffers) and the
+  // serial path alike; capacity only ever grows.
+  auto const max_neigh = list_traits::maxNeighbor(verlet_list);
+  auto const worker = [&kernel, &verlet_list, &aosoa, &mi_box,
+                       max_neigh](int const i) {
+    thread_local std::vector<double> nx, ny, nz, dx, dy, dz;
+    thread_local std::vector<std::size_t> js;
+    if (nx.size() < max_neigh) {
+      nx.resize(max_neigh);
+      ny.resize(max_neigh);
+      nz.resize(max_neigh);
+      dx.resize(max_neigh);
+      dy.resize(max_neigh);
+      dz.resize(max_neigh);
+      js.resize(max_neigh);
+    }
+    auto const ii = static_cast<std::size_t>(i);
+    auto const n_neigh = list_traits::numNeighbor(verlet_list, ii);
+    if (n_neigh == 0u)
+      return;
+    auto const row_i = aosoa.row(ii);
+    double const ref[3] = {aosoa.position(row_i, 0), aosoa.position(row_i, 1),
+                           aosoa.position(row_i, 2)};
+    // Gather this particle's neighbor ids + positions component-major (one
+    // getNeighbor pass), then batch the MI vectors (vectorized). The dispatch
+    // loop consumes them in the SAME neighbor order.
+    for (std::size_t nn = 0u; nn < n_neigh; ++nn) {
+      auto const j = list_traits::getNeighbor(verlet_list, ii, nn);
+      js[nn] = j;
+      auto const row_j = aosoa.row(j);
+      nx[nn] = aosoa.position(row_j, 0);
+      ny[nn] = aosoa.position(row_j, 1);
+      nz[nn] = aosoa.position(row_j, 2);
+    }
+    Algorithm::get_mi_vector_batch(mi_box, ref, nx.data(), ny.data(), nz.data(),
+                                   dx.data(), dy.data(), dz.data(), n_neigh);
+    for (std::size_t nn = 0u; nn < n_neigh; ++nn) {
+      kernel(ii, js[nn], Utils::Vector3d{dx[nn], dy[nn], dz[nn]});
+    }
+  };
+  kokkos_parallel_range_for<Kokkos::RangePolicy<ExecutionSpace>>(
+      "cabana batched pair", std::size_t{0}, n_part, worker);
+}
+
 void cabana_short_range(auto const &pair_bonds_kernel,
                         auto const &angle_bonds_kernel,
                         auto const &dihedral_bonds_kernel,
@@ -476,11 +619,23 @@ void cabana_short_range(auto const &pair_bonds_kernel,
     if (integ_switch != INTEG_METHOD_STEEPEST_DESCENT and
         cell_structure.use_verlet_list) {
       auto const &verlet_list = cell_structure.get_verlet_list_cabana();
-      Kokkos::RangePolicy<execution_space> policy(
-          std::size_t{0}, cell_structure.get_unique_particles().size());
-      Cabana::neighbor_parallel_for(policy, nonbonded_kernel, verlet_list,
-                                    Cabana::FirstNeighborsTag(),
-                                    Cabana::SerialOpTag());
+      auto const n_part = cell_structure.get_unique_particles().size();
+      auto const &box_geo = nonbonded_kernel.box_geo;
+      if (box_geo.type() == BoxType::CUBOID) {
+        // WS1 fast path: batch the per-neighbor minimum-image vectors
+        // (vectorized) and consume them via the kernel's 3-arg overload,
+        // preserving neighbor + accumulation order -> bitwise identical.
+        cabana_batched_neighbor_for<execution_space>(
+            nonbonded_kernel, verlet_list, box_geo, nonbonded_kernel.aosoa,
+            n_part);
+      } else {
+        // Lees-Edwards active: the batch MI primitive does not apply; use the
+        // scalar Cabana neighbor loop (kernel computes get_mi_vector itself).
+        Kokkos::RangePolicy<execution_space> policy(std::size_t{0}, n_part);
+        Cabana::neighbor_parallel_for(policy, nonbonded_kernel, verlet_list,
+                                      Cabana::FirstNeighborsTag(),
+                                      Cabana::SerialOpTag());
+      }
     } else {
       cell_structure.cell_list_loop(
           [&](std::span<Cell *const> cells, BoxGeometry const &box) {
