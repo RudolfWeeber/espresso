@@ -67,36 +67,171 @@
 #include <span>
 #include <variant>
 
-/** External particle forces */
-static ParticleForce external_force(Particle const &p) {
-  ParticleForce f = {};
-
-#ifdef ESPRESSO_EXTERNAL_FORCES
-  f.f += p.ext_force();
-#ifdef ESPRESSO_ROTATION
-  f.torque += p.ext_torque();
-#endif
-#endif
-
 #ifdef ESPRESSO_ENGINE
-  // apply a swimming force in the direction of
-  // the particle's orientation axis
+/** @brief Add the swimming (engine) force to a particle's force.
+ *
+ *  Split out of the (now vectorized) external-force column sweep: the swim
+ *  term needs the quaternion-derived director, so it stays a per-row scalar
+ *  update applied ONLY to active swimmers. Preserves the original combination
+ *  order: force = ext_force (column copy) then force += f_swim * director,
+ *  which equals the previous @c ext_force + swim for every swimmer.
+ */
+static void add_swim_force(Particle &p) {
   if (p.swimming().swimming and !p.swimming().is_engine_force_on_fluid) {
-    f.f += p.swimming().f_swim * p.calc_director();
+    auto force = p.force();
+    force += p.swimming().f_swim * p.calc_director();
   }
+}
 #endif
 
-  return f;
+/** @brief Copy an external-force component column into a force column.
+ *
+ *  Component-major (@ref ParticleStore::StateVectorLayout LayoutLeft) columns
+ *  make each component a contiguous stride-1 run across particles, so
+ *  initializing @c force[c] = @c ext_force[c] over @c [0, n_local) is a plain
+ *  contiguous copy that vectorizes (packed 4-wide double moves under AVX2)
+ *  instead of the per-row @ref Particle proxy write it replaces. The
+ *  @c #pragma omp simd asserts independence for the auto-vectorizer.
+ *
+ *  @tparam DstView  destination component-major view (@c double*[3]).
+ *  @tparam SrcView  source component-major view (@c double*[3]).
+ */
+template <class DstView, class SrcView>
+static void init_component_copy(DstView const &dst, SrcView const &src,
+                                std::size_t const n_local) {
+  for (unsigned int c = 0u; c < 3u; ++c) {
+#pragma omp simd
+    for (std::size_t row = 0u; row < n_local; ++row) {
+      dst(row, c) = src(row, c);
+    }
+  }
 }
 
-/** Combined force initialization and Langevin noise application */
-// [[gnu::flatten]]: the per-particle lambda below exceeds gcc's bottom-up
-// inlining budget, which turns trivial helpers (Utils::hadamard_product,
-// Utils::Vector constructors) into per-particle PLT calls inside the Langevin
-// friction path. Flattening forces the whole call tree inline; same
-// arithmetic, bitwise-identical trajectories.
-[[gnu::flatten]] static void
-init_forces_and_thermostat(System::System const &system) {
+/** @brief Zero a force component column over @c [0, n_local).
+ *
+ *  Used when the external-force column is absent (external forces disabled at
+ *  compile time): initialize @c force[c] = 0 as a contiguous memset-style
+ *  vectorizable loop, matching the previous @c force = @c {} per-row write.
+ */
+template <class DstView>
+static void init_component_zero(DstView const &dst, std::size_t const n_local) {
+  for (unsigned int c = 0u; c < 3u; ++c) {
+#pragma omp simd
+    for (std::size_t row = 0u; row < n_local; ++row) {
+      dst(row, c) = 0.;
+    }
+  }
+}
+
+/** @brief Apply the Langevin friction+noise contribution to one particle.
+ *
+ *  Per-row body of the Langevin sweep, factored into its own force-inlined
+ *  helper. ESPRESSO_ATTR_ALWAYS_INLINE (NOT [[gnu::flatten]]) recovers the
+ *  original single-pass lambda's inlining of the trivial helpers (Utils::Vector
+ *  ctors, Utils::hadamard_product / operator+=, the body->space rotation)
+ *  WITHOUT the whole-tree flatten: flattening this path under -march=native
+ *  fuses pref*v into the force accumulate (an FMA contraction the original
+ *  flattened lambda did not hit), which alters trajectories at the rounding
+ *  level and breaks the WS3 bitwise-identity requirement. always_inline keeps
+ *  the friction arithmetic in the same shape as before, so it stays
+ *  bitwise-identical (verified by the same-flags Langevin identity gate).
+ *  Per-particle order is unchanged: force += (friction + noise),
+ *  torque += rot(friction + noise).
+ */
+template <class Store, class Propagation, class VelView, class IdView
+#ifdef ESPRESSO_ROTATION
+          ,
+          class OmegaView
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+          ,
+          class GammaView
+#ifdef ESPRESSO_ROTATION
+          ,
+          class GammaRotView
+#endif
+#endif
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+          ,
+          class QuatView
+#endif
+          >
+ESPRESSO_ATTR_ALWAYS_INLINE inline void
+apply_langevin_row(Store &store, Propagation const &propagation,
+                   LangevinThermostat const &langevin, VelView const &vel_view,
+                   IdView const &id_view,
+#ifdef ESPRESSO_ROTATION
+                   OmegaView const &omega_view,
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+                   GammaView const &gamma_view,
+#ifdef ESPRESSO_ROTATION
+                   GammaRotView const &gamma_rot_view,
+#endif
+#endif
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+                   QuatView const &quat_view,
+#endif
+                   int const row, double const time_step, double const kT) {
+  // Read the propagation bitfield once per particle (each
+  // should_propagate_with call would otherwise re-read the store column).
+  int const prop = store.propagation_view()(row);
+  if (propagation.should_propagate_with(prop,
+                                        PropagationMode::TRANS_LANGEVIN)) {
+    auto const friction = friction_thermo_langevin(langevin, vel_view, id_view,
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+                                                   gamma_view,
+#endif
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+                                                   quat_view,
+#endif
+                                                   row, time_step, kT);
+    auto force = store.force_reference(row);
+    force += friction;
+  }
+#ifdef ESPRESSO_ROTATION
+  if (propagation.should_propagate_with(prop, PropagationMode::ROT_LANGEVIN)) {
+    Particle p;
+    p.attach_to_store(store, row);
+    auto torque = p.torque();
+    torque += convert_vector_body_to_space(
+        p, friction_thermo_langevin_rotation(langevin, omega_view, id_view,
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+                                             gamma_rot_view,
+#endif
+                                             row, time_step, kT));
+  }
+#endif
+}
+
+/** Combined force initialization and Langevin noise application.
+ *
+ *  Restructured into contiguous component sweeps under the component-major
+ *  columns (SIMD WS3):
+ *   1. force/torque INIT sweep -- three (x,y,z) contiguous column copies
+ *      (force = ext_force, torque = ext_torque), each trivially vectorizable,
+ *      replacing the per-row proxy writes. The engine swim term needs the
+ *      quaternion-derived director, so it stays a per-row scalar update applied
+ *      only to active swimmers (detected by a cheap pre-scan of the swimming
+ *      sidecar); non-engine builds skip it entirely.
+ *   2. Langevin sweep -- the per-particle id-keyed Philox noise draw is scalar
+ *      by design; the friction+noise contribution is added per row EXACTLY as
+ *      before. Per-particle arithmetic order is preserved: force = ext_force
+ *      (sweep 1) then force += (friction + noise) (sweep 2) == the previous
+ *      force = ext_force; force += (friction + noise). No reordering within a
+ *      particle's force; only the two passes over the (same) row set are split.
+ *
+ *  NOTE on [[gnu::flatten]]: the original single-pass version flattened the
+ *  whole lambda to keep the Langevin helper tree inline. It is NOT applied to
+ *  THIS outer function -- flattening it whole would (a) inhibit nothing useful
+ *  and (b) fuse pref*v into the force accumulate (an FMA contraction the
+ *  original flattened lambda did not hit) and break the WS3 bitwise-identity
+ *  requirement. Flatten is instead scoped to @ref apply_langevin_row, which
+ *  reproduces the original inlining on the friction path (bitwise-identical,
+ *  verified by the same-flags Langevin identity gate) while leaving the init
+ *  sweeps here un-flattened so they auto-vectorize into packed column copies.
+ */
+static void init_forces_and_thermostat(System::System const &system) {
 #ifdef ESPRESSO_CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif
@@ -113,68 +248,96 @@ init_forces_and_thermostat(System::System const &system) {
       (propagation.used_propagations &
        (PropagationMode::TRANS_LANGEVIN | PropagationMode::ROT_LANGEVIN));
 
-  // Hoist the Langevin column-view handles ONCE outside the parallel_for. The
-  // Langevin friction is a column kernel (velocity / omega / id (+ gamma,
-  // quaternion) read by row); external-force init and the body->space torque
-  // rotation stay on the view path (external_force reads the engine sidecar;
-  // the rotation needs the quaternion).
   auto &store = cell_structure.particle_store();
-  auto vel_view = store.velocity_view();
-  auto id_view = store.id_view();
-#ifdef ESPRESSO_ROTATION
-  auto omega_view = store.angular_velocity_view();
-#endif
-#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-  auto gamma_view = store.gamma_view();
-#ifdef ESPRESSO_ROTATION
-  auto gamma_rot_view = store.gamma_rot_view();
-#endif
-#endif
-#ifdef ESPRESSO_PARTICLE_ANISOTROPY
-  auto quat_view = store.quaternion_view();
-#endif
+  // Local particles tile store rows [0, n_local) contiguously in
+  // cell-traversal order (see ensure_particle_store_synchronized), so the
+  // component sweeps below run straight over [0, n_local) -- exactly the row
+  // set for_each_local_particle_row visits, in the same order.
+  auto const n_local = store.number_of_local_particles();
 
-  // Single pass over all local particles
-  cell_structure.for_each_local_particle_row([&](int const row) {
-    Particle p;
-    p.attach_to_store(store, row);
-    // Initialize force with external forces
-    auto const external = external_force(p);
-    auto force = p.force();
-    force = external.f;
-#ifdef ESPRESSO_ROTATION
-    auto torque = p.torque();
-    torque = external.torque;
+  // -- Sweep 1: contiguous force/torque initialization ----------------------
+  // force[c] = ext_force[c] (or 0 when external forces are disabled).
+  {
+    auto force_view = store.force_view();
+#ifdef ESPRESSO_EXTERNAL_FORCES
+    init_component_copy(force_view, store.ext_force_view(), n_local);
+#else
+    init_component_zero(force_view, n_local);
 #endif
+#ifdef ESPRESSO_ROTATION
+    auto torque_view = store.torque_view();
+#if defined(ESPRESSO_EXTERNAL_FORCES)
+    init_component_copy(torque_view, store.ext_torque_view(), n_local);
+#else
+    init_component_zero(torque_view, n_local);
+#endif
+#endif // ESPRESSO_ROTATION
+  }
 
-    // Apply Langevin noise if thermostat is active
-    if (langevin_active) {
-      auto const &langevin = *thermostat.langevin;
-      // Read the propagation bitfield once per particle (each
-      // should_propagate_with call would otherwise re-read the store column).
-      int const prop = p.propagation();
-      if (propagation.should_propagate_with(prop,
-                                            PropagationMode::TRANS_LANGEVIN))
-        force += friction_thermo_langevin(langevin, vel_view, id_view,
-#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-                                          gamma_view,
-#endif
-#ifdef ESPRESSO_PARTICLE_ANISOTROPY
-                                          quat_view,
-#endif
-                                          row, time_step, kT);
-#ifdef ESPRESSO_ROTATION
-      if (propagation.should_propagate_with(prop,
-                                            PropagationMode::ROT_LANGEVIN))
-        torque += convert_vector_body_to_space(
-            p, friction_thermo_langevin_rotation(langevin, omega_view, id_view,
-#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-                                                 gamma_rot_view,
-#endif
-                                                 row, time_step, kT));
-#endif
+#ifdef ESPRESSO_ENGINE
+  // Engine swim force: needs the per-particle director (non-vectorizable), so
+  // apply it per row ONLY when at least one active swimmer exists. The pre-scan
+  // is a contiguous bool read over the swimming sidecar; the benchmarks carry
+  // no swimmers, so this short-circuits without touching the director path.
+  {
+    bool any_swimmer = false;
+    for (std::size_t row = 0u; row < n_local; ++row) {
+      auto const &sw = store.swimming(static_cast<int>(row));
+      if (sw.swimming and !sw.is_engine_force_on_fluid) {
+        any_swimmer = true;
+        break;
+      }
     }
-  });
+    if (any_swimmer) {
+      cell_structure.for_each_local_particle_row([&](int const row) {
+        Particle p;
+        p.attach_to_store(store, row);
+        add_swim_force(p);
+      });
+    }
+  }
+#endif // ESPRESSO_ENGINE
+
+  // -- Sweep 2: Langevin friction + noise ------------------------------------
+  if (langevin_active) {
+    // Hoist the Langevin column-view handles ONCE outside the parallel_for.
+    // The friction is a column kernel (velocity / omega / id (+ gamma,
+    // quaternion) read by row); the body->space torque rotation needs the
+    // quaternion, so it stays on the per-row view path.
+    auto vel_view = store.velocity_view();
+    auto id_view = store.id_view();
+#ifdef ESPRESSO_ROTATION
+    auto omega_view = store.angular_velocity_view();
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+    auto gamma_view = store.gamma_view();
+#ifdef ESPRESSO_ROTATION
+    auto gamma_rot_view = store.gamma_rot_view();
+#endif
+#endif
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+    auto quat_view = store.quaternion_view();
+#endif
+    auto const &langevin = *thermostat.langevin;
+
+    cell_structure.for_each_local_particle_row([&](int const row) {
+      apply_langevin_row(store, propagation, langevin, vel_view, id_view,
+#ifdef ESPRESSO_ROTATION
+                         omega_view,
+#endif
+#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
+                         gamma_view,
+#ifdef ESPRESSO_ROTATION
+                         gamma_rot_view,
+#endif
+#endif
+#ifdef ESPRESSO_PARTICLE_ANISOTROPY
+                         quat_view,
+#endif
+                         row, time_step, kT);
+    });
+  }
+
   cell_structure.reset_local_force_and_torque();
 
   // Initialize ghost forces (unchanged)
