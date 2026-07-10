@@ -390,10 +390,10 @@ template <int cao> struct AssignCharge {
               p3m_calculate_interpolation_weights<cao, memory_order>(
                   pos.as_span(), p3m.params.ai, p3m.local_mesh);
           p3m.inter_weights.store_at(p_index, weights);
-          // SIMD-friendly scatter: contiguous z-line stores, vectorized,
-          // bitwise-identical per-cell arithmetic to p3m_interpolate.
-          auto *const density = &p3m.rs_charge_density_kokkos(tid, 0);
-          p3m_scatter_line(p3m.local_mesh, weights, q, density);
+          p3m_interpolate(
+              p3m.local_mesh, weights, [&, tid, q](int ind, double w) {
+                p3m.rs_charge_density_kokkos(tid, ind) += value_type(w * q);
+              });
         });
     Kokkos::fence();
     using execution_space = Kokkos::DefaultExecutionSpace;
@@ -440,19 +440,16 @@ template <int cao> struct AssignForces {
 
     assert(cao == p3m.inter_weights.cao());
 
-    using value_type =
-        typename std::remove_reference_t<decltype(p3m)>::value_type;
-    std::array<value_type const *, 3u> const fields = {
-        {p3m.rs_E_fields[0u].data(), p3m.rs_E_fields[1u].data(),
-         p3m.rs_E_fields[2u].data()}};
-
-    auto const kernel = [&p3m, &fields](auto pref, auto &p_force,
-                                        std::size_t p_index) {
+    auto const kernel = [&p3m](auto pref, auto &p_force, std::size_t p_index) {
       auto const weights = p3m.inter_weights.template load<cao>(p_index);
 
-      // SIMD-friendly gather: contiguous z-line dot products, vectorized.
-      std::array<double, 3u> force{};
-      p3m_gather_line(p3m.local_mesh, weights, 3u, fields.data(), force.data());
+      Utils::Vector3d force{};
+      p3m_interpolate(p3m.local_mesh, weights,
+                      [&force, &p3m](int ind, double w) {
+                        force[0u] += w * double(p3m.rs_E_fields[0u][ind]);
+                        force[1u] += w * double(p3m.rs_E_fields[1u][ind]);
+                        force[2u] += w * double(p3m.rs_E_fields[2u][ind]);
+                      });
 
       auto access = p_force.access();
       access(p_index, 0) -= pref * force[0];
