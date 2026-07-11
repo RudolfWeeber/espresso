@@ -446,8 +446,15 @@ template <int cao> struct AssignForces {
         {p3m.rs_E_fields[0u].data(), p3m.rs_E_fields[1u].data(),
          p3m.rs_E_fields[2u].data()}};
 
-    auto const kernel = [&p3m, &fields](auto pref, auto &p_force,
-                                        std::size_t p_index) {
+    // Two gather forms, dispatched on the OpenMP thread count (the same
+    // branch idiom as kokkos_parallel_range_for): the SIMD z-line gather is
+    // measurably faster single-threaded (order-balanced A/B: -7.5% on the
+    // p3m benchmark at 1 rank, -3.8% at 4 MPI ranks at 100k particles) but
+    // measurably SLOWER when the loop is OpenMP-threaded (+4.4% on the
+    // 4-thread benchmark at 160k particles); multi-threaded execution keeps
+    // the original per-point interpolate form.
+    auto const kernel_simd = [&p3m, &fields](auto pref, auto &p_force,
+                                             std::size_t p_index) {
       auto const weights = p3m.inter_weights.template load<cao>(p_index);
 
       // SIMD-friendly gather: contiguous z-line dot products, vectorized.
@@ -458,6 +465,31 @@ template <int cao> struct AssignForces {
       access(p_index, 0) -= pref * force[0];
       access(p_index, 1) -= pref * force[1];
       access(p_index, 2) -= pref * force[2];
+    };
+    auto const kernel_interpolate = [&p3m](auto pref, auto &p_force,
+                                           std::size_t p_index) {
+      auto const weights = p3m.inter_weights.template load<cao>(p_index);
+
+      Utils::Vector3d force{};
+      p3m_interpolate(p3m.local_mesh, weights,
+                      [&force, &p3m](int ind, double w) {
+                        force[0u] += w * double(p3m.rs_E_fields[0u][ind]);
+                        force[1u] += w * double(p3m.rs_E_fields[1u][ind]);
+                        force[2u] += w * double(p3m.rs_E_fields[2u][ind]);
+                      });
+
+      auto access = p_force.access();
+      access(p_index, 0) -= pref * force[0];
+      access(p_index, 1) -= pref * force[1];
+      access(p_index, 2) -= pref * force[2];
+    };
+    bool const use_simd_gather = Kokkos::num_threads() <= 1;
+    auto const kernel = [&](auto pref, auto &p_force, std::size_t p_index) {
+      if (use_simd_gather) {
+        kernel_simd(pref, p_force, p_index);
+      } else {
+        kernel_interpolate(pref, p_force, p_index);
+      }
     };
 
     auto const n_part = cell_structure.count_local_particles();
