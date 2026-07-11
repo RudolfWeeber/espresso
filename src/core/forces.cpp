@@ -32,6 +32,7 @@
 #include "communication.hpp"
 #include "constraints/Constraints.hpp"
 #include "electrostatics/icc.hpp"
+#include "forces_init.hpp"
 #include "forces_inline.hpp"
 #include "galilei/ComFixed.hpp"
 #include "immersed_boundary/ImmersedBoundaries.hpp"
@@ -44,10 +45,10 @@
 #include "rotation.hpp"
 #include "short_range_cabana.hpp"
 #include "short_range_loop.hpp"
+#include "short_range_verlet.hpp"
 #include "system/GpuParticleData.hpp"
 #include "system/System.hpp"
 #include "thermostat.hpp"
-#include "thermostats/langevin_inline.hpp"
 #include "virtual_sites/com.hpp"
 #include "virtual_sites/relative.hpp"
 
@@ -66,120 +67,6 @@
 #include <memory>
 #include <span>
 #include <variant>
-
-/** External particle forces */
-static ParticleForce external_force(Particle const &p) {
-  ParticleForce f = {};
-
-#ifdef ESPRESSO_EXTERNAL_FORCES
-  f.f += p.ext_force();
-#ifdef ESPRESSO_ROTATION
-  f.torque += p.ext_torque();
-#endif
-#endif
-
-#ifdef ESPRESSO_ENGINE
-  // apply a swimming force in the direction of
-  // the particle's orientation axis
-  if (p.swimming().swimming and !p.swimming().is_engine_force_on_fluid) {
-    f.f += p.swimming().f_swim * p.calc_director();
-  }
-#endif
-
-  return f;
-}
-
-/** Combined force initialization and Langevin noise application */
-// [[gnu::flatten]]: the per-particle lambda below exceeds gcc's bottom-up
-// inlining budget, which turns trivial helpers (Utils::hadamard_product,
-// Utils::Vector constructors) into per-particle PLT calls inside the Langevin
-// friction path. Flattening forces the whole call tree inline; same
-// arithmetic, bitwise-identical trajectories.
-[[gnu::flatten]] static void
-init_forces_and_thermostat(System::System const &system) {
-#ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
-#endif
-
-  auto &cell_structure = *system.cell_structure;
-  auto const &propagation = *system.propagation;
-  auto const &thermostat = *system.thermostat;
-  auto const kT = thermostat.kT;
-  auto const time_step = system.get_time_step();
-
-  // Check if Langevin thermostat is active
-  bool const langevin_active =
-      thermostat.langevin &&
-      (propagation.used_propagations &
-       (PropagationMode::TRANS_LANGEVIN | PropagationMode::ROT_LANGEVIN));
-
-  // Hoist the Langevin column-view handles ONCE outside the parallel_for. The
-  // Langevin friction is a column kernel (velocity / omega / id (+ gamma,
-  // quaternion) read by row); external-force init and the body->space torque
-  // rotation stay on the view path (external_force reads the engine sidecar;
-  // the rotation needs the quaternion).
-  auto &store = cell_structure.particle_store();
-  auto vel_view = store.velocity_view();
-  auto id_view = store.id_view();
-#ifdef ESPRESSO_ROTATION
-  auto omega_view = store.angular_velocity_view();
-#endif
-#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-  auto gamma_view = store.gamma_view();
-#ifdef ESPRESSO_ROTATION
-  auto gamma_rot_view = store.gamma_rot_view();
-#endif
-#endif
-#ifdef ESPRESSO_PARTICLE_ANISOTROPY
-  auto quat_view = store.quaternion_view();
-#endif
-
-  // Single pass over all local particles
-  cell_structure.for_each_local_particle_row([&](int const row) {
-    Particle p;
-    p.attach_to_store(store, row);
-    // Initialize force with external forces
-    auto const external = external_force(p);
-    auto force = p.force();
-    force = external.f;
-#ifdef ESPRESSO_ROTATION
-    auto torque = p.torque();
-    torque = external.torque;
-#endif
-
-    // Apply Langevin noise if thermostat is active
-    if (langevin_active) {
-      auto const &langevin = *thermostat.langevin;
-      // Read the propagation bitfield once per particle (each
-      // should_propagate_with call would otherwise re-read the store column).
-      int const prop = p.propagation();
-      if (propagation.should_propagate_with(prop,
-                                            PropagationMode::TRANS_LANGEVIN))
-        force += friction_thermo_langevin(langevin, vel_view, id_view,
-#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-                                          gamma_view,
-#endif
-#ifdef ESPRESSO_PARTICLE_ANISOTROPY
-                                          quat_view,
-#endif
-                                          row, time_step, kT);
-#ifdef ESPRESSO_ROTATION
-      if (propagation.should_propagate_with(prop,
-                                            PropagationMode::ROT_LANGEVIN))
-        torque += convert_vector_body_to_space(
-            p, friction_thermo_langevin_rotation(langevin, omega_view, id_view,
-#ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
-                                                 gamma_rot_view,
-#endif
-                                                 row, time_step, kT));
-#endif
-    }
-  });
-  cell_structure.reset_local_force_and_torque();
-
-  // Initialize ghost forces (unchanged)
-  cell_structure.ghosts_reset_forces();
-}
 
 static void force_capping(CellStructure &cell_structure, double force_cap) {
   if (force_cap > 0.) {
@@ -367,7 +254,7 @@ void System::System::calculate_forces() {
                                            dipoles.cutoff(),
                                            collision_detection_cutoff};
 
-  update_cabana_state(*cell_structure, verlet_criterion,
+  update_verlet_state(*cell_structure, verlet_criterion,
                       get_interaction_range(), propagation->integ_switch);
 #ifdef ESPRESSO_ELECTROSTATICS
   // Refresh the pack-owned charge column once per step, ONLY when a coulomb
