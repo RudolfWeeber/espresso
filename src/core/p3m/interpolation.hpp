@@ -286,7 +286,7 @@ void p3m_interpolate(P3MLocalMesh const &local_mesh,
  * loop walks @p cao consecutive mesh cells and each store targets a distinct
  * cell (no cross-iteration reduction), so the compiler can vectorize it under
  * `-march=native` while keeping the exact per-cell arithmetic of
- * @ref p3m_interpolate: for cell @c i2 the increment is
+ * @ref p3m_interpolate — for cell @c i2 the increment is
  * @c ((w_x*w_y)*w_z[i2]) applied by @p accumulate. The weights are hoisted
  * (one @c w_x per x-plane, one @c w_xy per y-line), matching
  * @ref p3m_interpolate exactly, so this is a bitwise-identical restructuring of
