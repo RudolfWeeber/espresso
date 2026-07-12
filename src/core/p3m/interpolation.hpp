@@ -309,7 +309,11 @@ void p3m_scatter_line(P3MLocalMesh const &local_mesh,
       auto const w_xy = w_x * weights.w_y[i1];
       auto *const line = mesh + q_ind;
       // Contiguous run over the last axis: independent stores, vectorizable.
-#if defined(_OPENMP)
+      // Excluded on clang: it declines to vectorize this fixed-trip loop at
+      // some optimization levels and then raises -Wpass-failed, which the
+      // sanitizer build promotes to an error. The stores are independent, so
+      // whether they vectorize does not affect the result.
+#if defined(_OPENMP) && !defined(__clang__)
 #pragma omp simd
 #endif
       for (int i2 = 0; i2 < cao; i2++) {
@@ -361,8 +365,14 @@ void p3m_gather_line(P3MLocalMesh const &local_mesh,
         auto const *line = fields[f] + base;
         double acc = 0.;
         // Contiguous z-line dot product: vectorizes to packed FMA + reduce.
-        // The reduction clause authorizes the SIMD (tree) accumulation order.
-#if defined(_OPENMP)
+        // The reduction clause authorizes the SIMD (tree) accumulation order
+        // that fixes the canonical single-threaded gather result. Excluded on
+        // clang: it declines to vectorize this fixed-trip loop at some
+        // optimization levels and then raises -Wpass-failed, which the
+        // sanitizer build promotes to an error. Without the pragma clang keeps
+        // the sequential accumulation order (results differ only at the
+        // rounding level, as the gather already does across compilers).
+#if defined(_OPENMP) && !defined(__clang__)
 #pragma omp simd reduction(+ : acc)
 #endif
         for (int i2 = 0; i2 < cao; i2++) {
