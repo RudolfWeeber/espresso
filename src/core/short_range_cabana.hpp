@@ -121,14 +121,27 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
     }
   }
 
+  // Hoist the cuboid minimum-image parameters by value: the fold runs once
+  // per candidate pair and must not chase the BoxGeometry reference for its
+  // box lengths every time. Lees-Edwards boxes take the full BoxGeometry
+  // path (shear offset handling).
+  bool const has_lees_edwards = box_geo.type() == BoxType::LEES_EDWARDS;
+  auto const cuboid_minimum_image = box_geo.cuboid_minimum_image();
+  auto const minimum_image_dist2 =
+      [&box_geo, has_lees_edwards, cuboid_minimum_image](
+          Utils::Vector3d const &a, Utils::Vector3d const &b) {
+        return has_lees_edwards ? box_geo.get_mi_dist2(a, b)
+                                : cuboid_minimum_image.dist2(a, b);
+      };
+
   // Iterate the cells' store-ROW bags directly and REBIND two cached views
   // (p1 + partner) per work item via Particle::attach_to_store, instead of
   // driving RowParticleRange iterators (each embeds a Particle by value, so
   // std::next(it) and per-neighbour range begin()/end() would build fresh
   // Particles). One reused view per role per work item (one cell per Kokkos
   // work item) is thread-safe. Iteration ORDER is unchanged.
-  auto intra_kernel = [&cells, &box_geo, &verlet_criterion, &id_to_index,
-                       &intra_operator, &interleaved_positions,
+  auto intra_kernel = [&cells, minimum_image_dist2, &verlet_criterion,
+                       &id_to_index, &intra_operator, &interleaved_positions,
                        max_id](const int i) {
     auto &store = cells[i]->store();
     // Contiguous store-row range; clean store, so index directly.
@@ -183,7 +196,7 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
                   Utils::Vector3d{p2_base[0u], p2_base[pos_comp_stride],
                                   p2_base[2u * pos_comp_stride]};
               if (verlet_criterion(p1, p2,
-                                   box_geo.get_mi_dist2(p1_pos, p2_pos))) {
+                                   minimum_image_dist2(p1_pos, p2_pos))) {
                 auto const jj = id_to_index(id_column[row_b]);
                 if (jj >= 0) {
                   intra_operator(ii, jj);
@@ -196,8 +209,8 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
     }
   };
 
-  auto inter_kernel = [&cells, &box_geo, &verlet_criterion, &id_to_index,
-                       &inter_operator, &interleaved_positions,
+  auto inter_kernel = [&cells, minimum_image_dist2, &verlet_criterion,
+                       &id_to_index, &inter_operator, &interleaved_positions,
                        max_id](const int i) {
     auto &store = cells[i]->store();
     // Contiguous store-row range; clean store, so index directly.
@@ -247,7 +260,7 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
                     Utils::Vector3d{p2_base[0u], p2_base[pos_comp_stride],
                                     p2_base[2u * pos_comp_stride]};
                 if (verlet_criterion(p1, p2,
-                                     box_geo.get_mi_dist2(p1_pos, p2_pos))) {
+                                     minimum_image_dist2(p1_pos, p2_pos))) {
                   auto const jj = id_to_index(id_column[row_k]);
                   if (jj >= 0) {
                     inter_operator(ii, jj);
