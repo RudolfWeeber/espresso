@@ -35,6 +35,7 @@
 #include <caliper/cali.h>
 #endif
 
+#include <functional>
 #include <iterator>
 #include <span>
 #include <type_traits>
@@ -442,13 +443,23 @@ refresh_pack_dipm(CellStructure &cell_structure) {
 }
 #endif
 
+// Optional replacement for the Verlet-list pair loop. When set, it is invoked
+// with the current Verlet list and the pack particle count instead of the
+// generic Cabana::neighbor_parallel_for over @p nonbonded_kernel. forces.cpp
+// installs the compile-time-specialized pair kernel this way when the active
+// feature set allows it; energy/pressure leave it empty and keep the generic
+// loop.
+using ShortRangeVerletPairLoop =
+    std::function<void(CellStructure::ListType const &, std::size_t)>;
+
 void cabana_short_range(auto const &pair_bonds_kernel,
                         auto const &angle_bonds_kernel,
                         auto const &dihedral_bonds_kernel,
                         auto const &nonbonded_kernel,
                         CellStructure &cell_structure, double pair_cutoff,
                         double bond_cutoff, auto const &verlet_criterion,
-                        auto const integ_switch) {
+                        auto const integ_switch,
+                        ShortRangeVerletPairLoop const &verlet_pair_loop = {}) {
   using execution_space = Kokkos::DefaultExecutionSpace;
   assert(cell_structure.get_resort_particles() == Cells::RESORT_NONE);
 
@@ -489,11 +500,16 @@ void cabana_short_range(auto const &pair_bonds_kernel,
     if (integ_switch != INTEG_METHOD_STEEPEST_DESCENT and
         cell_structure.use_verlet_list) {
       auto const &verlet_list = cell_structure.get_verlet_list_cabana();
-      Kokkos::RangePolicy<execution_space> policy(
-          std::size_t{0}, cell_structure.get_unique_particles().size());
-      Cabana::neighbor_parallel_for(policy, nonbonded_kernel, verlet_list,
-                                    Cabana::FirstNeighborsTag(),
-                                    Cabana::SerialOpTag());
+      auto const n_particles = cell_structure.get_unique_particles().size();
+      if (verlet_pair_loop) {
+        verlet_pair_loop(verlet_list, n_particles);
+      } else {
+        Kokkos::RangePolicy<execution_space> policy(std::size_t{0},
+                                                    n_particles);
+        Cabana::neighbor_parallel_for(policy, nonbonded_kernel, verlet_list,
+                                      Cabana::FirstNeighborsTag(),
+                                      Cabana::SerialOpTag());
+      }
     } else {
       cell_structure.cell_list_loop(
           [&](std::span<Cell *const> cells, BoxGeometry const &box) {

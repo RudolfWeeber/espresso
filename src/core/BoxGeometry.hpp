@@ -124,6 +124,20 @@ public:
     }
     return acc;
   }
+
+  /** @brief Minimum-image vector between two coordinates, component-wise.
+   *  Matches @ref BoxGeometry::get_mi_vector for cuboid boxes.
+   */
+  ESPRESSO_ATTR_ALWAYS_INLINE inline Utils::Vector3d
+  vector(double a0, double a1, double a2, double b0, double b1,
+         double b2) const {
+    return {detail::get_mi_coord_masked(a0, b0, m_length[0u],
+                                        m_length_inv_masked[0u]),
+            detail::get_mi_coord_masked(a1, b1, m_length[1u],
+                                        m_length_inv_masked[1u]),
+            detail::get_mi_coord_masked(a2, b2, m_length[2u],
+                                        m_length_inv_masked[2u])};
+  }
 };
 
 class BoxGeometry {
