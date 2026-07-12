@@ -40,25 +40,25 @@
 namespace detail {
 /**
  * @brief Get the minimum-image distance between two coordinates.
- * @param a               Coordinate of the terminal point.
- * @param b               Coordinate of the initial point.
- * @param box_length      Box length.
- * @param box_length_inv  Inverse box length
- * @param box_length_half Half box length
- * @param periodic        Box periodicity.
+ *
+ * Branchless fold: the periodicity is encoded in the masked inverse box
+ * length (0 for non-periodic directions, where <tt>rint</tt> then yields a
+ * zero image shift). Uses <tt>rint</tt> (round half to even) rather than
+ * <tt>round</tt>, so it maps to a single rounding instruction; the two only
+ * differ for separations of exactly half a box length, where both images
+ * are equidistant.
+ *
+ * @param a                      Coordinate of the terminal point.
+ * @param b                      Coordinate of the initial point.
+ * @param box_length             Box length.
+ * @param box_length_inv_masked  Inverse box length if periodic, 0 otherwise.
  * @return Shortest distance from @p b to @p a across periodic images,
  *         i.e. <tt>a - b</tt>. Can be negative.
  */
 template <typename T>
-T get_mi_coord(T a, T b, T box_length, T box_length_inv, T box_length_half,
-               bool periodic) {
+T get_mi_coord_masked(T a, T b, T box_length, T box_length_inv_masked) {
   auto const dx = a - b;
-
-  if (periodic && (std::abs(dx) > box_length_half)) {
-    return dx - std::round(dx * box_length_inv) * box_length;
-  }
-
-  return dx;
+  return dx - std::rint(dx * box_length_inv_masked) * box_length;
 }
 
 /**
@@ -71,8 +71,8 @@ T get_mi_coord(T a, T b, T box_length, T box_length_inv, T box_length_half,
  *         i.e. <tt>a - b</tt>. Can be negative.
  */
 template <typename T> T get_mi_coord(T a, T b, T box_length, bool periodic) {
-  return get_mi_coord(a, b, box_length, 1. / box_length, 0.5 * box_length,
-                      periodic);
+  return get_mi_coord_masked(a, b, box_length,
+                             periodic ? T{1.} / box_length : T{0.});
 }
 
 /** @brief Calculate image box shift vector.
@@ -100,6 +100,37 @@ inline auto unfolded_position(Utils::Vector3d const &pos,
 
 enum class BoxType { CUBOID = 0, LEES_EDWARDS = 1 };
 
+/**
+ * @brief Cuboid minimum-image fold parameters for hot pair loops.
+ *
+ * Capture an instance by value in a kernel to hoist the box data out of the
+ * pair loop: member loads then come from the kernel's own frame and the
+ * compiler can keep them in registers, instead of re-reading them through a
+ * @ref BoxGeometry reference for every pair. Only valid for cuboid boxes;
+ * Lees-Edwards boxes need the full @ref BoxGeometry::get_mi_vector.
+ */
+class CuboidMinimumImage {
+  Utils::Vector3d m_length;
+  Utils::Vector3d m_length_inv_masked;
+
+public:
+  CuboidMinimumImage(Utils::Vector3d const &length,
+                     Utils::Vector3d const &length_inv_masked)
+      : m_length(length), m_length_inv_masked(length_inv_masked) {}
+
+  /** @brief Squared minimum-image distance between two coordinates. */
+  ESPRESSO_ATTR_ALWAYS_INLINE inline double
+  dist2(Utils::Vector3d const &a, Utils::Vector3d const &b) const {
+    double acc = 0.;
+    for (auto c = 0u; c < 3u; ++c) {
+      auto const dx = detail::get_mi_coord_masked(a[c], b[c], m_length[c],
+                                                  m_length_inv_masked[c]);
+      acc += dx * dx;
+    }
+    return acc;
+  }
+};
+
 class BoxGeometry {
 public:
   BoxGeometry() {
@@ -126,6 +157,10 @@ private:
   Utils::Vector3d m_length = {1., 1., 1.};
   /** Inverse side lengths of the box */
   Utils::Vector3d m_length_inv = {1., 1., 1.};
+  /** Inverse side lengths for periodic directions, 0 for non-periodic ones.
+   *  Folding the periodicity into the inverse length makes the cuboid
+   *  minimum-image fold branchless (see @ref detail::get_mi_coord_masked). */
+  Utils::Vector3d m_length_inv_masked = {1., 1., 1.};
   /** Half side lengths of the box */
   Utils::Vector3d m_length_half = {0.5, 0.5, 0.5};
 
@@ -139,7 +174,10 @@ public:
    * @param coord The coordinate to set the periodicity for.
    * @param val True if this direction should be periodic.
    */
-  void set_periodic(unsigned coord, bool val) { m_periodic.set(coord, val); }
+  void set_periodic(unsigned coord, bool val) {
+    m_periodic.set(coord, val);
+    m_length_inv_masked[coord] = val ? m_length_inv[coord] : 0.;
+  }
 
   /**
    * @brief Check periodicity in direction.
@@ -178,6 +216,9 @@ public:
     assert(box_l > Utils::Vector3d::broadcast(0.));
     m_length = box_l;
     m_length_inv = {1. / box_l[0], 1. / box_l[1], 1. / box_l[2]};
+    for (auto c = 0u; c < 3u; ++c) {
+      m_length_inv_masked[c] = m_periodic[c] ? m_length_inv[c] : 0.;
+    }
     m_length_half = 0.5 * box_l;
   }
 
@@ -198,8 +239,14 @@ public:
   template <typename T> T inline get_mi_coord(T a, T b, unsigned coord) const {
     assert(coord <= 2u);
 
-    return detail::get_mi_coord(a, b, m_length[coord], m_length_inv[coord],
-                                m_length_half[coord], m_periodic[coord]);
+    return detail::get_mi_coord_masked(
+        a, b, static_cast<T>(m_length[coord]),
+        static_cast<T>(m_length_inv_masked[coord]));
+  }
+
+  /** @brief Cuboid minimum-image fold parameters for hoisting into kernels. */
+  auto cuboid_minimum_image() const {
+    return CuboidMinimumImage{m_length, m_length_inv_masked};
   }
 
   /**

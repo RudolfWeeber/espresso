@@ -98,8 +98,21 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
   // but ghost particles from other ranks may have larger particle ids;
   // -1 is used as a sentinel value for particle ids from other threads
 
-  auto intra_kernel = [&cells, &box_geo, &verlet_criterion, &id_to_index,
-                       &intra_operator, max_id](const int i) {
+  // Hoist the cuboid minimum-image parameters by value: the fold runs once
+  // per candidate pair and must not chase the BoxGeometry reference for its
+  // box lengths every time. Lees-Edwards boxes take the full BoxGeometry
+  // path (shear offset handling).
+  bool const has_lees_edwards = box_geo.type() == BoxType::LEES_EDWARDS;
+  auto const cuboid_minimum_image = box_geo.cuboid_minimum_image();
+  auto const minimum_image_dist2 =
+      [&box_geo, has_lees_edwards, cuboid_minimum_image](
+          Utils::Vector3d const &a, Utils::Vector3d const &b) {
+        return has_lees_edwards ? box_geo.get_mi_dist2(a, b)
+                                : cuboid_minimum_image.dist2(a, b);
+      };
+
+  auto intra_kernel = [&cells, minimum_image_dist2, &verlet_criterion,
+                       &id_to_index, &intra_operator, max_id](const int i) {
     auto &local_particles = cells[i]->particles();
     for (auto it = local_particles.begin(); it != local_particles.end(); ++it) {
       auto const &p1 = *it;
@@ -110,7 +123,7 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
           for (auto jt = std::next(it); jt != local_particles.end(); ++jt) {
             if ((*jt).id() <= max_id) {
               if (verlet_criterion(p1, *jt,
-                                   box_geo.get_mi_dist2(p1.pos(), jt->pos()))) {
+                                   minimum_image_dist2(p1.pos(), jt->pos()))) {
                 auto const jj = id_to_index((*jt).id());
                 if (jj >= 0) {
                   intra_operator(ii, jj);
@@ -123,8 +136,8 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
     }
   };
 
-  auto inter_kernel = [&cells, &box_geo, &verlet_criterion, &id_to_index,
-                       &inter_operator, max_id](const int i) {
+  auto inter_kernel = [&cells, minimum_image_dist2, &verlet_criterion,
+                       &id_to_index, &inter_operator, max_id](const int i) {
     auto &local_particles = cells[i]->particles();
     for (auto const &p1 : local_particles) {
       if (p1.id() <= max_id) {
@@ -135,7 +148,7 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
             for (auto const &p2 : neighbor->particles()) {
               if (p2.id() <= max_id) {
                 if (verlet_criterion(
-                        p1, p2, box_geo.get_mi_dist2(p1.pos(), p2.pos()))) {
+                        p1, p2, minimum_image_dist2(p1.pos(), p2.pos()))) {
                   auto const jj = id_to_index(p2.id());
                   if (jj >= 0) {
                     inter_operator(ii, jj);
