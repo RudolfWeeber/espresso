@@ -291,3 +291,102 @@ struct ForcesKernel {
 #endif
   }
 };
+
+/**
+ * @brief Own-the-loop specialization of the non-bonded pair kernel.
+ *
+ * Handles the common case of a cuboid box with only central radial pair
+ * forces active, optionally with real-space electrostatics (@p HasCoulomb).
+ * The dispatch in forces.cpp selects it only when no torque-producing,
+ * asymmetric, thermostat or exclusion interaction is active (no dipoles, ELC,
+ * DPD, NPT virial, exclusions, Thole or Gay-Berne, no Lees-Edwards), and
+ * falls back to @ref ForcesKernel otherwise.
+ *
+ * Unlike @ref ForcesKernel (invoked once per pair by
+ * Cabana::neighbor_parallel_for), this owns the Verlet-list loop and runs once
+ * per particle. That lets it hoist the per-particle position, type and charge,
+ * capture the cuboid box parameters by value, and obtain the ScatterView
+ * accessor once per particle instead of once per pair -- the per-pair
+ * `access()` is an omp_get_thread_num call that dominates the LJ pair cost. It
+ * does NOT accumulate the i-side force in a register: the per-pair scatter
+ * writes stay in the same order as @ref ForcesKernel (i before j, both scaled
+ * from the same pair force), so the result is bitwise-identical on a single
+ * thread. `if constexpr (HasCoulomb)` compiles the electrostatics path in or
+ * out entirely.
+ */
+template <bool HasCoulomb> struct SpecializedForcesKernel {
+  InteractionsNonBonded const &nonbonded_ias;
+  CellStructure::AoSoA_pack const &aosoa;
+  CellStructure::ScatterForce local_force;
+  Kokkos::View<int const *, Kokkos::HostSpace> counts;
+  Kokkos::View<int const **, Kokkos::LayoutRight, Kokkos::HostSpace> neighbors;
+  CuboidMinimumImage minimum_image;
+  double system_max_cutoff_sq;
+#ifdef ESPRESSO_ELECTROSTATICS
+  Coulomb::ShortRangeForceKernel::kernel_type const *coulomb_kernel;
+#ifdef ESPRESSO_P3M
+  CoulombP3M const *p3m;
+#endif
+#endif
+
+  ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION void
+  operator()(std::size_t const i) const {
+    auto const n_neighbors = counts(i);
+    if (n_neighbors == 0)
+      return;
+
+    auto const x_i = aosoa.position(i, 0);
+    auto const y_i = aosoa.position(i, 1);
+    auto const z_i = aosoa.position(i, 2);
+    auto const type_i = aosoa.type(i);
+#ifdef ESPRESSO_ELECTROSTATICS
+    double charge_i = 0.;
+    if constexpr (HasCoulomb) {
+      charge_i = aosoa.charge(i);
+    }
+#endif
+
+    // One ScatterView accessor for all of this particle's pairs.
+    auto access_force = local_force.access();
+
+    for (int k = 0; k < n_neighbors; ++k) {
+      auto const j = static_cast<std::size_t>(neighbors(i, k));
+      auto const d =
+          minimum_image.vector(x_i, y_i, z_i, aosoa.position(j, 0),
+                               aosoa.position(j, 1), aosoa.position(j, 2));
+      auto const dist_sq = d.norm2();
+      if (dist_sq > system_max_cutoff_sq)
+        continue;
+      auto const dist = std::sqrt(dist_sq);
+      auto const &ia_params = nonbonded_ias.get_ia_param(type_i, aosoa.type(j));
+
+      Utils::Vector3d f{};
+      if (dist <= ia_params.max_cut) {
+        f += calc_central_radial_force(ia_params, d, dist);
+      }
+#ifdef ESPRESSO_ELECTROSTATICS
+      if constexpr (HasCoulomb) {
+        auto const charge_j = aosoa.charge(j);
+        if (charge_i != 0. and charge_j != 0.) {
+          auto const q1q2 = charge_i * charge_j;
+#ifdef ESPRESSO_P3M
+          if (p3m) [[likely]] {
+            f += p3m->pair_force(q1q2, d, dist);
+          } else
+#endif
+          {
+            f += (*coulomb_kernel)(q1q2, d, dist);
+          }
+        }
+      }
+#endif
+
+      access_force(i, 0) += f[0];
+      access_force(i, 1) += f[1];
+      access_force(i, 2) += f[2];
+      access_force(j, 0) -= f[0];
+      access_force(j, 1) -= f[1];
+      access_force(j, 2) -= f[2];
+    }
+  }
+};

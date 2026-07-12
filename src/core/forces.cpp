@@ -144,6 +144,138 @@ static ForcesKernel create_cabana_neighbor_kernel(
                              system.maximal_cutoff()};
 }
 
+// Build the compile-time-specialized Verlet pair loop when the active feature
+// set is covered by SpecializedForcesKernel: cuboid box, no NPT virial, no
+// dipolar or ELC kernel, no DPD thermostat, no Thole or Gay-Berne pair, and no
+// particle with an exclusion. Returns an empty ShortRangeVerletPairLoop
+// otherwise, leaving cabana_short_range on the generic ForcesKernel path. The
+// specialized kernel is bitwise-identical to the generic one on these systems.
+static ShortRangeVerletPairLoop create_specialized_verlet_pair_loop(
+    System::System const &system,
+    [[maybe_unused]] Utils::Vector3d const *virial,
+    [[maybe_unused]] auto const &elc_kernel, auto const &coulomb_kernel,
+    [[maybe_unused]] auto const &dipoles_kernel) {
+  if (system.box_geo->type() != BoxType::CUBOID)
+    return {};
+#ifdef ESPRESSO_NPT
+  if (virial != nullptr)
+    return {};
+#endif
+#ifdef ESPRESSO_DIPOLES
+  if (get_ptr(dipoles_kernel) != nullptr)
+    return {};
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+  if (get_ptr(elc_kernel) != nullptr)
+    return {};
+#endif
+#ifdef ESPRESSO_DPD
+  if ((system.thermostat->thermo_switch & THERMO_DPD) != 0)
+    return {};
+#endif
+  auto const &nonbonded_ias = *system.nonbonded_ias;
+#if defined(ESPRESSO_THOLE) or defined(ESPRESSO_GAY_BERNE)
+  {
+    auto const max_type = nonbonded_ias.get_max_seen_particle_type();
+    for (int type_i = 0; type_i <= max_type; ++type_i) {
+      for (int type_j = type_i; type_j <= max_type; ++type_j) {
+        [[maybe_unused]] auto const &ia =
+            nonbonded_ias.get_ia_param(type_i, type_j);
+#ifdef ESPRESSO_THOLE
+        if (ia.thole.scaling_coeff != 0. and ia.thole.q1q2 != 0.)
+          return {};
+#endif
+#ifdef ESPRESSO_GAY_BERNE
+        if ((ia.active_pair_mask &
+             pair_potential_bit(PairPotential::GayBerne)) != 0u)
+          return {};
+#endif
+      }
+    }
+  }
+#endif
+  auto &cell_structure = *system.cell_structure;
+  auto const &aosoa = cell_structure.get_aosoa();
+#ifdef ESPRESSO_EXCLUSIONS
+  {
+    auto const n_pack = cell_structure.get_unique_particles().size();
+    for (std::size_t i = 0u; i < n_pack; ++i) {
+      if (aosoa.has_exclusion(i))
+        return {};
+    }
+  }
+#endif
+
+  auto scatter_force = cell_structure.get_scatter_force();
+  auto const minimum_image = system.box_geo->cuboid_minimum_image();
+  auto const max_cutoff_sq = Utils::sqr(system.maximal_cutoff());
+
+#ifdef ESPRESSO_ELECTROSTATICS
+  if (auto const *coulomb_ptr = get_ptr(coulomb_kernel);
+      coulomb_ptr != nullptr) {
+#ifdef ESPRESSO_P3M
+    CoulombP3M const *p3m = nullptr;
+    if (auto const &solver = system.coulomb.impl->solver; solver.has_value()) {
+      if (std::holds_alternative<std::shared_ptr<CoulombP3M>>(*solver)) {
+        p3m = std::get<std::shared_ptr<CoulombP3M>>(*solver).get();
+      }
+    }
+#endif
+    return [&nonbonded_ias, &aosoa, scatter_force, minimum_image, max_cutoff_sq,
+            coulomb_ptr
+#ifdef ESPRESSO_P3M
+            ,
+            p3m
+#endif
+    ](CellStructure::ListType const &verlet_list, std::size_t const n) {
+      SpecializedForcesKernel<true> const kernel{nonbonded_ias,
+                                                 aosoa,
+                                                 scatter_force,
+                                                 verlet_list.counts,
+                                                 verlet_list.neighbors,
+                                                 minimum_image,
+                                                 max_cutoff_sq,
+                                                 coulomb_ptr
+#ifdef ESPRESSO_P3M
+                                                 ,
+                                                 p3m
+#endif
+      };
+      Kokkos::parallel_for(
+          "specialized_nonbonded_pairs",
+          Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(std::size_t{0}, n),
+          kernel);
+    };
+  }
+#else
+  static_cast<void>(coulomb_kernel);
+#endif
+
+  return [&nonbonded_ias, &aosoa, scatter_force, minimum_image, max_cutoff_sq](
+             CellStructure::ListType const &verlet_list, std::size_t const n) {
+    SpecializedForcesKernel<false> const kernel{nonbonded_ias,
+                                                aosoa,
+                                                scatter_force,
+                                                verlet_list.counts,
+                                                verlet_list.neighbors,
+                                                minimum_image,
+                                                max_cutoff_sq
+#ifdef ESPRESSO_ELECTROSTATICS
+                                                ,
+                                                nullptr
+#ifdef ESPRESSO_P3M
+                                                ,
+                                                nullptr
+#endif
+#endif
+    };
+    Kokkos::parallel_for(
+        "specialized_nonbonded_pairs",
+        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(std::size_t{0}, n),
+        kernel);
+  };
+}
+
 static void reduce_cabana_forces_and_torques(System::System const &system,
                                              Utils::Vector3d *virial) {
 
@@ -286,11 +418,14 @@ void System::System::calculate_forces() {
       create_cabana_neighbor_kernel(*this, virial, elc_kernel, coulomb_kernel,
                                     dipoles_kernel, coulomb_u_kernel);
 
+  auto const specialized_pair_loop = create_specialized_verlet_pair_loop(
+      *this, virial, elc_kernel, coulomb_kernel, dipoles_kernel);
+
   cabana_short_range(pair_bonds_kernel, angle_bonds_kernel,
                      dihedral_bonds_kernel, first_neighbor_kernel,
                      *cell_structure, get_interaction_range(),
                      bonded_ias->maximal_cutoff(), verlet_criterion,
-                     propagation->integ_switch);
+                     propagation->integ_switch, specialized_pair_loop);
 
   // Force and Torque reduction
   reduce_cabana_forces_and_torques(*this, virial);
