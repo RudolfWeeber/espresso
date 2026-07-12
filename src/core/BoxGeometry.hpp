@@ -173,7 +173,7 @@ private:
   Utils::Vector3d m_length_inv = {1., 1., 1.};
   /** Inverse side lengths for periodic directions, 0 for non-periodic ones.
    *  Folding the periodicity into the inverse length makes the cuboid
-   *  minimum-image fold branchless (see @ref detail::get_mi_coord_masked). */
+   *  minimum-image fold branchless (see `detail::get_mi_coord_masked`). */
   Utils::Vector3d m_length_inv_masked = {1., 1., 1.};
   /** Half side lengths of the box */
   Utils::Vector3d m_length_half = {0.5, 0.5, 0.5};
