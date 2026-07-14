@@ -329,8 +329,18 @@ struct ForcesKernel {
  * from the same pair force), so the result is bitwise-identical on a single
  * thread. `if constexpr (HasCoulomb)` compiles the electrostatics path in or
  * out entirely.
+ *
+ * The neighbors are processed in fixed-size tiles, each in three passes: a
+ * scalar gather of the neighbor positions into SoA scratch, a vectorized
+ * minimum-image pass (@ref CuboidMinimumImage::batch_vector_dist2) that folds
+ * the whole tile at once and squares the distances, and a scalar pass that
+ * runs the short-range force only for the pairs whose squared distance passes
+ * the cutoff gate. The vectorized pass yields the same per-pair fold vector and
+ * squared distance as the scalar path, so identity is preserved.
  */
 template <bool HasCoulomb> struct SpecializedForcesKernel {
+  static constexpr int tile_size = 64;
+
   InteractionsNonBonded const &nonbonded_ias;
   CellStructure::AoSoA_pack const &aosoa;
   CellStructure::ScatterForce local_force;
@@ -366,45 +376,67 @@ template <bool HasCoulomb> struct SpecializedForcesKernel {
     // One ScatterView accessor for all of this particle's pairs.
     auto access_force = local_force.access();
 
-    for (int k = 0; k < n_neighbors; ++k) {
-      auto const j = static_cast<std::size_t>(neighbors(i, k));
-      auto const row_j = aosoa.row(j);
-      auto const d = minimum_image.vector(
-          x_i, y_i, z_i, aosoa.position(row_j, 0), aosoa.position(row_j, 1),
-          aosoa.position(row_j, 2));
-      auto const dist_sq = d.norm2();
-      if (dist_sq > system_max_cutoff_sq)
-        continue;
-      auto const dist = std::sqrt(dist_sq);
-      auto const &ia_params = nonbonded_ias.get_ia_param(type_i, aosoa.type(j));
+    // Per-tile SoA scratch (thread-local, on the stack).
+    int js[tile_size];
+    double sx[tile_size], sy[tile_size], sz[tile_size];
+    double dx0[tile_size], dx1[tile_size], dx2[tile_size], dsq[tile_size];
 
-      Utils::Vector3d f{};
-      if (dist <= ia_params.max_cut) {
-        f += calc_central_radial_force(ia_params, d, dist);
+    for (int base = 0; base < n_neighbors; base += tile_size) {
+      auto const m = Kokkos::min(tile_size, n_neighbors - base);
+
+      // Pass 1: scalar gather of the tile's neighbor positions.
+      for (int t = 0; t < m; ++t) {
+        auto const j = neighbors(i, base + t);
+        js[t] = j;
+        auto const row_j = aosoa.row(static_cast<std::size_t>(j));
+        sx[t] = aosoa.position(row_j, 0);
+        sy[t] = aosoa.position(row_j, 1);
+        sz[t] = aosoa.position(row_j, 2);
       }
+
+      // Pass 2: vectorized minimum-image fold + squared distance.
+      minimum_image.batch_vector_dist2(x_i, y_i, z_i, m, sx, sy, sz, dx0, dx1,
+                                       dx2, dsq);
+
+      // Pass 3: scalar short-range force for the pairs that pass the gate,
+      // in neighbor order (i before j) to preserve the accumulation order.
+      for (int t = 0; t < m; ++t) {
+        if (dsq[t] > system_max_cutoff_sq)
+          continue;
+        auto const j = static_cast<std::size_t>(js[t]);
+        Utils::Vector3d const d{dx0[t], dx1[t], dx2[t]};
+        auto const dist = std::sqrt(dsq[t]);
+        auto const &ia_params =
+            nonbonded_ias.get_ia_param(type_i, aosoa.type(j));
+
+        Utils::Vector3d f{};
+        if (dist <= ia_params.max_cut) {
+          f += calc_central_radial_force(ia_params, d, dist);
+        }
 #ifdef ESPRESSO_ELECTROSTATICS
-      if constexpr (HasCoulomb) {
-        auto const charge_j = aosoa.pair_charge(j);
-        if (charge_i != 0. and charge_j != 0.) {
-          auto const q1q2 = charge_i * charge_j;
+        if constexpr (HasCoulomb) {
+          auto const charge_j = aosoa.pair_charge(j);
+          if (charge_i != 0. and charge_j != 0.) {
+            auto const q1q2 = charge_i * charge_j;
 #ifdef ESPRESSO_P3M
-          if (p3m) [[likely]] {
-            f += p3m->pair_force(q1q2, d, dist);
-          } else
+            if (p3m) [[likely]] {
+              f += p3m->pair_force(q1q2, d, dist);
+            } else
 #endif
-          {
-            f += (*coulomb_kernel)(q1q2, d, dist);
+            {
+              f += (*coulomb_kernel)(q1q2, d, dist);
+            }
           }
         }
-      }
 #endif
 
-      access_force(i, 0) += f[0];
-      access_force(i, 1) += f[1];
-      access_force(i, 2) += f[2];
-      access_force(j, 0) -= f[0];
-      access_force(j, 1) -= f[1];
-      access_force(j, 2) -= f[2];
+        access_force(i, 0) += f[0];
+        access_force(i, 1) += f[1];
+        access_force(i, 2) += f[2];
+        access_force(j, 0) -= f[0];
+        access_force(j, 1) -= f[1];
+        access_force(j, 2) -= f[2];
+      }
     }
   }
 };
