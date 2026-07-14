@@ -143,6 +143,43 @@ public:
             detail::get_mi_coord_masked(a2, b2, m_length[2u],
                                         m_length_inv_masked[2u])};
   }
+
+  /**
+   * @brief Batched minimum-image vector and squared distance: one point
+   * (@p xi, @p yi, @p zi) against @p m others held in the SoA arrays
+   * @p sx / @p sy / @p sz.
+   *
+   * Writes the fold vector components to @p dx0 / @p dx1 / @p dx2 and the
+   * squared distance to @p dsq. The loop carries no dependency across the
+   * @p m entries and reads contiguous arrays, so it vectorizes. Each entry is
+   * computed exactly as the scalar @ref vector followed by
+   * `Utils::Vector::norm2` (accumulating from zero in component order), so the
+   * per-pair results are bitwise-identical to the scalar path.
+   */
+  ESPRESSO_ATTR_ALWAYS_INLINE inline void
+  batch_vector_dist2(double xi, double yi, double zi, int m, double const *sx,
+                     double const *sy, double const *sz, double *dx0,
+                     double *dx1, double *dx2, double *dsq) const {
+    auto const lx = m_length[0u];
+    auto const ly = m_length[1u];
+    auto const lz = m_length[2u];
+    auto const ix = m_length_inv_masked[0u];
+    auto const iy = m_length_inv_masked[1u];
+    auto const iz = m_length_inv_masked[2u];
+    for (int t = 0; t < m; ++t) {
+      auto const a0 = detail::get_mi_coord_masked(xi, sx[t], lx, ix);
+      auto const a1 = detail::get_mi_coord_masked(yi, sy[t], ly, iy);
+      auto const a2 = detail::get_mi_coord_masked(zi, sz[t], lz, iz);
+      dx0[t] = a0;
+      dx1[t] = a1;
+      dx2[t] = a2;
+      auto acc = 0.;
+      acc += a0 * a0;
+      acc += a1 * a1;
+      acc += a2 * a2;
+      dsq[t] = acc;
+    }
+  }
 };
 
 class BoxGeometry {
