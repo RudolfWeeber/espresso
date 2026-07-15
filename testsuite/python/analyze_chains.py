@@ -217,7 +217,7 @@ class AnalyzeChain(ut.TestCase):
         # the hydrodynamic radius is defined via a sum over distinct bead pairs;
         # for a single-bead chain there are no pairs and R_H is undefined
         # (0/0 = NaN), so it must be rejected
-        with self.assertRaisesRegex(ValueError, "not defined for chains shorter than 2 beads"):
+        with self.assertRaisesRegex(ValueError, "undefined for chains shorter than 2 beads"):
             analysis.calc_rh(chain_start=0, number_of_chains=num_poly,
                              chain_length=1)
         # single-bead chains are well-defined for the end-to-end distance and

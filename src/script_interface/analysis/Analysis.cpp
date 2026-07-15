@@ -211,16 +211,10 @@ Variant Analysis::do_call_method(std::string const &name,
     auto const chain_length = get_value<int>(parameters, "chain_length");
     auto const n_chains = get_value<int>(parameters, "number_of_chains");
     check_topology(*system.cell_structure, chain_start, chain_length, n_chains);
-    // The hydrodynamic radius is a sum over distinct bead pairs with a
-    // 1/(N(N-1)) prefactor; for a single bead there are no pairs and the
-    // quantity is genuinely undefined (the kernel would yield 0/0 = NaN).
-    // This guard is calc_rh-specific because chain_length == 1 is a valid
-    // input for calc_re and calc_rg (single-bead R_e and R_g are both 0).
     context()->parallel_try_catch([&]() {
       if (chain_length < 2) {
         throw std::domain_error(
-            "Hydrodynamic radius is not defined for chains shorter than 2 "
-            "beads");
+            "Hydrodynamic radius is undefined for chains shorter than 2 beads");
       }
     });
     auto const result = calc_rh(system, chain_start, chain_length, n_chains);
