@@ -49,7 +49,7 @@ private:
  *  interactions.
  *
  *  @tparam ShortRangeOnly  When true, the electrostatics / dipolar / collision
- *    early-accept branches are compiled out of @ref operator(). Selected by
+ *    early-accept branches are compiled out of the call operator. Selected by
  *    `update_verlet_state` only when none of those cutoffs are active, so the
  *    removed branches would never have accepted a pair -- the result is
  *    unchanged, but the per-candidate build loop drops the dead comparisons.
