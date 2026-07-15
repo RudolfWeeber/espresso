@@ -87,7 +87,8 @@ std::shared_ptr<Observable_stat> System::calculate_energy() {
                                            coulomb.cutoff(),
                                            dipoles.cutoff(),
                                            inactive_cutoff};
-  update_verlet_state(*cell_structure, verlet_criterion,
+  update_verlet_state(*cell_structure, *this, coulomb.cutoff(),
+                      dipoles.cutoff(), inactive_cutoff,
                       get_interaction_range(), propagation->integ_switch);
 
   EnergyBinLayout layout{

@@ -381,7 +381,8 @@ void System::System::calculate_forces() {
                                            dipoles.cutoff(),
                                            collision_detection_cutoff};
 
-  update_verlet_state(*cell_structure, verlet_criterion,
+  update_verlet_state(*cell_structure, *this, coulomb.cutoff(),
+                      dipoles.cutoff(), collision_detection_cutoff,
                       get_interaction_range(), propagation->integ_switch);
 #ifdef ESPRESSO_ELECTROSTATICS
   if (coulomb.impl->extension) {

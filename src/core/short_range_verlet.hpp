@@ -26,9 +26,16 @@
 // in each of their objects.
 
 #include "nonbonded_interactions/VerletCriterion.hpp"
+#include "system/System.hpp"
 
 class CellStructure;
 
+// Builds the Verlet criterion from the given cutoffs and updates the cabana
+// state. When no electrostatics/dipolar/collision cutoff is active, the
+// pure-short-range criterion variant is used, dropping those dead branches from
+// the per-candidate build loop. pair_cutoff is the interaction range (also the
+// criterion's maximum cutoff).
 void update_verlet_state(CellStructure &cell_structure,
-                         VerletCriterion<> const &criterion, double pair_cutoff,
-                         int integ_switch);
+                         System::System const &system, double coulomb_cut,
+                         double dipolar_cut, double collision_cut,
+                         double pair_cutoff, int integ_switch);
