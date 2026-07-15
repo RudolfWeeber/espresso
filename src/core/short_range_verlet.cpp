@@ -33,7 +33,25 @@
 #include "short_range_cabana.hpp"
 
 void update_verlet_state(CellStructure &cell_structure,
-                         VerletCriterion<> const &criterion, double pair_cutoff,
-                         int integ_switch) {
-  update_cabana_state(cell_structure, criterion, pair_cutoff, integ_switch);
+                         System::System const &system, double coulomb_cut,
+                         double dipolar_cut, double collision_cut,
+                         double pair_cutoff, int integ_switch) {
+  auto const skin = cell_structure.get_verlet_skin();
+  // When no electrostatics/dipolar/collision cutoff is active, build the
+  // criterion variant that compiles those dead per-candidate branches out of
+  // the build loop; otherwise the full one. pair_cutoff is the interaction
+  // range, which is also the criterion's maximum cutoff. Both
+  // update_cabana_state instantiations live in this single TU.
+  bool const short_range_only = coulomb_cut == inactive_cutoff and
+                                dipolar_cut == inactive_cutoff and
+                                collision_cut == inactive_cutoff;
+  if (short_range_only) {
+    VerletCriterion<GetNonbondedCutoff, true> const criterion{
+        system, skin, pair_cutoff, coulomb_cut, dipolar_cut, collision_cut};
+    update_cabana_state(cell_structure, criterion, pair_cutoff, integ_switch);
+  } else {
+    VerletCriterion<GetNonbondedCutoff, false> const criterion{
+        system, skin, pair_cutoff, coulomb_cut, dipolar_cut, collision_cut};
+    update_cabana_state(cell_structure, criterion, pair_cutoff, integ_switch);
+  }
 }

@@ -85,7 +85,8 @@ std::shared_ptr<Observable_stat> System::calculate_pressure() {
                                            coulomb.cutoff(),
                                            dipoles.cutoff(),
                                            inactive_cutoff};
-  update_verlet_state(*cell_structure, verlet_criterion,
+  update_verlet_state(*cell_structure, *this, coulomb.cutoff(),
+                      dipoles.cutoff(), inactive_cutoff,
                       get_interaction_range(), propagation->integ_switch);
 #ifdef ESPRESSO_ELECTROSTATICS
   // Refresh the pack-owned charge column once, guarded by an active coulomb

@@ -47,8 +47,16 @@ private:
 
 /** Returns true if the particles are to be considered for short range
  *  interactions.
+ *
+ *  @tparam ShortRangeOnly  When true, the electrostatics / dipolar / collision
+ *    early-accept branches are compiled out of @ref operator(). Selected by
+ *    `update_verlet_state` only when none of those cutoffs are active, so the
+ *    removed branches would never have accepted a pair -- the result is
+ *    unchanged, but the per-candidate build loop drops the dead comparisons.
  */
-template <typename CutoffGetter = GetNonbondedCutoff> class VerletCriterion {
+template <typename CutoffGetter = GetNonbondedCutoff,
+          bool ShortRangeOnly = false>
+class VerletCriterion {
   const double m_skin;
   const double m_eff_max_cut2;
   const double m_eff_coulomb_cut2 = 0.;
@@ -101,23 +109,25 @@ public:
     if (dist2 > m_eff_max_cut2)
       return false;
 
+    if constexpr (not ShortRangeOnly) {
 #ifdef ESPRESSO_ELECTROSTATICS
-    // Within real space cutoff of electrostatics and both are charged
-    if (dist2 <= m_eff_coulomb_cut2 and p1.q() != 0. and p2.q() != 0.)
-      return true;
+      // Within real space cutoff of electrostatics and both are charged
+      if (dist2 <= m_eff_coulomb_cut2 and p1.q() != 0. and p2.q() != 0.)
+        return true;
 #endif
 
 #ifdef ESPRESSO_DIPOLES
-    // Within dipolar cutoff and both carry magnetic moments
-    if (dist2 <= m_eff_dipolar_cut2 and p1.dipm() != 0. and p2.dipm() != 0.)
-      return true;
+      // Within dipolar cutoff and both carry magnetic moments
+      if (dist2 <= m_eff_dipolar_cut2 and p1.dipm() != 0. and p2.dipm() != 0.)
+        return true;
 #endif
 
 #ifdef ESPRESSO_COLLISION_DETECTION
-    // Collision detection
-    if (dist2 <= m_collision_cut2)
-      return true;
+      // Collision detection
+      if (dist2 <= m_collision_cut2)
+        return true;
 #endif
+    }
 
     // Within short-range distance (including dpd and the like). Inactive
     // pairs hold inactive_cutoff (negative) in the table, so the comparison
