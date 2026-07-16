@@ -29,9 +29,39 @@
 #include <complex>
 #include <cstddef>
 #include <iterator>
+#include <memory>
+#include <new>
 #include <span>
 #include <type_traits>
+#include <utility>
 #include <vector>
+
+namespace detail {
+/** @brief Allocator that leaves trivially-constructible elements uninitialized
+ *  on default construction, so a buffer that is about to be fully overwritten
+ *  is not first zero-filled. Behaves like std::allocator otherwise.
+ */
+template <typename T, typename Base = std::allocator<T>>
+struct default_init_allocator : Base {
+  using traits = std::allocator_traits<Base>;
+  template <typename U> struct rebind {
+    using other =
+        default_init_allocator<U, typename traits::template rebind_alloc<U>>;
+  };
+  using Base::Base;
+  default_init_allocator() = default;
+  template <typename U>
+  default_init_allocator(default_init_allocator<U> const &) noexcept {}
+  template <typename U>
+  void construct(U *ptr) noexcept(std::is_nothrow_default_constructible_v<U>) {
+    ::new (static_cast<void *>(ptr)) U;
+  }
+  template <typename U, typename... Args> void construct(U *ptr, Args &&...a) {
+    traits::construct(static_cast<Base &>(*this), ptr,
+                      std::forward<Args>(a)...);
+  }
+};
+} // namespace detail
 
 // Function to extract a 3D block from the halo field
 template <Utils::MemoryOrder memory_order,
@@ -42,8 +72,10 @@ auto extract_block(Container const &in_array, Utils::Vector3i const &dimensions,
   auto const block_dim = stop - start;
   auto const size = static_cast<std::size_t>(Utils::product(block_dim));
 
-  // Output vector to hold the block
-  std::vector<typename Container::value_type> out_array(size);
+  // Output vector to hold the block. The block is written in full below, so
+  // skip the zero-initialization (no-init allocator).
+  using value_t = typename Container::value_type;
+  std::vector<value_t, detail::default_init_allocator<value_t>> out_array(size);
 
   // Extract the block
   if constexpr (memory_order == Utils::MemoryOrder::ROW_MAJOR and
