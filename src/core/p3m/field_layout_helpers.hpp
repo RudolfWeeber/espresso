@@ -51,13 +51,19 @@ auto extract_block(Container const &in_array, Utils::Vector3i const &dimensions,
     auto const plane_src = dimensions[2] * dimensions[1];
     auto const lane_src = dimensions[2];
     auto const lane_dst = block_dim[2];
-    auto src = in_array.data();
-    auto dst = out_array.begin();
-    for (int x = start[0]; x < stop[0]; ++x) {
+    auto const *const src = in_array.data();
+    auto *const dst = out_array.data();
+    auto const n_y = stop[1] - start[1];
+    // Explicit destination offset per (x, y) lane lets the outer loop run in
+    // parallel: each x writes a disjoint set of contiguous lanes, so the copy
+    // is thread-safe and bitwise-identical to the serial version.
+    _Pragma("omp parallel for") for (int x = start[0]; x < stop[0]; ++x) {
       for (int y = start[1]; y < stop[1]; ++y) {
         auto const offset_src = x * plane_src + y * lane_src + start[2];
-        std::copy_n(src + offset_src, lane_dst, dst);
-        std::advance(dst, lane_dst);
+        auto const offset_dst =
+            (static_cast<std::size_t>(x - start[0]) * n_y + (y - start[1])) *
+            lane_dst;
+        std::copy_n(src + offset_src, lane_dst, dst + offset_dst);
       }
     }
   } else {
@@ -99,17 +105,22 @@ auto pad_with_zeros_discard_imag(std::span<T> cropped_array,
     auto const lane_src = cropped_dim[2];
     auto const base_offset_dst =
         pad_left[0] * plane_dst + pad_left[1] * lane_dst + pad_left[2];
-    auto dst = padded_array.data();
-    auto src = cropped_array.begin();
-    for (int x = 0; x < cropped_dim[0]; ++x) {
+    auto *const dst = padded_array.data();
+    auto const *const src = cropped_array.data();
+    // Explicit source offset per (x, y) lane lets the outer loop run in
+    // parallel: each x reads a disjoint set of lanes and writes a disjoint
+    // region of the padded array, so it is thread-safe and bitwise-identical.
+    _Pragma("omp parallel for") for (int x = 0; x < cropped_dim[0]; ++x) {
       for (int y = 0; y < cropped_dim[1]; ++y) {
         auto const offset_dst = base_offset_dst + x * plane_dst + y * lane_dst;
+        auto const offset_src =
+            (static_cast<std::size_t>(x) * cropped_dim[1] + y) * lane_src;
         if constexpr (std::is_floating_point_v<T>) {
-          std::copy_n(src, lane_src, dst + offset_dst);
+          std::copy_n(src + offset_src, lane_src, dst + offset_dst);
         } else {
-          std::transform(src, src + lane_src, dst + offset_dst, get_real);
+          std::transform(src + offset_src, src + offset_src + lane_src,
+                         dst + offset_dst, get_real);
         }
-        std::advance(src, lane_src);
       }
     }
   } else {
