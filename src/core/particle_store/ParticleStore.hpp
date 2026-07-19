@@ -499,6 +499,48 @@ public:
   auto lees_edwards_offset_view() { return m_lees_edwards_offset.view_host(); }
   auto lees_edwards_flag_view() { return m_lees_edwards_flag.view_host(); }
 
+  // -- device mirrors + host<->device sync (GPU-core migration, phase 1) ------
+  // Device-space views of the hot state columns, for device-resident kernels;
+  // the sync helpers push/pull them explicitly at integration-loop boundaries.
+  // On a host-only Kokkos build the device mirror aliases the host mirror, so
+  // the syncs are self-copies; these are only exercised on the (opt-in) device
+  // execution path, so the host path is unaffected.
+  auto position_view_device() { return m_position.view_device(); }
+  auto velocity_view_device() { return m_velocity.view_device(); }
+  auto force_view_device() { return m_force.view_device(); }
+  auto image_box_view_device() { return m_image_box.view_device(); }
+  auto id_view_device() { return m_id.view_device(); }
+  auto type_view_device() { return m_type.view_device(); }
+#ifdef ESPRESSO_ELECTROSTATICS
+  auto q_view_device() { return m_q.view_device(); }
+#endif
+#ifdef ESPRESSO_MASS
+  auto mass_view_device() { return m_mass.view_device(); }
+#endif
+
+  /** @brief Push the hot state columns to the device mirror. */
+  void sync_state_to_device() {
+    Kokkos::deep_copy(m_position.view_device(), m_position.view_host());
+    Kokkos::deep_copy(m_velocity.view_device(), m_velocity.view_host());
+    Kokkos::deep_copy(m_force.view_device(), m_force.view_host());
+    Kokkos::deep_copy(m_image_box.view_device(), m_image_box.view_host());
+    Kokkos::deep_copy(m_id.view_device(), m_id.view_host());
+    Kokkos::deep_copy(m_type.view_device(), m_type.view_host());
+#ifdef ESPRESSO_ELECTROSTATICS
+    Kokkos::deep_copy(m_q.view_device(), m_q.view_host());
+#endif
+#ifdef ESPRESSO_MASS
+    Kokkos::deep_copy(m_mass.view_device(), m_mass.view_host());
+#endif
+  }
+  /** @brief Pull the device-written state columns back to the host mirror. */
+  void sync_state_to_host() {
+    Kokkos::deep_copy(m_position.view_host(), m_position.view_device());
+    Kokkos::deep_copy(m_velocity.view_host(), m_velocity.view_device());
+    Kokkos::deep_copy(m_force.view_host(), m_force.view_device());
+    Kokkos::deep_copy(m_image_box.view_host(), m_image_box.view_device());
+  }
+
   // -- momentum columns -----------------------------------------------------
   VectorReference velocity_reference(int const row) {
     return column_reference(m_velocity, row);
