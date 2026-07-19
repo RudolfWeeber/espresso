@@ -35,6 +35,7 @@
 #include <cassert>
 #include <complex>
 #include <memory>
+#include <vector>
 
 /**
  * @brief Single-MPI-rank P3M FFT backend built on kokkos-fft.
@@ -48,6 +49,18 @@
  * function), so forces and energies agree with the heFFTe path to
  * floating-point round-off. The transform runs on the host regardless of the
  * Kokkos default device, matching the CPU heFFTe backend it replaces.
+ *
+ * The transforms execute in place on the caller's buffers via kokkos-fft's
+ * new-array execute path (FFTW @c fftw_execute_dft_r2c / @c _c2r on the pointer
+ * pair passed at call time). Because kokkos-fft plans with @c FFTW_ESTIMATE and
+ * without @c FFTW_UNALIGNED, a plan is only reused on buffers whose alignment
+ * matches the ones it was built with. We guarantee that by building each plan
+ * from the exact buffers it will run on (keyed and cached by pointer): the P3M
+ * k-space and no-halo real-space buffers are allocated once and stable, so
+ * their plans are built on the first step and reused thereafter with no data
+ * copies. The forward input is the only exception — @c extract_block hands us a
+ * freshly allocated buffer each step — so it is staged once into an owned,
+ * consistently aligned scratch view before the forward transform.
  */
 template <typename FloatType, class FFTConfig>
 struct P3MFFTKokkos final : public P3MFFTBackend<FloatType, FFTConfig> {
@@ -67,16 +80,14 @@ struct P3MFFTKokkos final : public P3MFFTBackend<FloatType, FFTConfig> {
 
   using RealView =
       Kokkos::View<FloatType ***, Kokkos::LayoutRight, Kokkos::HostSpace>;
-  using CplxView =
-      Kokkos::View<KComplex ***, Kokkos::LayoutRight, Kokkos::HostSpace>;
   using RealViewU =
       Kokkos::View<FloatType ***, Kokkos::LayoutRight, Kokkos::HostSpace,
                    Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
   using CplxViewU =
       Kokkos::View<KComplex ***, Kokkos::LayoutRight, Kokkos::HostSpace,
                    Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
-  using ForwardPlan = KokkosFFT::Plan<ExecSpace, RealView, CplxView, 3>;
-  using BackwardPlan = KokkosFFT::Plan<ExecSpace, CplxView, RealView, 3>;
+  using ForwardPlan = KokkosFFT::Plan<ExecSpace, RealViewU, CplxViewU, 3>;
+  using BackwardPlan = KokkosFFT::Plan<ExecSpace, CplxViewU, RealViewU, 3>;
 
   P3MFFTKokkos(boost::mpi::communicator comm,
                Utils::Vector3i const &global_mesh,
@@ -93,17 +104,9 @@ struct P3MFFTKokkos final : public P3MFFTBackend<FloatType, FFTConfig> {
     static_cast<void>(rs_local_ld_index);
     static_cast<void>(rs_local_ur_index);
 
-    m_real = RealView(
-        Kokkos::view_alloc(Kokkos::WithoutInitializing, "P3MFFTKokkos::real"),
-        m_mesh[0], m_mesh[1], m_mesh[2]);
-    m_cplx = CplxView(
-        Kokkos::view_alloc(Kokkos::WithoutInitializing, "P3MFFTKokkos::cplx"),
-        m_ks_size[0], m_ks_size[1], m_ks_size[2]);
-    auto const axes = KokkosFFT::axis_type<3>({0, 1, 2});
-    m_forward = std::make_unique<ForwardPlan>(
-        ExecSpace{}, m_real, m_cplx, KokkosFFT::Direction::forward, axes);
-    m_backward = std::make_unique<BackwardPlan>(
-        ExecSpace{}, m_cplx, m_real, KokkosFFT::Direction::backward, axes);
+    m_real_scratch = RealView(Kokkos::view_alloc(Kokkos::WithoutInitializing,
+                                                 "P3MFFTKokkos::real_scratch"),
+                              m_mesh[0], m_mesh[1], m_mesh[2]);
   }
 
   Utils::Vector3i ks_local_ld_index() const override { return {0, 0, 0}; }
@@ -112,34 +115,73 @@ struct P3MFFTKokkos final : public P3MFFTBackend<FloatType, FFTConfig> {
   Utils::Vector3i rs_local_size() const override { return m_mesh; }
 
   void forward(RSpaceScalar const *in, ComplexType *out) override {
-    RealViewU in_view(const_cast<FloatType *>(in), m_mesh[0], m_mesh[1],
-                      m_mesh[2]);
-    Kokkos::deep_copy(m_real, in_view);
-    KokkosFFT::execute(*m_forward, m_real, m_cplx,
+    // stage the transient input into the owned, consistently aligned scratch
+    RealViewU const in_view(const_cast<FloatType *>(in), m_mesh[0], m_mesh[1],
+                            m_mesh[2]);
+    Kokkos::deep_copy(m_real_scratch, in_view);
+
+    RealViewU const scratch_view(m_real_scratch.data(), m_mesh[0], m_mesh[1],
+                                 m_mesh[2]);
+    CplxViewU const out_view(reinterpret_cast<KComplex *>(out), m_ks_size[0],
+                             m_ks_size[1], m_ks_size[2]);
+    if (not m_forward or m_forward_out != out) {
+      m_forward = std::make_unique<ForwardPlan>(
+          ExecSpace{}, scratch_view, out_view, KokkosFFT::Direction::forward,
+          KokkosFFT::axis_type<3>({0, 1, 2}));
+      m_forward_out = out;
+    }
+    KokkosFFT::execute(*m_forward, scratch_view, out_view,
                        KokkosFFT::Normalization::none);
-    CplxViewU out_view(reinterpret_cast<KComplex *>(out), m_ks_size[0],
-                       m_ks_size[1], m_ks_size[2]);
-    Kokkos::deep_copy(out_view, m_cplx);
   }
 
   void backward(ComplexType const *in, RSpaceScalar *out) override {
-    CplxViewU in_view(
+    // c2r destroys its input; ks_E_fields[d] is recomputed every step and not
+    // read afterwards, so running in place on it is safe.
+    CplxViewU const in_view(
         reinterpret_cast<KComplex *>(const_cast<ComplexType *>(in)),
         m_ks_size[0], m_ks_size[1], m_ks_size[2]);
-    Kokkos::deep_copy(m_cplx, in_view);
-    KokkosFFT::execute(*m_backward, m_cplx, m_real,
-                       KokkosFFT::Normalization::none);
-    RealViewU out_view(out, m_mesh[0], m_mesh[1], m_mesh[2]);
-    Kokkos::deep_copy(out_view, m_real);
+    RealViewU const out_view(out, m_mesh[0], m_mesh[1], m_mesh[2]);
+    KokkosFFT::execute(backward_plan(in, out, in_view, out_view), in_view,
+                       out_view, KokkosFFT::Normalization::none);
   }
 
 private:
+  /** @brief Plan bound to a fixed (input, output) buffer pair. */
+  struct BackwardEntry {
+    void const *in;
+    void const *out;
+    std::unique_ptr<BackwardPlan> plan;
+  };
+
+  /**
+   * @brief Fetch (or lazily build) the backward plan for a buffer pair.
+   *
+   * P3M calls @ref backward with the same handful of stable (@c ks_E_fields,
+   * @c rs_E_fields_no_halo) buffers every step, so building the plan on the
+   * exact buffers it runs on both fixes the FFTW alignment and lets it be
+   * reused indefinitely without a copy.
+   */
+  BackwardPlan &backward_plan(void const *in, void const *out,
+                              CplxViewU const &in_view,
+                              RealViewU const &out_view) {
+    for (auto &entry : m_backward) {
+      if (entry.in == in and entry.out == out) {
+        return *entry.plan;
+      }
+    }
+    auto plan = std::make_unique<BackwardPlan>(
+        ExecSpace{}, in_view, out_view, KokkosFFT::Direction::backward,
+        KokkosFFT::axis_type<3>({0, 1, 2}));
+    m_backward.push_back({in, out, std::move(plan)});
+    return *m_backward.back().plan;
+  }
+
   Utils::Vector3i m_mesh;
   Utils::Vector3i m_ks_size;
-  RealView m_real;
-  CplxView m_cplx;
+  RealView m_real_scratch;
+  ComplexType const *m_forward_out = nullptr;
   std::unique_ptr<ForwardPlan> m_forward;
-  std::unique_ptr<BackwardPlan> m_backward;
+  std::vector<BackwardEntry> m_backward;
 };
 
 #endif // ESPRESSO_KOKKOS_FFT
