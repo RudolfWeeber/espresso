@@ -138,7 +138,8 @@ void for_each_3d_lin(detail::IndexVectorConcept auto &&start,
   if (Kokkos::num_threads() > 1) {
     auto const size = stop - start;
     constexpr Kokkos::Iterate iter = LayoutIterate<memory_order>::value;
-    using Range3d = Kokkos::MDRangePolicy<Kokkos::Rank<3, iter, iter>>;
+    using Range3d = Kokkos::MDRangePolicy<Kokkos::DefaultHostExecutionSpace,
+                                          Kokkos::Rank<3, iter, iter>>;
     Range3d policy({0, 0, 0}, {size[0], size[1], size[2]});
     Kokkos::parallel_for(
         "for_each_3d", policy, KOKKOS_LAMBDA(int i, int j, int k) {

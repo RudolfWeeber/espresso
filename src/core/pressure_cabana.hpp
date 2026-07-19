@@ -103,10 +103,11 @@ struct PressureKernel {
   Coulomb::ShortRangePressureKernel::kernel_type const *coulomb_p_kernel;
   BoxGeometry const &box_geo;
   std::vector<Particle *> const &unique_particles;
-  Kokkos::View<double **, Kokkos::LayoutRight> local_pressure;
+  Kokkos::View<double **, Kokkos::LayoutRight, Kokkos::HostSpace>
+      local_pressure;
   PressureBinLayout layout;
   CellStructure::AoSoA_pack const &aosoa;
-  Kokkos::View<int *> mol_id_view;
+  Kokkos::View<int *, Kokkos::HostSpace> mol_id_view;
   double system_max_cutoff;
   int thermo_switch;
 
@@ -118,10 +119,11 @@ struct PressureKernel {
       Coulomb::ShortRangePressureKernel::kernel_type const *coulomb_p_kernel_,
       BoxGeometry const &box_geo_,
       std::vector<Particle *> const &unique_particles_,
-      Kokkos::View<double **, Kokkos::LayoutRight> const &local_pressure_,
+      Kokkos::View<double **, Kokkos::LayoutRight, Kokkos::HostSpace> const
+          &local_pressure_,
       PressureBinLayout layout_, CellStructure::AoSoA_pack const &aosoa_,
-      Kokkos::View<int *> mol_id_view_, double system_max_cutoff_,
-      int thermo_switch_)
+      Kokkos::View<int *, Kokkos::HostSpace> mol_id_view_,
+      double system_max_cutoff_, int thermo_switch_)
       : bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
         coulomb(coulomb_), coulomb_f_kernel(coulomb_f_kernel_),
         coulomb_p_kernel(coulomb_p_kernel_), box_geo(box_geo_),
@@ -219,7 +221,8 @@ struct PressureKernel {
 };
 
 static void reduce_cabana_pressure(
-    Kokkos::View<double **, Kokkos::LayoutRight> const &local_pressure,
+    Kokkos::View<double **, Kokkos::LayoutRight, Kokkos::HostSpace> const
+        &local_pressure,
     PressureBinLayout const &layout, Observable_stat &obs,
     [[maybe_unused]] BondedInteractionsMap const &bonded_ias, int n_types) {
   auto const nthreads = local_pressure.extent(0);

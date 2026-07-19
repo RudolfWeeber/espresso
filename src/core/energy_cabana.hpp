@@ -84,10 +84,10 @@ struct EnergyKernel {
   Dipoles::ShortRangeEnergyKernel::kernel_type const *dipoles_u_kernel;
   BoxGeometry const &box_geo;
   std::vector<Particle *> const &unique_particles;
-  Kokkos::View<double **, Kokkos::LayoutRight> local_energy;
+  Kokkos::View<double **, Kokkos::LayoutRight, Kokkos::HostSpace> local_energy;
   EnergyBinLayout layout;
   CellStructure::AoSoA_pack const &aosoa;
-  Kokkos::View<int *> mol_id_view;
+  Kokkos::View<int *, Kokkos::HostSpace> mol_id_view;
   double system_max_cutoff_sq;
 
   EnergyKernel(
@@ -98,9 +98,11 @@ struct EnergyKernel {
       Dipoles::ShortRangeEnergyKernel::kernel_type const *dipoles_u_kernel_,
       BoxGeometry const &box_geo_,
       std::vector<Particle *> const &unique_particles_,
-      Kokkos::View<double **, Kokkos::LayoutRight> const &local_energy_,
+      Kokkos::View<double **, Kokkos::LayoutRight, Kokkos::HostSpace> const
+          &local_energy_,
       EnergyBinLayout layout_, CellStructure::AoSoA_pack const &aosoa_,
-      Kokkos::View<int *> mol_id_view_, double system_max_cutoff_)
+      Kokkos::View<int *, Kokkos::HostSpace> mol_id_view_,
+      double system_max_cutoff_)
       : bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
         coulomb(coulomb_), coulomb_u_kernel(coulomb_u_kernel_),
         dipoles_u_kernel(dipoles_u_kernel_), box_geo(box_geo_),
@@ -216,7 +218,8 @@ struct EnergyKernel {
 };
 
 static void reduce_cabana_energy(
-    Kokkos::View<double **, Kokkos::LayoutRight> const &local_energy,
+    Kokkos::View<double **, Kokkos::LayoutRight, Kokkos::HostSpace> const
+        &local_energy,
     EnergyBinLayout const &layout, Observable_stat &obs,
     BondedInteractionsMap const &bonded_ias, int n_types) {
   auto const nthreads = local_energy.extent(0);

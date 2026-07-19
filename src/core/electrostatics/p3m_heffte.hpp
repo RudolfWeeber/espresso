@@ -208,7 +208,7 @@ public:
       p3m.inter_weights.reset(p3m.params.cao);
     }
     p3m.rs_charge_density.resize(p3m.local_mesh.size);
-    using execution_space = Kokkos::DefaultExecutionSpace;
+    using execution_space = Kokkos::DefaultHostExecutionSpace;
     auto const num_threads = execution_space().concurrency();
     Kokkos::realloc(Kokkos::WithoutInitializing, p3m.rs_charge_density_kokkos,
                     num_threads, p3m.local_mesh.size);

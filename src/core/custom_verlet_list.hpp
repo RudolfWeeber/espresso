@@ -132,7 +132,7 @@ public:
   KOKKOS_INLINE_FUNCTION
   void sortNeighbors() {
     Kokkos::parallel_for("custom_verlet_list::sort_neighbors",
-                         Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(
+                         Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
                              std::size_t{0}, counts.size()),
                          [&](std::size_t const i) {
                            auto const count = counts(i);
@@ -171,8 +171,8 @@ public:
     Kokkos::Max<int> max_reduce(max_counts);
     Kokkos::parallel_reduce(
         "custom_verlet_list::reduce_max",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(std::size_t{0},
-                                                           counts.size()),
+        Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(std::size_t{0},
+                                                               counts.size()),
         [&](std::size_t const i, int &value) {
           if (counts(i) > value)
             value = counts(i);

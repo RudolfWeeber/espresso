@@ -26,12 +26,18 @@
 #include <vector>
 
 struct LocalBondState {
-  using PairBondlistType = Kokkos::View<int *[2], Kokkos::LayoutRight>;
-  using PairBondIDType = Kokkos::View<int *, Kokkos::LayoutRight>;
-  using AngleBondlistType = Kokkos::View<int *[3], Kokkos::LayoutRight>;
-  using AngleBondIDType = Kokkos::View<int *, Kokkos::LayoutRight>;
-  using DihedralBondlistType = Kokkos::View<int *[4], Kokkos::LayoutRight>;
-  using DihedralBondIDType = Kokkos::View<int *, Kokkos::LayoutRight>;
+  using PairBondlistType =
+      Kokkos::View<int *[2], Kokkos::LayoutRight, Kokkos::HostSpace>;
+  using PairBondIDType =
+      Kokkos::View<int *, Kokkos::LayoutRight, Kokkos::HostSpace>;
+  using AngleBondlistType =
+      Kokkos::View<int *[3], Kokkos::LayoutRight, Kokkos::HostSpace>;
+  using AngleBondIDType =
+      Kokkos::View<int *, Kokkos::LayoutRight, Kokkos::HostSpace>;
+  using DihedralBondlistType =
+      Kokkos::View<int *[4], Kokkos::LayoutRight, Kokkos::HostSpace>;
+  using DihedralBondIDType =
+      Kokkos::View<int *, Kokkos::LayoutRight, Kokkos::HostSpace>;
 
   // Bond counts
   int pair_count = 0;
@@ -76,7 +82,7 @@ struct LocalBondState {
 #ifdef ESPRESSO_COLLISION_DETECTION
   void clear_new_bonds();
   void add_new_bond(int bond_id, std::vector<int> const &particle_ids,
-                    Kokkos::View<int *> const &id_to_index);
+                    Kokkos::View<int *, Kokkos::HostSpace> const &id_to_index);
   void rebuild();
 #endif
 };

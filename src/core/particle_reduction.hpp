@@ -120,7 +120,10 @@ ResultType reduce_over_local_particles(
         },
         reduce_op);
     Kokkos::parallel_reduce( // loop over cells
-        "reduce_on_local_particle", cells.size(), reducer, result);
+        "reduce_on_local_particle",
+        Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(std::size_t{0},
+                                                               cells.size()),
+        reducer, result);
     return result;
   }
   // single cell case: parallel over particles, each index building its OWN
@@ -137,6 +140,9 @@ ResultType reduce_over_local_particles(
       },
       reduce_op);
   Kokkos::parallel_reduce( // loop over particles
-      "reduce_on_local_particle", n_part, reducer, result);
+      "reduce_on_local_particle",
+      Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(std::size_t{0},
+                                                             n_part),
+      reducer, result);
   return result;
 }

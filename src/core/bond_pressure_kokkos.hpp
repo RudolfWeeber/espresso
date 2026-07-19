@@ -40,7 +40,8 @@
 struct BondsPressureKernelData {
   BondedInteractionsMap const &bonded_ias;
   BoxGeometry const &box_geo;
-  Kokkos::View<double **, Kokkos::LayoutRight> local_pressure;
+  Kokkos::View<double **, Kokkos::LayoutRight, Kokkos::HostSpace>
+      local_pressure;
   PressureBinLayout layout;
   CellStructure::AoSoA_pack const &aosoa;
 };

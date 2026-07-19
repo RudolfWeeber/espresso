@@ -192,7 +192,7 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
     m_scatter_torque.emplace(
         Kokkos::Experimental::create_scatter_view(*m_local_torque));
 #endif
-    m_id_to_index = std::make_unique<Kokkos::View<int *>>(
+    m_id_to_index = std::make_unique<Kokkos::View<int *, Kokkos::HostSpace>>(
         Kokkos::ViewAllocateWithoutInitializing("id_to_index"),
         get_cached_max_local_particle_id() + 1);
     Kokkos::deep_copy(get_id_to_index(), -1);
@@ -417,18 +417,21 @@ void CellStructure::update_director_view() {
   }
   auto quaternion = m_particle_store.quaternion_view();
   auto director = m_director_view;
-  Kokkos::parallel_for(
-      "update_director_view", n_total, [quaternion, director](std::size_t row) {
-        Utils::Quaternion<double> q;
-        q[0] = quaternion(row, 0);
-        q[1] = quaternion(row, 1);
-        q[2] = quaternion(row, 2);
-        q[3] = quaternion(row, 3);
-        auto const d = Utils::convert_quaternion_to_director(q);
-        director(row, 0) = d[0];
-        director(row, 1) = d[1];
-        director(row, 2) = d[2];
-      });
+  Kokkos::parallel_for("update_director_view",
+                       Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
+                           std::size_t{0}, n_total),
+                       [quaternion, director](std::size_t row) {
+                         Utils::Quaternion<double> q;
+                         q[0] = quaternion(row, 0);
+                         q[1] = quaternion(row, 1);
+                         q[2] = quaternion(row, 2);
+                         q[3] = quaternion(row, 3);
+                         auto const d =
+                             Utils::convert_quaternion_to_director(q);
+                         director(row, 0) = d[0];
+                         director(row, 1) = d[1];
+                         director(row, 2) = d[2];
+                       });
   Kokkos::fence();
 }
 #endif

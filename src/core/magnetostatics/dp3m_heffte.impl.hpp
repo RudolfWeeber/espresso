@@ -207,7 +207,7 @@ template <int cao> struct AssignDipole {
               });
         });
     Kokkos::fence();
-    using execution_space = Kokkos::DefaultExecutionSpace;
+    using execution_space = Kokkos::DefaultHostExecutionSpace;
     int num_threads = execution_space().concurrency();
     Kokkos::RangePolicy<execution_space> policy(std::size_t{0},
                                                 dp3m.local_mesh.size);

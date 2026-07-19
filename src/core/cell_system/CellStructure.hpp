@@ -163,12 +163,16 @@ class CellStructure : public System::Leaf<CellStructure> {
 public:
   static constexpr auto vector_length = 1;
   struct AoSoA_pack;
-  using ForceType = Kokkos::View<double *[3], Kokkos::LayoutRight>;
-  using VirialType = Kokkos::View<double[3], Kokkos::LayoutRight>;
+  using ForceType =
+      Kokkos::View<double *[3], Kokkos::LayoutRight, Kokkos::HostSpace>;
+  using VirialType =
+      Kokkos::View<double[3], Kokkos::LayoutRight, Kokkos::HostSpace>;
   using ScatterForce =
-      Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight>;
+      Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight,
+                                        Kokkos::DefaultHostExecutionSpace>;
   using ScatterVirial =
-      Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight>;
+      Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight,
+                                        Kokkos::DefaultHostExecutionSpace>;
   using memory_space = Kokkos::HostSpace;
   using ListAlgorithm = Cabana::HalfNeighborTag;
   using ListType =
@@ -223,7 +227,7 @@ private:
   int m_cached_max_local_particle_id = 0;
   std::size_t m_num_local_particles_cached = 0;
   int m_max_id = 0;
-  std::unique_ptr<Kokkos::View<int *>> m_id_to_index;
+  std::unique_ptr<Kokkos::View<int *, Kokkos::HostSpace>> m_id_to_index;
   std::unique_ptr<ForceType> m_local_force;
   std::optional<ScatterForce> m_scatter_force;
 #ifdef ESPRESSO_ROTATION

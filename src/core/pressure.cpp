@@ -100,13 +100,13 @@ std::shared_ptr<Observable_stat> System::calculate_pressure() {
       static_cast<std::size_t>(bonded_ias->get_next_key()),
       std::size_t(nonbonded_ias->get_max_seen_particle_type() + 1)};
 
-  using exec = Kokkos::DefaultExecutionSpace;
-  Kokkos::View<double **, Kokkos::LayoutRight> local_pressure(
-      "local_pressure", exec().concurrency(), layout.total * 9);
+  using exec = Kokkos::DefaultHostExecutionSpace;
+  Kokkos::View<double **, Kokkos::LayoutRight, Kokkos::HostSpace>
+      local_pressure("local_pressure", exec().concurrency(), layout.total * 9);
 
   auto const &unique_particles = cell_structure->get_unique_particles();
   auto const n_particles = static_cast<int>(unique_particles.size());
-  Kokkos::View<int *> mol_id_view("mol_id", n_particles);
+  Kokkos::View<int *, Kokkos::HostSpace> mol_id_view("mol_id", n_particles);
   auto mol_id_host = Kokkos::create_mirror_view(mol_id_view);
   for (int i = 0; i < n_particles; ++i)
     mol_id_host(i) = unique_particles[i]->mol_id();

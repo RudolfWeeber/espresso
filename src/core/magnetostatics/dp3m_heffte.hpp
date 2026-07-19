@@ -223,7 +223,7 @@ public:
 private:
   void prepare_fft_mesh() {
     dp3m.inter_weights.reset(dp3m.params.cao);
-    using execution_space = Kokkos::DefaultExecutionSpace;
+    using execution_space = Kokkos::DefaultHostExecutionSpace;
     auto const num_threads = execution_space().concurrency();
     Kokkos::realloc(Kokkos::WithoutInitializing, dp3m.rs_fields_kokkos,
                     num_threads, 3, dp3m.local_mesh.size);

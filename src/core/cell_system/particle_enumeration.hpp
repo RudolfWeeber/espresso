@@ -56,7 +56,10 @@ inline void enumerate_local_particles(CellStructure const &cs,
         [](auto acc, auto const &cell) { return acc + cell->count(); });
 
     Kokkos::parallel_for(
-        "enumerate_local_particles", local_cells.size(), [&](auto cell_idx) {
+        "enumerate_local_particles",
+        Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
+            std::size_t{0}, local_cells.size()),
+        [&](auto cell_idx) {
           auto const base_offset = cell_offsets[cell_idx];
           // The cell's committed rows are the contiguous range
           // [offset, offset+count); index it directly (this runs on a clean

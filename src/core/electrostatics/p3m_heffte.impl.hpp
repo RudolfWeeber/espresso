@@ -411,7 +411,7 @@ template <int cao> struct AssignCharge {
           p3m_scatter_line(p3m.local_mesh, weights, q, density);
         });
     Kokkos::fence();
-    using execution_space = Kokkos::DefaultExecutionSpace;
+    using execution_space = Kokkos::DefaultHostExecutionSpace;
     int num_threads = execution_space().concurrency();
     Kokkos::RangePolicy<execution_space> policy(std::size_t{0},
                                                 p3m.local_mesh.size);

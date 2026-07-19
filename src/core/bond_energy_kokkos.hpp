@@ -40,7 +40,7 @@
 struct BondsEnergyKernelData {
   BondedInteractionsMap const &bonded_ias;
   BoxGeometry const &box_geo;
-  Kokkos::View<double **, Kokkos::LayoutRight> local_energy;
+  Kokkos::View<double **, Kokkos::LayoutRight, Kokkos::HostSpace> local_energy;
   EnergyBinLayout layout;
   CellStructure::AoSoA_pack const &aosoa;
 };
