@@ -50,6 +50,10 @@ template <typename FloatType, class FFTConfig> struct P3MFFTBackend {
   virtual Utils::Vector3i ks_local_size() const = 0;
   /** @brief Extent of this rank's real-space (no-halo) box. */
   virtual Utils::Vector3i rs_local_size() const = 0;
+  /** @brief Persistent, transform-ready buffer for the caller to fill with the
+   *  no-halo real-space input; holds product(rs_local_size()) elements. Passing
+   *  it back as @ref forward's @c in lets a backend transform it in place. */
+  virtual RSpaceScalar *forward_input_buffer() = 0;
   /** @brief Forward transform (real/complex charge density to k-space). */
   virtual void forward(RSpaceScalar const *in, ComplexType *out) = 0;
   /** @brief Backward transform (k-space field to real space). */

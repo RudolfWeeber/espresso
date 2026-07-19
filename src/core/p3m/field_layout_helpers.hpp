@@ -63,19 +63,17 @@ struct default_init_allocator : Base {
 };
 } // namespace detail
 
-// Function to extract a 3D block from the halo field
+// Extract a 3D block from the halo field into a caller-provided buffer.
+// @c out must hold at least @c product(stop - start) elements; the block is
+// written in full, so its prior contents are irrelevant.
 template <Utils::MemoryOrder memory_order,
-          Utils::MemoryOrder output_memory_order, typename Container>
-auto extract_block(Container const &in_array, Utils::Vector3i const &dimensions,
-                   Utils::Vector3i const &start, Utils::Vector3i const &stop) {
-  // Calculate the size of the block excluding halo regions
+          Utils::MemoryOrder output_memory_order, typename Container,
+          typename OutValue>
+void extract_block_into(OutValue *out, Container const &in_array,
+                        Utils::Vector3i const &dimensions,
+                        Utils::Vector3i const &start,
+                        Utils::Vector3i const &stop) {
   auto const block_dim = stop - start;
-  auto const size = static_cast<std::size_t>(Utils::product(block_dim));
-
-  // Output vector to hold the block. The block is written in full below, so
-  // skip the zero-initialization (no-init allocator).
-  using value_t = typename Container::value_type;
-  std::vector<value_t, detail::default_init_allocator<value_t>> out_array(size);
 
   // Extract the block
   if constexpr (memory_order == Utils::MemoryOrder::ROW_MAJOR and
@@ -84,7 +82,7 @@ auto extract_block(Container const &in_array, Utils::Vector3i const &dimensions,
     auto const lane_src = dimensions[2];
     auto const lane_dst = block_dim[2];
     auto const *const src = in_array.data();
-    auto *const dst = out_array.data();
+    auto *const dst = out;
     auto const n_y = stop[1] - start[1];
     // Explicit destination offset per (x, y) lane lets the outer loop run in
     // parallel: each x writes a disjoint set of contiguous lanes, so the copy
@@ -107,10 +105,25 @@ auto extract_block(Container const &in_array, Utils::Vector3i const &dimensions,
           assert(out_index == Utils::get_linear_index<output_memory_order>(
                                   indices - start, block_dim));
           // Copy the value
-          out_array[out_index] = in_array[in_index];
+          out[out_index] = in_array[in_index];
         });
   }
+}
 
+// Function to extract a 3D block from the halo field
+template <Utils::MemoryOrder memory_order,
+          Utils::MemoryOrder output_memory_order, typename Container>
+auto extract_block(Container const &in_array, Utils::Vector3i const &dimensions,
+                   Utils::Vector3i const &start, Utils::Vector3i const &stop) {
+  // Calculate the size of the block excluding halo regions
+  auto const size = static_cast<std::size_t>(Utils::product(stop - start));
+
+  // Output vector to hold the block. The block is written in full below, so
+  // skip the zero-initialization (no-init allocator).
+  using value_t = typename Container::value_type;
+  std::vector<value_t, detail::default_init_allocator<value_t>> out_array(size);
+  extract_block_into<memory_order, output_memory_order>(
+      out_array.data(), in_array, dimensions, start, stop);
   return out_array;
 }
 
