@@ -52,4 +52,8 @@ if(ESPRESSO_BUILD_WITH_FFTW)
   target_sources(
     espresso_p3m PRIVATE common.cpp send_mesh.cpp TuningAlgorithm.cpp
                          FFTBackendLegacy.cpp FFTBuffersLegacy.cpp)
+  if(ESPRESSO_BUILD_WITH_KOKKOS_FFT)
+    target_link_libraries(espresso_p3m PRIVATE KokkosFFT::fft)
+    target_compile_definitions(espresso_p3m PRIVATE ESPRESSO_KOKKOS_FFT)
+  endif()
 endif()

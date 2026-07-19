@@ -28,6 +28,7 @@
 #include "electrostatics/p3m.hpp"
 
 #include "communication.hpp"
+#include "p3m/P3MFFTBackend.hpp"
 #include "p3m/common.hpp"
 #include "p3m/data_struct.hpp"
 #include "p3m/interpolation.hpp"
@@ -83,7 +84,7 @@ struct CoulombP3MState : public P3MStateCommon<FloatType> {
   /** electric fields in real-space without halo */
   std::array<std::vector<FloatType>, 3> rs_E_fields_no_halo;
   p3m_send_mesh<FloatType> halo_comm;
-  std::shared_ptr<P3MFFT<FloatType, FFTConfig>> fft;
+  std::shared_ptr<P3MFFTBackend<FloatType, FFTConfig>> fft;
   Kokkos::View<FloatType **, Kokkos::LayoutRight, Kokkos::HostSpace>
       rs_charge_density_kokkos;
 
