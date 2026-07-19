@@ -37,6 +37,7 @@
 #include "electrostatics/p3m_heffte.hpp" // must be included after coulomb.hpp
 
 #include "p3m/P3MFFT.hpp"
+#include "p3m/P3MFFTKokkos.hpp"
 #include "p3m/TuningAlgorithm.hpp"
 #include "p3m/TuningLogger.hpp"
 #include "p3m/field_layout_helpers.hpp"
@@ -315,9 +316,23 @@ void CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::init_cpu_kernels() {
   }
 
   p3m.local_mesh.calc_local_ca_mesh(p3m.params, local_geo, skin, elc_layer);
-  p3m.fft = std::make_shared<P3MFFT<FloatType, FFTConfig>>(
-      ::comm_cart, p3m.params.mesh, p3m.local_mesh.ld_no_halo,
-      p3m.local_mesh.ur_no_halo, ::communicator.node_grid);
+  std::shared_ptr<P3MFFTBackend<FloatType, FFTConfig>> fft_backend;
+#ifdef ESPRESSO_KOKKOS_FFT
+  // kokkos-fft is a local (non-MPI) transform: use it only on a single rank.
+  if constexpr (Architecture == Arch::CPU) {
+    if (::comm_cart.size() == 1) {
+      fft_backend = std::make_shared<P3MFFTKokkos<FloatType, FFTConfig>>(
+          ::comm_cart, p3m.params.mesh, p3m.local_mesh.ld_no_halo,
+          p3m.local_mesh.ur_no_halo, ::communicator.node_grid);
+    }
+  }
+#endif
+  if (not fft_backend) {
+    fft_backend = std::make_shared<P3MFFTHeffte<FloatType, FFTConfig>>(
+        ::comm_cart, p3m.params.mesh, p3m.local_mesh.ld_no_halo,
+        p3m.local_mesh.ur_no_halo, ::communicator.node_grid);
+  }
+  p3m.fft = std::move(fft_backend);
   auto const rs_array_size =
       static_cast<std::size_t>(Utils::product(p3m.local_mesh.dim));
   auto const rs_array_size_no_halo =
