@@ -495,18 +495,19 @@ void CoulombP3MHeffte<FloatType, Architecture,
   p3m.halo_comm.gather_grid(comm_cart, p3m.rs_charge_density.data(),
                             p3m.local_mesh.dim);
 
-  // get real space charge density without ghost layers
-  auto charge_density_no_halos =
-      extract_block<Utils::MemoryOrder::ROW_MAJOR, FFTConfig::r_space_order>(
-          p3m.rs_charge_density, p3m.local_mesh.dim, p3m.local_mesh.n_halo_ld,
-          p3m.local_mesh.dim - p3m.local_mesh.n_halo_ur);
+  // Extract the real-space charge density without ghost layers straight into
+  // the FFT backend's own input buffer, so a backend that can transform in
+  // place (kokkos-fft) does so without an extra copy.
+  auto *const fft_input = p3m.fft->forward_input_buffer();
+  extract_block_into<Utils::MemoryOrder::ROW_MAJOR, FFTConfig::r_space_order>(
+      fft_input, p3m.rs_charge_density, p3m.local_mesh.dim,
+      p3m.local_mesh.n_halo_ld, p3m.local_mesh.dim - p3m.local_mesh.n_halo_ur);
 
   // Set up the FFT using the Heffte library.
   // This is in global mesh coordinates without any ghost layers
   // The memory layout has to be specified, so the parts of
   // the mesh held by each MPI rank are assembled correctly.
-  p3m.fft->forward(charge_density_no_halos.data(),
-                   p3m.ks_charge_density.data());
+  p3m.fft->forward(fft_input, p3m.ks_charge_density.data());
 }
 
 template <typename FloatType, Arch Architecture, class FFTConfig>

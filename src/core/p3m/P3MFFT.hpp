@@ -167,7 +167,9 @@ struct P3MFFTHeffte final : public P3MFFTBackend<FloatType, FFTConfig> {
                Utils::Vector3i const &rs_local_ur_index,
                Utils::Vector3i const &node_grid)
       : m_impl(comm, global_mesh, rs_local_ld_index, rs_local_ur_index,
-               node_grid) {}
+               node_grid),
+        m_input(
+            static_cast<std::size_t>(Utils::product(m_impl.rs_local_size()))) {}
 
   Utils::Vector3i ks_local_ld_index() const override {
     return m_impl.ks_local_ld_index();
@@ -181,6 +183,7 @@ struct P3MFFTHeffte final : public P3MFFTBackend<FloatType, FFTConfig> {
   Utils::Vector3i rs_local_size() const override {
     return m_impl.rs_local_size();
   }
+  RSpaceScalar *forward_input_buffer() override { return m_input.data(); }
   void forward(RSpaceScalar const *in, ComplexType *out) override {
     m_impl.forward(in, out);
   }
@@ -190,4 +193,5 @@ struct P3MFFTHeffte final : public P3MFFTBackend<FloatType, FFTConfig> {
 
 private:
   P3MFFT<FloatType, FFTConfig> m_impl;
+  std::vector<RSpaceScalar> m_input;
 };

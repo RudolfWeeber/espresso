@@ -114,14 +114,22 @@ struct P3MFFTKokkos final : public P3MFFTBackend<FloatType, FFTConfig> {
   Utils::Vector3i ks_local_size() const override { return m_ks_size; }
   Utils::Vector3i rs_local_size() const override { return m_mesh; }
 
-  void forward(RSpaceScalar const *in, ComplexType *out) override {
-    // stage the transient input into the owned, consistently aligned scratch
-    RealViewU const in_view(const_cast<FloatType *>(in), m_mesh[0], m_mesh[1],
-                            m_mesh[2]);
-    Kokkos::deep_copy(m_real_scratch, in_view);
+  // Hand the caller our owned, aligned scratch so it can fill the input
+  // directly (via extract_block); then forward() runs in place with no copy.
+  RSpaceScalar *forward_input_buffer() override {
+    return m_real_scratch.data();
+  }
 
+  void forward(RSpaceScalar const *in, ComplexType *out) override {
     RealViewU const scratch_view(m_real_scratch.data(), m_mesh[0], m_mesh[1],
                                  m_mesh[2]);
+    // If the caller filled our scratch in place (via forward_input_buffer),
+    // there is nothing to copy; otherwise stage the external input.
+    if (in != m_real_scratch.data()) {
+      RealViewU const in_view(const_cast<FloatType *>(in), m_mesh[0], m_mesh[1],
+                              m_mesh[2]);
+      Kokkos::deep_copy(m_real_scratch, in_view);
+    }
     CplxViewU const out_view(reinterpret_cast<KComplex *>(out), m_ks_size[0],
                              m_ks_size[1], m_ks_size[2]);
     if (not m_forward or m_forward_out != out) {
