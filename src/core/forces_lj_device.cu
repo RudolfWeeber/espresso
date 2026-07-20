@@ -20,12 +20,13 @@
 /** @file
  *  Opt-in DEVICE (GPU / Kokkos CUDA) short-range pair-force path.
  *
- *  Lennard-Jones is the first (and currently only) potential implemented on
- *  the device short-range path; @ref create_device_short_range_pair_loop
- *  therefore gates on a *pure LJ* feature set. Extending it to the full
- *  short-range kernel -- more nonbonded pair potentials, Coulomb real-space,
- *  exclusions / Thole -- means generalizing @ref LJParamsDevice and the
- *  flat param table it feeds, and relaxing the gate below accordingly. The
+ *  Implemented on the device short-range path so far: Lennard-Jones (nonbonded)
+ *  and P3M real-space Coulomb. @ref create_device_short_range_pair_loop gates
+ *  on that feature subset (LJ-only among nonbonded pair potentials; P3M or no
+ *  Coulomb; no dipoles/ELC/DPD/Thole/Gay-Berne/exclusions/NPT; cuboid box).
+ *  Extending it to the full short-range kernel -- more nonbonded pair
+ *  potentials, exclusions / Thole -- means generalizing @ref LJParamsDevice and
+ *  the flat param table it feeds, and relaxing the gate below accordingly. The
  *  file and the factory are named generically ("short_range"); the LJ
  *  specifics (@ref LJParamsDevice, @ref lj_force_factor_device, the LJ-only
  *  @c active_pair_mask scan) are clearly the current subset.
@@ -47,11 +48,16 @@
 
 #include "BoxGeometry.hpp"
 #include "cell_system/CellStructure.hpp"
+#include "electrostatics/coulomb.hpp"
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
 #include "short_range_cabana.hpp"
 #include "system/System.hpp"
+#ifdef ESPRESSO_P3M
+#include "electrostatics/p3m.hpp"
+#endif
 
 #include <utils/Vector.hpp>
+#include <utils/math/AS_erfc_part.hpp>
 #include <utils/math/int_pow.hpp>
 #include <utils/math/sqr.hpp>
 
@@ -61,6 +67,9 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
+#include <numbers>
+#include <variant>
 
 /**
  * @brief Read the opt-in GPU-core flag once (cached).
@@ -110,6 +119,40 @@ KOKKOS_INLINE_FUNCTION double lj_force_factor_device(LJParamsDevice const &lj,
     return 48.0 * lj.eps * frac6 * (frac6 - 0.5) / (r_off * dist);
   }
   return 0.0;
+}
+
+/**
+ * @brief P3M real-space Coulomb parameters, device-capturable POD.
+ * @c active is false when no P3M Coulomb solver is present (the coulomb term is
+ * then skipped and the kernel is pure LJ).
+ */
+struct CoulombP3MParamsDevice {
+  double prefactor;
+  double alpha;
+  double r_cut;
+  bool active;
+};
+
+/**
+ * @brief Device P3M real-space Coulomb force factor, matching
+ * @ref CoulombP3M::pair_force with @c USE_ERFC_APPROXIMATION == 1 (the active
+ * branch; see p3m/math.hpp). Returns @c f such that the force on @c i is
+ * <tt>f * d</tt> (@c d = pos_i - pos_j, minimum image). @c AS_erfc_part is
+ * @c constexpr, hence device-callable, so this is bit-for-bit the host formula.
+ */
+KOKKOS_INLINE_FUNCTION double
+coulomb_p3m_force_factor(double q1q2, double dist,
+                         CoulombP3MParamsDevice const &c) {
+  if (q1q2 == 0. or dist >= c.r_cut or dist <= 0.) {
+    return 0.;
+  }
+  auto const adist = c.alpha * dist;
+  auto const exp_adist_sq = std::exp(-adist * adist);
+  auto const dist_sq = dist * dist;
+  auto const two_a_sqrt_pi_i = 2. * c.alpha * std::numbers::inv_sqrtpi;
+  auto const erfc_part_ri = Utils::AS_erfc_part(adist) / dist;
+  auto const fac = exp_adist_sq * (erfc_part_ri + two_a_sqrt_pi_i) / dist_sq;
+  return fac * c.prefactor * q1q2;
 }
 
 /**
@@ -203,12 +246,30 @@ ShortRangeVerletPairLoop create_device_short_range_pair_loop(
   if (has_dipoles)
     return {};
 #endif
+  // P3M real-space Coulomb is supported on the device; any other Coulomb
+  // method (or ELC) falls back to the host path.
+  CoulombP3MParamsDevice coulomb_params{0., 0., 0., false};
 #ifdef ESPRESSO_ELECTROSTATICS
   if (has_elc)
     return {};
-  // The device kernel is pure LJ: refuse any Coulomb solver.
-  if (has_coulomb)
-    return {};
+  if (has_coulomb) {
+#ifdef ESPRESSO_P3M
+    CoulombP3M const *p3m = nullptr;
+    if (auto &solver = system.coulomb.impl->solver; solver.has_value()) {
+      if (std::holds_alternative<std::shared_ptr<CoulombP3M>>(*solver)) {
+        p3m = std::get<std::shared_ptr<CoulombP3M>>(*solver).get();
+      }
+    }
+    if (p3m == nullptr)
+      return {}; // non-P3M Coulomb solver: host fallback
+    coulomb_params = CoulombP3MParamsDevice{
+        p3m->prefactor, p3m->p3m_params.alpha, p3m->p3m_params.r_cut, true};
+#else
+    return {}; // Coulomb active but P3M not compiled in: host fallback
+#endif
+  }
+#else
+  static_cast<void>(has_coulomb);
 #endif
 #ifdef ESPRESSO_DPD
   if (has_dpd)
@@ -255,8 +316,9 @@ ShortRangeVerletPairLoop create_device_short_range_pair_loop(
   // Build the device param table once per loop construction (i.e. per step).
   auto const lj_table = build_lj_device_param_table(nonbonded_ias, n_types);
 
-  return [&cell_structure, lj_table, n_types, box_l, box_l_inv, max_cutoff_sq](
-             CellStructure::ListType const &verlet_list, std::size_t const n) {
+  return [&cell_structure, lj_table, n_types, box_l, box_l_inv, max_cutoff_sq,
+          coulomb_params](CellStructure::ListType const &verlet_list,
+                          std::size_t const n) {
     using ExecSpace = Kokkos::DefaultExecutionSpace;
     using MemSpace = ExecSpace::memory_space;
 
@@ -294,6 +356,9 @@ ShortRangeVerletPairLoop create_device_short_range_pair_loop(
     auto &store = cell_structure.particle_store();
     store.sync_state_to_device();
     auto const position_device = store.position_view_device();
+#ifdef ESPRESSO_ELECTROSTATICS
+    auto const q_device = store.q_view_device();
+#endif
 
     // Device force accumulator, pack-indexed, zero-initialised.
     Kokkos::View<double *[3], Kokkos::LayoutRight, ExecSpace> force_device(
@@ -302,6 +367,7 @@ ShortRangeVerletPairLoop create_device_short_range_pair_loop(
     auto const lj_local = lj_table;
     auto const n_types_local = n_types;
     auto const cutoff_sq = max_cutoff_sq;
+    auto const coulomb = coulomb_params;
 
     Kokkos::parallel_for(
         "device_lj_nonbonded_pairs",
@@ -316,6 +382,9 @@ ShortRangeVerletPairLoop create_device_short_range_pair_loop(
           double const yi = position_device(row_i, 1);
           double const zi = position_device(row_i, 2);
           auto const type_i = type_device(i);
+#ifdef ESPRESSO_ELECTROSTATICS
+          double const qi = coulomb.active ? q_device(row_i) : 0.0;
+#endif
 
           for (int k = 0; k < n_neighbors; ++k) {
             auto const j = neighbors_device(i, k);
@@ -338,9 +407,18 @@ ShortRangeVerletPairLoop create_device_short_range_pair_loop(
                              static_cast<std::size_t>(n_types_local) +
                          static_cast<std::size_t>(type_j));
             double const dist = Kokkos::sqrt(dsq);
-            if (dist > lj.max_cut)
-              continue;
-            double const factor = lj_force_factor_device(lj, dist);
+            // LJ (0 outside its shifted cutoff) plus, if active, the P3M
+            // real-space Coulomb term (0 outside r_cut). Both share the
+            // neighbor cutoff gate above; each self-gates on its own range, so
+            // no early-out on the LJ cutoff (that would drop Coulomb pairs
+            // beyond it).
+            double factor = lj_force_factor_device(lj, dist);
+#ifdef ESPRESSO_ELECTROSTATICS
+            if (coulomb.active) {
+              factor +=
+                  coulomb_p3m_force_factor(qi * q_device(row_j), dist, coulomb);
+            }
+#endif
             if (factor == 0.0)
               continue;
 
