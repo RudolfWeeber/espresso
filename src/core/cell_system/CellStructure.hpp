@@ -152,6 +152,13 @@ struct EuclidianDistance {
 };
 } // namespace detail
 
+#ifdef ESPRESSO_CUDA
+/** @brief Opaque persistent device buffers for the GPU short-range pair loop;
+ *  defined in forces_lj_device.cu. Forward-declared so no Kokkos headers reach
+ *  this widely-included header (that perturbs host FP codegen). */
+struct DeviceShortRangeBuffers;
+#endif
+
 /** Describes a cell structure / cell system. Contains information
  *  about the communication of cell contents (particles, ghosts, ...)
  *  between different nodes and the relation between particle
@@ -205,6 +212,9 @@ private:
   bool m_verlet_skin_set = false;
   bool m_rebuild_verlet_list = true;
   bool m_rebuild_verlet_list_cabana = true;
+  /** Monotonic counter bumped each time the Cabana Verlet list is rebuilt; lets
+   *  the GPU short-range path copy the list to the device only on rebuild. */
+  std::uint64_t m_verlet_list_cabana_generation = 0u;
   /** Interaction pairs as @ref ParticleStore ROW indices. Held across
    *  integration steps until the next Verlet rebuild. Cells do not own stable
    *  @c Particle addresses, so the pairs record the two particles' store rows;
@@ -240,6 +250,13 @@ private:
 #endif
   std::unique_ptr<LocalBondState> m_bond_state;
   std::unique_ptr<ListType> m_verlet_list_cabana;
+#ifdef ESPRESSO_CUDA
+  /** Persistent device buffers for the GPU short-range pair loop (opaque;
+   *  defined in forces_lj_device.cu). Reused across steps to avoid per-step
+   *  device allocations; destroyed before Kokkos::finalize (this owns a
+   *  KokkosHandle via the cell structure lifetime). */
+  std::shared_ptr<DeviceShortRangeBuffers> m_device_sr_buffers;
+#endif
   /** particle properties using individual Kokkos Views */
   std::unique_ptr<AoSoA_pack> m_aosoa;
   /** Pack-ordered list of the particles that participate in the pack /
@@ -1010,6 +1027,16 @@ public:
   auto &get_aosoa() { return *m_aosoa; }
   auto const &get_unique_particles() const { return m_unique_particles; }
   auto const &get_verlet_list_cabana() const { return *m_verlet_list_cabana; }
+  /** @brief Generation of the Cabana Verlet list (bumps on each rebuild). */
+  auto verlet_list_cabana_generation() const {
+    return m_verlet_list_cabana_generation;
+  }
+#ifdef ESPRESSO_CUDA
+  /** @brief Persistent GPU short-range device buffers handle (opaque). */
+  std::shared_ptr<DeviceShortRangeBuffers> &device_sr_buffers() {
+    return m_device_sr_buffers;
+  }
+#endif
   auto &bond_state() { return *m_bond_state; }
   auto const &bond_state() const { return *m_bond_state; }
   void clear_local_properties();
@@ -1125,6 +1152,7 @@ public:
     if (rebuild_verlet_list) {
       kernel(m_decomposition->local_cells(), m_decomposition->box(),
              *m_verlet_list_cabana);
+      ++m_verlet_list_cabana_generation;
     }
     m_rebuild_verlet_list_cabana = false;
   }

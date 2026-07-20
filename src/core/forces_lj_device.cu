@@ -65,11 +65,64 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <numbers>
 #include <variant>
+
+/**
+ * @brief Persistent device buffers for the GPU short-range pair loop, reused
+ * across steps so no device memory is (re)allocated per force call. The
+ * neighbor list / pack maps are refreshed only on a Verlet rebuild (keyed on
+ * the Cabana generation); the force accumulator is re-zeroed each step.
+ * Owned via a shared_ptr on CellStructure so it is destroyed before
+ * Kokkos::finalize.
+ */
+struct DeviceShortRangeBuffers {
+  using Exec = Kokkos::DefaultExecutionSpace;
+  using Mem = Exec::memory_space;
+  Kokkos::View<int *, Mem> counts;
+  Kokkos::View<int **, Kokkos::LayoutRight, Mem> neighbors;
+  Kokkos::View<int *, Mem> type;
+  Kokkos::View<int *, Mem> row_map;
+  Kokkos::View<double *[3], Kokkos::LayoutRight, Exec> force;
+  // Distinct from any real generation, so the first call always copies.
+  std::uint64_t cached_generation = std::numeric_limits<std::uint64_t>::max();
+
+  void ensure_list(std::size_t n_counts, std::size_t n_nbr_rows,
+                   std::size_t n_nbr_cols, std::size_t n_type,
+                   std::size_t n_row_map) {
+    if (counts.extent(0) != n_counts) {
+      counts = decltype(counts)(
+          Kokkos::view_alloc(Kokkos::WithoutInitializing, "sr_counts"),
+          n_counts);
+    }
+    if (neighbors.extent(0) != n_nbr_rows or
+        neighbors.extent(1) != n_nbr_cols) {
+      neighbors = decltype(neighbors)(
+          Kokkos::view_alloc(Kokkos::WithoutInitializing, "sr_neighbors"),
+          n_nbr_rows, n_nbr_cols);
+    }
+    if (type.extent(0) != n_type) {
+      type = decltype(type)(
+          Kokkos::view_alloc(Kokkos::WithoutInitializing, "sr_type"), n_type);
+    }
+    if (row_map.extent(0) != n_row_map) {
+      row_map = decltype(row_map)(
+          Kokkos::view_alloc(Kokkos::WithoutInitializing, "sr_row_map"),
+          n_row_map);
+    }
+  }
+  void ensure_force(std::size_t n) {
+    if (force.extent(0) != n) {
+      force = decltype(force)(
+          Kokkos::view_alloc(Kokkos::WithoutInitializing, "sr_force"), n);
+    }
+  }
+};
 
 /**
  * @brief Read the opt-in GPU-core flag once (cached).
@@ -320,49 +373,58 @@ ShortRangeVerletPairLoop create_device_short_range_pair_loop(
           coulomb_params](CellStructure::ListType const &verlet_list,
                           std::size_t const n) {
     using ExecSpace = Kokkos::DefaultExecutionSpace;
-    using MemSpace = ExecSpace::memory_space;
 
     if (n == 0)
       return;
 
-    // Refresh device mirrors of the pack columns the kernel reads. Simplest
-    // correct version: rebuild every call. counts/neighbors are indexed by
-    // pack index; neighbors(i,k) is a pack index j. type is pack-indexed;
-    // row_map translates pack index -> ParticleStore row. Device views are
-    // sized to the host source extents so the deep_copies are shape-matched.
+    // The kernel reads pack-indexed data: counts/neighbors (neighbors(i,k) is a
+    // pack index j), type (pack-indexed), row_map (pack index -> store row).
+    // These change only on a Verlet rebuild, so we copy them to the device once
+    // per rebuild (keyed on the Cabana generation); positions change every step
+    // and are synced on their own below.
     auto const &counts_host = verlet_list.counts;
     auto const &neighbors_host = verlet_list.neighbors;
     auto const &aosoa = cell_structure.get_aosoa();
 
-    Kokkos::View<int *, MemSpace> counts_device(
-        Kokkos::view_alloc(Kokkos::WithoutInitializing, "lj_dev_counts"),
-        counts_host.extent(0));
-    Kokkos::View<int **, Kokkos::LayoutRight, MemSpace> neighbors_device(
-        Kokkos::view_alloc(Kokkos::WithoutInitializing, "lj_dev_neighbors"),
-        neighbors_host.extent(0), neighbors_host.extent(1));
-    Kokkos::View<int *, MemSpace> type_device(
-        Kokkos::view_alloc(Kokkos::WithoutInitializing, "lj_dev_type"),
-        aosoa.type.extent(0));
-    Kokkos::View<int *, MemSpace> row_map_device(
-        Kokkos::view_alloc(Kokkos::WithoutInitializing, "lj_dev_row_map"),
-        aosoa.row_map.extent(0));
+    // Persistent, reused device buffers: no per-step device (re)allocation.
+    auto &handle = cell_structure.device_sr_buffers();
+    if (not handle) {
+      handle = std::make_shared<DeviceShortRangeBuffers>();
+    }
+    auto &buf = *handle;
+    buf.ensure_force(n);
 
-    Kokkos::deep_copy(counts_device, counts_host);
-    Kokkos::deep_copy(neighbors_device, neighbors_host);
-    Kokkos::deep_copy(type_device, aosoa.type);
-    Kokkos::deep_copy(row_map_device, aosoa.row_map);
+    auto const generation = cell_structure.verlet_list_cabana_generation();
+    if (buf.cached_generation != generation) {
+      buf.ensure_list(counts_host.extent(0), neighbors_host.extent(0),
+                      neighbors_host.extent(1), aosoa.type.extent(0),
+                      aosoa.row_map.extent(0));
+      Kokkos::deep_copy(buf.counts, counts_host);
+      Kokkos::deep_copy(buf.neighbors, neighbors_host);
+      Kokkos::deep_copy(buf.type, aosoa.type);
+      Kokkos::deep_copy(buf.row_map, aosoa.row_map);
+      buf.cached_generation = generation;
+    }
 
-    // Push the authoritative positions (store rows) to the device mirror.
+    // Sync only the per-step columns the kernel reads: the authoritative
+    // positions every step, charges only when Coulomb is active.
     auto &store = cell_structure.particle_store();
-    store.sync_state_to_device();
+    Kokkos::deep_copy(store.position_view_device(), store.position_view());
     auto const position_device = store.position_view_device();
 #ifdef ESPRESSO_ELECTROSTATICS
+    if (coulomb_params.active) {
+      Kokkos::deep_copy(store.q_view_device(), store.q_view());
+    }
     auto const q_device = store.q_view_device();
 #endif
 
-    // Device force accumulator, pack-indexed, zero-initialised.
-    Kokkos::View<double *[3], Kokkos::LayoutRight, ExecSpace> force_device(
-        "lj_dev_force", n);
+    auto const counts_device = buf.counts;
+    auto const neighbors_device = buf.neighbors;
+    auto const type_device = buf.type;
+    auto const row_map_device = buf.row_map;
+    // Persistent device force accumulator (pack-indexed): re-zero each step.
+    auto const force_device = buf.force;
+    Kokkos::deep_copy(force_device, 0.0);
 
     auto const lj_local = lj_table;
     auto const n_types_local = n_types;
