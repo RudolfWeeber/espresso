@@ -466,6 +466,22 @@ refresh_pack_dipm(CellStructure &cell_structure) {
 using ShortRangeVerletPairLoop =
     std::function<void(CellStructure::ListType const &, std::size_t)>;
 
+#ifdef ESPRESSO_CUDA
+namespace System {
+class System;
+} // namespace System
+
+// Opt-in DEVICE (GPU) short-range pair-force path. Defined in
+// forces_lj_device.cu (compiled by the CUDA compiler) so the heavy
+// Kokkos/Cabana/System headers it needs never reach forces.cpp. Lennard-Jones
+// is the first potential implemented; see forces_lj_device.cu for the gate.
+bool gpu_core_enabled();
+ShortRangeVerletPairLoop
+create_device_short_range_pair_loop(System::System &system, bool has_coulomb,
+                                    bool has_dipoles, bool has_elc,
+                                    bool has_dpd, bool has_npt_virial);
+#endif // ESPRESSO_CUDA
+
 void cabana_short_range(auto const &pair_bonds_kernel,
                         auto const &angle_bonds_kernel,
                         auto const &dihedral_bonds_kernel,

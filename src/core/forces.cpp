@@ -437,14 +437,55 @@ void System::System::calculate_forces() {
       create_cabana_neighbor_kernel(*this, virial, elc_kernel, coulomb_kernel,
                                     dipoles_kernel, coulomb_u_kernel);
 
+  // Opt-in DEVICE (GPU) pure-LJ pair loop. Returns empty unless the
+  // ESPRESSO_GPU_CORE flag is set and the feature set is pure LJ on a cuboid
+  // box; when empty the host specialized/generic path is used unchanged. The
+  // factory lives in forces_lj_device.cu so its Kokkos/Cabana/System headers
+  // stay out of this TU; the feature predicates use the SAME expressions and
+  // guards as create_specialized_verlet_pair_loop above.
+  ShortRangeVerletPairLoop device_lj_pair_loop{};
+#ifdef ESPRESSO_CUDA
+  device_lj_pair_loop = create_device_short_range_pair_loop(
+      *this,
+#ifdef ESPRESSO_ELECTROSTATICS
+      get_ptr(coulomb_kernel) != nullptr,
+#else
+      false,
+#endif
+#ifdef ESPRESSO_DIPOLES
+      get_ptr(dipoles_kernel) != nullptr,
+#else
+      false,
+#endif
+#ifdef ESPRESSO_ELECTROSTATICS
+      get_ptr(elc_kernel) != nullptr,
+#else
+      false,
+#endif
+#ifdef ESPRESSO_DPD
+      (thermostat->thermo_switch & THERMO_DPD) != 0,
+#else
+      false,
+#endif
+#ifdef ESPRESSO_NPT
+      virial != nullptr
+#else
+      false
+#endif
+  );
+#endif // ESPRESSO_CUDA
+
   auto const specialized_pair_loop = create_specialized_verlet_pair_loop(
       *this, virial, elc_kernel, coulomb_kernel, dipoles_kernel);
+
+  auto const &pair_loop =
+      device_lj_pair_loop ? device_lj_pair_loop : specialized_pair_loop;
 
   cabana_short_range(pair_bonds_kernel, angle_bonds_kernel,
                      dihedral_bonds_kernel, first_neighbor_kernel,
                      *cell_structure, get_interaction_range(),
                      bonded_ias->maximal_cutoff(), verlet_criterion,
-                     propagation->integ_switch, specialized_pair_loop);
+                     propagation->integ_switch, pair_loop);
 
   // Force and Torque reduction
   reduce_cabana_forces_and_torques(*this, virial);
