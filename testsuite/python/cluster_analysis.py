@@ -201,10 +201,6 @@ class ClusterAnalysis(ut.TestCase):
             self.assertAlmostEqual(df[0], 2, delta=0.08)
 
     def test_fractal_dimension_requires_dr(self):
-        # ``dr`` is a mandatory parameter (the histogram bin increment). The
-        # missing-parameter check happens during script-interface argument
-        # evaluation, before the GSL-guarded core function body, so this test
-        # does not require the GSL feature.
         for x in np.arange(-0.2, 0.21, 0.01):
             self.system.part.add(pos=(x, 1.1 * x, 1.2 * x))
         dc = espressomd.pair_criteria.DistanceCriterion(cut_off=0.13)
@@ -212,17 +208,9 @@ class ClusterAnalysis(ut.TestCase):
         self.cs.run_for_all_pairs()
         self.assertEqual(len(self.cs.clusters), 1)
         cluster = list(self.cs.clusters)[0][1]
-
-        # Omitting ``dr`` entirely must raise the standard friendly
-        # "missing parameter" error (not an opaque ``unordered_map::at``).
-        with self.assertRaisesRegex(
-                RuntimeError, "Parameter 'dr' is missing"):
+        with self.assertRaisesRegex(RuntimeError, "Parameter 'dr' is missing"):
             cluster.fractal_dimension()
-        # Passing ``dr=None`` (which the old docstring advertised as the
-        # default) must raise a clear conversion error, since ``dr`` has no
-        # meaningful default and ``None`` is not a valid float.
-        with self.assertRaisesRegex(
-                RuntimeError, "not convertible to 'double'"):
+        with self.assertRaisesRegex(RuntimeError, "not convertible to 'double'"):
             cluster.fractal_dimension(dr=None)
 
     def test_analysis_for_bonded_particles(self):
