@@ -148,8 +148,8 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
           for (auto &neighbor : cells[i]->neighbors().red()) {
             for (auto const &p2 : neighbor->particles()) {
               if (p2.id() <= max_id) {
-                if (verlet_criterion(
-                        p1, p2, minimum_image_dist2(p1.pos(), p2.pos()))) {
+                if (verlet_criterion(p1, p2,
+                                     minimum_image_dist2(p1.pos(), p2.pos()))) {
                   auto const jj = id_to_index(p2.id());
                   if (jj >= 0) {
                     inter_operator(ii, jj);
