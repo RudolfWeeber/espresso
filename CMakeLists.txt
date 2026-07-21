@@ -101,7 +101,7 @@ option(ESPRESSO_BUILD_WITH_PYTHON "Build with Python bindings" ON)
 option(ESPRESSO_BUILD_WITH_GSL "Build with GSL support" OFF)
 option(ESPRESSO_BUILD_WITH_FFTW "Build with FFTW support" ON)
 option(ESPRESSO_BUILD_WITH_KOKKOS_FFT
-       "Use kokkos-fft for the single-rank P3M reciprocal-space FFT" OFF)
+       "Use kokkos-fft for the single-rank P3M reciprocal-space FFT" ON)
 option(ESPRESSO_BUILD_WITH_CUDA "Build with GPU support" OFF)
 option(ESPRESSO_BUILD_WITH_HDF5 "Build with HDF5 support" OFF)
 option(ESPRESSO_BUILD_TESTS "Enable tests" ON)
