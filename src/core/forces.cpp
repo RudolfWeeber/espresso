@@ -197,13 +197,12 @@ static ShortRangeVerletPairLoop create_specialized_verlet_pair_loop(
   auto &cell_structure = *system.cell_structure;
   auto const &aosoa = cell_structure.get_aosoa();
 #ifdef ESPRESSO_EXCLUSIONS
-  {
-    auto const n_pack = cell_structure.get_unique_particles().size();
-    for (std::size_t i = 0u; i < n_pack; ++i) {
-      if (aosoa.has_exclusion(i))
-        return {};
-    }
-  }
+  // The specialized kernel has no exclusion handling. The commit sweep (run by
+  // update_verlet_state earlier in this same force call) accumulates whether
+  // any packed particle carries an exclusion, so this is an O(1) read of the
+  // same population the old per-particle sweep covered (local + ghosts).
+  if (aosoa.has_any_exclusion())
+    return {};
 #endif
 
   auto scatter_force = cell_structure.get_scatter_force();

@@ -196,6 +196,11 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
     int pair_count = 0;
     int angle_count = 0;
     int dihedral_count = 0;
+#ifdef ESPRESSO_EXCLUSIONS
+    // commit_particle accumulates the any-exclusion aggregate below; clear it
+    // before the sweep repopulates it (read O(1) at the dispatch gate).
+    aosoa.reset_any_exclusion();
+#endif
     kokkos_parallel_range_for<policy_type>(
         "AoSoA write", std::size_t{0}, n_part,
         [&unique_particles, &aosoa, &id_to_index, &cell_structure, &pair_count,
@@ -281,6 +286,11 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
     // ===================================================
 #ifdef ESPRESSO_CALIPER
     CALI_MARK_BEGIN("AoSoA commit partial");
+#endif
+#ifdef ESPRESSO_EXCLUSIONS
+    // commit_particle accumulates the any-exclusion aggregate below; clear it
+    // before the sweep repopulates it (read O(1) at the dispatch gate).
+    aosoa.reset_any_exclusion();
 #endif
     kokkos_parallel_range_for<policy_type>(
         "AoSoA write", std::size_t{0}, n_part,

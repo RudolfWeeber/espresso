@@ -27,6 +27,7 @@
 
 #include <omp.h>
 
+#include <atomic>
 #include <cstdint>
 #include <span>
 
@@ -153,8 +154,30 @@ struct CellStructure::AoSoA_pack {
     }
   }
 
+  // Aggregate of the per-particle exclusion flag over the whole pack (local +
+  // ghost). It lets the specialized-kernel dispatch decide in O(1) whether any
+  // packed particle carries an exclusion, instead of sweeping every flag on
+  // every force call. It is only ever transitioned false->true during a commit
+  // sweep (which runs under Kokkos::parallel_for when threaded), so a relaxed
+  // atomic store suffices; reads happen after the sweep's Kokkos::fence() and
+  // are therefore race-free. The atomic member makes AoSoA_pack non-copyable
+  // and non-movable, which is fine: it is only ever default-constructed via
+  // std::make_unique and accessed by reference (see CellStructure::m_aosoa).
+  std::atomic<bool> any_exclusion{false};
+
+  void reset_any_exclusion() {
+    any_exclusion.store(false, std::memory_order_relaxed);
+  }
+
+  bool has_any_exclusion() const {
+    return any_exclusion.load(std::memory_order_relaxed);
+  }
+
   void set_has_exclusion(std::size_t i, bool value) {
     flags(i) = value ? uint8_t{1} : uint8_t{0};
+    if (value) {
+      any_exclusion.store(true, std::memory_order_relaxed);
+    }
   }
 
   bool has_exclusion(std::size_t i) const { return flags(i) == uint8_t{1}; }
