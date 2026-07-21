@@ -23,6 +23,8 @@
 
 #include "cell_system/CellStructure.hpp"
 
+#include <utils/attributes.hpp>
+
 #include <Kokkos_Core.hpp>
 
 #include <omp.h>
@@ -30,12 +32,6 @@
 #include <atomic>
 #include <cstdint>
 #include <span>
-
-#if defined(__GNUG__) or defined(__clang__)
-#define ESPRESSO_ATTR_ALWAYS_INLINE [[gnu::always_inline]]
-#else
-#define ESPRESSO_ATTR_ALWAYS_INLINE
-#endif
 
 struct CellStructure::AoSoA_pack {
   using PositionViewType =

@@ -20,10 +20,7 @@
 #pragma once
 
 /** \file
- *  Compiler-attribute macros shared across utils headers.
- *
- *  Uses the same macro name and guard as the core attributes header, so
- *  either header can be included first without redefinition.
+ *  Compiler-attribute macros shared across ESPResSo headers.
  */
 
 #ifndef ESPRESSO_ATTR_ALWAYS_INLINE
