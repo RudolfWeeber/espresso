@@ -24,7 +24,7 @@
 #ifdef ESPRESSO_P3M
 
 #include "electrostatics/p3m.hpp"
-#include "electrostatics/p3m_heffte.hpp"
+#include "electrostatics/p3m.impl.hpp"
 
 #include "electrostatics/coulomb.hpp"
 #include "electrostatics/elc.hpp"
@@ -34,7 +34,7 @@
 #endif // ESPRESSO_CUDA
 #include "short_range_cabana.hpp"
 
-#include "electrostatics/p3m_heffte.hpp" // must be included after coulomb.hpp
+#include "electrostatics/p3m.impl.hpp" // must be included after coulomb.hpp
 
 #include "p3m/P3MFFT.hpp"
 #include "p3m/P3MFFTKokkos.hpp"
@@ -119,8 +119,8 @@ inline bool is_node_grid_compatible_with_mesh(Utils::Vector3i const &node_grid,
 }
 
 template <typename FloatType, Arch Architecture, class FFTConfig>
-void CoulombP3MHeffte<FloatType, Architecture,
-                      FFTConfig>::count_charged_particles() {
+void CoulombP3MImpl<FloatType, Architecture,
+                    FFTConfig>::count_charged_particles() {
   struct Res {
     std::size_t local_n = std::size_t{0u};
     double local_q = 0.0;
@@ -159,8 +159,8 @@ void CoulombP3MHeffte<FloatType, Architecture,
  *  @cite deserno98a @cite deserno98b.
  */
 template <typename FloatType, Arch Architecture, class FFTConfig>
-void CoulombP3MHeffte<FloatType, Architecture,
-                      FFTConfig>::calc_influence_function_force() {
+void CoulombP3MImpl<FloatType, Architecture,
+                    FFTConfig>::calc_influence_function_force() {
   p3m.g_force = grid_influence_function<FloatType, 1, P3M_BRILLOUIN,
                                         FFTConfig::k_space_order>(
       p3m.params, p3m.fft->ks_local_ld_index(), p3m.fft->ks_local_ur_index(),
@@ -176,8 +176,8 @@ void CoulombP3MHeffte<FloatType, Architecture,
  *  self energy correction.
  */
 template <typename FloatType, Arch Architecture, class FFTConfig>
-void CoulombP3MHeffte<FloatType, Architecture,
-                      FFTConfig>::calc_influence_function_energy() {
+void CoulombP3MImpl<FloatType, Architecture,
+                    FFTConfig>::calc_influence_function_energy() {
   p3m.g_energy = grid_influence_function<FloatType, 0, P3M_BRILLOUIN,
                                          FFTConfig::k_space_order>(
       p3m.params, p3m.fft->ks_local_ld_index(), p3m.fft->ks_local_ur_index(),
@@ -294,7 +294,7 @@ inline double p3m_k_space_error(double pref, Utils::Vector3i const &mesh,
 }
 
 template <typename FloatType, Arch Architecture, class FFTConfig>
-void CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::init_cpu_kernels() {
+void CoulombP3MImpl<FloatType, Architecture, FFTConfig>::init_cpu_kernels() {
   assert(p3m.params.mesh >= Utils::Vector3i::broadcast(1));
   assert(p3m.params.cao >= p3m_min_cao and p3m.params.cao <= p3m_max_cao);
   assert(p3m.params.alpha > 0.);
@@ -421,7 +421,7 @@ template <int cao> struct AssignCharge {
 } // namespace
 
 template <typename FloatType, Arch Architecture, class FFTConfig>
-void CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::charge_assign() {
+void CoulombP3MImpl<FloatType, Architecture, FFTConfig>::charge_assign() {
   prepare_fft_mesh(true);
 
   Utils::integral_parameter<int, AssignCharge, p3m_min_cao, p3m_max_cao>(
@@ -429,7 +429,7 @@ void CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::charge_assign() {
 }
 
 template <typename FloatType, Arch Architecture, class FFTConfig>
-void CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::assign_charge(
+void CoulombP3MImpl<FloatType, Architecture, FFTConfig>::assign_charge(
     double q, Utils::Vector3d const &real_pos, bool skip_cache) {
   if (skip_cache) {
     Utils::integral_parameter<int, AssignCharge, p3m_min_cao, p3m_max_cao>(
@@ -489,8 +489,8 @@ inline auto calc_dipole_moment(boost::mpi::communicator const &comm,
 }
 
 template <typename FloatType, Arch Architecture, class FFTConfig>
-void CoulombP3MHeffte<FloatType, Architecture,
-                      FFTConfig>::kernel_ks_charge_density() {
+void CoulombP3MImpl<FloatType, Architecture,
+                    FFTConfig>::kernel_ks_charge_density() {
   // halo communication of real space charge density
   p3m.halo_comm.gather_grid(comm_cart, p3m.rs_charge_density.data(),
                             p3m.local_mesh.dim);
@@ -511,8 +511,8 @@ void CoulombP3MHeffte<FloatType, Architecture,
 }
 
 template <typename FloatType, Arch Architecture, class FFTConfig>
-void CoulombP3MHeffte<FloatType, Architecture,
-                      FFTConfig>::kernel_rs_electric_field() {
+void CoulombP3MImpl<FloatType, Architecture,
+                    FFTConfig>::kernel_rs_electric_field() {
   auto const mesh_start = p3m.fft->ks_local_ld_index();
   auto const mesh_stop = p3m.fft->ks_local_ur_index();
   auto const &box_geo = *get_system().box_geo;
@@ -573,7 +573,7 @@ void CoulombP3MHeffte<FloatType, Architecture,
  */
 template <typename FloatType, Arch Architecture, class FFTConfig>
 Utils::Vector9d
-CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::long_range_pressure() {
+CoulombP3MImpl<FloatType, Architecture, FFTConfig>::long_range_pressure() {
   auto const &box_geo = *get_system().box_geo;
   Utils::Vector9d node_k_space_pressure_tensor{};
 
@@ -642,7 +642,7 @@ CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::long_range_pressure() {
 }
 
 template <typename FloatType, Arch Architecture, class FFTConfig>
-double CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::long_range_kernel(
+double CoulombP3MImpl<FloatType, Architecture, FFTConfig>::long_range_kernel(
     bool force_flag, bool energy_flag) {
 
   auto const &system = get_system();
@@ -998,7 +998,7 @@ public:
 };
 
 template <typename FloatType, Arch Architecture, class FFTConfig>
-void CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::tune() {
+void CoulombP3MImpl<FloatType, Architecture, FFTConfig>::tune() {
   auto &system = get_system();
   auto const &box_geo = *system.box_geo;
   if (p3m.params.alpha_L == 0. and p3m.params.alpha != 0.) {
@@ -1088,7 +1088,7 @@ void CoulombP3M::sanity_checks_cell_structure() const {
 }
 
 template <typename FloatType, Arch Architecture, class FFTConfig>
-void CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::scaleby_box_l() {
+void CoulombP3MImpl<FloatType, Architecture, FFTConfig>::scaleby_box_l() {
   auto const &box_geo = *get_system().box_geo;
   p3m.params.r_cut = p3m.params.r_cut_iL * box_geo.length()[0];
   p3m.params.alpha = p3m.params.alpha_L * box_geo.length_inv()[0];
@@ -1102,8 +1102,8 @@ void CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::scaleby_box_l() {
 
 #ifdef ESPRESSO_CUDA
 template <typename FloatType, Arch Architecture, class FFTConfig>
-void CoulombP3MHeffte<FloatType, Architecture,
-                      FFTConfig>::add_long_range_forces_gpu() {
+void CoulombP3MImpl<FloatType, Architecture,
+                    FFTConfig>::add_long_range_forces_gpu() {
   if constexpr (Architecture == Arch::CUDA) {
 #ifdef ESPRESSO_NPT
     if (get_system().has_npt_enabled()) {
@@ -1124,7 +1124,7 @@ void CoulombP3MHeffte<FloatType, Architecture,
  * GPU implementation uses CPU kernels to compute energies.
  */
 template <typename FloatType, Arch Architecture, class FFTConfig>
-void CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::init_gpu_kernels() {
+void CoulombP3MImpl<FloatType, Architecture, FFTConfig>::init_gpu_kernels() {
   if constexpr (Architecture == Arch::CUDA) {
     auto &system = get_system();
     if (has_actor_of_type<ElectrostaticLayerCorrection>(
@@ -1137,7 +1137,7 @@ void CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::init_gpu_kernels() {
 }
 
 template <typename FloatType, Arch Architecture, class FFTConfig>
-void CoulombP3MHeffte<FloatType, Architecture, FFTConfig>::request_gpu() const {
+void CoulombP3MImpl<FloatType, Architecture, FFTConfig>::request_gpu() const {
   if constexpr (Architecture == Arch::CUDA) {
     auto &gpu_particle_data = *get_system().gpu;
     gpu_particle_data.enable_property(GpuParticleData::prop::force);

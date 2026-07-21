@@ -100,8 +100,8 @@ struct P3MGpuParams;
 #endif
 
 template <typename FloatType, Arch Architecture, class FFTConfig>
-struct CoulombP3MHeffte : public CoulombP3M {
-  ~CoulombP3MHeffte() override = default;
+struct CoulombP3MImpl : public CoulombP3M {
+  ~CoulombP3MImpl() override = default;
 
   using CoulombP3MStateClass = CoulombP3MState<FloatType, FFTConfig>;
   /** @brief Coulomb P3M parameters. */
@@ -123,8 +123,8 @@ private:
   }
 
 public:
-  CoulombP3MHeffte(std::unique_ptr<CoulombP3MStateClass> &&p3m_state,
-                   TuningParameters tuning_params, double prefactor)
+  CoulombP3MImpl(std::unique_ptr<CoulombP3MStateClass> &&p3m_state,
+                 TuningParameters tuning_params, double prefactor)
       : CoulombP3M(p3m_state->params), p3m{*p3m_state},
         m_kokkos_handle{::kokkos_handle}, p3m_state_ptr{std::move(p3m_state)},
         tuning{std::move(tuning_params)} {
