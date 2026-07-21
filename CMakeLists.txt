@@ -761,8 +761,10 @@ if(NOT DEFINED Kokkos_FOUND OR NOT ${Kokkos_FOUND})
 endif()
 
 # kokkos-fft: a local (single-process) FFT on top of the Kokkos target already
-# fetched above. Used as the single-rank P3M reciprocal-space backend.
-if(ESPRESSO_BUILD_WITH_KOKKOS_FFT)
+# fetched above. Used as the single-rank P3M reciprocal-space backend. It is
+# only consumed by the P3M target, which is itself gated behind FFTW (and its
+# CPU backend is FFTW), so there is nothing to fetch when FFTW is disabled.
+if(ESPRESSO_BUILD_WITH_KOKKOS_FFT AND ESPRESSO_BUILD_WITH_FFTW)
   if(NOT EXISTS ${FETCHCONTENT_BASE_DIR}/kokkos_fft-src)
     find_package(KokkosFFT 1.1 QUIET)
   endif()
