@@ -244,7 +244,8 @@ BOOST_AUTO_TEST_CASE(cuboid_minimum_image_batch_test) {
                             dx1.data(), dx2.data(), dsq.data());
 
     for (int t = 0; t < m; ++t) {
-      auto const idx = static_cast<std::size_t>(offset + t);
+      auto const idx =
+          static_cast<std::size_t>(offset) + static_cast<std::size_t>(t);
       auto const neighbour = Utils::Vector3d{sx[idx], sy[idx], sz[idx]};
       auto const single = fold.vector(reference_point[0u], reference_point[1u],
                                       reference_point[2u], neighbour[0u],
