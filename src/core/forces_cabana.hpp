@@ -308,11 +308,14 @@ struct ForcesKernel {
  * capture the cuboid box parameters by value, and obtain the ScatterView
  * accessor once per particle instead of once per pair -- the per-pair
  * `access()` is an omp_get_thread_num call that dominates the LJ pair cost. It
- * does NOT accumulate the i-side force in a register: the per-pair scatter
- * writes stay in the same order as @ref ForcesKernel (i before j, both scaled
- * from the same pair force), so the result is bitwise-identical on a single
- * thread. `if constexpr (HasCoulomb)` compiles the electrostatics path in or
- * out entirely.
+ * also accumulates the i-side force in a local register over all of particle
+ * i's neighbors and updates the ScatterView once per particle instead of once
+ * per pair; the j-side write stays per-pair (each neighbor j is distinct). This
+ * removes the per-pair i-side accessor update at the cost of changing the
+ * i-side summation order (a single register sum added once, rather than
+ * incremental scatter adds), so the result matches @ref ForcesKernel to
+ * floating-point round-off rather than bitwise. `if constexpr (HasCoulomb)`
+ * compiles the electrostatics path in or out entirely.
  *
  * The neighbors are processed in fixed-size tiles, each in three passes: a
  * scalar gather of the neighbor positions into SoA scratch, a vectorized
@@ -358,6 +361,10 @@ template <bool HasCoulomb> struct SpecializedForcesKernel {
 
     // One ScatterView accessor for all of this particle's pairs.
     auto access_force = local_force.access();
+
+    // Accumulate the i-side force over all neighbors in a local register and
+    // write it to the ScatterView once at the end (see class docs).
+    Utils::Vector3d f_i{};
 
     // Per-tile SoA scratch (thread-local, on the stack).
     int js[tile_size];
@@ -413,13 +420,16 @@ template <bool HasCoulomb> struct SpecializedForcesKernel {
         }
 #endif
 
-        access_force(i, 0) += f[0];
-        access_force(i, 1) += f[1];
-        access_force(i, 2) += f[2];
+        f_i += f;
         access_force(j, 0) -= f[0];
         access_force(j, 1) -= f[1];
         access_force(j, 2) -= f[2];
       }
     }
+
+    // Single i-side ScatterView update for the whole neighbor loop.
+    access_force(i, 0) += f_i[0];
+    access_force(i, 1) += f_i[1];
+    access_force(i, 2) += f_i[2];
   }
 };
