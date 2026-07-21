@@ -36,78 +36,6 @@
 #include <variant>
 #include <vector>
 
-/**
- * @brief Shared per-pair orchestration of the central-radial non-bonded force
- * and the plain real-space Coulomb contribution.
- *
- * This is the one piece that @ref ForcesKernel and @ref SpecializedForcesKernel
- * compute identically, factored out so the two kernels cannot drift apart when
- * the gating or the P3M fast path changes. Both kernels MUST keep routing this
- * part of their per-pair force through this helper.
- *
- * It returns the force on particle @c i (the opposing force on @c j is
- * @c -f, applied by the caller). The computation, in this exact order, is:
- *  - if @p WithCentralRadial and @c dist <= @c ia_params.max_cut, add
- *    @ref calc_central_radial_force;
- *  - if @p HasCoulomb and the charge product @c q_i*q_j is non-zero, add the
- *    plain real-space Coulomb pair force, using the P3M fast path
- *    (@c p3m->pair_force) when a P3M solver is present and the generic Coulomb
- *    kernel otherwise.
- *
- * @ref SpecializedForcesKernel calls it with both parts enabled (its whole
- * pass-3 body). @ref ForcesKernel keeps its exclusion-gated central-radial add
- * and its Thole/ELC/NPT-virial/dipole handling where they are (their gating and
- * evaluation order differ) and routes only the plain-Coulomb branch through
- * this helper via @c WithCentralRadial=false, preserving bitwise-identical
- * results.
- *
- * @tparam HasCoulomb         Compile-time enable of the Coulomb branch.
- * @tparam WithCentralRadial  Compile-time enable of the central-radial branch.
- * @param ia_params       Non-bonded interaction parameters for the pair.
- * @param d               Folded (minimum-image) distance vector i - j.
- * @param dist            Norm of @p d.
- * @param q_i             Charge of particle i.
- * @param q_j             Charge of particle j.
- * @param coulomb_kernel  Generic real-space Coulomb force kernel (may be
- *                        nullptr only when @p HasCoulomb is false).
- * @param p3m             P3M solver for the fast path, or nullptr.
- */
-template <bool HasCoulomb, bool WithCentralRadial = true>
-ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION Utils::Vector3d
-central_radial_and_coulomb_pair_force(
-    IA_parameters const &ia_params, Utils::Vector3d const &d, double const dist,
-    [[maybe_unused]] double const q_i, [[maybe_unused]] double const q_j,
-    [[maybe_unused]] Coulomb::ShortRangeForceKernel::kernel_type const
-        *const coulomb_kernel
-#ifdef ESPRESSO_P3M
-    ,
-    [[maybe_unused]] CoulombP3M const *const p3m
-#endif
-) {
-  Utils::Vector3d f{};
-  if constexpr (WithCentralRadial) {
-    if (dist <= ia_params.max_cut) {
-      f += calc_central_radial_force(ia_params, d, dist);
-    }
-  }
-#ifdef ESPRESSO_ELECTROSTATICS
-  if constexpr (HasCoulomb) {
-    if (q_i != 0. and q_j != 0.) {
-      auto const q1q2 = q_i * q_j;
-#ifdef ESPRESSO_P3M
-      if (p3m) [[likely]] {
-        f += p3m->pair_force(q1q2, d, dist);
-      } else
-#endif
-      {
-        f += (*coulomb_kernel)(q1q2, d, dist);
-      }
-    }
-  }
-#endif // ESPRESSO_ELECTROSTATICS
-  return f;
-}
-
 struct ForcesKernel {
   BondedInteractionsMap const &bonded_ias;
   InteractionsNonBonded const &nonbonded_ias;
@@ -290,18 +218,14 @@ struct ForcesKernel {
     if (coulomb_kernel != nullptr) {
       if ((aosoa.charge(i) != 0.) and (aosoa.charge(j) != 0.)) {
         auto const q1q2 = aosoa.charge(i) * aosoa.charge(j);
-        // plain real-space Coulomb (P3M fast path or generic kernel), shared
-        // with SpecializedForcesKernel; central-radial handled above, so it is
-        // disabled here. ELC / NPT-virial below reuse q1q2 and stay in place.
-        pf.f += central_radial_and_coulomb_pair_force</*HasCoulomb=*/true,
-                                                      /*WithCentralRadial=*/
-                                                      false>(
-            ia_params, d, dist, aosoa.charge(i), aosoa.charge(j), coulomb_kernel
 #ifdef ESPRESSO_P3M
-            ,
-            p3m
+        if (p3m) [[likely]] {
+          pf.f += p3m->pair_force(q1q2, d, dist);
+        } else
 #endif
-        );
+        {
+          pf.f += (*coulomb_kernel)(q1q2, d, dist);
+        }
         if (elc_kernel) {
           auto const pos1 = aosoa.get_vector_at(aosoa.position, i);
           auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
@@ -425,8 +349,8 @@ template <bool HasCoulomb> struct SpecializedForcesKernel {
     auto const y_i = aosoa.position(i, 1);
     auto const z_i = aosoa.position(i, 2);
     auto const type_i = aosoa.type(i);
-    double charge_i = 0.;
 #ifdef ESPRESSO_ELECTROSTATICS
+    double charge_i = 0.;
     if constexpr (HasCoulomb) {
       charge_i = aosoa.charge(i);
     }
@@ -468,26 +392,26 @@ template <bool HasCoulomb> struct SpecializedForcesKernel {
         auto const &ia_params =
             nonbonded_ias.get_ia_param(type_i, aosoa.type(j));
 
-        // central-radial non-bonded force + plain real-space Coulomb, shared
-        // with ForcesKernel via the common helper.
-        double charge_j = 0.;
+        Utils::Vector3d f{};
+        if (dist <= ia_params.max_cut) {
+          f += calc_central_radial_force(ia_params, d, dist);
+        }
 #ifdef ESPRESSO_ELECTROSTATICS
         if constexpr (HasCoulomb) {
-          charge_j = aosoa.charge(j);
+          auto const charge_j = aosoa.charge(j);
+          if (charge_i != 0. and charge_j != 0.) {
+            auto const q1q2 = charge_i * charge_j;
+#ifdef ESPRESSO_P3M
+            if (p3m) [[likely]] {
+              f += p3m->pair_force(q1q2, d, dist);
+            } else
+#endif
+            {
+              f += (*coulomb_kernel)(q1q2, d, dist);
+            }
+          }
         }
 #endif
-        auto const f = central_radial_and_coulomb_pair_force<HasCoulomb>(
-            ia_params, d, dist, charge_i, charge_j,
-#ifdef ESPRESSO_ELECTROSTATICS
-            coulomb_kernel
-#else
-            nullptr
-#endif
-#ifdef ESPRESSO_P3M
-            ,
-            p3m
-#endif
-        );
 
         access_force(i, 0) += f[0];
         access_force(i, 1) += f[1];
