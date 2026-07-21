@@ -36,6 +36,7 @@
 #include "pressure_cabana.hpp"
 #include "pressure_inline.hpp"
 #include "short_range_cabana.hpp"
+#include "short_range_verlet.hpp"
 #include "system/System.hpp"
 #include "virtual_sites/relative.hpp"
 
@@ -83,7 +84,7 @@ std::shared_ptr<Observable_stat> System::calculate_pressure() {
                                            coulomb.cutoff(),
                                            dipoles.cutoff(),
                                            inactive_cutoff};
-  update_cabana_state(*cell_structure, verlet_criterion,
+  update_verlet_state(*cell_structure, verlet_criterion,
                       get_interaction_range(), propagation->integ_switch);
 
   PressureBinLayout layout{
