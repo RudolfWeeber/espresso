@@ -36,9 +36,15 @@
  */
 template <typename FloatType, class FFTConfig> struct P3MFFTBackend {
   using ComplexType = std::complex<FloatType>;
-  /** Real-space scalar type: real for an r2c transform, complex for c2c. */
-  using RSpaceScalar =
-      std::conditional_t<FFTConfig::use_r2c, FloatType, ComplexType>;
+  /**
+   * Real-space scalar type. P3M's real-space buffers (charge density, E-field)
+   * are physically real in both configs, so this is always @c FloatType. For a
+   * c2c backend (@c use_r2c=false) the imaginary part is dropped on the
+   * backward transform via heFFTe's real-output convenience overload, matching
+   * the pre-backend-interface behaviour where the templated forward/backward
+   * transforms of @c P3MFFT accepted real pointers for either config.
+   */
+  using RSpaceScalar = FloatType;
 
   virtual ~P3MFFTBackend() = default;
 
