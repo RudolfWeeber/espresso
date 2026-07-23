@@ -44,11 +44,9 @@
 
 #include <mpi.h>
 
-#include <algorithm>
 #include <cassert>
 #include <cstddef>
-#include <functional>
-#include <iterator>
+#include <numeric>
 #include <stdexcept>
 #include <tuple>
 #include <utility>
@@ -225,9 +223,12 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
             auto const pf = pair_force(rn, m_i, m_j);
             fi.f += pf.f;
             fi.torque += pf.torque;
+            /* Conservation of angular momentum mandates that
+             * 0 = t_i + r_ij x F_ij + t_j */
+            auto const torque_j = vector_product(pf.f, rn) - pf.torque;
             for (int c = 0; c < 3; ++c) {
               force_access(jl, c) -= pf.f[c];
-              torque_access(jl, c) += (vector_product(pf.f, rn) - pf.torque)[c];
+              torque_access(jl, c) += torque_j[c];
             }
           }
         }
@@ -336,8 +337,8 @@ double DipolarDirectSum::long_range_energy_cpu() const {
 
   /* Phase A: local-upper triangular sum over j in [gi, offset + n_local),
    * i.e. the self-image energy (shifts[1..], primary excluded) plus the pairs
-   * with j in (gi, offset + n_local). Computed from the local SoA slice while
-   * the remote data is still in flight. */
+   * with j in (gi, offset + n_local). Computed from the local slice of the
+   * gathered data while the remote data is still in flight. */
   double uA = 0.;
   Kokkos::RangePolicy<execution_space, Kokkos::Schedule<Kokkos::Dynamic>>
   policy_local(std::size_t{0}, n_local);
