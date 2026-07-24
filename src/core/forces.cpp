@@ -242,7 +242,8 @@ static ShortRangeVerletPairLoop create_specialized_verlet_pair_loop(
       };
       Kokkos::parallel_for(
           "specialized_nonbonded_pairs",
-          Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(std::size_t{0}, n),
+          Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(std::size_t{0},
+                                                                 n),
           kernel);
     };
   }
@@ -268,10 +269,10 @@ static ShortRangeVerletPairLoop create_specialized_verlet_pair_loop(
 #endif
 #endif
     };
-    Kokkos::parallel_for(
-        "specialized_nonbonded_pairs",
-        Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(std::size_t{0}, n),
-        kernel);
+    Kokkos::parallel_for("specialized_nonbonded_pairs",
+                         Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
+                             std::size_t{0}, n),
+                         kernel);
   };
 }
 
