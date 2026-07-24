@@ -146,10 +146,11 @@ static ForcesKernel create_cabana_neighbor_kernel(
 
 // Build the compile-time-specialized Verlet pair loop when the active feature
 // set is covered by SpecializedForcesKernel: cuboid box, no NPT virial, no
-// dipolar or ELC kernel, no DPD thermostat, no Thole or Gay-Berne pair, and no
-// particle with an exclusion. Returns an empty ShortRangeVerletPairLoop
-// otherwise, leaving cabana_short_range on the generic ForcesKernel path. The
-// specialized kernel is bitwise-identical to the generic one on these systems.
+// dipolar or ELC kernel, only allowlisted (central-radial) pair potentials, no
+// Thole pair, and no particle with an exclusion. Returns an empty
+// ShortRangeVerletPairLoop otherwise, leaving cabana_short_range on the
+// generic ForcesKernel path. The specialized kernel is bitwise-identical to
+// the generic one on these systems.
 static ShortRangeVerletPairLoop create_specialized_verlet_pair_loop(
     System::System const &system,
     [[maybe_unused]] Utils::Vector3d const *virial,
@@ -169,30 +170,19 @@ static ShortRangeVerletPairLoop create_specialized_verlet_pair_loop(
   if (get_ptr(elc_kernel) != nullptr)
     return {};
 #endif
-#ifdef ESPRESSO_DPD
-  if ((system.thermostat->thermo_switch & THERMO_DPD) != 0)
-    return {};
-#endif
   auto const &nonbonded_ias = *system.nonbonded_ias;
-#if defined(ESPRESSO_THOLE) or defined(ESPRESSO_GAY_BERNE)
-  {
-    auto const max_type = nonbonded_ias.get_max_seen_particle_type();
-    for (int type_i = 0; type_i <= max_type; ++type_i) {
-      for (int type_j = type_i; type_j <= max_type; ++type_j) {
-        [[maybe_unused]] auto const &ia =
-            nonbonded_ias.get_ia_param(type_i, type_j);
+  // Allowlist over the aggregated pair-potential mask (O(1), maintained by
+  // recalc_maximal_cutoffs). Any type pair with a potential the specialized
+  // kernel does not compute -- Gay-Berne, DPD (in which case the DPD
+  // thermostat could act on the pair), or any future addition -- falls back
+  // to the generic kernel by default.
+  if ((nonbonded_ias.combined_active_pair_mask() &
+       ~specialized_kernel_pair_mask) != 0u)
+    return {};
 #ifdef ESPRESSO_THOLE
-        if (ia.thole.scaling_coeff != 0. and ia.thole.q1q2 != 0.)
-          return {};
-#endif
-#ifdef ESPRESSO_GAY_BERNE
-        if ((ia.active_pair_mask &
-             pair_potential_bit(PairPotential::GayBerne)) != 0u)
-          return {};
-#endif
-      }
-    }
-  }
+  // Thole damping is not in the pair-potential mask; check its own aggregate.
+  if (nonbonded_ias.any_thole_configured())
+    return {};
 #endif
   auto &cell_structure = *system.cell_structure;
   auto const &aosoa = cell_structure.get_aosoa();
@@ -374,12 +364,17 @@ void System::System::calculate_forces() {
   auto const coulomb_u_kernel = coulomb.pair_energy_kernel();
   auto *const virial = get_npt_virial();
 
-  VerletCriterion<> const verlet_criterion{*this,
-                                           cell_structure->get_verlet_skin(),
-                                           get_interaction_range(),
-                                           coulomb.cutoff(),
-                                           dipoles.cutoff(),
-                                           collision_detection_cutoff};
+  // Factory instead of an eager criterion: construction fills an O(n_types^2)
+  // cutoff table, so it only runs where a criterion is actually consumed (the
+  // link-cell fallback and the collision-detection loop below).
+  auto const make_verlet_criterion = [&] {
+    return VerletCriterion<>{*this,
+                             cell_structure->get_verlet_skin(),
+                             get_interaction_range(),
+                             coulomb.cutoff(),
+                             dipoles.cutoff(),
+                             collision_detection_cutoff};
+  };
 
   update_verlet_state(*cell_structure, *this, coulomb.cutoff(),
                       dipoles.cutoff(), collision_detection_cutoff,
@@ -425,7 +420,7 @@ void System::System::calculate_forces() {
   cabana_short_range(pair_bonds_kernel, angle_bonds_kernel,
                      dihedral_bonds_kernel, first_neighbor_kernel,
                      *cell_structure, get_interaction_range(),
-                     bonded_ias->maximal_cutoff(), verlet_criterion,
+                     bonded_ias->maximal_cutoff(), make_verlet_criterion,
                      propagation->integ_switch, specialized_pair_loop);
 
   // Force and Torque reduction
@@ -438,6 +433,7 @@ void System::System::calculate_forces() {
     collision_detection.detect_collision(p1, p2, d.dist2);
   };
   if (not collision_detection->is_off()) {
+    auto const verlet_criterion = make_verlet_criterion();
     cell_structure->non_bonded_loop(collision_kernel, verlet_criterion);
   }
 #endif // ESPRESSO_COLLISION_DETECTION

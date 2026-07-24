@@ -627,13 +627,14 @@ double DipolarP3MHeffte<FloatType, Architecture, FFTConfig>::long_range_kernel(
               });
           dp3m.heffte.fft->backward(dp3m.heffte.ks_B_field_storage.data(),
                                     dp3m.heffte.rs_B_fields_no_halo[d].data());
-          // pad zeros around the B-field in real space for ghost layers
-          dp3m.heffte.rs_B_fields[d] =
-              pad_with_zeros_discard_imag<FFTConfig::r_space_order,
-                                          Utils::MemoryOrder::ROW_MAJOR>(
-                  std::span(dp3m.heffte.rs_B_fields_no_halo[d]),
-                  dp3m.local_mesh.dim_no_halo, dp3m.local_mesh.n_halo_ld,
-                  dp3m.local_mesh.n_halo_ur);
+          // pad zeros around the B-field in real space for ghost layers,
+          // writing straight into the persistent halo-sized buffer
+          pad_with_zeros_discard_imag_into<FFTConfig::r_space_order,
+                                           Utils::MemoryOrder::ROW_MAJOR>(
+              dp3m.heffte.rs_B_fields[d].data(),
+              std::span(dp3m.heffte.rs_B_fields_no_halo[d]),
+              dp3m.local_mesh.dim_no_halo, dp3m.local_mesh.n_halo_ld,
+              dp3m.local_mesh.n_halo_ur);
           // communicate ghost layers of the B-field in real space
           dp3m.heffte.halo_comm.spread_grid(::comm_cart,
                                             dp3m.heffte.rs_B_fields[d].data(),
@@ -784,13 +785,14 @@ double DipolarP3MHeffte<FloatType, Architecture, FFTConfig>::long_range_kernel(
             dp3m.heffte.fft->backward(
                 dp3m.heffte.ks_dipole_density[dir].data(),
                 dp3m.heffte.rs_B_fields_no_halo[dir].data());
-            // pad zeros around the B-field in real space for ghost layers
-            dp3m.heffte.rs_B_fields[d] =
-                pad_with_zeros_discard_imag<FFTConfig::r_space_order,
-                                            Utils::MemoryOrder::ROW_MAJOR>(
-                    std::span(dp3m.heffte.rs_B_fields_no_halo[dir]),
-                    dp3m.local_mesh.dim_no_halo, dp3m.local_mesh.n_halo_ld,
-                    dp3m.local_mesh.n_halo_ur);
+            // pad zeros around the B-field in real space for ghost layers,
+            // writing straight into the persistent halo-sized buffer
+            pad_with_zeros_discard_imag_into<FFTConfig::r_space_order,
+                                             Utils::MemoryOrder::ROW_MAJOR>(
+                dp3m.heffte.rs_B_fields[d].data(),
+                std::span(dp3m.heffte.rs_B_fields_no_halo[dir]),
+                dp3m.local_mesh.dim_no_halo, dp3m.local_mesh.n_halo_ld,
+                dp3m.local_mesh.n_halo_ur);
           }
           // communicate ghost layers of the B-field in real space
           auto rs_fields =

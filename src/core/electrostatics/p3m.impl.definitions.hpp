@@ -37,7 +37,7 @@
 #include "electrostatics/p3m.impl.hpp" // must be included after coulomb.hpp
 
 #include "p3m/P3MFFT.hpp"
-#include "p3m/P3MFFTKokkos.hpp"
+#include "p3m/P3MFFTBackendFactory.hpp"
 #include "p3m/TuningAlgorithm.hpp"
 #include "p3m/TuningLogger.hpp"
 #include "p3m/field_layout_helpers.hpp"
@@ -95,6 +95,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -317,16 +318,17 @@ void CoulombP3MImpl<FloatType, Architecture, FFTConfig>::init_cpu_kernels() {
 
   p3m.local_mesh.calc_local_ca_mesh(p3m.params, local_geo, skin, elc_layer);
   std::shared_ptr<P3MFFTBackend<FloatType, FFTConfig>> fft_backend;
-#ifdef ESPRESSO_KOKKOS_FFT
-  // kokkos-fft is a local (non-MPI) transform: use it only on a single rank.
-  if constexpr (Architecture == Arch::CPU) {
-    if (::comm_cart.size() == 1) {
-      fft_backend = std::make_shared<P3MFFTKokkos<FloatType, FFTConfig>>(
-          ::comm_cart, p3m.params.mesh, p3m.local_mesh.ld_no_halo,
-          p3m.local_mesh.ur_no_halo, ::communicator.node_grid);
-    }
+  // The kokkos-fft backend serves only the row-major r2c config on the CPU;
+  // the factory additionally requires kokkos-fft support to be compiled in
+  // and a single MPI rank, and returns nullptr otherwise. The factory is
+  // defined once inside the espresso_p3m target, so backend selection is
+  // identical in every translation unit that instantiates this solver.
+  if constexpr (Architecture == Arch::CPU and
+                std::is_same_v<FFTConfig, P3MFFTKokkosConfig>) {
+    fft_backend = make_p3m_kokkos_fft_backend<FloatType>(
+        ::comm_cart, p3m.params.mesh, p3m.local_mesh.ld_no_halo,
+        p3m.local_mesh.ur_no_halo, ::communicator.node_grid);
   }
-#endif
   if (not fft_backend) {
     fft_backend = std::make_shared<P3MFFTHeffte<FloatType, FFTConfig>>(
         ::comm_cart, p3m.params.mesh, p3m.local_mesh.ld_no_halo,
@@ -550,13 +552,17 @@ void CoulombP3MImpl<FloatType, Architecture,
     auto r_space = p3m.rs_E_fields_no_halo[d].data();
     p3m.fft->backward(k_space, r_space);
 
-    // add zeros around the E-field in real space to make room for ghost layers
+    // add zeros around the E-field in real space to make room for ghost
+    // layers, writing straight into the persistent halo-sized buffer (no
+    // per-step allocation, only the halo shells are zeroed)
     auto const begin = p3m.rs_E_fields_no_halo[d].begin();
-    p3m.rs_E_fields[d] =
-        pad_with_zeros_discard_imag<FFTConfig::r_space_order,
-                                    Utils::MemoryOrder::ROW_MAJOR>(
-            std::span(begin, rs_mesh_size_no_halo), p3m.local_mesh.dim_no_halo,
-            p3m.local_mesh.n_halo_ld, p3m.local_mesh.n_halo_ur);
+    assert(p3m.rs_E_fields[d].size() ==
+           static_cast<std::size_t>(Utils::product(p3m.local_mesh.dim)));
+    pad_with_zeros_discard_imag_into<FFTConfig::r_space_order,
+                                     Utils::MemoryOrder::ROW_MAJOR>(
+        p3m.rs_E_fields[d].data(), std::span(begin, rs_mesh_size_no_halo),
+        p3m.local_mesh.dim_no_halo, p3m.local_mesh.n_halo_ld,
+        p3m.local_mesh.n_halo_ur);
   }
 
   // ghost communicate the boundary layers of the E-field in real space

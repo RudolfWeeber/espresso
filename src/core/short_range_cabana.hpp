@@ -184,10 +184,14 @@ ESPRESSO_ATTR_ALWAYS_INLINE inline void link_cell_kokkos(
   Kokkos::fence();
 }
 
+// @p make_verlet_criterion is a nullary factory: constructing the criterion
+// fills an O(n_types^2) cutoff table, so it is only invoked when the Verlet
+// list is actually rebuilt, not on every force call.
 template <class execution_space = Kokkos::DefaultHostExecutionSpace>
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
-update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
-                    double const pair_cutoff, auto const integ_switch) {
+update_cabana_state(CellStructure &cell_structure,
+                    auto const &make_verlet_criterion, double const pair_cutoff,
+                    auto const integ_switch) {
 #ifdef ESPRESSO_CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif
@@ -275,6 +279,7 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
     cell_structure.rebuild_verlet_list_cabana(
         [&](std::span<Cell *const> cells, BoxGeometry const &box,
             CellStructure::ListType &verlet_list) {
+          auto const verlet_criterion = make_verlet_criterion();
           link_cell_kokkos(
               std::move(cells), box, verlet_criterion, id_to_index, max_id,
               [&](const int i, const int j) {
@@ -351,13 +356,16 @@ update_aosoa_charges(CellStructure &cell_structure) {
 using ShortRangeVerletPairLoop =
     std::function<void(CellStructure::ListType const &, std::size_t)>;
 
+// @p make_verlet_criterion is a nullary factory: constructing the criterion
+// fills an O(n_types^2) cutoff table, so it is only invoked on the link-cell
+// fallback path, which is the only consumer here.
 template <class execution_space = Kokkos::DefaultHostExecutionSpace>
 void cabana_short_range(auto const &pair_bonds_kernel,
                         auto const &angle_bonds_kernel,
                         auto const &dihedral_bonds_kernel,
                         auto const &nonbonded_kernel,
                         CellStructure &cell_structure, double pair_cutoff,
-                        double bond_cutoff, auto const &verlet_criterion,
+                        double bond_cutoff, auto const &make_verlet_criterion,
                         auto const integ_switch,
                         ShortRangeVerletPairLoop const &verlet_pair_loop = {}) {
   assert(cell_structure.get_resort_particles() == Cells::RESORT_NONE);
@@ -420,6 +428,7 @@ void cabana_short_range(auto const &pair_bonds_kernel,
     } else {
       cell_structure.cell_list_loop(
           [&](std::span<Cell *const> cells, BoxGeometry const &box) {
+            auto const verlet_criterion = make_verlet_criterion();
             link_cell_kokkos(
                 std::move(cells), box, verlet_criterion,
                 cell_structure.get_id_to_index(),

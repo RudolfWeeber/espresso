@@ -45,13 +45,21 @@ void update_verlet_state(CellStructure &cell_structure,
   bool const short_range_only = coulomb_cut == inactive_cutoff and
                                 dipolar_cut == inactive_cutoff and
                                 collision_cut == inactive_cutoff;
+  // The criterion is handed over as a factory so its O(n_types^2) cutoff
+  // table is only built when the Verlet list is actually rebuilt.
   if (short_range_only) {
-    VerletCriterion<GetNonbondedCutoff, true> const criterion{
-        system, skin, pair_cutoff, coulomb_cut, dipolar_cut, collision_cut};
-    update_cabana_state(cell_structure, criterion, pair_cutoff, integ_switch);
+    auto const make_criterion = [&] {
+      return VerletCriterion<GetNonbondedCutoff, true>{
+          system, skin, pair_cutoff, coulomb_cut, dipolar_cut, collision_cut};
+    };
+    update_cabana_state(cell_structure, make_criterion, pair_cutoff,
+                        integ_switch);
   } else {
-    VerletCriterion<GetNonbondedCutoff, false> const criterion{
-        system, skin, pair_cutoff, coulomb_cut, dipolar_cut, collision_cut};
-    update_cabana_state(cell_structure, criterion, pair_cutoff, integ_switch);
+    auto const make_criterion = [&] {
+      return VerletCriterion<GetNonbondedCutoff, false>{
+          system, skin, pair_cutoff, coulomb_cut, dipolar_cut, collision_cut};
+    };
+    update_cabana_state(cell_structure, make_criterion, pair_cutoff,
+                        integ_switch);
   }
 }

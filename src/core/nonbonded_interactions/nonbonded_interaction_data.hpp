@@ -394,6 +394,17 @@ class InteractionsNonBonded : public System::Leaf<InteractionsNonBonded> {
   std::vector<std::shared_ptr<IA_parameters>> m_nonbonded_ia_params{};
   /** @brief Maximal particle type seen so far. */
   int max_seen_particle_type = -1;
+  /** @brief OR of @ref IA_parameters::active_pair_mask over all type pairs.
+   *  Maintained by @ref recalc_maximal_cutoffs, like the per-pair masks.
+   */
+  unsigned m_combined_active_pair_mask = 0u;
+#ifdef ESPRESSO_THOLE
+  /** @brief Whether any type pair has Thole damping configured
+   *  (non-zero scaling coefficient and charge product).
+   *  Maintained by @ref recalc_maximal_cutoffs, like the per-pair masks.
+   */
+  bool m_any_thole_configured = false;
+#endif
 
   void realloc_ia_params(int type) {
     assert(type >= 0);
@@ -466,6 +477,14 @@ public:
   }
 
   auto get_max_seen_particle_type() const { return max_seen_particle_type; }
+
+  /** @brief OR of @ref IA_parameters::active_pair_mask over all type pairs. */
+  auto combined_active_pair_mask() const { return m_combined_active_pair_mask; }
+
+#ifdef ESPRESSO_THOLE
+  /** @brief Whether any type pair has Thole damping configured. */
+  auto any_thole_configured() const { return m_any_thole_configured; }
+#endif
 
   /** @brief Recalculate cutoff of each interaction struct. */
   void recalc_maximal_cutoffs();

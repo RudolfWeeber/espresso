@@ -292,6 +292,30 @@ struct ForcesKernel {
   }
 };
 
+/** @brief Pair potentials fully handled by @ref SpecializedForcesKernel:
+ *  exactly the central-radial family dispatched through
+ *  @ref calc_central_radial_force. Potentials with their own branch in
+ *  @ref ForcesKernel (Gay-Berne, DPD) are deliberately absent, and so is any
+ *  newly added potential until it is proven compatible -- the dispatch gate
+ *  in forces.cpp rejects any pair mask with a bit outside this allowlist, so
+ *  new potentials fall back to the generic kernel by default.
+ */
+constexpr unsigned specialized_kernel_pair_mask =
+    pair_potential_bit(PairPotential::LennardJones) |
+    pair_potential_bit(PairPotential::WCA) |
+    pair_potential_bit(PairPotential::LennardJonesGeneric) |
+    pair_potential_bit(PairPotential::SmoothStep) |
+    pair_potential_bit(PairPotential::Hertzian) |
+    pair_potential_bit(PairPotential::Gaussian) |
+    pair_potential_bit(PairPotential::BMHTF) |
+    pair_potential_bit(PairPotential::Buckingham) |
+    pair_potential_bit(PairPotential::Morse) |
+    pair_potential_bit(PairPotential::SoftSphere) |
+    pair_potential_bit(PairPotential::Hat) |
+    pair_potential_bit(PairPotential::LJCos) |
+    pair_potential_bit(PairPotential::LJCos2) |
+    pair_potential_bit(PairPotential::Tabulated);
+
 /**
  * @brief Own-the-loop specialization of the non-bonded pair kernel.
  *

@@ -78,12 +78,16 @@ std::shared_ptr<Observable_stat> System::calculate_pressure() {
   auto const coulomb_force_kernel = coulomb.pair_force_kernel();
   auto const coulomb_pressure_kernel = coulomb.pair_pressure_kernel();
 
-  VerletCriterion<> const verlet_criterion{*this,
-                                           cell_structure->get_verlet_skin(),
-                                           get_interaction_range(),
-                                           coulomb.cutoff(),
-                                           dipoles.cutoff(),
-                                           inactive_cutoff};
+  // Factory instead of an eager criterion: construction fills an O(n_types^2)
+  // cutoff table, so it only runs on the link-cell fallback path.
+  auto const make_verlet_criterion = [&] {
+    return VerletCriterion<>{*this,
+                             cell_structure->get_verlet_skin(),
+                             get_interaction_range(),
+                             coulomb.cutoff(),
+                             dipoles.cutoff(),
+                             inactive_cutoff};
+  };
   update_verlet_state(*cell_structure, *this, coulomb.cutoff(),
                       dipoles.cutoff(), inactive_cutoff,
                       get_interaction_range(), propagation->integ_switch);
@@ -132,7 +136,7 @@ std::shared_ptr<Observable_stat> System::calculate_pressure() {
 
   cabana_short_range(pair_bp_kernel, angle_bp_kernel, dih_bp_kernel,
                      pair_p_kernel, *cell_structure, get_interaction_range(),
-                     bonded_ias->maximal_cutoff(), verlet_criterion,
+                     bonded_ias->maximal_cutoff(), make_verlet_criterion,
                      propagation->integ_switch);
 
   reduce_cabana_pressure(local_pressure, layout, obs_pressure, *bonded_ias,
