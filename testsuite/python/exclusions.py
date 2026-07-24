@@ -21,10 +21,12 @@ import unittest_decorators as utx
 import espressomd
 import espressomd.electrostatics
 
+system = espressomd.System(box_l=[1.0, 1.0, 1.0])
+
 
 @utx.skipIfMissingFeatures(['EXCLUSIONS'])
 class Exclusions(ut.TestCase):
-    system = espressomd.System(box_l=[1.0, 1.0, 1.0])
+    system = system
 
     def setUp(self):
         self.system.box_l = 3 * [10]
@@ -164,7 +166,8 @@ class Exclusions(ut.TestCase):
 
 @utx.skipIfMissingFeatures(["EXCLUSIONS", "LENNARD_JONES"])
 class ExclusionsGhostPairTest(ut.TestCase):
-    system = espressomd.System(box_l=[10.0, 10.0, 10.0])
+    system = system
+    system.box_l = [10.0, 10.0, 10.0]
     system.cell_system.skin = 0.4
     system.time_step = 0.01
 
