@@ -126,7 +126,7 @@ void CoulombP3MImpl<FloatType, Architecture,
     double local_q = 0.0;
     double local_q2 = 0.0;
   };
-  Reduction::AddPartialResultKernel<Res> kernel = [](Res &acc, auto const &p) {
+  auto kernel = [](Res &acc, auto const &p) {
     if (p.q() != 0.0) {
       acc.local_n++;
       acc.local_q2 += Utils::sqr(p.q());
@@ -134,13 +134,13 @@ void CoulombP3MImpl<FloatType, Architecture,
     }
   };
 
-  Reduction::ReductionOp<Res> reduce = [](Res &a, Res const &b) {
+  auto reduce = [](Res &a, Res const &b) {
     a.local_n += b.local_n;
     a.local_q += b.local_q;
     a.local_q2 += b.local_q2;
   };
-  auto res = reduce_over_local_particles(*(get_system().cell_structure), kernel,
-                                         reduce);
+  auto res = reduce_over_local_particles<Res>(*(get_system().cell_structure),
+                                              kernel, reduce);
 
   boost::mpi::all_reduce(comm_cart, res.local_n, p3m.sum_qpart, std::plus<>());
   boost::mpi::all_reduce(comm_cart, res.local_q2, p3m.sum_q2, std::plus<>());
@@ -384,12 +384,12 @@ template <int cao> struct AssignCharge {
   void operator()(auto &p3m, auto &cell_structure) {
     using CoulombP3MState = std::remove_reference_t<decltype(p3m)>;
     using value_type = CoulombP3MState::value_type;
-    auto constexpr memory_order = Utils::MemoryOrder::ROW_MAJOR;
     auto const &aosoa = cell_structure.get_aosoa();
     auto const n_part = cell_structure.count_local_particles();
     p3m.inter_weights.zfill(n_part); // allocate buffer for parallel write
     kokkos_parallel_range_for(
         "InterpolateCharges", std::size_t{0u}, n_part, [&](auto p_index) {
+          auto constexpr memory_order = Utils::MemoryOrder::ROW_MAJOR;
           auto const tid = omp_get_thread_num();
           auto const pos = aosoa.get_span_at(aosoa.position, p_index);
           auto const q = aosoa.charge(p_index);
@@ -403,7 +403,7 @@ template <int cao> struct AssignCharge {
               });
         });
     Kokkos::fence();
-    using execution_space = Kokkos::DefaultExecutionSpace;
+    using execution_space = Kokkos::DefaultHostExecutionSpace;
     int num_threads = execution_space().concurrency();
     Kokkos::RangePolicy<execution_space> policy(std::size_t{0},
                                                 p3m.local_mesh.size);
@@ -766,7 +766,8 @@ double CoulombP3MImpl<FloatType, Architecture, FFTConfig>::long_range_kernel(
 
 template <typename FloatType, Arch Architecture, class FFTConfig>
 class CoulombTuningAlgorithm : public TuningAlgorithm {
-  using CoulombP3MStateClass = CoulombP3MState<FloatType, FFTConfig>;
+  using CoulombP3MStateClass =
+      CoulombP3MState<FloatType, Architecture, FFTConfig>;
   CoulombP3MStateClass &p3m;
   double m_mesh_density_min = -1., m_mesh_density_max = -1.;
   // indicates if mesh should be tuned

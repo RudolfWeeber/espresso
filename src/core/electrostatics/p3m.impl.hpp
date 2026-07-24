@@ -51,18 +51,22 @@
 #include <utility>
 #include <vector>
 
-template <typename FloatType, class FFTConfig> class P3MFFT;
+template <typename FloatType, Arch Architecture, class FFTConfig> class P3MFFT;
 
 /**
  * @brief Base class for the electrostatics P3M algorithm.
  * Contains a handle to the FFT backend, information about the local
  * mesh, the differential operator, and various buffers.
  */
-template <typename FloatType, class FFTConfig>
-struct CoulombP3MState : public P3MStateCommon<FloatType> {
-  using P3MStateCommon<FloatType>::P3MStateCommon;
+template <typename FloatType, Arch Architecture, class FFTConfig>
+struct CoulombP3MState : public P3MStateCommon<FloatType, Architecture> {
+  using P3MStateCommon<FloatType, Architecture>::P3MStateCommon;
   using value_type = FloatType;
   using ComplexType = std::complex<value_type>;
+  using memory_space = Kokkos::HostSpace;
+  using execution_space = Kokkos::DefaultHostExecutionSpace;
+  using r_space_layout = FFTConfig::r_space_layout;
+  using k_space_layout = FFTConfig::k_space_layout;
 
   /** number of charged particles. */
   std::size_t sum_qpart = 0;
@@ -84,8 +88,10 @@ struct CoulombP3MState : public P3MStateCommon<FloatType> {
   /** electric fields in real-space without halo */
   std::array<std::vector<FloatType>, 3> rs_E_fields_no_halo;
   p3m_send_mesh<FloatType> halo_comm;
+  // FFT reciprocal-space transform, hidden behind the backend interface so the
+  // solver is agnostic to heFFTe vs kokkos-fft (see init_cpu_kernels).
   std::shared_ptr<P3MFFTBackend<FloatType, FFTConfig>> fft;
-  Kokkos::View<FloatType **, Kokkos::LayoutRight, Kokkos::HostSpace>
+  Kokkos::View<FloatType **, r_space_layout, Kokkos::HostSpace>
       rs_charge_density_kokkos;
 
   void init_labels() {
@@ -103,7 +109,8 @@ template <typename FloatType, Arch Architecture, class FFTConfig>
 struct CoulombP3MImpl : public CoulombP3M {
   ~CoulombP3MImpl() override = default;
 
-  using CoulombP3MStateClass = CoulombP3MState<FloatType, FFTConfig>;
+  using CoulombP3MStateClass =
+      CoulombP3MState<FloatType, Architecture, FFTConfig>;
   /** @brief Coulomb P3M parameters. */
   CoulombP3MStateClass &p3m;
 
@@ -208,7 +215,7 @@ public:
       p3m.inter_weights.reset(p3m.params.cao);
     }
     p3m.rs_charge_density.resize(p3m.local_mesh.size);
-    using execution_space = Kokkos::DefaultExecutionSpace;
+    using execution_space = Kokkos::DefaultHostExecutionSpace;
     auto const num_threads = execution_space().concurrency();
     Kokkos::realloc(Kokkos::WithoutInitializing, p3m.rs_charge_density_kokkos,
                     num_threads, p3m.local_mesh.size);
