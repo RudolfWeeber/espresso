@@ -58,9 +58,10 @@
  * from the exact buffers it will run on (keyed and cached by pointer): the P3M
  * k-space and no-halo real-space buffers are allocated once and stable, so
  * their plans are built on the first step and reused thereafter with no data
- * copies. The forward input is the only exception — @c extract_block hands us a
- * freshly allocated buffer each step — so it is staged once into an owned,
- * consistently aligned scratch view before the forward transform.
+ * copies. The forward input goes through an owned, consistently aligned
+ * scratch view for the same reason; P3M fills it directly (via
+ * @ref forward_input_buffer) so no staging copy occurs, and only an external
+ * caller passing a foreign buffer pays one.
  */
 template <typename FloatType, class FFTConfig>
 struct P3MFFTKokkos final : public P3MFFTBackend<FloatType, FFTConfig> {

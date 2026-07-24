@@ -173,9 +173,13 @@ struct CellStructure::AoSoA_pack {
 
   // Host-only: record that some particle carries an exclusion. Kept out of the
   // device-qualified set_has_exclusion so the atomic never appears in device
-  // code; commit_particle calls this from the host commit sweep.
+  // code; commit_particle calls this from the host commit sweep. Test before
+  // setting: after the first write the flag's cache line stays shared, so
+  // exclusion-heavy sweeps don't ping-pong it across threads.
   void mark_any_exclusion() {
-    any_exclusion.store(true, std::memory_order_relaxed);
+    if (not any_exclusion.load(std::memory_order_relaxed)) {
+      any_exclusion.store(true, std::memory_order_relaxed);
+    }
   }
 
   DEVICE_QUALIFIER void set_has_exclusion(std::size_t i, bool value) {

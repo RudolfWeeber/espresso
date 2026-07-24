@@ -36,6 +36,47 @@
 #include <variant>
 #include <vector>
 
+#ifdef ESPRESSO_P3M
+/** @brief The active P3M solver, or nullptr. Deliberately checks only the
+ *  top level of the solver variant (unlike @ref get_actor_by_type, which
+ *  recurses into layer corrections): under ELC the pair force must go through
+ *  the generic coulomb kernel plus the ELC corrections, not the bare P3M
+ *  fast path.
+ */
+inline CoulombP3M const *
+get_toplevel_p3m_solver(Coulomb::Solver const &coulomb) {
+  if (auto const &solver = coulomb.impl->solver; solver.has_value()) {
+    if (std::holds_alternative<std::shared_ptr<CoulombP3M>>(*solver)) {
+      return std::get<std::shared_ptr<CoulombP3M>>(*solver).get();
+    }
+  }
+  return nullptr;
+}
+#endif
+
+#ifdef ESPRESSO_ELECTROSTATICS
+/** @brief Real-space charge-charge pair force: the P3M fast path when the
+ *  solver is (top-level) P3M, the type-erased coulomb kernel otherwise.
+ *  Shared by @ref ForcesKernel and @ref SpecializedForcesKernel so the
+ *  dispatch cannot drift between them.
+ */
+ESPRESSO_ATTR_ALWAYS_INLINE inline Utils::Vector3d coulomb_pair_force(
+    double q1q2, Utils::Vector3d const &d, double dist,
+    Coulomb::ShortRangeForceKernel::kernel_type const *coulomb_kernel
+#ifdef ESPRESSO_P3M
+    ,
+    CoulombP3M const *p3m
+#endif
+) {
+#ifdef ESPRESSO_P3M
+  if (p3m) [[likely]] {
+    return p3m->pair_force(q1q2, d, dist);
+  }
+#endif
+  return (*coulomb_kernel)(q1q2, d, dist);
+}
+#endif
+
 struct ForcesKernel {
   BondedInteractionsMap const &bonded_ias;
   InteractionsNonBonded const &nonbonded_ias;
@@ -93,12 +134,7 @@ struct ForcesKernel {
 #endif
         aosoa(aosoa_), system_max_cutoff_sq(Utils::sqr(system_max_cutoff_)) {
 #ifdef ESPRESSO_P3M
-    p3m = nullptr;
-    if (auto &solver = coulomb_.impl->solver; solver.has_value()) {
-      if (std::holds_alternative<std::shared_ptr<CoulombP3M>>(*solver)) {
-        p3m = std::get<std::shared_ptr<CoulombP3M>>(*solver).get();
-      }
-    }
+    p3m = get_toplevel_p3m_solver(coulomb_);
 #endif
   }
 
@@ -218,14 +254,12 @@ struct ForcesKernel {
     if (coulomb_kernel != nullptr) {
       if ((aosoa.charge(i) != 0.) and (aosoa.charge(j) != 0.)) {
         auto const q1q2 = aosoa.charge(i) * aosoa.charge(j);
+        pf.f += coulomb_pair_force(q1q2, d, dist, coulomb_kernel
 #ifdef ESPRESSO_P3M
-        if (p3m) [[likely]] {
-          pf.f += p3m->pair_force(q1q2, d, dist);
-        } else
+                                   ,
+                                   p3m
 #endif
-        {
-          pf.f += (*coulomb_kernel)(q1q2, d, dist);
-        }
+        );
         if (elc_kernel) {
           auto const pos1 = aosoa.get_vector_at(aosoa.position, i);
           auto const pos2 = aosoa.get_vector_at(aosoa.position, j);
@@ -432,14 +466,12 @@ template <bool HasCoulomb> struct SpecializedForcesKernel {
           auto const charge_j = aosoa.charge(j);
           if (charge_i != 0. and charge_j != 0.) {
             auto const q1q2 = charge_i * charge_j;
+            f += coulomb_pair_force(q1q2, d, dist, coulomb_kernel
 #ifdef ESPRESSO_P3M
-            if (p3m) [[likely]] {
-              f += p3m->pair_force(q1q2, d, dist);
-            } else
+                                    ,
+                                    p3m
 #endif
-            {
-              f += (*coulomb_kernel)(q1q2, d, dist);
-            }
+            );
           }
         }
 #endif

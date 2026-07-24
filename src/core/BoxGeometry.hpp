@@ -125,20 +125,6 @@ public:
     return acc;
   }
 
-  /** @brief Minimum-image vector between two coordinates, component-wise.
-   *  Matches @ref BoxGeometry::get_mi_vector for cuboid boxes.
-   */
-  ESPRESSO_ATTR_ALWAYS_INLINE inline Utils::Vector3d
-  vector(double a0, double a1, double a2, double b0, double b1,
-         double b2) const {
-    return {detail::get_mi_coord_masked(a0, b0, m_length[0u],
-                                        m_length_inv_masked[0u]),
-            detail::get_mi_coord_masked(a1, b1, m_length[1u],
-                                        m_length_inv_masked[1u]),
-            detail::get_mi_coord_masked(a2, b2, m_length[2u],
-                                        m_length_inv_masked[2u])};
-  }
-
   /**
    * @brief Batched minimum-image vector and squared distance: one point
    * (@p xi, @p yi, @p zi) against @p m others held in the SoA arrays
@@ -147,9 +133,10 @@ public:
    * Writes the fold vector components to @p dx0 / @p dx1 / @p dx2 and the
    * squared distance to @p dsq. The loop carries no dependency across the
    * @p m entries and reads contiguous arrays, so it vectorizes. Each entry is
-   * computed exactly as the scalar @ref vector followed by
-   * `Utils::Vector::norm2` (accumulating from zero in component order), so the
-   * per-pair results are bitwise-identical to the scalar path.
+   * computed as three per-axis @ref detail::get_mi_coord_masked folds followed
+   * by `Utils::Vector::norm2` (accumulating from zero in component order), so
+   * the per-pair results are bitwise-identical to the scalar
+   * @ref BoxGeometry::get_mi_vector path for cuboid boxes.
    */
   ESPRESSO_ATTR_ALWAYS_INLINE inline void
   batch_vector_dist2(double xi, double yi, double zi, int m, double const *sx,

@@ -162,12 +162,6 @@ BOOST_AUTO_TEST_CASE(cuboid_minimum_image_single_pair_test) {
       auto const &b = pair.b;
       auto const reference = box.get_mi_vector(a, b);
 
-      // fold vector must match get_mi_vector component-wise, bitwise.
-      auto const folded = fold.vector(a[0u], a[1u], a[2u], b[0u], b[1u], b[2u]);
-      BOOST_CHECK_EQUAL(folded[0u], reference[0u]);
-      BOOST_CHECK_EQUAL(folded[1u], reference[1u]);
-      BOOST_CHECK_EQUAL(folded[2u], reference[2u]);
-
       // dist2 must match get_mi_vector(...).norm2() bitwise.
       BOOST_CHECK_EQUAL(fold.dist2(a, b), reference.norm2());
     }
@@ -247,9 +241,9 @@ BOOST_AUTO_TEST_CASE(cuboid_minimum_image_batch_test) {
       auto const idx =
           static_cast<std::size_t>(offset) + static_cast<std::size_t>(t);
       auto const neighbour = Utils::Vector3d{sx[idx], sy[idx], sz[idx]};
-      auto const single = fold.vector(reference_point[0u], reference_point[1u],
-                                      reference_point[2u], neighbour[0u],
-                                      neighbour[1u], neighbour[2u]);
+      // get_mi_vector is the scalar oracle: for cuboid boxes it runs the
+      // same per-axis get_mi_coord_masked fold as the batch path.
+      auto const single = box.get_mi_vector(reference_point, neighbour);
       auto const single_dist2 = fold.dist2(reference_point, neighbour);
       BOOST_CHECK_EQUAL(dx0[static_cast<std::size_t>(t)], single[0u]);
       BOOST_CHECK_EQUAL(dx1[static_cast<std::size_t>(t)], single[1u]);
@@ -279,19 +273,15 @@ BOOST_AUTO_TEST_CASE(cuboid_minimum_image_non_periodic_axis_test) {
       Utils::Vector3d{1.3 * box_l[0u], 1.3 * box_l[1u], 1.3 * box_l[2u]};
   auto const a = b + raw;
 
-  auto const folded = fold.vector(a[0u], a[1u], a[2u], b[0u], b[1u], b[2u]);
+  auto const reference = box.get_mi_vector(a, b);
 
   // The non-periodic y axis must not fold: component equals the raw
   // separation.
-  BOOST_CHECK_EQUAL(folded[1u], raw[1u]);
+  BOOST_CHECK_EQUAL(reference[1u], raw[1u]);
   // The periodic axes must fold (magnitude reduced below L/2).
-  BOOST_CHECK_LT(std::abs(folded[0u]), 0.5 * box_l[0u]);
-  BOOST_CHECK_LT(std::abs(folded[2u]), 0.5 * box_l[2u]);
+  BOOST_CHECK_LT(std::abs(reference[0u]), 0.5 * box_l[0u]);
+  BOOST_CHECK_LT(std::abs(reference[2u]), 0.5 * box_l[2u]);
 
-  // And must agree with the standard box path bitwise.
-  auto const reference = box.get_mi_vector(a, b);
-  BOOST_CHECK_EQUAL(folded[0u], reference[0u]);
-  BOOST_CHECK_EQUAL(folded[1u], reference[1u]);
-  BOOST_CHECK_EQUAL(folded[2u], reference[2u]);
+  // And the hoisted fold must agree with the standard box path bitwise.
   BOOST_CHECK_EQUAL(fold.dist2(a, b), reference.norm2());
 }

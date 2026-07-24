@@ -144,6 +144,48 @@ static ForcesKernel create_cabana_neighbor_kernel(
                              system.maximal_cutoff()};
 }
 
+// Single construction-and-launch site for SpecializedForcesKernel, shared by
+// the with- and without-coulomb branches of the dispatch below.
+template <bool HasCoulomb>
+static ShortRangeVerletPairLoop make_specialized_verlet_pair_loop(
+    InteractionsNonBonded const &nonbonded_ias,
+    CellStructure::AoSoA_pack const &aosoa,
+    CellStructure::ScatterForce scatter_force,
+    CuboidMinimumImage const &minimum_image, double const max_cutoff_sq
+#ifdef ESPRESSO_ELECTROSTATICS
+    ,
+    Coulomb::ShortRangeForceKernel::kernel_type const *coulomb_ptr = nullptr
+#ifdef ESPRESSO_P3M
+    ,
+    CoulombP3M const *p3m = nullptr
+#endif
+#endif
+) {
+  return [=, &nonbonded_ias, &aosoa](CellStructure::ListType const &verlet_list,
+                                     std::size_t const n) {
+    SpecializedForcesKernel<HasCoulomb> const kernel{nonbonded_ias,
+                                                     aosoa,
+                                                     scatter_force,
+                                                     verlet_list.counts,
+                                                     verlet_list.neighbors,
+                                                     minimum_image,
+                                                     max_cutoff_sq
+#ifdef ESPRESSO_ELECTROSTATICS
+                                                     ,
+                                                     coulomb_ptr
+#ifdef ESPRESSO_P3M
+                                                     ,
+                                                     p3m
+#endif
+#endif
+    };
+    Kokkos::parallel_for("specialized_nonbonded_pairs",
+                         Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
+                             std::size_t{0}, n),
+                         kernel);
+  };
+}
+
 // Build the compile-time-specialized Verlet pair loop when the active feature
 // set is covered by SpecializedForcesKernel: cuboid box, no NPT virial, no
 // dipolar or ELC kernel, only allowlisted (central-radial) pair potentials, no
@@ -202,68 +244,21 @@ static ShortRangeVerletPairLoop create_specialized_verlet_pair_loop(
 #ifdef ESPRESSO_ELECTROSTATICS
   if (auto const *coulomb_ptr = get_ptr(coulomb_kernel);
       coulomb_ptr != nullptr) {
+    return make_specialized_verlet_pair_loop<true>(
+        nonbonded_ias, aosoa, scatter_force, minimum_image, max_cutoff_sq,
+        coulomb_ptr
 #ifdef ESPRESSO_P3M
-    CoulombP3M const *p3m = nullptr;
-    if (auto const &solver = system.coulomb.impl->solver; solver.has_value()) {
-      if (std::holds_alternative<std::shared_ptr<CoulombP3M>>(*solver)) {
-        p3m = std::get<std::shared_ptr<CoulombP3M>>(*solver).get();
-      }
-    }
+        ,
+        get_toplevel_p3m_solver(system.coulomb)
 #endif
-    return [&nonbonded_ias, &aosoa, scatter_force, minimum_image, max_cutoff_sq,
-            coulomb_ptr
-#ifdef ESPRESSO_P3M
-            ,
-            p3m
-#endif
-    ](CellStructure::ListType const &verlet_list, std::size_t const n) {
-      SpecializedForcesKernel<true> const kernel{nonbonded_ias,
-                                                 aosoa,
-                                                 scatter_force,
-                                                 verlet_list.counts,
-                                                 verlet_list.neighbors,
-                                                 minimum_image,
-                                                 max_cutoff_sq,
-                                                 coulomb_ptr
-#ifdef ESPRESSO_P3M
-                                                 ,
-                                                 p3m
-#endif
-      };
-      Kokkos::parallel_for(
-          "specialized_nonbonded_pairs",
-          Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(std::size_t{0},
-                                                                 n),
-          kernel);
-    };
+    );
   }
 #else
   static_cast<void>(coulomb_kernel);
 #endif
 
-  return [&nonbonded_ias, &aosoa, scatter_force, minimum_image, max_cutoff_sq](
-             CellStructure::ListType const &verlet_list, std::size_t const n) {
-    SpecializedForcesKernel<false> const kernel{nonbonded_ias,
-                                                aosoa,
-                                                scatter_force,
-                                                verlet_list.counts,
-                                                verlet_list.neighbors,
-                                                minimum_image,
-                                                max_cutoff_sq
-#ifdef ESPRESSO_ELECTROSTATICS
-                                                ,
-                                                nullptr
-#ifdef ESPRESSO_P3M
-                                                ,
-                                                nullptr
-#endif
-#endif
-    };
-    Kokkos::parallel_for("specialized_nonbonded_pairs",
-                         Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
-                             std::size_t{0}, n),
-                         kernel);
-  };
+  return make_specialized_verlet_pair_loop<false>(
+      nonbonded_ias, aosoa, scatter_force, minimum_image, max_cutoff_sq);
 }
 
 static void reduce_cabana_forces_and_torques(System::System const &system,
@@ -376,9 +371,7 @@ void System::System::calculate_forces() {
                              collision_detection_cutoff};
   };
 
-  update_verlet_state(*cell_structure, *this, coulomb.cutoff(),
-                      dipoles.cutoff(), collision_detection_cutoff,
-                      get_interaction_range(), propagation->integ_switch);
+  update_verlet_state(*this, collision_detection_cutoff);
 #ifdef ESPRESSO_ELECTROSTATICS
   if (coulomb.impl->extension) {
     update_icc_particles();

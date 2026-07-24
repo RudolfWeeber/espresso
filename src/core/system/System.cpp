@@ -430,9 +430,7 @@ void System::rebuild_aosoa() {
   auto const collision_detection_cutoff = inactive_cutoff;
 #endif
 
-  update_verlet_state(*cell_structure, *this, coulomb.cutoff(),
-                      dipoles.cutoff(), collision_detection_cutoff,
-                      get_interaction_range(), propagation->integ_switch);
+  update_verlet_state(*this, collision_detection_cutoff);
 }
 
 void System::on_lees_edwards_change() { lb.on_lees_edwards_change(); }
