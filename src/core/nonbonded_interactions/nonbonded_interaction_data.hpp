@@ -417,7 +417,9 @@ class InteractionsNonBonded : public System::Leaf<InteractionsNonBonded> {
 
   void rebuild_dense_ia_param_table() {
     auto const n = static_cast<std::size_t>(max_seen_particle_type) + 1u;
-    m_dense_ia_param_table.resize(n * n);
+    // assign() instead of resize(): every entry is overwritten below, and
+    // resize()'s relocation path trips GCC 12's -Wstringop-overflow.
+    m_dense_ia_param_table.assign(n * n, nullptr);
     for (int i = 0; i <= max_seen_particle_type; ++i) {
       for (int j = i; j <= max_seen_particle_type; ++j) {
         // j >= i, so (j, i) is the lower-triangular key of the pair.
