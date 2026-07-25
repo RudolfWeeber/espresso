@@ -405,6 +405,32 @@ class InteractionsNonBonded : public System::Leaf<InteractionsNonBonded> {
    */
   bool m_any_thole_configured = false;
 #endif
+  /** @brief Dense row-major mirror of the triangular pointer table:
+   *  entry <tt>i * n + j</tt> (with <tt>n = max_seen_particle_type + 1</tt>)
+   *  points to the same @ref IA_parameters as <tt>get_ia_param(i, j)</tt>.
+   *  Hot pair kernels resolve a type pair with one flat indexed load instead
+   *  of the triangular-index computation plus two dependent loads through
+   *  the shared_ptr table. Kept in sync wherever the pointer targets or the
+   *  type range change (@ref make_particle_type_exist, @ref set_ia_param).
+   */
+  std::vector<IA_parameters const *> m_dense_ia_param_table;
+
+  void rebuild_dense_ia_param_table() {
+    auto const n = static_cast<std::size_t>(max_seen_particle_type) + 1u;
+    m_dense_ia_param_table.resize(n * n);
+    for (int i = 0; i <= max_seen_particle_type; ++i) {
+      for (int j = i; j <= max_seen_particle_type; ++j) {
+        // j >= i, so (j, i) is the lower-triangular key of the pair.
+        auto const key =
+            static_cast<unsigned int>(Utils::lower_triangular(j, i));
+        auto const *const ptr = m_nonbonded_ia_params[key].get();
+        m_dense_ia_param_table[static_cast<std::size_t>(i) * n +
+                               static_cast<std::size_t>(j)] = ptr;
+        m_dense_ia_param_table[static_cast<std::size_t>(j) * n +
+                               static_cast<std::size_t>(i)] = ptr;
+      }
+    }
+  }
 
   void realloc_ia_params(int type) {
     assert(type >= 0);
@@ -437,6 +463,7 @@ public:
     if (type > max_seen_particle_type) {
       realloc_ia_params(type);
       max_seen_particle_type = type;
+      rebuild_dense_ia_param_table();
     }
   }
 
@@ -474,6 +501,19 @@ public:
 
   void set_ia_param(int i, int j, std::shared_ptr<IA_parameters> const &ia) {
     m_nonbonded_ia_params[get_ia_param_key(i, j)] = ia;
+    rebuild_dense_ia_param_table();
+  }
+
+  /** @brief Row of the dense @ref IA_parameters pointer table for @p type,
+   *  indexed by the partner type. Hot-loop alternative to @ref get_ia_param
+   *  when one type is loop-invariant: resolving the pair costs one indexed
+   *  load instead of the triangular walk through the shared_ptr table.
+   */
+  auto dense_ia_param_row(int type) const {
+    assert(type >= 0 and type <= max_seen_particle_type);
+    return m_dense_ia_param_table.data() +
+           static_cast<std::size_t>(type) *
+               static_cast<std::size_t>(max_seen_particle_type + 1);
   }
 
   auto get_max_seen_particle_type() const { return max_seen_particle_type; }
