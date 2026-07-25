@@ -326,8 +326,8 @@ struct ForcesKernel {
   }
 };
 
-/** @brief Pair potentials fully handled by @ref SpecializedForcesKernel:
- *  exactly the central-radial family dispatched through
+/** @brief Pair potentials fully handled by @ref SpecializedForcesKernel,
+ *  i.e. exactly the central-radial family dispatched through
  *  @ref calc_central_radial_force. Potentials with their own branch in
  *  @ref ForcesKernel (Gay-Berne, DPD) are deliberately absent, and so is any
  *  newly added potential until it is proven compatible -- the dispatch gate

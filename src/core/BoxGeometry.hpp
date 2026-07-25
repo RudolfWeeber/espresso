@@ -133,7 +133,7 @@ public:
    * Writes the fold vector components to @p dx0 / @p dx1 / @p dx2 and the
    * squared distance to @p dsq. The loop carries no dependency across the
    * @p m entries and reads contiguous arrays, so it vectorizes. Each entry is
-   * computed as three per-axis @ref detail::get_mi_coord_masked folds followed
+   * computed as three per-axis @c detail::get_mi_coord_masked folds followed
    * by `Utils::Vector::norm2` (accumulating from zero in component order), so
    * the per-pair results are bitwise-identical to the scalar
    * @ref BoxGeometry::get_mi_vector path for cuboid boxes.

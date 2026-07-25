@@ -41,7 +41,7 @@ using P3MFFTKokkosConfig =
                  true, 2u>;
 
 /**
- * @brief Build the single-rank kokkos-fft backend (@ref P3MFFTKokkos) when it
+ * @brief Build the single-rank kokkos-fft backend (@c P3MFFTKokkos) when it
  * can serve this run, i.e. when ESPResSo was built with kokkos-fft support and
  * the communicator spans a single MPI rank; return @c nullptr otherwise so the
  * caller falls back to heFFTe.
