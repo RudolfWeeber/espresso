@@ -143,12 +143,12 @@ struct P3MFFTKokkos final : public P3MFFTBackend<FloatType, FFTConfig> {
                        KokkosFFT::Normalization::none);
   }
 
-  void backward(ComplexType const *in, RSpaceScalar *out) override {
-    // c2r destroys its input; ks_E_fields[d] is recomputed every step and not
-    // read afterwards, so running in place on it is safe.
-    CplxViewU const in_view(
-        reinterpret_cast<KComplex *>(const_cast<ComplexType *>(in)),
-        m_ks_size[0], m_ks_size[1], m_ks_size[2]);
+  void backward(ComplexType *in, RSpaceScalar *out) override {
+    // The c2r transform runs in place on the input and destroys it, which
+    // the interface's non-const parameter permits (see
+    // P3MFFTBackend::backward).
+    CplxViewU const in_view(reinterpret_cast<KComplex *>(in), m_ks_size[0],
+                            m_ks_size[1], m_ks_size[2]);
     RealViewU const out_view(out, m_mesh[0], m_mesh[1], m_mesh[2]);
     KokkosFFT::execute(backward_plan(in, out, in_view, out_view), in_view,
                        out_view, KokkosFFT::Normalization::none);

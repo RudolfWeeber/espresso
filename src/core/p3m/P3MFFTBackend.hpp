@@ -62,6 +62,11 @@ template <typename FloatType, class FFTConfig> struct P3MFFTBackend {
   virtual RSpaceScalar *forward_input_buffer() = 0;
   /** @brief Forward transform (real/complex charge density to k-space). */
   virtual void forward(RSpaceScalar const *in, ComplexType *out) = 0;
-  /** @brief Backward transform (k-space field to real space). */
-  virtual void backward(ComplexType const *in, RSpaceScalar *out) = 0;
+  /** @brief Backward transform (k-space field to real space).
+   *  The input buffer is non-const by contract: a backend may destroy it
+   *  during the transform (FFTW's multi-dimensional c2r has no
+   *  preserve-input mode, so the kokkos-fft backend runs it in place).
+   *  Callers must recompute the k-space input before reading it again.
+   */
+  virtual void backward(ComplexType *in, RSpaceScalar *out) = 0;
 };

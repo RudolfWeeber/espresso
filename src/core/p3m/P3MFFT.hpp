@@ -228,7 +228,9 @@ struct P3MFFTHeffte final : public P3MFFTBackend<FloatType, FFTConfig> {
   void forward(RSpaceScalar const *in, ComplexType *out) override {
     m_impl.forward(in, out);
   }
-  void backward(ComplexType const *in, RSpaceScalar *out) override {
+  void backward(ComplexType *in, RSpaceScalar *out) override {
+    // heFFTe preserves the input; the non-const parameter is the interface's
+    // contract for backends that cannot (see P3MFFTBackend::backward).
     m_impl.backward(in, out);
   }
 
