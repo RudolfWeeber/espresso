@@ -174,6 +174,8 @@ def validate_mode(args):
     '''Exit with an error if ``tune``/``run`` was requested without a state file.'''
     if args.mode in ("tune", "run") and not args.state_file:
         raise SystemExit(f"error: '{args.mode}' mode requires --state_file")
+    if getattr(args, "state_file", None) and not args.state_file.endswith(".npz"):
+        args.state_file += ".npz"
 
 
 def resolve_n_part(system, args):
@@ -224,11 +226,15 @@ def save_state(path, meta, **arrays):
     Save benchmark state to a single ``.npz`` archive: ``meta`` (a dict of
     scalars/short lists) plus named numpy arrays (positions, velocities, ...).
     '''
+    if not path.endswith(".npz"):
+        path = path + ".npz"
     np.savez(path, meta=np.array(meta, dtype=object), **arrays)
 
 
 def load_state(path):
     '''Load a state file. Returns ``(meta_dict, npz_handle)``.'''
+    if not os.path.exists(path) and not path.endswith(".npz"):
+        path = path + ".npz"
     handle = np.load(path, allow_pickle=True)
     meta = handle["meta"].item()
     return meta, handle

@@ -207,7 +207,7 @@ def run_from_state(system, args):
     system.cell_system.skin = args.skin if args.skin is not None else meta["skin"]
     configure_lj(system)
     system.part.add(pos=handle["pos"], v=handle["vel"],
-                    q=handle["charge"], type=[int(t) for t in handle["type"]])
+                    q=handle["charge"], type=handle["type"].astype(int))
     system.integrator.set_vv()
     system.thermostat.set_langevin(
         kT=meta["kT"], gamma=meta["gamma"], seed=int(meta["seed"]))

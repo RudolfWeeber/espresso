@@ -143,3 +143,15 @@ def test_tune_skin_unless_fixed_uses_fixed_skin():
     result = benchmarks.tune_skin_unless_fixed(system, args, 0.2, 1.0)
     assert result == 0.33
     assert system.cell_system.skin == 0.33
+
+
+def test_save_and_load_state_appends_npz_suffix():
+    meta = {"n": 1}
+    pos = np.zeros((2, 3))
+    with tempfile.TemporaryDirectory() as d:
+        stem = str(pathlib.Path(d) / "state")  # no .npz
+        benchmarks.save_state(stem, meta, pos=pos)
+        assert pathlib.Path(stem + ".npz").exists()
+        meta_out, handle = benchmarks.load_state(stem)  # also no .npz
+        assert meta_out == meta
+        np.testing.assert_array_equal(handle["pos"], pos)

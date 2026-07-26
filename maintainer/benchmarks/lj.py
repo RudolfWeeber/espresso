@@ -75,12 +75,15 @@ def configure_lj(system):
 
 def resolve_retune(args, meta=None):
     '''
-    Resolve the skin-retune interval. The CLI flag (if given) overrides the
-    value stored in the state file; otherwise fall back to the state value or
-    the default of 5. A value of 0 (or None with no default) disables it.
+    Resolve the skin-retune interval for the timing loop. An explicit
+    --retune_skin_after always wins. Otherwise --skin (a fixed skin) disables
+    retuning; failing that, fall back to the state-file value or the default 5.
+    A value <= 0 disables retuning.
     '''
     if args.retune_skin_after is not None:
         value = args.retune_skin_after
+    elif args.skin is not None:
+        value = 0
     elif meta is not None:
         value = int(meta["retune_skin_after"])
     else:
@@ -143,6 +146,7 @@ def build_and_tune(system, args):
 
 
 def save_lj_state(system, args, ctx):
+    resolved_retune = resolve_retune(args)
     p = system.part.all()
     meta = {
         "skin": float(system.cell_system.skin),
@@ -153,7 +157,7 @@ def save_lj_state(system, args, ctx):
         "n_iterations": N_ITERATIONS,
         "volume_fraction": float(args.volume_fraction),
         "bonds": bool(args.bonds),
-        "retune_skin_after": 5 if args.retune_skin_after is None else int(args.retune_skin_after),
+        "retune_skin_after": 0 if resolved_retune is None else resolved_retune,
         "harmonic_r_0": float(LJ_CUT),
         "harmonic_k": float(HARMONIC_K),
         "kT": KT, "gamma": GAMMA, "seed": SEED,
