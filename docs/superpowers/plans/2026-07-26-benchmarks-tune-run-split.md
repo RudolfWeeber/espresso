@@ -281,7 +281,7 @@ Expected: FAIL (AttributeError: module 'benchmarks' has no attribute 'n_cores', 
 
 - [ ] **Step 3: Implement the helpers**
 
-In `maintainer/benchmarks/benchmarks.py`, add `import argparse` to the imports at the top (keep `os`, `sys`, `time`, `pathlib`, `numpy as np`). Append these functions (place them before `write_report`):
+In `maintainer/benchmarks/benchmarks.py`, keep the existing imports (`os`, `sys`, `time`, `pathlib`, `numpy as np`) — do NOT add `import argparse` (the helpers only call methods on the `parser` object passed in). Append these functions (place them before `write_report`):
 
 ```python
 def get_omp_num_threads(system):
@@ -497,9 +497,10 @@ parser.add_argument("--volume_fraction", metavar="FRAC", action="store",
 parser.add_argument("--bonds", action="store_true",
                     help="Add bonds between particle pairs, default: false")
 parser.add_argument("--retune_skin_after", metavar="N", action="store",
-                    type=int, default=5, required=False,
+                    type=int, default=None, required=False,
                     help="Retune skin every N timing iterations "
-                    "(0 disables, default: 5)")
+                    "(0 disables, default: 5). In 'run' mode this overrides "
+                    "the value stored in the state file.")
 group = parser.add_mutually_exclusive_group()
 group.add_argument("--output", metavar="FILEPATH", action="store",
                    type=str, required=False, default="benchmarks.csv",
@@ -522,9 +523,19 @@ def configure_lj(system):
         epsilon=LJ_EPS, sigma=LJ_SIG, cutoff=LJ_CUT, shift="auto")
 
 
-def retune_after(args):
-    '''None to disable, else the iteration interval.'''
-    return None if args.retune_skin_after <= 0 else args.retune_skin_after
+def resolve_retune(args, meta=None):
+    '''
+    Resolve the skin-retune interval. The CLI flag (if given) overrides the
+    value stored in the state file; otherwise fall back to the state value or
+    the default of 5. A value of 0 (or None with no default) disables it.
+    '''
+    if args.retune_skin_after is not None:
+        value = args.retune_skin_after
+    elif meta is not None:
+        value = int(meta["retune_skin_after"])
+    else:
+        value = 5
+    return None if value <= 0 else value
 
 
 def build_and_tune(system, args):
@@ -536,8 +547,11 @@ def build_and_tune(system, args):
         "volume_fraction too dense (>0.50) for a diatomic liquid"
 
     n_part = benchmarks.resolve_n_part(system, args)
-    measurement_steps = int(np.round(5e6 / n_part * system.cell_system.get_state()["n_nodes"], -2))
-    measurement_steps = max(100, measurement_steps)
+    measurement_steps = int(np.round(
+        5e6 / n_part * system.cell_system.get_state()["n_nodes"], -2))
+    if not args.visualizer:
+        assert measurement_steps >= 100, \
+            f"{measurement_steps} steps per tick are too short"
 
     box_l = (n_part * 4. / 3. * np.pi * (LJ_SIG / 2.)**3
              / args.volume_fraction)**(1. / 3.)
@@ -589,7 +603,7 @@ def save_lj_state(system, args, ctx):
         "n_iterations": N_ITERATIONS,
         "volume_fraction": float(args.volume_fraction),
         "bonds": bool(args.bonds),
-        "retune_skin_after": int(args.retune_skin_after),
+        "retune_skin_after": 5 if args.retune_skin_after is None else int(args.retune_skin_after),
         "harmonic_r_0": float(LJ_CUT),
         "harmonic_k": float(HARMONIC_K),
         "kT": KT, "gamma": GAMMA, "seed": SEED,
@@ -619,7 +633,7 @@ def run_from_state(system, args):
     system.integrator.set_vv()
     system.thermostat.set_langevin(
         kT=meta["kT"], gamma=meta["gamma"], seed=int(meta["seed"]))
-    retune = None if int(meta["retune_skin_after"]) <= 0 else int(meta["retune_skin_after"])
+    retune = resolve_retune(args, meta)
     return meta["measurement_steps"], meta["n_iterations"], retune
 
 
@@ -665,10 +679,10 @@ if args.mode == "tune":
     sys.exit(0)
 
 time_and_report(system, args, ctx["measurement_steps"], N_ITERATIONS,
-                retune_after(args))
+                resolve_retune(args))
 ```
 
-Note: `measurement_steps` scaling multiplies by `n_nodes` so that per-core work stays constant when `--particles_per_core` is used, matching the original intent (the original divided `5e6` by `particles_per_core`; here `n_part = ppc * n_nodes * omp`, so multiplying back by `n_nodes` keeps parity for the MPI case). `max(100, ...)` preserves the original minimum-steps assertion.
+Note: `measurement_steps` scaling multiplies by `n_nodes` so that per-core work stays constant when `--particles_per_core` is used, matching the original intent (the original divided `5e6` by `particles_per_core`; here `n_part = ppc * n_nodes * omp`, so multiplying back by `n_nodes` keeps parity for the MPI case). The original `assert measurement_steps >= 100` (skipped for the visualizer) is preserved verbatim.
 
 - [ ] **Step 2: Smoke test — bare invocation (backward compatibility)**
 
@@ -852,7 +866,9 @@ def build_and_tune(system, args):
     n_part = benchmarks.resolve_n_part(system, args)
     measurement_steps = int(np.round(
         5e5 / n_part * system.cell_system.get_state()["n_nodes"], -1))
-    measurement_steps = max(50, measurement_steps)
+    if not args.visualizer:
+        assert measurement_steps >= 50, \
+            f"{measurement_steps} steps per tick are too short"
 
     lj_sig = (LJ_SIGMAS["cation"] + LJ_SIGMAS["anion"]) / 2
     box_l = (n_part * 4. / 3. * np.pi * (lj_sig / 2.)**3
@@ -887,6 +903,12 @@ def build_and_tune(system, args):
     system.electrostatics.solver = p3m
     print("Equilibration")
     system.integrator.run(min(3 * measurement_steps, 3000))
+    print("Tune skin: {:.3f}".format(benchmarks.tune_skin_unless_fixed(
+        system, args, MIN_SKIN, MAX_SKIN, tol=0.05, int_steps=100,
+        adjust_max_skin=True)))
+    print("Re-tune p3m")
+    p3m = espressomd.electrostatics.P3M(**p3m_tune_kwargs(args))
+    system.electrostatics.solver = p3m
     print("Tune skin: {:.3f}".format(benchmarks.tune_skin_unless_fixed(
         system, args, MIN_SKIN, MAX_SKIN, tol=0.05, int_steps=100,
         adjust_max_skin=True)))
@@ -973,7 +995,7 @@ if args.mode == "tune":
 time_and_report(system, args, ctx["measurement_steps"], N_ITERATIONS)
 ```
 
-Note: the original re-tuned P3M a second time. That extra re-tune is dropped for clarity; the tuned parameters are captured from the single tuned solver. This keeps behavior equivalent for benchmarking purposes (still fully tuned) while making the tuned params unambiguous to serialize.
+Note: the tuning sequence (equilibrate → tune skin → tune P3M → equilibrate → tune skin → re-tune P3M → tune skin) matches the original `p3m.py` exactly, preserving backward compatibility for the bare invocation. The tuned parameters are serialized from the final (`ctx["p3m"]`) solver via `get_params()`, so `run` reconstructs the same fully-tuned P3M with `tune=False`.
 
 - [ ] **Step 2: Smoke test — bare invocation (backward compatibility)**
 
@@ -1162,6 +1184,7 @@ def build_and_tune(system, args):
     system.cell_system.skin = INITIAL_SKIN if args.skin is None else args.skin
 
     if n_part:
+        espressomd.assert_features(["LENNARD_JONES"])
         system.non_bonded_inter[0, 0].lennard_jones.set_params(
             epsilon=LJ_EPS, sigma=LJ_SIG, cutoff=LJ_CUT, shift="auto")
         system.part.add(pos=np.random.random((n_part, 3)) * system.box_l)
@@ -1228,6 +1251,7 @@ def run_from_state(system, args):
     system.cell_system.skin = args.skin if args.skin is not None else meta["skin"]
 
     if meta["has_particles"]:
+        espressomd.assert_features(["LENNARD_JONES"])
         system.non_bonded_inter[0, 0].lennard_jones.set_params(
             epsilon=LJ_EPS, sigma=LJ_SIG, cutoff=LJ_CUT, shift="auto")
         system.part.add(pos=handle["pos"], v=handle["vel"])
