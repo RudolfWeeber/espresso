@@ -410,11 +410,6 @@ template <bool HasCoulomb> struct SpecializedForcesKernel {
     auto const y_i = aosoa.position(i, 1);
     auto const z_i = aosoa.position(i, 2);
     auto const type_i = aosoa.type(i);
-    // Hoist the dense IA-parameter row for type_i (loop-invariant): pass 3
-    // then resolves each pair's parameters with a single indexed load
-    // instead of the triangular walk through the InteractionsNonBonded
-    // shared_ptr table per accepted pair.
-    auto const *const ia_param_row = nonbonded_ias.dense_ia_param_row(type_i);
 #ifdef ESPRESSO_ELECTROSTATICS
     double charge_i = 0.;
     if constexpr (HasCoulomb) {
@@ -459,7 +454,8 @@ template <bool HasCoulomb> struct SpecializedForcesKernel {
         auto const j = static_cast<std::size_t>(js[t]);
         Utils::Vector3d const d{dx0[t], dx1[t], dx2[t]};
         auto const dist = std::sqrt(dsq[t]);
-        auto const &ia_params = *ia_param_row[aosoa.type(j)];
+        auto const &ia_params =
+            nonbonded_ias.get_ia_param(type_i, aosoa.type(j));
 
         Utils::Vector3d f{};
         if (dist <= ia_params.max_cut) {
