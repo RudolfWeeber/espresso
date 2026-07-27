@@ -477,19 +477,31 @@ unsigned map_data_parts(unsigned data_parts) {
 }
 
 void CellStructure::ghosts_count() {
+#ifdef ESPRESSO_CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   ghost_communicator(decomposition().exchange_ghosts_comm(),
                      *get_system().box_geo, GHOSTTRANS_PARTNUM);
 }
 void CellStructure::ghosts_update(unsigned data_parts) {
+#ifdef ESPRESSO_CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   ghost_communicator(decomposition().exchange_ghosts_comm(),
                      *get_system().box_geo, map_data_parts(data_parts));
 }
 void CellStructure::ghosts_reduce_forces() {
+#ifdef ESPRESSO_CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   ghost_communicator(decomposition().collect_ghost_force_comm(),
                      *get_system().box_geo, GHOSTTRANS_FORCE);
 }
 #ifdef ESPRESSO_BOND_CONSTRAINT
 void CellStructure::ghosts_reduce_rattle_correction() {
+#ifdef ESPRESSO_CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   ghost_communicator(decomposition().collect_ghost_force_comm(),
                      *get_system().box_geo, GHOSTTRANS_RATTLE);
 }
@@ -510,6 +522,9 @@ struct UpdateParticleIndexVisitor {
 } // namespace
 
 void CellStructure::resort_particles(bool global_flag) {
+#ifdef ESPRESSO_CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   invalidate_ghosts();
 
   std::vector<ParticleChange> diff;
@@ -591,6 +606,9 @@ void CellStructure::set_verlet_skin_heuristic() {
 }
 
 void CellStructure::update_ghosts_and_resort_particle(unsigned data_parts) {
+#ifdef ESPRESSO_CALIPER
+  CALI_CXX_MARK_FUNCTION;
+#endif
   /* data parts that are only updated on resort */
   auto constexpr resort_only_parts =
       Cells::DATA_PART_PROPERTIES | Cells::DATA_PART_BONDS;
