@@ -58,4 +58,20 @@ BOOST_AUTO_TEST_CASE(detects_defects) {
   HaloPlan badshape = good;
   badshape.neighbors[0].recv.clear();
   BOOST_CHECK(!validate_halo_plan(badshape, locals, ghosts).empty());
+
+  // recv target outside ghost set
+  Cell alien;
+  HaloPlan alien_recv = good;
+  alien_recv.neighbors[0].recv[0] = &alien.particles();
+  auto violations = validate_halo_plan(alien_recv, locals, ghosts);
+  BOOST_CHECK_MESSAGE(!violations.empty(),
+                      "Expected recv-outside-ghost violation");
+
+  // isolated shape mismatch (send.size() != recv.size())
+  HaloPlan shape_only = good;
+  shape_only.neighbors[0].send.push_back(SendRegion{&local.particles(), {}});
+  // send.size()==2, recv.size()==1 -> shape violation; ghost still covered once
+  auto shape_violations = validate_halo_plan(shape_only, locals, ghosts);
+  BOOST_CHECK_MESSAGE(!shape_violations.empty(),
+                      "Expected shape-mismatch violation");
 }
