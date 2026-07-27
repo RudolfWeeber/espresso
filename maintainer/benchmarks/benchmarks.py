@@ -171,7 +171,11 @@ def add_common_args(parser, default_particles_per_core):
 
 
 def validate_mode(args):
-    '''Exit with an error if ``tune``/``run`` was requested without a state file.'''
+    '''
+    Validate and normalize the mode arguments: exit with an error if
+    ``tune``/``run`` was requested without a state file, and append the
+    ``.npz`` suffix to ``--state_file`` when it is missing.
+    '''
     if args.mode in ("tune", "run") and not args.state_file:
         raise SystemExit(f"error: '{args.mode}' mode requires --state_file")
     if getattr(args, "state_file", None) and not args.state_file.endswith(".npz"):
