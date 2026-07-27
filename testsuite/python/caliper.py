@@ -28,8 +28,14 @@ import os
 
 EXPECTED_LABELS = """
 integrate
+  update_ghosts_and_resort_particle
+    resort_particles
+    ghosts_count
+    ghosts_update
   update_cabana_state
   Initial Force Calculation
+    update_ghosts_and_resort_particle
+      ghosts_update
     calculate_forces
       copy_particles_to_GPU
       update_cabana_state
@@ -37,9 +43,14 @@ integrate
       calc_long_range_forces
       cabana_short_range
       copy_forces_from_GPU
+      ghosts_reduce_forces
   Integration loop
     integrator_step_1
     resort_particles_if_needed
+    update_ghosts_and_resort_particle
+      resort_particles
+      ghosts_count
+      ghosts_update
     calculate_forces
       copy_particles_to_GPU
       update_cabana_state
@@ -47,8 +58,11 @@ integrate
       calc_long_range_forces
       cabana_short_range
       copy_forces_from_GPU
+      ghosts_reduce_forces
     integrator_step_2
 calc_energies
+  update_ghosts_and_resort_particle
+    ghosts_update
   update_cabana_state
   cabana_short_range
 """
