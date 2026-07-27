@@ -85,6 +85,16 @@ struct GhostExchange {
  * @param box         Box geometry for position folding.
  * @param data_parts  Bitmask of GHOSTTRANS_* flags to transfer.
  * @param op          Direction (Push/Reduce) and combine mode (Overwrite/Add).
+ *
+ * @pre Each peer rank appears at most once in @p plan.neighbors. Multiple
+ *      send/receive regions to the same peer **must** be folded into that
+ *      peer's single @ref NeighborComm (as the plan builders do). This is
+ *      what makes the @c (peer, data-part tag) message matching unambiguous:
+ *      without this invariant two @c NeighborComm entries sharing the same
+ *      peer and tag would cross-match, silently corrupting data or deadlocking.
+ *      The plan builders (e.g. RegularDecomposition) always produce unique
+ *      peers; the invariant is asserted at runtime when
+ *      @c ESPRESSO_ADDITIONAL_CHECKS is defined.
  */
 GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
                                   unsigned data_parts, ExchangeOp op);

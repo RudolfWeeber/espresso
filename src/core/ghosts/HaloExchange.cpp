@@ -37,6 +37,7 @@
 #include <cassert>
 #include <cstddef>
 #include <span>
+#include <unordered_set>
 #include <vector>
 
 namespace GhostComm {
@@ -68,6 +69,9 @@ int main_tag(unsigned data_parts) {
     return TAG_POSITION;
   return TAG_DEFAULT;
 }
+// NOTE: the (peer, tag) pair is what makes each MPI message unambiguous.
+// This scheme is safe only when each peer appears at most once in the plan
+// (the "one NeighborComm per peer" invariant). See halo_exchange_start @pre.
 
 /** @brief View a list of cell pointers as a span for the packing routines. */
 std::span<ParticleList *const> as_span(std::vector<ParticleList *> const &v) {
@@ -138,6 +142,21 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
   st.plan = &plan;
   if (data_parts == GHOSTTRANS_NONE)
     return st;
+
+#ifdef ESPRESSO_ADDITIONAL_CHECKS
+  // Invariant: each peer appears at most once in plan.neighbors.
+  // Multiple send/recv regions to the same peer must be folded into a single
+  // NeighborComm; see halo_exchange_start @pre for why this is required.
+  {
+    std::unordered_set<int> seen_peers;
+    seen_peers.reserve(plan.neighbors.size());
+    for (auto const &nc : plan.neighbors) {
+      assert(seen_peers.insert(nc.peer).second &&
+             "halo_exchange_start: duplicate peer in plan.neighbors — "
+             "fold multiple regions to the same peer into one NeighborComm");
+    }
+  }
+#endif
 
   auto const &comm = plan.comm;
   auto const n = plan.neighbors.size();
