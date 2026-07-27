@@ -34,6 +34,7 @@
 #include "cell_system/CellStructureType.hpp"
 #include "communication.hpp"
 #include "ghosts.hpp"
+#include "ghosts/HaloExchange.hpp"
 #include "integrators/Propagation.hpp"
 #include "lees_edwards/lees_edwards.hpp"
 #include "particle_enumeration.hpp"
@@ -480,30 +481,55 @@ void CellStructure::ghosts_count() {
 #ifdef ESPRESSO_CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif
-  ghost_communicator(decomposition().exchange_ghosts_comm(),
-                     *get_system().box_geo, GHOSTTRANS_PARTNUM);
+  if (auto const *plan = decomposition().halo_plan()) {
+    GhostComm::halo_exchange(
+        *plan, *get_system().box_geo, GHOSTTRANS_PARTNUM,
+        {GhostComm::Direction::Push, GhostComm::Combine::Overwrite});
+  } else {
+    ghost_communicator(decomposition().exchange_ghosts_comm(),
+                       *get_system().box_geo, GHOSTTRANS_PARTNUM);
+  }
 }
 void CellStructure::ghosts_update(unsigned data_parts) {
 #ifdef ESPRESSO_CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif
-  ghost_communicator(decomposition().exchange_ghosts_comm(),
-                     *get_system().box_geo, map_data_parts(data_parts));
+  auto const parts = map_data_parts(data_parts);
+  if (auto const *plan = decomposition().halo_plan()) {
+    GhostComm::halo_exchange(
+        *plan, *get_system().box_geo, parts,
+        {GhostComm::Direction::Push, GhostComm::Combine::Overwrite});
+  } else {
+    ghost_communicator(decomposition().exchange_ghosts_comm(),
+                       *get_system().box_geo, parts);
+  }
 }
 void CellStructure::ghosts_reduce_forces() {
 #ifdef ESPRESSO_CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif
-  ghost_communicator(decomposition().collect_ghost_force_comm(),
-                     *get_system().box_geo, GHOSTTRANS_FORCE);
+  if (auto const *plan = decomposition().halo_plan()) {
+    GhostComm::halo_exchange(
+        *plan, *get_system().box_geo, GHOSTTRANS_FORCE,
+        {GhostComm::Direction::Reduce, GhostComm::Combine::Add});
+  } else {
+    ghost_communicator(decomposition().collect_ghost_force_comm(),
+                       *get_system().box_geo, GHOSTTRANS_FORCE);
+  }
 }
 #ifdef ESPRESSO_BOND_CONSTRAINT
 void CellStructure::ghosts_reduce_rattle_correction() {
 #ifdef ESPRESSO_CALIPER
   CALI_CXX_MARK_FUNCTION;
 #endif
-  ghost_communicator(decomposition().collect_ghost_force_comm(),
-                     *get_system().box_geo, GHOSTTRANS_RATTLE);
+  if (auto const *plan = decomposition().halo_plan()) {
+    GhostComm::halo_exchange(
+        *plan, *get_system().box_geo, GHOSTTRANS_RATTLE,
+        {GhostComm::Direction::Reduce, GhostComm::Combine::Add});
+  } else {
+    ghost_communicator(decomposition().collect_ghost_force_comm(),
+                       *get_system().box_geo, GHOSTTRANS_RATTLE);
+  }
 }
 #endif
 
