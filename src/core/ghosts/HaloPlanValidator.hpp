@@ -44,4 +44,19 @@ std::vector<std::string> validate_halo_plan(HaloPlan const &plan,
                                             std::span<Cell *const> local_cells,
                                             std::span<Cell *const> ghost_cells);
 
+/**
+ * @brief Cross-rank symmetry check for a HaloPlan.
+ *
+ * Uses a collective all-to-all exchange of per-rank send-counts so that every
+ * rank participates regardless of whether the neighbor sets are symmetric.
+ * This avoids the deadlock that a naive per-neighbor isend/irecv pattern
+ * would cause when a rank sends to a peer that has no matching recv posted.
+ *
+ * Invariant: for every peer P, my recv-count from P must equal P's send-count
+ * to me (i.e. my_recv_from[P] == peers_send_to_me[P]).
+ *
+ * @returns a human-readable violation string per mismatch; empty = valid.
+ */
+std::vector<std::string> validate_halo_plan_symmetry(HaloPlan const &plan);
+
 } // namespace GhostComm

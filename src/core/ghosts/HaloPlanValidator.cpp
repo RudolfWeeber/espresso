@@ -23,6 +23,8 @@
 
 #include "ghosts/HaloPlanValidator.hpp"
 
+#include <boost/mpi/collectives/all_to_all.hpp>
+
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -110,6 +112,41 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
             "local cell has ghost neighbor that is not a covered recv/dst "
             "target (referenced-but-uncommunicated ghost)");
       }
+    }
+  }
+
+  return violations;
+}
+
+std::vector<std::string> validate_halo_plan_symmetry(HaloPlan const &plan) {
+  std::vector<std::string> violations;
+
+  int const n = plan.comm.size();
+  int const me = plan.comm.rank();
+
+  // Build per-rank send and recv count arrays (size n, default 0).
+  std::vector<int> my_send_to(n, 0);
+  std::vector<int> my_recv_from(n, 0);
+  for (auto const &nc : plan.neighbors) {
+    my_send_to[nc.peer] = static_cast<int>(nc.send.size());
+    my_recv_from[nc.peer] = static_cast<int>(nc.recv.size());
+  }
+
+  // Collective all-to-all: element j of my_send_to goes to rank j.
+  // After this call peers_send_to_me[j] == rank j's send count toward me.
+  std::vector<int> peers_send_to_me(n, 0);
+  boost::mpi::all_to_all(plan.comm, my_send_to, peers_send_to_me);
+
+  // Check invariant: what I expect to receive from j == what j sends me.
+  for (int j = 0; j < n; ++j) {
+    if (j == me)
+      continue;
+    if (my_recv_from[j] != peers_send_to_me[j]) {
+      std::ostringstream oss;
+      oss << "symmetry mismatch with peer " << j << ": I expect to recv "
+          << my_recv_from[j] << " items but peer sends " << peers_send_to_me[j]
+          << " items";
+      violations.push_back(oss.str());
     }
   }
 
