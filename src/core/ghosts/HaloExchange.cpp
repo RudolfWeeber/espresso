@@ -88,33 +88,42 @@ std::vector<ParticleList *> region_cells(std::vector<SendRegion> const &send) {
 }
 
 /**
- * @brief Pack a list of send regions into one buffer, honoring per-region
- *        shifts, producing bytes identical to a flat pack over the region
- *        cells in order.
+ * @brief Pack all send regions of one NeighborComm into a single buffer.
  *
- * @c pack_cells resizes/overwrites the buffer it is given, so each region is
- * packed into a scratch buffer and its bytes appended here. All shifts are
- * currently zero (R5), but the per-region shift field is honored.
+ * All regions are packed with a **single** @c pack_cells call so that bonds
+ * produce exactly one boost binary archive per neighbor message -- matching
+ * the single @c unpack_cells call on the receive side.  Concatenating
+ * per-region archives would corrupt the bond stream (the second archive
+ * header is misread as bond data by the receiver).
+ *
+ * Per-region shifts are honored via the common shift (all shifts in a
+ * NeighborComm must be equal; an ESPRESSO_ADDITIONAL_CHECKS assertion
+ * documents this invariant).
  */
 void pack_regions(CommBuf &buf, std::vector<SendRegion> const &regions,
                   BoxGeometry const &box, unsigned data_parts) {
-  buf.resize(0);
-  buf.bonds().clear();
-
-  CommBuf tmp;
-  for (auto const &region : regions) {
-    std::array<ParticleList *, 1> one{region.cell};
-    pack_cells(tmp, std::span<ParticleList *const>{one}, region.shift, box,
-               data_parts);
-    auto const *first = tmp.data();
-    auto const old_size = buf.size();
-    buf.resize(old_size + tmp.size());
-    std::copy(first, first + tmp.size(), buf.data() + old_size);
-    if (data_parts & GHOSTTRANS_BONDS) {
-      auto &dst = buf.bonds();
-      dst.insert(dst.end(), tmp.bonds().begin(), tmp.bonds().end());
+#ifdef ESPRESSO_ADDITIONAL_CHECKS
+  // All regions in a NeighborComm must share the same shift.  If per-region
+  // shifts ever diverge the packer must be generalized (separate archives).
+  if (!regions.empty()) {
+    auto const &ref = regions.front().shift;
+    for (auto const &r : regions) {
+      assert(r.shift == ref &&
+             "pack_regions: per-region shifts differ within one NeighborComm "
+             "-- packer must be generalized for per-region shift support");
     }
   }
+#endif
+
+  Utils::Vector3d const common_shift =
+      regions.empty() ? Utils::Vector3d{} : regions.front().shift;
+
+  std::vector<ParticleList *> cells;
+  cells.reserve(regions.size());
+  for (auto const &r : regions)
+    cells.push_back(r.cell);
+
+  pack_cells(buf, as_span(cells), common_shift, box, data_parts);
 }
 
 /**
