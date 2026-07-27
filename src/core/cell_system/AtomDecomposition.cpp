@@ -23,6 +23,8 @@
 
 #include "cell_system/Cell.hpp"
 
+#include "ghosts/HaloPlan.hpp"
+
 #include <utils/Vector.hpp>
 
 #include <boost/mpi/collectives/all_to_all.hpp>
@@ -70,9 +72,39 @@ GhostCommunicator AtomDecomposition::prepare_comm() {
   return ghost_comm;
 }
 
+GhostComm::HaloPlan AtomDecomposition::make_halo_plan() {
+  using GhostComm::CollectivePattern;
+  using GhostComm::CollectiveSection;
+  using GhostComm::HaloPlan;
+
+  HaloPlan plan;
+  plan.comm = m_comm;
+
+  // Single rank: no communication needed; collective section is None.
+  if (m_comm.size() == 1) {
+    plan.collective = CollectiveSection{CollectivePattern::None, {}};
+    return plan;
+  }
+
+  // One cell pointer per rank: cells[root] is the ParticleList for that root.
+  // The engine uses op.direction to pick Broadcast (Push) or ReduceSum
+  // (Reduce) at run time, so we store Broadcast as the canonical marker that
+  // this section is active.  run_collective reads op.direction to decide which
+  // MPI collective to invoke.
+  std::vector<ParticleList *> cell_ptrs;
+  cell_ptrs.reserve(static_cast<std::size_t>(m_comm.size()));
+  for (int n = 0; n < m_comm.size(); ++n) {
+    cell_ptrs.push_back(&cells.at(static_cast<std::size_t>(n)).particles());
+  }
+  plan.collective =
+      CollectiveSection{CollectivePattern::Broadcast, std::move(cell_ptrs)};
+  return plan;
+}
+
 void AtomDecomposition::configure_comms() {
   m_exchange_ghosts_comm = prepare_comm();
   m_collect_ghost_force_comm = prepare_comm();
+  m_halo_plan = make_halo_plan();
 
   if (m_comm.size() > 1) {
     for (int n = 0; n < m_comm.size(); n++) {

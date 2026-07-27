@@ -36,6 +36,7 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <functional>
 #include <span>
 #include <unordered_set>
 #include <vector>
@@ -137,15 +138,82 @@ void pack_regions(CommBuf &buf, std::vector<SendRegion> const &regions,
 /**
  * @brief Collective (broadcast/reduce-sum) section.
  *
- * Task 1.6 will implement real MPI collectives here. For now no plan produces
- * a non-trivial collective section, so we only assert that.
+ * Mirrors the legacy GHOST_BCST / GHOST_RDCE loop from ghost_communicator()
+ * in ghosts.cpp.  For each root rank in [0, comm.size()):
+ *
+ *   Broadcast (Push): root packs its owned cell (cells[root]) and broadcasts
+ *   the buffer to all ranks; every non-root rank unpacks into cells[root]
+ *   (their ghost copy of root's data).
+ *
+ *   ReduceSum (Reduce): every rank packs cells[root] (ghost-force contribution)
+ *   and reduces to root with std::plus on the raw double buffer; root unpacks
+ *   into cells[root] (the owned cell, so forces accumulate there).
+ *
+ * The legacy code uses one GHOST_BCST (or GHOST_RDCE) step per rank, each
+ * step addressing a single cell pointer (ghost_comm.part_lists[0] ==
+ * &cells.at(n)).  We replicate that loop exactly.
  */
-void run_collective(HaloPlan const &plan, BoxGeometry const &,
-                    unsigned /*data_parts*/, ExchangeOp /*op*/) {
-  // Task 1.6: implement CollectivePattern::Broadcast / ReduceSum here.
-  assert(!plan.collective ||
-         plan.collective->pattern == CollectivePattern::None);
-  static_cast<void>(plan);
+void run_collective(HaloPlan const &plan, BoxGeometry const &box,
+                    unsigned data_parts, ExchangeOp op) {
+  if (!plan.collective || plan.collective->pattern == CollectivePattern::None) {
+    return;
+  }
+
+  auto const &cs = *plan.collective;
+  auto const &comm = plan.comm;
+  int const comm_size = comm.size();
+  int const my_rank = comm.rank();
+
+  // Use op.direction to select the actual MPI collective: Push -> broadcast
+  // (particles flow from owner to all ghosts); Reduce -> reduce-sum (ghost
+  // forces flow back to owner).  cs.pattern == Broadcast marks the section as
+  // active; the engine caller sets op correctly for each exchange.
+  bool const is_broadcast = (op.direction == Direction::Push);
+
+  // cs.cells has one entry per rank: cs.cells[root] is the ParticleList for
+  // that root rank (owned on root, ghost on all others).
+  assert(static_cast<int>(cs.cells.size()) == comm_size);
+
+  CommBuf buf;
+
+  for (int root = 0; root < comm_size; ++root) {
+    ParticleList *cell = cs.cells[static_cast<std::size_t>(root)];
+    auto const cell_span = std::span<ParticleList *const>{&cell, 1};
+
+    if (is_broadcast) {
+      // Push: root broadcasts its owned particles to all other ranks.
+      if (my_rank == root) {
+        pack_cells(buf, cell_span, {}, box, data_parts);
+        boost::mpi::broadcast(comm, buf.data(), static_cast<int>(buf.size()),
+                              root);
+        boost::mpi::broadcast(comm, buf.bonds(), root);
+      } else {
+        buf.resize(calc_transmit_size(cell_span, box, data_parts));
+        buf.bonds().clear();
+        boost::mpi::broadcast(comm, buf.data(), static_cast<int>(buf.size()),
+                              root);
+        boost::mpi::broadcast(comm, buf.bonds(), root);
+        unpack_cells(buf, cell_span, box, data_parts);
+      }
+    } else {
+      // ReduceSum: every rank sends its ghost-force contribution; root
+      // accumulates into its owned cell.  Mirrors the legacy GHOST_RDCE
+      // which reduces the raw double buffer with std::plus<double>.
+      pack_cells(buf, cell_span, {}, box, data_parts);
+      auto *raw = reinterpret_cast<double *>(buf.data());
+      int const count = static_cast<int>(buf.size() / sizeof(double));
+      if (my_rank == root) {
+        CommBuf recv_buf;
+        recv_buf.resize(buf.size());
+        auto *recv_raw = reinterpret_cast<double *>(recv_buf.data());
+        boost::mpi::reduce(comm, raw, count, recv_raw, std::plus<double>{},
+                           root);
+        unpack_cells(recv_buf, cell_span, box, data_parts);
+      } else {
+        boost::mpi::reduce(comm, raw, count, std::plus<double>{}, root);
+      }
+    }
+  }
 }
 
 } // namespace

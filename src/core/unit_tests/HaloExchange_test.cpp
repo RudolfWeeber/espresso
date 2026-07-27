@@ -160,6 +160,88 @@ BOOST_AUTO_TEST_CASE(push_bonds_between_two_ranks,
   BOOST_CHECK_EQUAL((*it).partner_ids()[1], other + 5);
 }
 
+/*
+ * Collective section: on two ranks each rank owns one cell.  A Broadcast (Push)
+ * must copy each rank's owned cell data into the other rank's ghost cell (the
+ * entry for that rank in the collective cells vector).  The Broadcast loop runs
+ * root=0 then root=1; after root=0's broadcast, rank 1's cells[0] holds rank
+ * 0's particle; after root=1's broadcast, rank 0's cells[1] holds rank 1's
+ * particle.
+ *
+ * A subsequent ReduceSum (Reduce) must sum ghost-force contributions back to
+ * each owner: rank 0's cells[0] and rank 1's cells[1] accumulate the sums.
+ */
+BOOST_AUTO_TEST_CASE(collective_broadcast_and_reduce,
+                     *utf::precondition([](utf::test_unit_id) {
+                       return boost::mpi::communicator{}.size() == 2;
+                     })) {
+  using namespace GhostComm;
+  boost::mpi::communicator world;
+  int const me = world.rank();
+  int const other = 1 - me;
+
+  BoxGeometry box;
+  box.set_length({10., 10., 10.});
+
+  // cells[0] = local cell for rank 0, cells[1] = local cell for rank 1.
+  // Each rank owns cells[me] and uses cells[other] as ghost storage.
+  ParticleList cell0, cell1;
+  cell0.resize(1);
+  cell1.resize(1);
+
+  // Seed the owned cell with a distinguishable position.
+  if (me == 0) {
+    cell0.begin()->pos() = {1.0, 2.0, 3.0};
+    cell0.begin()->id() = 0;
+  } else {
+    cell1.begin()->pos() = {4.0, 5.0, 6.0};
+    cell1.begin()->id() = 1;
+  }
+
+  HaloPlan plan;
+  plan.comm = world;
+  // cells[0] -> rank 0's cell, cells[1] -> rank 1's cell.
+  plan.collective =
+      CollectiveSection{CollectivePattern::Broadcast, {&cell0, &cell1}};
+
+  // --- Broadcast (Push): every rank's owned cell is broadcast to all. ---
+  halo_exchange(plan, box, GHOSTTRANS_POSITION,
+                {Direction::Push, Combine::Overwrite});
+
+  // After broadcast, each rank must have both particles.
+  BOOST_CHECK_CLOSE(cell0.begin()->pos()[0], 1.0, 1e-12);
+  BOOST_CHECK_CLOSE(cell0.begin()->pos()[1], 2.0, 1e-12);
+  BOOST_CHECK_CLOSE(cell0.begin()->pos()[2], 3.0, 1e-12);
+  BOOST_CHECK_CLOSE(cell1.begin()->pos()[0], 4.0, 1e-12);
+  BOOST_CHECK_CLOSE(cell1.begin()->pos()[1], 5.0, 1e-12);
+  BOOST_CHECK_CLOSE(cell1.begin()->pos()[2], 6.0, 1e-12);
+
+  // --- ReduceSum (Reduce): ghost forces are summed back to owner. ---
+  // Seed ghost forces: each rank seeds a force on the other's ghost cell.
+  if (me == 0) {
+    cell0.begin()->force() = {10.0, 0.0, 0.0}; // owned: pre-existing
+    cell1.begin()->force() = {0.0, 20.0, 0.0}; // ghost of rank1
+  } else {
+    cell0.begin()->force() = {0.0, 30.0, 0.0}; // ghost of rank0
+    cell1.begin()->force() = {40.0, 0.0, 0.0}; // owned: pre-existing
+  }
+
+  halo_exchange(plan, box, GHOSTTRANS_FORCE, {Direction::Reduce, Combine::Add});
+
+  // root=0: reduce sums rank0's cell0.force = {10,0,0} + rank1's cell0.force
+  // = {0,30,0} -> {10,30,0} on rank 0.
+  // root=1: reduce sums rank0's cell1.force = {0,20,0} + rank1's cell1.force
+  // = {40,0,0} -> {40,20,0} on rank 1.
+  // Only the root's copy of each cell is meaningful after the reduce.
+  if (me == 0) {
+    BOOST_CHECK_CLOSE(cell0.begin()->force()[0], 10.0, 1e-12);
+    BOOST_CHECK_CLOSE(cell0.begin()->force()[1], 30.0, 1e-12);
+  } else {
+    BOOST_CHECK_CLOSE(cell1.begin()->force()[0], 40.0, 1e-12);
+    BOOST_CHECK_CLOSE(cell1.begin()->force()[1], 20.0, 1e-12);
+  }
+}
+
 int main(int argc, char **argv) {
   boost::mpi::environment mpi_env(argc, argv);
 

@@ -90,6 +90,31 @@ HybridDecomposition::HybridDecomposition(boost::mpi::communicator comm,
     std::ranges::copy(additional_reds, std::back_inserter(red_neighbors));
     local_cell->m_neighbors = Neighbors<Cell *>(red_neighbors, black_neighbors);
   }
+
+  m_halo_plan = make_halo_plan();
+}
+
+GhostComm::HaloPlan HybridDecomposition::make_halo_plan() {
+  // Build the combined plan: p2p neighbors and local copies come from the
+  // regular child; the collective section comes from the n-square child.
+  // This mirrors the legacy constructor (lines 68-92) that concatenates both
+  // children's GhostCommunicator lists.
+  GhostComm::HaloPlan plan;
+  plan.comm = m_comm; // use the world comm for HybridDecomposition's plan
+
+  auto const *regular_plan = m_regular_decomposition.halo_plan();
+  if (regular_plan) {
+    plan.neighbors = regular_plan->neighbors;
+    plan.local = regular_plan->local;
+  }
+
+  // Overlay the collective section from the n-square child.
+  auto const *nsq_plan = m_n_square.halo_plan();
+  if (nsq_plan && nsq_plan->collective) {
+    plan.collective = nsq_plan->collective;
+  }
+
+  return plan;
 }
 
 void HybridDecomposition::resort(bool global,

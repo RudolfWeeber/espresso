@@ -63,6 +63,8 @@ class HybridDecomposition : public ParticleDecomposition {
   GhostCommunicator m_exchange_ghosts_comm;
   GhostCommunicator m_collect_ghost_force_comm;
 
+  GhostComm::HaloPlan m_halo_plan;
+
   /** RegularDecomposition to hold the small particles */
   RegularDecomposition m_regular_decomposition;
   /** N-Square Decomposition to hold large particles */
@@ -99,6 +101,8 @@ public:
   GhostCommunicator const &collect_ghost_force_comm() const override {
     return m_collect_ghost_force_comm;
   }
+
+  GhostComm::HaloPlan const *halo_plan() const override { return &m_halo_plan; }
 
   std::span<Cell *const> local_cells() const override { return m_local_cells; }
   std::span<Cell *const> ghost_cells() const override { return m_ghost_cells; }
@@ -140,5 +144,11 @@ public:
   }
 
 private:
+  /**
+   * @brief Build the plan-based halo plan combining the regular child's
+   *        neighbors/local with the n-square child's collective section.
+   */
+  GhostComm::HaloPlan make_halo_plan();
+
   std::size_t count_particles(std::vector<Cell *> const &local_cells) const;
 };
