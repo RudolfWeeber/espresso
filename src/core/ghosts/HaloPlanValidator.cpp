@@ -168,6 +168,20 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
     }
   }
 
+  // Interior/boundary consistency: a local cell marked interior
+  // (is_boundary()==false) must have no ghost neighbor.
+  for (Cell *c : local_cells) {
+    if (c->is_boundary()) {
+      continue; // boundary cells are expected to have ghost neighbors
+    }
+    for (Cell *n : c->neighbors().all()) {
+      if (ghost_set.find(&n->particles()) != ghost_set.end()) {
+        violations.push_back("interior cell has a ghost neighbor");
+        break; // one violation per cell is sufficient
+      }
+    }
+  }
+
   return violations;
 }
 

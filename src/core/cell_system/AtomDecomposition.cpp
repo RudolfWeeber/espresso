@@ -25,6 +25,7 @@
 
 #include "ghosts/HaloPlan.hpp"
 #include "ghosts/HaloPlanValidator.hpp"
+#include "ghosts/mark_boundary_cells.hpp"
 
 #include <utils/Vector.hpp>
 
@@ -155,6 +156,8 @@ AtomDecomposition::AtomDecomposition(boost::mpi::communicator comm,
   configure_neighbors();
   /* fill local and ghost cell lists */
   mark_cells();
+  /* classify local cells as interior or boundary */
+  GhostComm::mark_boundary_cells(local_cells(), ghost_cells());
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
   // Validate now that local_cells()/ghost_cells() are populated by
   // mark_cells().

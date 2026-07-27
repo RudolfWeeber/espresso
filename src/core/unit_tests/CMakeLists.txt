@@ -90,6 +90,8 @@ espresso_unit_test(SRC bonded_interactions_map_test.cpp DEPENDS espresso::core
 espresso_unit_test(SRC bond_breakage_test.cpp DEPENDS espresso::core
                    Kokkos::kokkos)
 espresso_unit_test(SRC fene_test.cpp DEPENDS espresso::core Kokkos::kokkos)
+espresso_unit_test(SRC Cell_boundary_test.cpp DEPENDS espresso::core
+                   Kokkos::kokkos)
 espresso_unit_test(SRC HaloPlan_test.cpp DEPENDS espresso::core Kokkos::kokkos
                    Boost::mpi MPI::MPI_CXX)
 espresso_unit_test(SRC RegularHaloPlan_test.cpp DEPENDS espresso::core

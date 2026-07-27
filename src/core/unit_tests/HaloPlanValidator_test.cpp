@@ -30,6 +30,7 @@
 #include "communication.hpp"
 #include "ghosts/HaloPlan.hpp"
 #include "ghosts/HaloPlanValidator.hpp"
+#include "ghosts/mark_boundary_cells.hpp"
 
 #include <boost/mpi.hpp>
 #include <boost/test/unit_test.hpp>
@@ -100,6 +101,10 @@ BOOST_AUTO_TEST_CASE(detects_defects) {
   Cell local, ghost;
   local.m_neighbors = Neighbors<Cell *>(std::vector<Cell *>{&ghost}, {});
   std::vector<Cell *> locals{&local}, ghosts{&ghost};
+
+  // Mark interior/boundary so the consistency check in validate_halo_plan
+  // can correctly classify `local` as boundary (has a ghost neighbor).
+  mark_boundary_cells(locals, ghosts);
 
   HaloPlan good;
   good.neighbors.push_back(NeighborComm{

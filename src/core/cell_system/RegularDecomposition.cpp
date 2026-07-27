@@ -23,6 +23,7 @@
 
 #include "cell_system/Cell.hpp"
 #include "ghosts/HaloPlanValidator.hpp"
+#include "ghosts/mark_boundary_cells.hpp"
 
 #include "communication.hpp"
 #include "error_handling/RuntimeErrorStream.hpp"
@@ -744,6 +745,8 @@ RegularDecomposition::RegularDecomposition(
 
   /* build the topology-agnostic direct-neighbor halo plan */
   m_halo_plan = make_halo_plan();
+  /* classify local cells as interior or boundary */
+  GhostComm::mark_boundary_cells(local_cells(), ghost_cells());
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
   assert(
       GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells())
