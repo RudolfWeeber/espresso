@@ -88,6 +88,7 @@ HybridDecomposition make_hybrid_dd(Utils::Vector3i const &node_grid,
 
 namespace utf = boost::unit_test;
 static bool has_4_mpi_ranks() { return boost::mpi::communicator{}.size() == 4; }
+static bool has_1_mpi_rank() { return boost::mpi::communicator{}.size() == 1; }
 
 // ── Task 2.1: single-rank local checks ──────────────────────────────────────
 // These use hand-made cells and are rank-independent, so they pass at NUM_PROC
@@ -161,6 +162,34 @@ BOOST_AUTO_TEST_CASE(local_checks_pass_real_decomposition,
   BOOST_CHECK_MESSAGE(
       violations.empty(),
       "Expected no local-check violations for real decomposition");
+}
+
+// Single-rank real RegularDecomposition. make_halo_plan() returns an empty
+// plan on one rank (periodic neighbourships are wired directly between local
+// cells in init_cell_interactions), yet mark_cells() still classifies the
+// halo-layer cells as ghosts. Those ghosts are never referenced by a local
+// cell's neighbor stencil, so the validator must NOT flag them as uncovered.
+// This is the regression that aborted particle_reduction_test,
+// p3m_test_1_mpi_ranks, EspressoSystemStandAlone_test_1_mpi_ranks etc. under a
+// checks-on (RelWithAssert) build. Runs only when launched on a single rank.
+BOOST_AUTO_TEST_CASE(local_checks_pass_single_rank_decomposition,
+                     *utf::precondition([](utf::test_unit_id) {
+                       return has_1_mpi_rank();
+                     })) {
+  using namespace GhostComm;
+  auto const dd = make_dd({1, 1, 1}, 8., 1.2);
+  auto const *plan = dd.halo_plan();
+  BOOST_REQUIRE(plan != nullptr);
+  // Sanity: the single-rank plan is intentionally empty (no p2p, no local),
+  // but there are ghost cells present.
+  BOOST_CHECK(plan->neighbors.empty());
+  BOOST_CHECK(plan->local.empty());
+  BOOST_CHECK(not dd.ghost_cells().empty());
+  auto violations =
+      validate_halo_plan(*plan, dd.local_cells(), dd.ghost_cells());
+  BOOST_CHECK_MESSAGE(violations.empty(),
+                      "Expected no local-check violations for a single-rank "
+                      "RegularDecomposition (unreferenced halo-layer ghosts)");
 }
 
 // ── Fix 2 guard: collective-covered ghosts ──────────────────────────────────

@@ -59,6 +59,27 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
     }
   }
 
+  // Set of ghost cells that some local cell actually interacts with, i.e. that
+  // appear in a local cell's neighbor stencil. Only these ghosts must be
+  // filled by the plan; a ghost that no local cell ever references carries no
+  // physics and needs no communication. This happens on a single MPI rank:
+  // make_halo_plan() returns an empty plan there because init_cell_interactions
+  // wires periodic neighbourships directly between local cells (see
+  // RegularDecomposition), so the halo-layer cells that mark_cells() still
+  // classifies as ghosts are never referenced and must not be flagged as
+  // uncovered. Double-fill and out-of-ghost-set targets stay strict below, and
+  // the neighborship-match check still requires every *referenced* ghost to be
+  // covered, so this cannot mask a real missing-communication defect.
+  std::unordered_set<ParticleList const *> referenced_ghosts;
+  for (Cell *c : local_cells) {
+    for (Cell *n : c->neighbors().all()) {
+      ParticleList const *pl = &n->particles();
+      if (ghost_set.find(pl) != ghost_set.end()) {
+        referenced_ghosts.insert(pl);
+      }
+    }
+  }
+
   // Check peer-uniqueness and shape; accumulate recv/dst fill counts.
   std::unordered_map<ParticleList const *, int> fill_count;
   std::unordered_set<int> seen_peers;
@@ -101,17 +122,22 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
     ++fill_count[pl];
   }
 
-  // Coverage: every ghost must be filled. Point-to-point ghosts must appear
-  // exactly once as a recv/dst target; a double-fill is always a defect.
-  // Ghosts covered by the collective section are filled by the broadcast/reduce
-  // instead, so a zero point-to-point fill-count is fine for them (and they do
-  // not contribute to fill_count, so they cannot trigger the double-fill path).
+  // Coverage: every ghost that a local cell references must be filled.
+  // Point-to-point ghosts must appear exactly once as a recv/dst target; a
+  // double-fill is always a defect. Ghosts covered by the collective section
+  // are filled by the broadcast/reduce instead, so a zero point-to-point
+  // fill-count is fine for them (and they do not contribute to fill_count, so
+  // they cannot trigger the double-fill path). A ghost that no local cell
+  // references (e.g. the halo-layer cells on a single MPI rank, where the plan
+  // is intentionally empty) carries no physics and is not required to be
+  // filled, so a zero fill-count is fine for it too.
   for (Cell *c : ghost_cells) {
     ParticleList const *pl = &c->particles();
     auto it = fill_count.find(pl);
     int count = (it != fill_count.end()) ? it->second : 0;
     if (count == 0) {
-      if (collective_set.find(pl) == collective_set.end()) {
+      if (collective_set.find(pl) == collective_set.end() &&
+          referenced_ghosts.find(pl) != referenced_ghosts.end()) {
         violations.push_back("ghost cell is never filled (missing recv/dst)");
       }
     } else if (count > 1) {
