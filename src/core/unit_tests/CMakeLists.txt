@@ -92,6 +92,8 @@ espresso_unit_test(SRC bond_breakage_test.cpp DEPENDS espresso::core
 espresso_unit_test(SRC fene_test.cpp DEPENDS espresso::core Kokkos::kokkos)
 espresso_unit_test(SRC HaloPlan_test.cpp DEPENDS espresso::core Kokkos::kokkos
                    Boost::mpi MPI::MPI_CXX)
+espresso_unit_test(SRC HaloExchange_test.cpp DEPENDS espresso::core
+                   Kokkos::kokkos Boost::mpi MPI::MPI_CXX NUM_PROC 2)
 espresso_unit_test(SRC TabulatedPotential_test.cpp DEPENDS espresso::core
                    Kokkos::kokkos)
 if(ESPRESSO_BUILD_WITH_WALBERLA)
