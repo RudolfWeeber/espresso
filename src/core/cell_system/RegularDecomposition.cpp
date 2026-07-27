@@ -37,7 +37,6 @@
 #include <boost/mpi/collectives/all_reduce.hpp>
 #include <boost/mpi/communicator.hpp>
 #include <boost/mpi/request.hpp>
-#include <boost/range/algorithm/reverse.hpp>
 #include <boost/range/numeric.hpp>
 
 #include <algorithm>
@@ -568,43 +567,6 @@ void RegularDecomposition::init_cell_interactions() {
       }
 }
 
-namespace {
-/** Revert the order of a communicator: After calling this the
- *  communicator is working in reverted order with exchanged
- *  communication types GHOST_SEND <-> GHOST_RECV.
- */
-void revert_comm_order(GhostCommunicator &comm) {
-  /* revert order */
-  boost::reverse(comm.communications);
-
-  /* exchange SEND/RECV */
-  for (auto &c : comm.communications) {
-    if (c.type == GHOST_SEND)
-      c.type = GHOST_RECV;
-    else if (c.type == GHOST_RECV)
-      c.type = GHOST_SEND;
-    else if (c.type == GHOST_LOCL) {
-      boost::reverse(c.part_lists);
-    }
-  }
-}
-
-/** Of every two communication rounds, set the first receivers to prefetch and
- *  poststore
- */
-void assign_prefetches(GhostCommunicator &comm) {
-  for (auto it = comm.communications.begin(); it != comm.communications.end();
-       it += 2) {
-    auto next = std::next(it);
-    if (it->type == GHOST_RECV && next->type == GHOST_SEND) {
-      it->type |= GHOST_PREFETCH | GHOST_PSTSTORE;
-      next->type |= GHOST_PREFETCH | GHOST_PSTSTORE;
-    }
-  }
-}
-
-} // namespace
-
 GhostComm::HaloPlan RegularDecomposition::make_halo_plan() {
   using GhostComm::HaloPlan;
   using GhostComm::LocalComm;
@@ -786,111 +748,6 @@ GhostComm::HaloPlan RegularDecomposition::make_halo_plan() {
   return plan;
 }
 
-GhostCommunicator RegularDecomposition::prepare_comm() {
-  // When running on a single MPI rank, the ghost cells are not needed,
-  // as the corresponding physical cell is available on the same MPI rank.
-  // The cell neighborships are set up such that cells across the periodic
-  // boundaries are connected as neighbors directly.
-  if (m_comm.size() == 1)
-    return {};
-
-  int dir, lr, i, cnt, n_comm_cells[3];
-  Utils::Vector3i lc{}, hc{}, done{};
-
-  auto const comm_info = Utils::Mpi::cart_get<3>(m_comm);
-  auto const node_neighbors = Utils::Mpi::cart_neighbors<3>(m_comm);
-
-  /* calculate number of communications */
-  std::size_t num = 0;
-  for (dir = 0; dir < 3; dir++) {
-    for (lr = 0; lr < 2; lr++) {
-      /* No communication for border of non periodic direction */
-      if (comm_info.dims[dir] == 1)
-        num++;
-      else
-        num += 2;
-    }
-  }
-
-  /* prepare communicator */
-  auto ghost_comm = GhostCommunicator{m_comm, num};
-
-  /* number of cells to communicate in a direction */
-  n_comm_cells[0] = cell_grid[1] * cell_grid[2];
-  n_comm_cells[1] = cell_grid[2] * ghost_cell_grid[0];
-  n_comm_cells[2] = ghost_cell_grid[0] * ghost_cell_grid[1];
-
-  cnt = 0;
-  /* direction loop: x, y, z */
-  for (dir = 0; dir < 3; dir++) {
-    lc[(dir + 1) % 3] = 1 - done[(dir + 1) % 3];
-    lc[(dir + 2) % 3] = 1 - done[(dir + 2) % 3];
-    hc[(dir + 1) % 3] = cell_grid[(dir + 1) % 3] + done[(dir + 1) % 3];
-    hc[(dir + 2) % 3] = cell_grid[(dir + 2) % 3] + done[(dir + 2) % 3];
-    /* lr loop: left right */
-    /* here we could in principle build in a one sided ghost
-       communication, simply by taking the lr loop only over one
-       value */
-    for (lr = 0; lr < 2; lr++) {
-      if (comm_info.dims[dir] == 1) {
-        /* just copy cells on a single node */
-        ghost_comm.communications[cnt].type = GHOST_LOCL;
-        ghost_comm.communications[cnt].node = m_comm.rank();
-
-        /* Buffer has to contain Send and Recv cells -> factor 2 */
-        ghost_comm.communications[cnt].part_lists.resize(2 * n_comm_cells[dir]);
-
-        /* fill send ghost_comm cells */
-        lc[dir] = hc[dir] = 1 + lr * (cell_grid[dir] - 1);
-
-        fill_comm_cell_lists(ghost_comm.communications[cnt].part_lists.data(),
-                             lc, hc);
-
-        /* fill recv ghost_comm cells */
-        lc[dir] = hc[dir] = 0 + (1 - lr) * (cell_grid[dir] + 1);
-
-        /* place receive cells after send cells */
-        fill_comm_cell_lists(
-            &ghost_comm.communications[cnt].part_lists[n_comm_cells[dir]], lc,
-            hc);
-
-        cnt++;
-      } else {
-        /* i: send/recv loop */
-        for (i = 0; i < 2; i++) {
-          if ((comm_info.coords[dir] + i) % 2 == 0) {
-            ghost_comm.communications[cnt].type = GHOST_SEND;
-            ghost_comm.communications[cnt].node = node_neighbors[2 * dir + lr];
-            ghost_comm.communications[cnt].part_lists.resize(n_comm_cells[dir]);
-            /* prepare folding of ghost positions */
-
-            lc[dir] = hc[dir] = 1 + lr * (cell_grid[dir] - 1);
-
-            fill_comm_cell_lists(
-                ghost_comm.communications[cnt].part_lists.data(), lc, hc);
-            cnt++;
-          }
-          if ((comm_info.coords[dir] + (1 - i)) % 2 == 0) {
-            ghost_comm.communications[cnt].type = GHOST_RECV;
-            ghost_comm.communications[cnt].node =
-                node_neighbors[2 * dir + (1 - lr)];
-            ghost_comm.communications[cnt].part_lists.resize(n_comm_cells[dir]);
-
-            lc[dir] = hc[dir] = (1 - lr) * (cell_grid[dir] + 1);
-
-            fill_comm_cell_lists(
-                ghost_comm.communications[cnt].part_lists.data(), lc, hc);
-            cnt++;
-          }
-        }
-      }
-      done[dir] = 1;
-    }
-  }
-
-  return ghost_comm;
-}
-
 RegularDecomposition::RegularDecomposition(
     boost::mpi::communicator comm, double range, BoxGeometry const &box_geo,
     LocalBox const &local_geo,
@@ -907,17 +764,6 @@ RegularDecomposition::RegularDecomposition(
   /* mark local and ghost cells */
   mark_cells();
 
-  /* create communicators */
-  m_exchange_ghosts_comm = prepare_comm();
-  m_collect_ghost_force_comm = prepare_comm();
-
-  /* build the topology-agnostic direct-neighbor halo plan (the legacy
-   * communicators above are still what the façade uses for now) */
+  /* build the topology-agnostic direct-neighbor halo plan */
   m_halo_plan = make_halo_plan();
-
-  /* collect forces has to be done in reverted order! */
-  revert_comm_order(m_collect_ghost_force_comm);
-
-  assign_prefetches(m_exchange_ghosts_comm);
-  assign_prefetches(m_collect_ghost_force_comm);
 }

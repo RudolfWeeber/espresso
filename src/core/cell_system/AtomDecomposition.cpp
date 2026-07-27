@@ -54,24 +54,6 @@ void AtomDecomposition::configure_neighbors() {
   local().m_neighbors = Neighbors<Cell *>(red_neighbors, black_neighbors);
 }
 
-GhostCommunicator AtomDecomposition::prepare_comm() {
-  /* no need for comm for only 1 node */
-  if (m_comm.size() == 1) {
-    return GhostCommunicator{m_comm, 0};
-  }
-
-  auto ghost_comm =
-      GhostCommunicator{m_comm, static_cast<std::size_t>(m_comm.size())};
-  /* every node has its dedicated comm step */
-  for (int n = 0; n < m_comm.size(); n++) {
-    ghost_comm.communications[n].part_lists.resize(1);
-    ghost_comm.communications[n].part_lists[0] = &(cells.at(n).particles());
-    ghost_comm.communications[n].node = n;
-  }
-
-  return ghost_comm;
-}
-
 GhostComm::HaloPlan AtomDecomposition::make_halo_plan() {
   using GhostComm::CollectivePattern;
   using GhostComm::CollectiveSection;
@@ -101,29 +83,7 @@ GhostComm::HaloPlan AtomDecomposition::make_halo_plan() {
   return plan;
 }
 
-void AtomDecomposition::configure_comms() {
-  m_exchange_ghosts_comm = prepare_comm();
-  m_collect_ghost_force_comm = prepare_comm();
-  m_halo_plan = make_halo_plan();
-
-  if (m_comm.size() > 1) {
-    for (int n = 0; n < m_comm.size(); n++) {
-      /* use the prefetched send buffers. Node 0 transmits first and never
-       * prefetches. */
-      if (m_comm.rank() == 0 || m_comm.rank() != n) {
-        m_exchange_ghosts_comm.communications[n].type = GHOST_BCST;
-      } else {
-        m_exchange_ghosts_comm.communications[n].type =
-            GHOST_BCST | GHOST_PREFETCH;
-      }
-      m_collect_ghost_force_comm.communications[n].type = GHOST_RDCE;
-    }
-    /* first round: all nodes except the first one prefetch their send data */
-    if (m_comm.rank() != 0) {
-      m_exchange_ghosts_comm.communications[0].type |= GHOST_PREFETCH;
-    }
-  }
-}
+void AtomDecomposition::configure_comms() { m_halo_plan = make_halo_plan(); }
 
 void AtomDecomposition::mark_cells() {
   m_local_cells.resize(1, std::addressof(local()));

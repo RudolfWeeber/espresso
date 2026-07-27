@@ -29,7 +29,6 @@
 #include "LocalBox.hpp"
 #include "Particle.hpp"
 #include "ParticleList.hpp"
-#include "ghosts.hpp"
 #include "ghosts/HaloPlan.hpp"
 
 #include <utils/Vector.hpp>
@@ -86,8 +85,6 @@ struct RegularDecomposition : public ParticleDecomposition {
   std::vector<Cell> cells;
   std::vector<Cell *> m_local_cells;
   std::vector<Cell *> m_ghost_cells;
-  GhostCommunicator m_exchange_ghosts_comm;
-  GhostCommunicator m_collect_ghost_force_comm;
   /** Topology-agnostic direct-neighbor halo plan (see @ref make_halo_plan).
    *  Holds ParticleList* into this decomposition's cells — value-copying this
    *  object leaves these pointers dangling. TODO(Task 1.7): make non-copyable
@@ -99,13 +96,6 @@ public:
   RegularDecomposition(boost::mpi::communicator comm, double range,
                        BoxGeometry const &box_geo, LocalBox const &local_geo,
                        std::optional<std::pair<int, int>> fully_connected);
-
-  GhostCommunicator const &exchange_ghosts_comm() const override {
-    return m_exchange_ghosts_comm;
-  }
-  GhostCommunicator const &collect_ghost_force_comm() const override {
-    return m_collect_ghost_force_comm;
-  }
 
   GhostComm::HaloPlan const *halo_plan() const override { return &m_halo_plan; }
 
@@ -235,16 +225,10 @@ private:
    */
   void init_cell_interactions();
 
-  /** Create communicators for cell structure regular decomposition (see \ref
-   *  GhostCommunicator).
-   */
-  GhostCommunicator prepare_comm();
-
   /** @brief Build a direct-neighbor @ref GhostComm::HaloPlan.
    *
-   *  Produces the same ghost data as @ref prepare_comm(), but every one of
-   *  the up-to-26 stencil neighbors is addressed as an explicit peer (no
-   *  axis-by-axis relay). The result is cached in @ref m_halo_plan.
+   *  Every one of the up-to-26 stencil neighbors is addressed as an explicit
+   *  peer (no axis-by-axis relay). The result is cached in @ref m_halo_plan.
    */
   GhostComm::HaloPlan make_halo_plan();
 

@@ -27,6 +27,8 @@
 #include "BoxGeometry.hpp"
 #include "LocalBox.hpp"
 #include "ParticleList.hpp"
+#include "ghosts.hpp"
+#include "ghosts/HaloExchange.hpp"
 
 #include <utils/Vector.hpp>
 #include <utils/mpi/sendrecv.hpp>
@@ -65,20 +67,6 @@ HybridDecomposition::HybridDecomposition(boost::mpi::communicator comm,
   auto ghost_cells_n_square = m_n_square.get_ghost_cells();
   std::ranges::copy(ghost_cells_n_square, std::back_inserter(m_ghost_cells));
 
-  /* Communicators that contain communications of both child decompositions */
-  m_exchange_ghosts_comm = m_regular_decomposition.exchange_ghosts_comm();
-  auto exchange_ghosts_comm_n_square = m_n_square.exchange_ghosts_comm();
-  std::ranges::copy(exchange_ghosts_comm_n_square.communications,
-                    std::back_inserter(m_exchange_ghosts_comm.communications));
-
-  m_collect_ghost_force_comm =
-      m_regular_decomposition.collect_ghost_force_comm();
-  auto collect_ghost_force_comm_n_square =
-      m_n_square.collect_ghost_force_comm();
-  std::ranges::copy(
-      collect_ghost_force_comm_n_square.communications,
-      std::back_inserter(m_collect_ghost_force_comm.communications));
-
   /* coupling between the child decompositions via neighborship relation */
   std::vector<Cell *> additional_reds = m_n_square.get_local_cells();
   std::ranges::copy(ghost_cells_n_square, std::back_inserter(additional_reds));
@@ -97,8 +85,6 @@ HybridDecomposition::HybridDecomposition(boost::mpi::communicator comm,
 GhostComm::HaloPlan HybridDecomposition::make_halo_plan() {
   // Build the combined plan: p2p neighbors and local copies come from the
   // regular child; the collective section comes from the n-square child.
-  // This mirrors the legacy constructor (lines 68-92) that concatenates both
-  // children's GhostCommunicator lists.
   GhostComm::HaloPlan plan;
   plan.comm = m_comm; // use the world comm for HybridDecomposition's plan
 
@@ -180,9 +166,12 @@ void HybridDecomposition::resort(bool global,
   m_regular_decomposition.resort(global, diff);
   m_n_square.resort(global, diff);
 
-  ghost_communicator(exchange_ghosts_comm(), m_box, GHOSTTRANS_PARTNUM);
-  ghost_communicator(exchange_ghosts_comm(), m_box,
-                     map_data_parts(m_get_global_ghost_flags()));
+  GhostComm::halo_exchange(
+      m_halo_plan, m_box, GHOSTTRANS_PARTNUM,
+      {GhostComm::Direction::Push, GhostComm::Combine::Overwrite});
+  GhostComm::halo_exchange(
+      m_halo_plan, m_box, map_data_parts(m_get_global_ghost_flags()),
+      {GhostComm::Direction::Push, GhostComm::Combine::Overwrite});
 }
 
 std::size_t HybridDecomposition::count_particles(

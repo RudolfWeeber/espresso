@@ -30,7 +30,6 @@
 #include "BoxGeometry.hpp"
 #include "LocalBox.hpp"
 #include "Particle.hpp"
-#include "ghosts.hpp"
 
 #include <utils/Vector.hpp>
 
@@ -59,9 +58,6 @@ class HybridDecomposition : public ParticleDecomposition {
   double m_cutoff_regular;
   std::vector<Cell *> m_local_cells;
   std::vector<Cell *> m_ghost_cells;
-
-  GhostCommunicator m_exchange_ghosts_comm;
-  GhostCommunicator m_collect_ghost_force_comm;
 
   /// Holds ParticleList* into this decomposition's cells — value-copying this
   /// object leaves these pointers dangling. TODO(Task 1.7): make non-copyable
@@ -96,14 +92,6 @@ public:
   void resort(bool global, std::vector<ParticleChange> &diff) override;
 
   auto get_cutoff_regular() const { return m_cutoff_regular; }
-
-  GhostCommunicator const &exchange_ghosts_comm() const override {
-    return m_exchange_ghosts_comm;
-  }
-
-  GhostCommunicator const &collect_ghost_force_comm() const override {
-    return m_collect_ghost_force_comm;
-  }
 
   GhostComm::HaloPlan const *halo_plan() const override { return &m_halo_plan; }
 

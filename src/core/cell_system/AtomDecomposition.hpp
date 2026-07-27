@@ -27,7 +27,7 @@
 
 #include "BoxGeometry.hpp"
 #include "Particle.hpp"
-#include "ghosts.hpp"
+#include "ghosts/HaloPlan.hpp"
 
 #include <utils/Vector.hpp>
 
@@ -57,9 +57,6 @@ class AtomDecomposition : public ParticleDecomposition {
   std::vector<Cell *> m_local_cells;
   std::vector<Cell *> m_ghost_cells;
 
-  GhostCommunicator m_exchange_ghosts_comm;
-  GhostCommunicator m_collect_ghost_force_comm;
-
   /// Holds ParticleList* into this decomposition's cells — value-copying this
   /// object leaves these pointers dangling. TODO(Task 1.7): make non-copyable
   /// or rebuild-on-copy.
@@ -72,13 +69,6 @@ public:
   AtomDecomposition(boost::mpi::communicator comm, BoxGeometry const &box_geo);
 
   void resort(bool global_flag, std::vector<ParticleChange> &diff) override;
-
-  GhostCommunicator const &exchange_ghosts_comm() const override {
-    return m_exchange_ghosts_comm;
-  }
-  GhostCommunicator const &collect_ghost_force_comm() const override {
-    return m_collect_ghost_force_comm;
-  }
 
   GhostComm::HaloPlan const *halo_plan() const override { return &m_halo_plan; }
 
@@ -138,7 +128,6 @@ private:
   }
 
   void configure_neighbors();
-  GhostCommunicator prepare_comm();
 
   /**
    * @brief Build the plan-based halo plan (collective broadcast/reduce path).

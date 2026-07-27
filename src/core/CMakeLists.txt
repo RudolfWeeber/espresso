@@ -29,7 +29,6 @@ add_library(
   energy.cpp
   errorhandling.cpp
   forces.cpp
-  ghosts.cpp
   ghosts/HaloExchange.cpp
   ghosts/particle_packing.cpp
   integrate.cpp
