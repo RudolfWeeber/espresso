@@ -96,9 +96,17 @@ std::vector<ParticleList *> region_cells(std::vector<SendRegion> const &send) {
  * per-region archives would corrupt the bond stream (the second archive
  * header is misread as bond data by the receiver).
  *
- * Per-region shifts are honored via the common shift (all shifts in a
- * NeighborComm must be equal; an ESPRESSO_ADDITIONAL_CHECKS assertion
- * documents this invariant).
+ * Per-region shifts are honored via the common shift. All @c SendRegion.shift
+ * values within a @c NeighborComm are equal — @c RegularDecomposition::
+ * make_halo_plan() sets them all to @c {}. This lets us pack every region's
+ * cells in one @c pack_cells call (a single bond archive, matching the
+ * receiver's single @c unpack_cells).
+ *
+ * @note If a future decomposition (e.g. a Lees-Edwards refactor) ever stores
+ * DISTINCT per-region shifts, @c pack_regions must be generalized to pack
+ * each region's non-bond (flat) data with its own shift while still writing
+ * all bonds into ONE shared archive — do not simply concatenate per-region
+ * archives (that was the bond-corruption bug fixed in commit 314e7c366b).
  */
 void pack_regions(CommBuf &buf, std::vector<SendRegion> const &regions,
                   BoxGeometry const &box, unsigned data_parts) {
