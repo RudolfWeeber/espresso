@@ -235,11 +235,14 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
 
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
   // Peer-uniqueness is validated at plan-build time by validate_halo_plan().
-  assert((op.combine != Combine::Add || data_parts == GHOSTTRANS_FORCE
+  // Op-sanity: Combine::Add is only valid for reducible parts (FORCE/RATTLE).
+  // Compute the predicate outside assert() so the #ifdef is not embedded in
+  // macro arguments (non-portable under -Werror).
+  [[maybe_unused]] bool reducible = (data_parts == GHOSTTRANS_FORCE);
 #ifdef ESPRESSO_BOND_CONSTRAINT
-          || data_parts == GHOSTTRANS_RATTLE
+  reducible = reducible || (data_parts == GHOSTTRANS_RATTLE);
 #endif
-          ) &&
+  assert((op.combine != Combine::Add || reducible) &&
          "Combine::Add only valid for reducible parts (FORCE/RATTLE)");
 #endif
 
