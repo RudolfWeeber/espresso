@@ -63,6 +63,9 @@ class HybridDecomposition : public ParticleDecomposition {
   GhostCommunicator m_exchange_ghosts_comm;
   GhostCommunicator m_collect_ghost_force_comm;
 
+  /// Holds ParticleList* into this decomposition's cells — value-copying this
+  /// object leaves these pointers dangling. TODO(Task 1.7): make non-copyable
+  /// or rebuild-on-copy.
   GhostComm::HaloPlan m_halo_plan;
 
   /** RegularDecomposition to hold the small particles */

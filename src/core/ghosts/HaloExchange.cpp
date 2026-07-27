@@ -155,6 +155,12 @@ void pack_regions(CommBuf &buf, std::vector<SendRegion> const &regions,
  */
 void run_collective(HaloPlan const &plan, BoxGeometry const &box,
                     unsigned data_parts, ExchangeOp op) {
+  // Precondition: for non-PARTNUM data parts, ghost cell sizes must already be
+  // synced by a prior GHOSTTRANS_PARTNUM exchange (same invariant as the legacy
+  // GHOST_BCST/GHOST_RDCE path). The per-root broadcast/reduce byte count is
+  // derived from the (already-sized) cells; a size mismatch across ranks would
+  // be undefined behavior.
+
   if (!plan.collective || plan.collective->pattern == CollectivePattern::None) {
     return;
   }
