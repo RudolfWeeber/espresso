@@ -6,9 +6,9 @@ label="${1:?need a label, e.g. baseline or async}"
 build="$(pwd)"
 
 # --- machine-idle gate (per project constraint) ---
-read -r load1 _ < <(awk '{print $1}' /proc/loadavg | tr '\n' ' ')
+load1=$(awk '{print $1}' /proc/loadavg)
 ncpu="$(nproc)"
-others="$(who | awk '{print $1}' | sort -u | grep -v "^${USER}$" | wc -l)"
+others=$(who | awk -v me="$(id -un)" '$1 != me {print $1}' | sort -u | wc -l)
 if (( $(echo "${load1} > 2.0" | bc -l) )) || (( others > 0 )); then
   echo "REFUSING to benchmark: load1=${load1}, other users=${others}, ncpu=${ncpu}." >&2
   echo "Re-run when the machine is idle." >&2
