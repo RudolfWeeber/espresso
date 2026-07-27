@@ -38,6 +38,7 @@
 #include <boost/mpi/communicator.hpp>
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <functional>
 #include <iterator>

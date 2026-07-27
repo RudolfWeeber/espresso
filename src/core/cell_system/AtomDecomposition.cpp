@@ -30,6 +30,7 @@
 
 #include <boost/mpi/collectives/all_to_all.hpp>
 
+#include <cassert>
 #include <cstddef>
 #include <limits>
 #include <utility>
@@ -86,12 +87,9 @@ GhostComm::HaloPlan AtomDecomposition::make_halo_plan() {
 
 void AtomDecomposition::configure_comms() {
   m_halo_plan = make_halo_plan();
-#ifdef ESPRESSO_ADDITIONAL_CHECKS
-  assert(
-      GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells())
-          .empty());
-  assert(GhostComm::validate_halo_plan_symmetry(m_halo_plan).empty());
-#endif
+  // NOTE: validation is deferred to the constructor, AFTER mark_cells() has
+  // populated local_cells()/ghost_cells(). Validating here would check empty
+  // spans (vacuously) since mark_cells() runs later.
 }
 
 void AtomDecomposition::mark_cells() {
@@ -157,6 +155,14 @@ AtomDecomposition::AtomDecomposition(boost::mpi::communicator comm,
   configure_neighbors();
   /* fill local and ghost cell lists */
   mark_cells();
+#ifdef ESPRESSO_ADDITIONAL_CHECKS
+  // Validate now that local_cells()/ghost_cells() are populated by
+  // mark_cells().
+  assert(
+      GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells())
+          .empty());
+  assert(GhostComm::validate_halo_plan_symmetry(m_halo_plan).empty());
+#endif
 }
 
 Utils::Vector3d AtomDecomposition::max_cutoff() const {

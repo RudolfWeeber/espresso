@@ -31,10 +31,13 @@ namespace GhostComm {
  * @brief Validate a HaloPlan for correctness.
  *
  * Checks:
- * 1. Coverage: every ghost cell appears as a recv/local.dst target exactly
- *    once; no target lies outside the ghost set; none appears twice.
- * 2. Neighborship-match: every local cell's ghost neighbor is a covered
- *    recv/dst target.
+ * 1. Coverage: every ghost cell is filled. Point-to-point ghosts appear as a
+ *    recv/local.dst target exactly once; no p2p target lies outside the ghost
+ *    set; none appears twice. Ghosts filled by the collective broadcast/reduce
+ *    section (AtomDecomposition, HybridDecomposition) are covered by that
+ *    section instead of a recv/dst target.
+ * 2. Neighborship-match: every local cell's ghost neighbor is covered, either
+ *    as a recv/dst target or by the collective section.
  * 3. Peer-uniqueness: each peer value appears in at most one NeighborComm.
  * 4. Shape: each NeighborComm has send.size() == recv.size().
  *

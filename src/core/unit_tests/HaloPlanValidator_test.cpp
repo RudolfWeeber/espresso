@@ -23,7 +23,9 @@
 
 #include "BoxGeometry.hpp"
 #include "LocalBox.hpp"
+#include "cell_system/AtomDecomposition.hpp"
 #include "cell_system/Cell.hpp"
+#include "cell_system/HybridDecomposition.hpp"
 #include "cell_system/RegularDecomposition.hpp"
 #include "communication.hpp"
 #include "ghosts/HaloPlan.hpp"
@@ -32,25 +34,55 @@
 #include <boost/mpi.hpp>
 #include <boost/test/unit_test.hpp>
 
+#include <functional>
 #include <optional>
+#include <set>
 #include <span>
 #include <vector>
 
 BOOST_TEST_GLOBAL_FIXTURE(EspressoCoreGlobalConfig);
 
 namespace {
-RegularDecomposition make_dd(Utils::Vector3i const &node_grid, double box_l,
-                             double range) {
-  ::communicator.set_node_grid(node_grid);
+BoxGeometry make_periodic_box(double box_l) {
   BoxGeometry box;
   box.set_length(Utils::Vector3d::broadcast(box_l));
   box.set_periodic(0u, true);
   box.set_periodic(1u, true);
   box.set_periodic(2u, true);
+  return box;
+}
+
+RegularDecomposition make_dd(Utils::Vector3i const &node_grid, double box_l,
+                             double range) {
+  ::communicator.set_node_grid(node_grid);
+  auto const box = make_periodic_box(box_l);
   auto const local_box = LocalBox::make_regular_decomposition(
       box.length(), ::communicator.calc_node_index(), ::communicator.node_grid);
   return RegularDecomposition(::communicator.comm, range, box, local_box,
                               std::nullopt);
+}
+
+// The AtomDecomposition (n-square) covers every ghost via its collective
+// broadcast/reduce section, so the validator must recognise collective-covered
+// ghosts as covered. The box lifetime must outlive the returned decomposition;
+// AtomDecomposition holds a BoxGeometry const& (see AtomDecomposition.hpp).
+AtomDecomposition make_atom_dd(BoxGeometry const &box) {
+  return AtomDecomposition(::communicator.comm, box);
+}
+
+// The HybridDecomposition combines the regular child's point-to-point section
+// with the n-square child's collective section, so its plan exercises BOTH
+// coverage paths at once.
+HybridDecomposition make_hybrid_dd(Utils::Vector3i const &node_grid,
+                                   BoxGeometry const &box,
+                                   double cutoff_regular, double skin,
+                                   std::set<int> const &n_square_types) {
+  ::communicator.set_node_grid(node_grid);
+  auto const local_box = LocalBox::make_regular_decomposition(
+      box.length(), ::communicator.calc_node_index(), ::communicator.node_grid);
+  return HybridDecomposition(
+      ::communicator.comm, cutoff_regular, skin, []() { return false; }, box,
+      local_box, n_square_types);
 }
 } // namespace
 
@@ -129,6 +161,49 @@ BOOST_AUTO_TEST_CASE(local_checks_pass_real_decomposition,
   BOOST_CHECK_MESSAGE(
       violations.empty(),
       "Expected no local-check violations for real decomposition");
+}
+
+// ── Fix 2 guard: collective-covered ghosts ──────────────────────────────────
+// A real AtomDecomposition (n-square) covers ALL of its ghosts via the
+// collective broadcast/reduce section, not via point-to-point recv/dst
+// targets. Before the fix the validator false-positived on every such ghost
+// ("never filled"). These cases run the validator directly in the checks-OFF
+// build, so they catch the false-positives without needing a checks-on build.
+BOOST_AUTO_TEST_CASE(atom_decomposition_collective_coverage,
+                     *utf::precondition([](utf::test_unit_id) {
+                       return has_4_mpi_ranks();
+                     })) {
+  using namespace GhostComm;
+  ::communicator.set_node_grid({4, 1, 1});
+  auto const box = make_periodic_box(8.);
+  auto const dd = make_atom_dd(box);
+  auto const *plan = dd.halo_plan();
+  BOOST_REQUIRE(plan != nullptr);
+  auto violations =
+      validate_halo_plan(*plan, dd.local_cells(), dd.ghost_cells());
+  BOOST_CHECK_MESSAGE(violations.empty(),
+                      "Expected no local-check violations for real "
+                      "AtomDecomposition (collective-covered ghosts)");
+  BOOST_CHECK(validate_halo_plan_symmetry(*plan).empty());
+}
+
+// A real HybridDecomposition covers the regular ghosts via point-to-point and
+// the n-square ghosts via the collective section — both paths at once.
+BOOST_AUTO_TEST_CASE(hybrid_decomposition_mixed_coverage,
+                     *utf::precondition([](utf::test_unit_id) {
+                       return has_4_mpi_ranks();
+                     })) {
+  using namespace GhostComm;
+  auto const box = make_periodic_box(8.);
+  auto const dd = make_hybrid_dd({2, 2, 1}, box, 1.2, 0.1, std::set<int>{0});
+  auto const *plan = dd.halo_plan();
+  BOOST_REQUIRE(plan != nullptr);
+  auto violations =
+      validate_halo_plan(*plan, dd.local_cells(), dd.ghost_cells());
+  BOOST_CHECK_MESSAGE(violations.empty(),
+                      "Expected no local-check violations for real "
+                      "HybridDecomposition (mixed p2p + collective coverage)");
+  BOOST_CHECK(validate_halo_plan_symmetry(*plan).empty());
 }
 
 // ── Task 2.2: cross-rank symmetry checks ────────────────────────────────────

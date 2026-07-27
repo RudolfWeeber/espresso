@@ -42,6 +42,23 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
     ghost_set.insert(&c->particles());
   }
 
+  // Collective-covered cells: AtomDecomposition (collective-only) and
+  // HybridDecomposition (neighbors + collective) fill some/all ghosts via the
+  // n-square broadcast/reduce section, NOT via neighbors/local. The section's
+  // `cells` vector identifies exactly which ParticleLists it covers (one per
+  // rank; the entry for the local rank is this rank's own cell, the rest are
+  // ghost copies of every other rank's owned cell). Ghost cells found here are
+  // covered even though they are not point-to-point recv/dst targets.
+  bool const has_collective =
+      plan.collective.has_value() &&
+      plan.collective->pattern != CollectivePattern::None;
+  std::unordered_set<ParticleList const *> collective_set;
+  if (has_collective) {
+    for (ParticleList const *pl : plan.collective->cells) {
+      collective_set.insert(pl);
+    }
+  }
+
   // Check peer-uniqueness and shape; accumulate recv/dst fill counts.
   std::unordered_map<ParticleList const *, int> fill_count;
   std::unordered_set<int> seen_peers;
@@ -84,13 +101,19 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
     ++fill_count[pl];
   }
 
-  // Coverage: every ghost must appear exactly once.
+  // Coverage: every ghost must be filled. Point-to-point ghosts must appear
+  // exactly once as a recv/dst target; a double-fill is always a defect.
+  // Ghosts covered by the collective section are filled by the broadcast/reduce
+  // instead, so a zero point-to-point fill-count is fine for them (and they do
+  // not contribute to fill_count, so they cannot trigger the double-fill path).
   for (Cell *c : ghost_cells) {
     ParticleList const *pl = &c->particles();
     auto it = fill_count.find(pl);
     int count = (it != fill_count.end()) ? it->second : 0;
     if (count == 0) {
-      violations.push_back("ghost cell is never filled (missing recv/dst)");
+      if (collective_set.find(pl) == collective_set.end()) {
+        violations.push_back("ghost cell is never filled (missing recv/dst)");
+      }
     } else if (count > 1) {
       std::ostringstream oss;
       oss << "ghost cell is filled " << count << " times (expected 1)";
@@ -98,12 +121,16 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
     }
   }
 
-  // Neighborship-match: every local cell's ghost neighbor must be covered.
+  // Neighborship-match: every local cell's ghost neighbor must be covered,
+  // either as a point-to-point recv/dst target or by the collective section.
   for (Cell *c : local_cells) {
     for (Cell *n : c->neighbors().all()) {
       ParticleList const *pl = &n->particles();
       if (ghost_set.find(pl) == ghost_set.end()) {
         continue; // not a ghost neighbor
+      }
+      if (collective_set.find(pl) != collective_set.end()) {
+        continue; // covered by the collective broadcast/reduce section
       }
       auto it = fill_count.find(pl);
       int count = (it != fill_count.end()) ? it->second : 0;
