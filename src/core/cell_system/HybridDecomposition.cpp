@@ -29,6 +29,7 @@
 #include "ParticleList.hpp"
 #include "ghosts.hpp"
 #include "ghosts/HaloExchange.hpp"
+#include "ghosts/HaloPlanValidator.hpp"
 
 #include <utils/Vector.hpp>
 #include <utils/mpi/sendrecv.hpp>
@@ -80,6 +81,12 @@ HybridDecomposition::HybridDecomposition(boost::mpi::communicator comm,
   }
 
   m_halo_plan = make_halo_plan();
+#ifdef ESPRESSO_ADDITIONAL_CHECKS
+  assert(
+      GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells())
+          .empty());
+  assert(GhostComm::validate_halo_plan_symmetry(m_halo_plan).empty());
+#endif
 }
 
 GhostComm::HaloPlan HybridDecomposition::make_halo_plan() {

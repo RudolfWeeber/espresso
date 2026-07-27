@@ -111,6 +111,26 @@ BOOST_AUTO_TEST_CASE(detects_defects) {
                       "Expected shape-mismatch violation");
 }
 
+// ── Task 2.3: real-plan local checks ────────────────────────────────────────
+// Build a real RegularDecomposition on 4 ranks and assert that the local
+// validator (coverage + neighborship-match + peer-uniqueness + shape) passes.
+// This is the guard that the wiring in RegularDecomposition.cpp won't
+// false-trip in CI (which builds with ESPRESSO_ADDITIONAL_CHECKS on).
+BOOST_AUTO_TEST_CASE(local_checks_pass_real_decomposition,
+                     *utf::precondition([](utf::test_unit_id) {
+                       return has_4_mpi_ranks();
+                     })) {
+  using namespace GhostComm;
+  auto const dd = make_dd({2, 2, 1}, 8., 1.2);
+  auto const *plan = dd.halo_plan();
+  BOOST_REQUIRE(plan != nullptr);
+  auto violations =
+      validate_halo_plan(*plan, dd.local_cells(), dd.ghost_cells());
+  BOOST_CHECK_MESSAGE(
+      violations.empty(),
+      "Expected no local-check violations for real decomposition");
+}
+
 // ── Task 2.2: cross-rank symmetry checks ────────────────────────────────────
 
 // Good case: real RegularDecomposition on 4 ranks must be symmetric.

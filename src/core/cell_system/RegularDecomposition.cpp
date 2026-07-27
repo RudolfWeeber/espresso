@@ -22,6 +22,7 @@
 #include "cell_system/RegularDecomposition.hpp"
 
 #include "cell_system/Cell.hpp"
+#include "ghosts/HaloPlanValidator.hpp"
 
 #include "communication.hpp"
 #include "error_handling/RuntimeErrorStream.hpp"
@@ -722,29 +723,6 @@ GhostComm::HaloPlan RegularDecomposition::make_halo_plan() {
   for (auto &[key, lc] : local)
     plan.local.push_back(lc);
 
-#ifdef ESPRESSO_ADDITIONAL_CHECKS
-  {
-    // Coverage: every ghost cell must be the recv/dst target of exactly one
-    // entry, peers must be unique, and send/recv lists must be equal length.
-    std::map<ParticleList const *, unsigned> filled;
-    std::set<int> seen_peers;
-    for (auto const &nc : plan.neighbors) {
-      assert(seen_peers.insert(nc.peer).second && "peer appears twice");
-      assert(nc.peer != this_rank && "self peer in neighbors");
-      assert(nc.send.size() == nc.recv.size() && "send/recv length mismatch");
-      for (auto const *c : nc.recv)
-        filled[c] += 1u;
-    }
-    for (auto const &lc : plan.local)
-      filled[lc.dst] += 1u;
-    for (auto const *g : m_ghost_cells) {
-      assert(filled[&g->particles()] == 1u && "ghost cell not filled once");
-    }
-    assert(filled.size() == m_ghost_cells.size() &&
-           "recv/dst set does not match ghost-cell set");
-  }
-#endif
-
   return plan;
 }
 
@@ -766,4 +744,10 @@ RegularDecomposition::RegularDecomposition(
 
   /* build the topology-agnostic direct-neighbor halo plan */
   m_halo_plan = make_halo_plan();
+#ifdef ESPRESSO_ADDITIONAL_CHECKS
+  assert(
+      GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells())
+          .empty());
+  assert(GhostComm::validate_halo_plan_symmetry(m_halo_plan).empty());
+#endif
 }

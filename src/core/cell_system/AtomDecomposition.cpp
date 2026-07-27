@@ -24,6 +24,7 @@
 #include "cell_system/Cell.hpp"
 
 #include "ghosts/HaloPlan.hpp"
+#include "ghosts/HaloPlanValidator.hpp"
 
 #include <utils/Vector.hpp>
 
@@ -83,7 +84,15 @@ GhostComm::HaloPlan AtomDecomposition::make_halo_plan() {
   return plan;
 }
 
-void AtomDecomposition::configure_comms() { m_halo_plan = make_halo_plan(); }
+void AtomDecomposition::configure_comms() {
+  m_halo_plan = make_halo_plan();
+#ifdef ESPRESSO_ADDITIONAL_CHECKS
+  assert(
+      GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells())
+          .empty());
+  assert(GhostComm::validate_halo_plan_symmetry(m_halo_plan).empty());
+#endif
+}
 
 void AtomDecomposition::mark_cells() {
   m_local_cells.resize(1, std::addressof(local()));

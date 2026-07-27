@@ -38,7 +38,6 @@
 #include <cstddef>
 #include <functional>
 #include <span>
-#include <unordered_set>
 #include <vector>
 
 namespace GhostComm {
@@ -235,18 +234,10 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
     return st;
 
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
-  // Invariant: each peer appears at most once in plan.neighbors.
-  // Multiple send/recv regions to the same peer must be folded into a single
-  // NeighborComm; see halo_exchange_start @pre for why this is required.
-  {
-    std::unordered_set<int> seen_peers;
-    seen_peers.reserve(plan.neighbors.size());
-    for (auto const &nc : plan.neighbors) {
-      assert(seen_peers.insert(nc.peer).second &&
-             "halo_exchange_start: duplicate peer in plan.neighbors — "
-             "fold multiple regions to the same peer into one NeighborComm");
-    }
-  }
+  // Peer-uniqueness is validated at plan-build time by validate_halo_plan().
+  assert((op.combine != Combine::Add || data_parts == GHOSTTRANS_FORCE ||
+          data_parts == GHOSTTRANS_RATTLE) &&
+         "Combine::Add only valid for reducible parts (FORCE/RATTLE)");
 #endif
 
   auto const &comm = plan.comm;
