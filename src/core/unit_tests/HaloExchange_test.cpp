@@ -178,13 +178,12 @@ BOOST_AUTO_TEST_CASE(collective_broadcast_and_reduce,
   using namespace GhostComm;
   boost::mpi::communicator world;
   int const me = world.rank();
-  int const other = 1 - me;
 
   BoxGeometry box;
   box.set_length({10., 10., 10.});
 
   // cells[0] = local cell for rank 0, cells[1] = local cell for rank 1.
-  // Each rank owns cells[me] and uses cells[other] as ghost storage.
+  // Each rank owns cells[me] and uses cells[1 - me] as ghost storage.
   ParticleList cell0, cell1;
   cell0.resize(1);
   cell1.resize(1);
