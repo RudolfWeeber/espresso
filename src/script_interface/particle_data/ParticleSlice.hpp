@@ -108,14 +108,16 @@ get_particles_properties(std::vector<int> const &pids,
   // reorder gathered values to match the caller's id_selection order
   assert(parameters.size() == pids.size() &&
          "Missing or duplicate particle ids");
-  std::unordered_map<int, T> lookup;
-  lookup.reserve(pids.size());
-  for (auto &[pid, val] : parameters) {
-    lookup.emplace(pid, std::move(val));
-  }
-  result.reserve(pids.size());
+  std::unordered_map<int, std::size_t> lookup;
+  lookup.reserve(parameters.size());
+  std::size_t p_index = 0u;
   for (auto const pid : pids) {
-    result.emplace_back(std::move(lookup.at(pid)));
+    lookup[pid] = p_index;
+    ++p_index;
+  }
+  result.resize(pids.size());
+  for (auto &[pid, val] : parameters) {
+    result[lookup[pid]] = std::move(val);
   }
   return result;
 }
