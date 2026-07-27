@@ -42,11 +42,14 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
+#include <map>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -602,6 +605,187 @@ void assign_prefetches(GhostCommunicator &comm) {
 
 } // namespace
 
+GhostComm::HaloPlan RegularDecomposition::make_halo_plan() {
+  using GhostComm::HaloPlan;
+  using GhostComm::LocalComm;
+  using GhostComm::NeighborComm;
+  using GhostComm::SendRegion;
+
+  HaloPlan plan;
+  plan.comm = m_comm;
+
+  // Match the legacy communicator: on a single MPI rank there are no ghost
+  // cells to fill. The cell neighbourships are set up (see
+  // init_cell_interactions) so that cells across periodic boundaries are
+  // connected directly, so the plan stays empty.
+  if (m_comm.size() == 1)
+    return plan;
+
+  auto const cart_info = Utils::Mpi::cart_get<3>(m_comm);
+  auto const &node_pos = cart_info.coords;
+  auto const &node_grid = ::communicator.node_grid;
+  // Total number of MD cells along each axis across all ranks.
+  auto const global_size = hadamard_product(node_grid, cell_grid);
+  // Global (0-based) cell index of this rank's first *local* cell, i.e. of
+  // ghost-grid coordinate (1,1,1).
+  auto const global_origin = hadamard_product(node_pos, cell_grid);
+
+  // Cartesian rank owning the cell at (folded) global cell coordinate.
+  // The Cartesian communicator is always fully periodic (see
+  // Communicator::init_comm_cart), so this is well-defined for every offset.
+  auto const owner_of = [&](Utils::Vector3i const &global_cell) {
+    auto const owner_coords =
+        hadamard_division((global_cell + global_size) % global_size, cell_grid);
+    return Utils::Mpi::cart_rank<3>(m_comm, owner_coords);
+  };
+
+  // Deterministic ordering key shared by both ranks of a peer pair: the linear
+  // index of the *real* cell (in the global cell grid) that a ghost mirrors.
+  auto const global_key = [&](Utils::Vector3i const &global_cell) {
+    auto const folded = (global_cell + global_size) % global_size;
+    return Utils::get_linear_index(folded, global_size);
+  };
+
+  // Pointer to the particle list of the cell at ghost-grid coordinate c.
+  auto const list_at = [this](Utils::Vector3i const &c) -> ParticleList * {
+    return &cells
+                .at(static_cast<std::size_t>(
+                    Utils::get_linear_index(c, ghost_cell_grid)))
+                .particles();
+  };
+
+  // Per-peer accumulators. A "recv" pair maps one of our ghost cells to the
+  // global index of the real cell (on the peer) it mirrors. A "send" pair maps
+  // one of our real cells to its own global index (the peer will receive it
+  // into a ghost). Sorting both lists by their key makes recv[k] line up with
+  // peer.send[k] without exchanging any index arrays.
+  struct PeerBucket {
+    std::vector<std::pair<int, ParticleList *>> recv; // (key, our ghost)
+    std::vector<std::pair<int, ParticleList *>> send; // (key, our real cell)
+  };
+  std::map<int, PeerBucket> peers;
+  std::vector<std::pair<int, LocalComm>> local; // (key, self-ghost copy)
+
+  auto const this_rank = m_comm.rank();
+  auto const one = Utils::Vector3i{1, 1, 1};
+
+  // Enumerate every ghost cell exactly once (any ghost-grid coordinate with a
+  // component in the halo, i.e. == 0 or == cell_grid+1). This guarantees each
+  // ghost is a recv/dst target exactly once, regardless of how small the node
+  // grid is (dims of 1 or 2 collapse several stencil directions onto the same
+  // peer, so a local-cell x offset enumeration would double-count).
+  //
+  // For each ghost we record a *matched pair*:
+  //   * recv: this ghost, keyed by the global index of the real cell (on the
+  //     peer) it mirrors -- so it lines up with the peer's send of that cell.
+  //   * send: our own boundary real cell that the peer mirrors as its ghost in
+  //     the opposite direction, keyed by that real cell's own global index --
+  //     so it lines up with the peer's recv. The recv<->send pairing is a
+  //     bijection, which keeps send.size() == recv.size() per peer.
+  for (int gz = 0; gz < ghost_cell_grid[2]; ++gz) {
+    for (int gy = 0; gy < ghost_cell_grid[1]; ++gy) {
+      for (int gx = 0; gx < ghost_cell_grid[0]; ++gx) {
+        Utils::Vector3i const nc{gx, gy, gz};
+        // Direction sign of the halo crossing (0 if interior in a dim).
+        Utils::Vector3i side{};
+        bool is_ghost = false;
+        for (auto d = 0u; d < 3u; ++d) {
+          if (nc[d] == 0) {
+            side[d] = -1;
+            is_ghost = true;
+          } else if (nc[d] == cell_grid[d] + 1) {
+            side[d] = +1;
+            is_ghost = true;
+          }
+        }
+        if (not is_ghost)
+          continue; // interior (local) cell
+
+        // Global cell mirrored by this ghost and its owning peer.
+        auto const ghost_global = global_origin + (nc - one);
+        auto const peer = owner_of(ghost_global);
+        auto const recv_key = global_key(ghost_global);
+
+        if (peer == this_rank) {
+          // Periodic self-ghost (a node-grid dim equals 1): copy the matching
+          // local cell straight into the ghost (replaces GHOST_LOCL).
+          auto const src_coord = ((ghost_global + global_size) % global_size) -
+                                 global_origin + one;
+          local.emplace_back(recv_key,
+                             LocalComm{list_at(src_coord), list_at(nc), {}});
+          continue;
+        }
+
+        peers[peer].recv.emplace_back(recv_key, list_at(nc));
+
+        // Dual send cell: our boundary real cell mirrored by the peer's ghost
+        // in the opposite direction. Snap crossing dims to the near boundary,
+        // keep tangential dims aligned with the ghost.
+        auto mc = nc;
+        for (auto d = 0u; d < 3u; ++d) {
+          if (side[d] == -1)
+            mc[d] = 1;
+          else if (side[d] == +1)
+            mc[d] = cell_grid[d];
+        }
+        auto const send_global = global_origin + (mc - one);
+        peers[peer].send.emplace_back(global_key(send_global), list_at(mc));
+      }
+    }
+  }
+
+  // Emit one NeighborComm per peer, with send/recv sorted by their shared key.
+  auto const by_key = [](auto const &a, auto const &b) {
+    return a.first < b.first;
+  };
+  for (auto &[peer, bucket] : peers) {
+    std::sort(bucket.recv.begin(), bucket.recv.end(), by_key);
+    std::sort(bucket.send.begin(), bucket.send.end(), by_key);
+    NeighborComm nc;
+    nc.peer = peer;
+    nc.recv.reserve(bucket.recv.size());
+    for (auto const &[key, cell] : bucket.recv)
+      nc.recv.push_back(cell);
+    nc.send.reserve(bucket.send.size());
+    for (auto const &[key, cell] : bucket.send)
+      nc.send.push_back(SendRegion{cell, {}});
+    plan.neighbors.push_back(std::move(nc));
+  }
+
+  // Sort the self-copies deterministically too (not required, but keeps the
+  // plan reproducible run to run).
+  std::sort(local.begin(), local.end(),
+            [](auto const &a, auto const &b) { return a.first < b.first; });
+  plan.local.reserve(local.size());
+  for (auto &[key, lc] : local)
+    plan.local.push_back(lc);
+
+#ifdef ESPRESSO_ADDITIONAL_CHECKS
+  {
+    // Coverage: every ghost cell must be the recv/dst target of exactly one
+    // entry, peers must be unique, and send/recv lists must be equal length.
+    std::map<ParticleList const *, unsigned> filled;
+    std::set<int> seen_peers;
+    for (auto const &nc : plan.neighbors) {
+      assert(seen_peers.insert(nc.peer).second && "peer appears twice");
+      assert(nc.peer != this_rank && "self peer in neighbors");
+      assert(nc.send.size() == nc.recv.size() && "send/recv length mismatch");
+      for (auto const *c : nc.recv)
+        filled[c] += 1u;
+    }
+    for (auto const &lc : plan.local)
+      filled[lc.dst] += 1u;
+    for (auto const *g : m_ghost_cells) {
+      assert(filled[&g->particles()] == 1u && "ghost cell not filled once");
+    }
+    assert(filled.size() == m_ghost_cells.size() &&
+           "recv/dst set does not match ghost-cell set");
+  }
+#endif
+
+  return plan;
+}
+
 GhostCommunicator RegularDecomposition::prepare_comm() {
   // When running on a single MPI rank, the ghost cells are not needed,
   // as the corresponding physical cell is available on the same MPI rank.
@@ -726,6 +910,10 @@ RegularDecomposition::RegularDecomposition(
   /* create communicators */
   m_exchange_ghosts_comm = prepare_comm();
   m_collect_ghost_force_comm = prepare_comm();
+
+  /* build the topology-agnostic direct-neighbor halo plan (the legacy
+   * communicators above are still what the façade uses for now) */
+  m_halo_plan = make_halo_plan();
 
   /* collect forces has to be done in reverted order! */
   revert_comm_order(m_collect_ghost_force_comm);

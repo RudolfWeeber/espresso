@@ -30,6 +30,7 @@
 #include "Particle.hpp"
 #include "ParticleList.hpp"
 #include "ghosts.hpp"
+#include "ghosts/HaloPlan.hpp"
 
 #include <utils/Vector.hpp>
 
@@ -87,6 +88,8 @@ struct RegularDecomposition : public ParticleDecomposition {
   std::vector<Cell *> m_ghost_cells;
   GhostCommunicator m_exchange_ghosts_comm;
   GhostCommunicator m_collect_ghost_force_comm;
+  /** Topology-agnostic direct-neighbor halo plan (see @ref make_halo_plan). */
+  GhostComm::HaloPlan m_halo_plan;
 
 public:
   RegularDecomposition(boost::mpi::communicator comm, double range,
@@ -99,6 +102,8 @@ public:
   GhostCommunicator const &collect_ghost_force_comm() const override {
     return m_collect_ghost_force_comm;
   }
+
+  GhostComm::HaloPlan const *halo_plan() const override { return &m_halo_plan; }
 
   std::span<Cell *const> local_cells() const override { return m_local_cells; }
   std::span<Cell *const> ghost_cells() const override { return m_ghost_cells; }
@@ -230,6 +235,14 @@ private:
    *  GhostCommunicator).
    */
   GhostCommunicator prepare_comm();
+
+  /** @brief Build a direct-neighbor @ref GhostComm::HaloPlan.
+   *
+   *  Produces the same ghost data as @ref prepare_comm(), but every one of
+   *  the up-to-26 stencil neighbors is addressed as an explicit peer (no
+   *  axis-by-axis relay). The result is cached in @ref m_halo_plan.
+   */
+  GhostComm::HaloPlan make_halo_plan();
 
   /** Maximal number of cells per node. In order to avoid memory
    *  problems due to the cell grid, one has to specify the maximal

@@ -23,6 +23,7 @@
 
 #include "BoxGeometry.hpp"
 #include "ghosts.hpp"
+#include "ghosts/HaloPlan.hpp"
 
 #include <utils/Vector.hpp>
 
@@ -81,6 +82,16 @@ public:
    * @brief Communicator for force reduction.
    */
   virtual GhostCommunicator const &collect_ghost_force_comm() const = 0;
+
+  /**
+   * @brief Topology-agnostic halo-exchange plan.
+   *
+   * Returns a @ref GhostComm::HaloPlan describing the same ghost data as
+   * @ref exchange_ghosts_comm(), but routed directly to each peer. A null
+   * return value means the decomposition has not been migrated to the
+   * plan-based engine yet (the legacy @ref GhostCommunicator must be used).
+   */
+  virtual GhostComm::HaloPlan const *halo_plan() const { return nullptr; }
 
   /**
    * @brief Get pointer to local cells.
