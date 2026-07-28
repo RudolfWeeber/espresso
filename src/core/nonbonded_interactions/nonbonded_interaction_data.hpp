@@ -311,7 +311,7 @@ DEVICE_QUALIFIER constexpr unsigned pair_potential_bit(PairPotential p) {
 /** @brief Parameters for non-bonded interactions. */
 struct IA_parameters {
   /**
-   * @ref Maximal cutoff for this pair of particle types.
+   * @brief Maximal cutoff for this pair of particle types.
    * This contains contributions from the short-ranged interactions, plus any
    * cutoffs from global interactions like electrostatics.
    */
