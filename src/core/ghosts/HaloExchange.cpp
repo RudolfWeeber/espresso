@@ -228,12 +228,14 @@ void run_collective(HaloPlan const &plan, BoxGeometry const &box,
 } // namespace
 
 GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
-                                  unsigned data_parts, ExchangeOp op) {
+                                  unsigned data_parts, ExchangeOp op,
+                                  ExchangeBuffers &bufs) {
   GhostExchange st;
   st.op = op;
   st.data_parts = data_parts;
   st.box = &box;
   st.plan = &plan;
+  st.bufs = &bufs;
   if (data_parts == GHOSTTRANS_NONE)
     return st;
 
@@ -252,10 +254,16 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
 
   auto const &comm = plan.comm;
   auto const n = plan.neighbors.size();
-  st.send.resize(n);
-  st.recv.resize(n);
-  st.send_cells.resize(n);
-  st.recv_cells.resize(n);
+
+  // Resize the pool to the current neighbor count.  Existing entries retain
+  // their vector capacity so that, after the first call (warm-up), CommBuf
+  // ::resize on a same-sized or smaller payload is a no-op on the allocator.
+  bufs.send.resize(n);
+  bufs.recv.resize(n);
+  bufs.send_cells.resize(n);
+  bufs.recv_cells.resize(n);
+  // Clear and reuse the request vector (capacity retained).
+  bufs.requests.clear();
 
   bool const push = op.direction == Direction::Push;
   bool const bonds = (data_parts & GHOSTTRANS_BONDS) != 0u;
@@ -268,11 +276,11 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
   for (std::size_t i = 0; i < n; ++i) {
     auto const &nc = plan.neighbors[i];
     if (push) {
-      st.send_cells[i] = region_cells(nc.send);
-      st.recv_cells[i] = nc.recv;
+      bufs.send_cells[i] = region_cells(nc.send);
+      bufs.recv_cells[i] = nc.recv;
     } else {
-      st.send_cells[i] = nc.recv;
-      st.recv_cells[i] = region_cells(nc.send);
+      bufs.send_cells[i] = nc.recv;
+      bufs.recv_cells[i] = region_cells(nc.send);
     }
   }
 
@@ -284,10 +292,11 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
   for (std::size_t i = 0; i < n; ++i) {
     auto const &nc = plan.neighbors[i];
     if (push) {
-      pack_regions(st.send[i], nc.send, box, data_parts);
+      pack_regions(bufs.send[i], nc.send, box, data_parts);
     } else {
       // Reduce: pack plain ghost cells, no shift.
-      pack_cells(st.send[i], as_span(st.send_cells[i]), {}, box, data_parts);
+      pack_cells(bufs.send[i], as_span(bufs.send_cells[i]), {}, box,
+                 data_parts);
     }
   }
 #ifdef ESPRESSO_CALIPER
@@ -304,15 +313,15 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
 #endif
   for (std::size_t i = 0; i < n; ++i) {
     auto const &nc = plan.neighbors[i];
-    st.recv[i].resize(
-        calc_transmit_size(as_span(st.recv_cells[i]), box, data_parts));
-    st.requests.push_back(comm.irecv(nc.peer, tag, st.recv[i].data(),
-                                     static_cast<int>(st.recv[i].size())));
+    bufs.recv[i].resize(
+        calc_transmit_size(as_span(bufs.recv_cells[i]), box, data_parts));
+    bufs.requests.push_back(comm.irecv(nc.peer, tag, bufs.recv[i].data(),
+                                       static_cast<int>(bufs.recv[i].size())));
   }
   for (std::size_t i = 0; i < n; ++i) {
     auto const &nc = plan.neighbors[i];
-    st.requests.push_back(comm.isend(nc.peer, tag, st.send[i].data(),
-                                     static_cast<int>(st.send[i].size())));
+    bufs.requests.push_back(comm.isend(nc.peer, tag, bufs.send[i].data(),
+                                       static_cast<int>(bufs.send[i].size())));
   }
 
   // BONDS (cold, resort-only path): a second per-neighbor message for the bond
@@ -322,11 +331,13 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
   if (bonds) {
     for (std::size_t i = 0; i < n; ++i) {
       auto const &nc = plan.neighbors[i];
-      st.requests.push_back(comm.irecv(nc.peer, TAG_BONDS, st.recv[i].bonds()));
+      bufs.requests.push_back(
+          comm.irecv(nc.peer, TAG_BONDS, bufs.recv[i].bonds()));
     }
     for (std::size_t i = 0; i < n; ++i) {
       auto const &nc = plan.neighbors[i];
-      st.requests.push_back(comm.isend(nc.peer, TAG_BONDS, st.send[i].bonds()));
+      bufs.requests.push_back(
+          comm.isend(nc.peer, TAG_BONDS, bufs.send[i].bonds()));
     }
   }
 #ifdef ESPRESSO_CALIPER
@@ -336,9 +347,24 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
   return st;
 }
 
+GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
+                                  unsigned data_parts, ExchangeOp op) {
+  // Convenience overload for callers that do not hold a persistent
+  // ExchangeBuffers (unit tests, cold resort paths).  Allocate a pool on the
+  // heap; halo_exchange_finish will delete it (owns_bufs == true).
+  // This path retains the same per-call allocation behaviour as before the
+  // buffer-reuse change; use the pool overload on hot paths.
+  auto *pool = new ExchangeBuffers{};
+  auto st = halo_exchange_start(plan, box, data_parts, op, *pool);
+  st.owns_bufs = true;
+  return st;
+}
+
 void halo_exchange_finish(GhostExchange &st) {
   if (st.data_parts == GHOSTTRANS_NONE)
     return;
+
+  auto &bufs = *st.bufs;
 
   // Same-rank copies can run while messages are in flight.
   for (auto const &lc : st.plan->local)
@@ -350,7 +376,7 @@ void halo_exchange_finish(GhostExchange &st) {
 #ifdef ESPRESSO_CALIPER
   CALI_MARK_BEGIN("ghost/wait");
 #endif
-  boost::mpi::wait_all(st.requests.begin(), st.requests.end());
+  boost::mpi::wait_all(bufs.requests.begin(), bufs.requests.end());
 #ifdef ESPRESSO_CALIPER
   CALI_MARK_END("ghost/wait");
 #endif
@@ -361,26 +387,41 @@ void halo_exchange_finish(GhostExchange &st) {
 #endif
   bool const add = st.op.combine == Combine::Add;
   for (std::size_t i = 0; i < st.plan->neighbors.size(); ++i) {
-    auto dst = as_span(st.recv_cells[i]);
+    auto dst = as_span(bufs.recv_cells[i]);
     if (add && st.data_parts == GHOSTTRANS_FORCE) {
-      add_forces(st.recv[i], dst);
+      add_forces(bufs.recv[i], dst);
     }
 #ifdef ESPRESSO_BOND_CONSTRAINT
     else if (add && st.data_parts == GHOSTTRANS_RATTLE) {
-      add_rattle(st.recv[i], dst);
+      add_rattle(bufs.recv[i], dst);
     }
 #endif
     else {
-      unpack_cells(st.recv[i], dst, *st.box, st.data_parts);
+      unpack_cells(bufs.recv[i], dst, *st.box, st.data_parts);
     }
   }
 #ifdef ESPRESSO_CALIPER
   CALI_MARK_END("ghost/unpack");
 #endif
+
+  // Release the heap-allocated pool when this handle owns it (no-pool overload
+  // of halo_exchange_start).  The pool is no longer needed after finish.
+  if (st.owns_bufs) {
+    delete st.bufs;
+    st.bufs = nullptr;
+  }
+}
+
+void halo_exchange(HaloPlan const &plan, BoxGeometry const &box,
+                   unsigned data_parts, ExchangeOp op, ExchangeBuffers &bufs) {
+  auto st = halo_exchange_start(plan, box, data_parts, op, bufs);
+  halo_exchange_finish(st);
 }
 
 void halo_exchange(HaloPlan const &plan, BoxGeometry const &box,
                    unsigned data_parts, ExchangeOp op) {
+  // Convenience overload: uses the no-pool start, which allocates a temporary
+  // ExchangeBuffers on the heap and frees it in finish.
   auto st = halo_exchange_start(plan, box, data_parts, op);
   halo_exchange_finish(st);
 }

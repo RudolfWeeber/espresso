@@ -47,11 +47,50 @@
 namespace GhostComm {
 
 /**
+ * @brief Persistent per-neighbor buffer pool for halo exchanges.
+ *
+ * Owns the heap-allocated send/recv buffers, MPI-request slots, and
+ * cell-pointer scratch arrays for one set of neighbor communications.
+ * Holding this object across multiple calls to @ref halo_exchange allows
+ * the underlying @c std::vector storage to be reused via @c resize —
+ * after the first exchange (warm-up) the vectors retain capacity and
+ * subsequent calls incur no heap allocations on the hot path.
+ *
+ * Typical ownership: held as a member of the object that drives ghost
+ * communication (e.g. @c CellStructure::m_ghost_buffers) and passed to
+ * @ref halo_exchange / @ref halo_exchange_start as a mutable ref.
+ *
+ * Thread-safety: a single instance must not be used from concurrent threads.
+ * The sequential ghost-exchange loop (each exchange completes via
+ * @ref halo_exchange_finish before the next starts) is therefore safe.
+ */
+struct ExchangeBuffers {
+  /** Per-neighbor packed send buffers (index-aligned with plan->neighbors). */
+  std::vector<CommBuf> send;
+  /** Per-neighbor recv buffers (index-aligned with plan->neighbors). */
+  std::vector<CommBuf> recv;
+  /** Outstanding non-blocking send/recv requests (cleared before each use). */
+  std::vector<boost::mpi::request> requests;
+  /**
+   * Scratch cell-pointer arrays for the packing routines.  For the Reduce
+   * direction send/recv roles swap; we need the plain @c ParticleList* from
+   * the @c SendRegion list.  These must outlive the pack/unpack calls.
+   */
+  std::vector<std::vector<ParticleList *>> send_cells;
+  std::vector<std::vector<ParticleList *>> recv_cells;
+};
+
+/**
  * @brief Opaque handle for one in-flight halo exchange.
  *
- * Owns the per-neighbor send/recv buffers and the outstanding MPI requests, so
- * that N neighbor messages can be in flight simultaneously (no function-static
- * buffers). Created by @ref halo_exchange_start and consumed exactly once by
+ * Records the per-call metadata (op, data parts, geometry, plan) and holds a
+ * pointer to the @ref ExchangeBuffers that back the in-flight messages.  When
+ * a persistent @ref ExchangeBuffers is supplied by the caller (via the pool
+ * overload), @c owns_bufs is @c false and the buffers outlive the handle.
+ * When the no-pool convenience overload is used, @c owns_bufs is @c true and
+ * @ref halo_exchange_finish frees the heap-allocated pool on completion.
+ *
+ * Created by @ref halo_exchange_start and consumed exactly once by
  * @ref halo_exchange_finish.
  */
 struct GhostExchange {
@@ -59,32 +98,27 @@ struct GhostExchange {
   unsigned data_parts = 0u;
   BoxGeometry const *box = nullptr;
   HaloPlan const *plan = nullptr;
-
-  /** Per-neighbor packed send buffers (index-aligned with plan->neighbors). */
-  std::vector<CommBuf> send;
-  /** Per-neighbor recv buffers (index-aligned with plan->neighbors). */
-  std::vector<CommBuf> recv;
-  /** Outstanding non-blocking send/recv requests. */
-  std::vector<boost::mpi::request> requests;
-
+  /** Pointer to the buffer pool backing the in-flight messages. */
+  ExchangeBuffers *bufs = nullptr;
   /**
-   * Scratch storage backing the @c std::span views handed to the packing
-   * routines. For the Reduce direction the send/recv roles swap, so we need
-   * the plain cell pointers extracted from the @ref SendRegion list; these
-   * vectors must outlive the pack/unpack calls, hence they live on the handle.
+   * True when @c bufs was heap-allocated by the no-pool overload of
+   * @ref halo_exchange_start; @ref halo_exchange_finish deletes it.
    */
-  std::vector<std::vector<ParticleList *>> send_cells;
-  std::vector<std::vector<ParticleList *>> recv_cells;
+  bool owns_bufs = false;
 };
 
 /**
- * @brief Begin a halo exchange: post all receives, then pack and post all
- *        sends. Returns immediately with an in-flight @ref GhostExchange.
+ * @brief Begin a halo exchange using a caller-owned buffer pool.
+ *
+ * The buffers in @p bufs are resized to the current neighbor count (retaining
+ * capacity) so that, after the first call (warm-up), no heap allocation
+ * occurs on the POSITION / FORCE hot path.
  *
  * @param plan        Communication plan (peers, regions, local copies).
  * @param box         Box geometry for position folding.
  * @param data_parts  Bitmask of GHOSTTRANS_* flags to transfer.
  * @param op          Direction (Push/Reduce) and combine mode (Overwrite/Add).
+ * @param bufs        Persistent buffer pool (must outlive the returned handle).
  *
  * @pre Each peer rank appears at most once in @p plan.neighbors. Multiple
  *      send/receive regions to the same peer **must** be folded into that
@@ -97,6 +131,16 @@ struct GhostExchange {
  *      @c ESPRESSO_ADDITIONAL_CHECKS is defined.
  */
 GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
+                                  unsigned data_parts, ExchangeOp op,
+                                  ExchangeBuffers &bufs);
+
+/**
+ * @brief Convenience overload that allocates a temporary @ref ExchangeBuffers.
+ *
+ * Use this form when buffer reuse across calls is not needed (e.g. unit tests,
+ * cold resort paths).  Equivalent to the original single-call allocation.
+ */
+GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
                                   unsigned data_parts, ExchangeOp op);
 
 /**
@@ -106,7 +150,15 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
 void halo_exchange_finish(GhostExchange &state);
 
 /**
- * @brief Blocking convenience wrapper: start + finish.
+ * @brief Blocking wrapper using a caller-owned buffer pool (no per-call alloc
+ *        after warm-up).
+ */
+void halo_exchange(HaloPlan const &plan, BoxGeometry const &box,
+                   unsigned data_parts, ExchangeOp op, ExchangeBuffers &bufs);
+
+/**
+ * @brief Blocking convenience wrapper: start + finish (allocates a temporary
+ *        @ref ExchangeBuffers; use the pool overload on hot paths).
  */
 void halo_exchange(HaloPlan const &plan, BoxGeometry const &box,
                    unsigned data_parts, ExchangeOp op);

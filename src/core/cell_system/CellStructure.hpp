@@ -35,6 +35,7 @@
 #include "config/config.hpp"
 #include "custom_verlet_list.hpp"
 #include "ghosts.hpp"
+#include "ghosts/HaloExchange.hpp"
 #include "system/Leaf.hpp"
 
 #include <utils/Vector.hpp>
@@ -207,6 +208,18 @@ private:
 #endif
   std::unique_ptr<LocalBondState> m_bond_state;
   std::unique_ptr<ListType> m_verlet_list_cabana;
+  /**
+   * @brief Persistent per-neighbor buffer pool for ghost exchanges.
+   *
+   * Reused across calls to @ref ghosts_count / @ref ghosts_update /
+   * @ref ghosts_reduce_forces so that, after the first (warm-up) exchange,
+   * the underlying @c std::vector storage is retained and no per-step heap
+   * allocation occurs on the hot ghost-communication path.
+   *
+   * Mutable because the ghost methods are logically const with respect to
+   * particle data but mutate this scratch storage.
+   */
+  mutable GhostComm::ExchangeBuffers m_ghost_buffers;
   /** particle properties using individual Kokkos Views */
   std::unique_ptr<AoSoA_pack> m_aosoa;
   /** The local id-to-index for aosoa data */

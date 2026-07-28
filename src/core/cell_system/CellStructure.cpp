@@ -483,7 +483,8 @@ void CellStructure::ghosts_count() {
 #endif
   GhostComm::halo_exchange(
       *decomposition().halo_plan(), *get_system().box_geo, GHOSTTRANS_PARTNUM,
-      {GhostComm::Direction::Push, GhostComm::Combine::Overwrite});
+      {GhostComm::Direction::Push, GhostComm::Combine::Overwrite},
+      m_ghost_buffers);
 }
 void CellStructure::ghosts_update(unsigned data_parts) {
 #ifdef ESPRESSO_CALIPER
@@ -492,7 +493,8 @@ void CellStructure::ghosts_update(unsigned data_parts) {
   auto const parts = map_data_parts(data_parts);
   GhostComm::halo_exchange(
       *decomposition().halo_plan(), *get_system().box_geo, parts,
-      {GhostComm::Direction::Push, GhostComm::Combine::Overwrite});
+      {GhostComm::Direction::Push, GhostComm::Combine::Overwrite},
+      m_ghost_buffers);
 }
 void CellStructure::ghosts_reduce_forces() {
 #ifdef ESPRESSO_CALIPER
@@ -500,7 +502,7 @@ void CellStructure::ghosts_reduce_forces() {
 #endif
   GhostComm::halo_exchange(
       *decomposition().halo_plan(), *get_system().box_geo, GHOSTTRANS_FORCE,
-      {GhostComm::Direction::Reduce, GhostComm::Combine::Add});
+      {GhostComm::Direction::Reduce, GhostComm::Combine::Add}, m_ghost_buffers);
 }
 #ifdef ESPRESSO_BOND_CONSTRAINT
 void CellStructure::ghosts_reduce_rattle_correction() {
@@ -509,7 +511,7 @@ void CellStructure::ghosts_reduce_rattle_correction() {
 #endif
   GhostComm::halo_exchange(
       *decomposition().halo_plan(), *get_system().box_geo, GHOSTTRANS_RATTLE,
-      {GhostComm::Direction::Reduce, GhostComm::Combine::Add});
+      {GhostComm::Direction::Reduce, GhostComm::Combine::Add}, m_ghost_buffers);
 }
 #endif
 
