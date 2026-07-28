@@ -374,36 +374,157 @@ void halo_exchange_finish(GhostExchange &st) {
   if (st.plan->collective)
     run_collective(*st.plan, *st.box, st.data_parts, st.op);
 
-#ifdef ESPRESSO_CALIPER
-  CALI_MARK_BEGIN("ghost/wait");
-#endif
-  boost::mpi::wait_all(bufs.requests.begin(), bufs.requests.end());
-#ifdef ESPRESSO_CALIPER
-  CALI_MARK_END("ghost/wait");
-#endif
-
-  // Unpack / reduce into the destination cells resolved at start.
-#ifdef ESPRESSO_CALIPER
-  CALI_MARK_BEGIN("ghost/unpack");
-#endif
+  auto const n = st.plan->neighbors.size();
+  bool const bonds = (st.data_parts & GHOSTTRANS_BONDS) != 0u;
   bool const add = st.op.combine == Combine::Add;
-  for (std::size_t i = 0; i < st.plan->neighbors.size(); ++i) {
-    auto dst = as_span(bufs.recv_cells[i]);
-    if (add && st.data_parts == GHOSTTRANS_FORCE) {
-      add_forces(bufs.recv[i], dst);
-    }
-#ifdef ESPRESSO_BOND_CONSTRAINT
-    else if (add && st.data_parts == GHOSTTRANS_RATTLE) {
-      add_rattle(bufs.recv[i], dst);
-    }
+
+  // Request layout (set by halo_exchange_start):
+  //   [0..n)    = per-neighbor irecvs
+  //   [n..2n)   = per-neighbor isends
+  //   [2n..3n)  = bond irecvs   (only when bonds)
+  //   [3n..4n)  = bond isends   (only when bonds)
+
+  if (bonds) {
+    // Cold path (resort-only): bonds need *both* the flat and bond message from
+    // each neighbor before unpack_cells can run.  Keep existing wait_all-then-
+    // unpack-in-order semantics; pipelining is not safe here.
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_BEGIN("ghost/wait");
 #endif
-    else {
+    boost::mpi::wait_all(bufs.requests.begin(), bufs.requests.end());
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_END("ghost/wait");
+    CALI_MARK_BEGIN("ghost/unpack");
+#endif
+    for (std::size_t i = 0; i < n; ++i) {
+      auto dst = as_span(bufs.recv_cells[i]);
       unpack_cells(bufs.recv[i], dst, *st.box, st.data_parts);
     }
-  }
 #ifdef ESPRESSO_CALIPER
-  CALI_MARK_END("ghost/unpack");
+    CALI_MARK_END("ghost/unpack");
 #endif
+  } else if (add) {
+    // Add path (FORCE / RATTLE reduce): wait receives in *fixed neighbor order*
+    // so that floating-point addition into shared local cells is bitwise
+    // reproducible across runs.  Unpacking neighbor i overlaps delivery of
+    // i+1..n-1 (pipelining while preserving associativity).
+    //
+    // Caliper: outer ghost/wait and ghost/unpack markers always fire (even
+    // when n==0) so that label discovery works on single-rank runs.
+    // Per-neighbor inner BEGIN/END pairs interleave with the outer ones;
+    // repeated sequential begin/end accumulates — valid Caliper usage.
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_BEGIN("ghost/wait");
+#endif
+    for (std::size_t i = 0; i < n; ++i) {
+      bufs.requests[i].wait();
+#ifdef ESPRESSO_CALIPER
+      CALI_MARK_END("ghost/wait");
+      CALI_MARK_BEGIN("ghost/unpack");
+#endif
+      auto dst = as_span(bufs.recv_cells[i]);
+      if (st.data_parts == GHOSTTRANS_FORCE) {
+        add_forces(bufs.recv[i], dst);
+      }
+#ifdef ESPRESSO_BOND_CONSTRAINT
+      else {
+        // GHOSTTRANS_RATTLE (the only remaining Add-combine data part)
+        add_rattle(bufs.recv[i], dst);
+      }
+#endif
+#ifdef ESPRESSO_CALIPER
+      CALI_MARK_END("ghost/unpack");
+      CALI_MARK_BEGIN("ghost/wait");
+#endif
+    }
+    // Wait for sends [n..2n) so buffers are safe to reuse next step.
+    // The outer ghost/wait region (opened before the loop) is still open here
+    // on the n==0 path; on n>0 the loop re-opened it after the last unpack.
+    boost::mpi::wait_all(bufs.requests.begin() + static_cast<std::ptrdiff_t>(n),
+                         bufs.requests.begin() +
+                             static_cast<std::ptrdiff_t>(2 * n));
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_END("ghost/wait");
+    CALI_MARK_BEGIN("ghost/unpack");
+    CALI_MARK_END("ghost/unpack");
+#endif
+  } else {
+    // Overwrite path (position/property push): arrival order is safe because
+    // the validator guarantees each ghost cell is filled by exactly one
+    // message. Use wait_any to unpack each neighbor's buffer as soon as it
+    // arrives.
+    //
+    // Bookkeeping: maintain a slot→neighbor index map so we always know which
+    // recv buffer to unpack for the completed request slot.  Completed requests
+    // are swapped to the end of the active range and the map is updated in
+    // sync.
+    //
+    // Caliper: outer ghost/wait always fires (even n==0); the wait_any loop
+    // emits nested end/begin pairs; an outer ghost/unpack pair fires after the
+    // loop so the label appears on single-rank runs.
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_BEGIN("ghost/wait");
+#endif
+    std::vector<std::size_t> slot_to_neighbor(n);
+    for (std::size_t i = 0; i < n; ++i)
+      slot_to_neighbor[i] = i;
+
+    // active_end tracks how many recv requests are still pending.
+    std::size_t active_end = n;
+
+    while (active_end > 0) {
+      auto first = bufs.requests.begin();
+      auto last =
+          bufs.requests.begin() + static_cast<std::ptrdiff_t>(active_end);
+
+      auto [status, done_it] = boost::mpi::wait_any(first, last);
+      (void)status;
+#ifdef ESPRESSO_CALIPER
+      CALI_MARK_END("ghost/wait");
+      CALI_MARK_BEGIN("ghost/unpack");
+#endif
+
+      std::size_t const done_slot =
+          static_cast<std::size_t>(done_it - bufs.requests.begin());
+      std::size_t const neighbor_idx = slot_to_neighbor[done_slot];
+
+      {
+        auto dst = as_span(bufs.recv_cells[neighbor_idx]);
+        unpack_cells(bufs.recv[neighbor_idx], dst, *st.box, st.data_parts);
+      }
+
+      // Remove the completed slot from the active range by swapping it with
+      // the last active slot and shrinking the range.
+      --active_end;
+      if (done_slot != active_end) {
+        std::iter_swap(done_it, bufs.requests.begin() +
+                                    static_cast<std::ptrdiff_t>(active_end));
+        std::swap(slot_to_neighbor[done_slot], slot_to_neighbor[active_end]);
+      }
+#ifdef ESPRESSO_CALIPER
+      CALI_MARK_END("ghost/unpack");
+      if (active_end > 0)
+        CALI_MARK_BEGIN("ghost/wait");
+#endif
+    }
+
+    // Wait for sends [n..2n) so buffers are safe to reuse next step.
+    // Caliper: if n==0 the outer ghost/wait is still open; if n>0 the last
+    // loop iteration closed it (no re-open after final unpack).  Open a fresh
+    // region for the sends wait in both cases.
+#ifdef ESPRESSO_CALIPER
+    if (n > 0)
+      CALI_MARK_BEGIN("ghost/wait");
+#endif
+    boost::mpi::wait_all(bufs.requests.begin() + static_cast<std::ptrdiff_t>(n),
+                         bufs.requests.begin() +
+                             static_cast<std::ptrdiff_t>(2 * n));
+#ifdef ESPRESSO_CALIPER
+    CALI_MARK_END("ghost/wait");
+    CALI_MARK_BEGIN("ghost/unpack");
+    CALI_MARK_END("ghost/unpack");
+#endif
+  }
 
   // st.owned (if non-null) will free the heap-allocated pool automatically
   // when the GhostExchange goes out of scope after this call returns.
