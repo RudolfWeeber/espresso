@@ -183,8 +183,7 @@ def save_lb_state(system, args, ctx):
     })
     meta.update(benchmarks.topology_meta(system))
     arrays = {
-        "lb_velocity": np.copy(lbf[:, :, :].velocity),
-        "lb_last_applied_force": np.copy(lbf[:, :, :].last_applied_force),
+        "lb_velocity": np.copy(lbf[:, :, :].velocity)
     }
     if ctx["n_part"]:
         p = system.part.all()
@@ -211,7 +210,6 @@ def run_from_state(system, args):
     lbf = make_lb(system, meta)
     system.lb = lbf
     lbf[:, :, :].velocity = handle["lb_velocity"]
-    lbf[:, :, :].last_applied_force = handle["lb_last_applied_force"]
     if meta["has_particles"]:
         system.thermostat.set_lb(
             LB_fluid=lbf, gamma=meta["gamma"], seed=int(meta["seed"]))
