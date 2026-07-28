@@ -25,12 +25,20 @@ import numpy as np
 import argparse
 
 DEFAULT_PARTICLES_PER_CORE = 1000
-N_ITERATIONS = 30
-MIN_SKIN = 0.2
-MAX_SKIN = 1.6
 INITIAL_SKIN = 0.5
 ACCURACY = 1e-3
 DEFAULT_TUNE_LIMITS = [12, 160]
+
+# Simulation parameters. The importlib-based benchmark tests (in
+# testsuite/benchmarks) override these module-level globals to run a fast
+# smoke test. ``measurement_steps = None`` auto-computes the step count;
+# ``p3m_params = None`` tunes P3M, otherwise the given pre-tuned parameters
+# are used verbatim (skipping P3M tuning).
+measurement_steps = None
+n_iterations = 30
+min_skin = 0.2
+max_skin = 1.6
+p3m_params = None
 KT = 1.0
 GAMMA = 1.0
 SEED = 42
@@ -112,6 +120,16 @@ def p3m_tune_kwargs(args):
     return kwargs
 
 
+def make_p3m(args):
+    '''
+    Build the P3M solver. Use the pre-tuned ``p3m_params`` when provided
+    (skipping tuning, e.g. in the benchmark smoke tests), otherwise tune.
+    '''
+    if p3m_params is not None:
+        return espressomd.electrostatics.P3M(**p3m_params)
+    return espressomd.electrostatics.P3M(**p3m_tune_kwargs(args))
+
+
 def build_and_tune(system, args):
     assert args.prefactor > 0, "prefactor must be a positive number"
     assert args.volume_fraction > 0, "volume_fraction must be a positive number"
@@ -119,11 +137,13 @@ def build_and_tune(system, args):
         "volume_fraction exceeds the physical limit of sphere packing (~0.74)"
 
     n_part = benchmarks.resolve_n_part(system, args)
-    measurement_steps = int(np.round(
-        5e5 / n_part * system.cell_system.get_state()["n_nodes"], -1))
+    steps = measurement_steps
+    if steps is None:
+        steps = int(np.round(
+            5e5 / n_part * system.cell_system.get_state()["n_nodes"], -1))
     if not args.visualizer:
-        assert measurement_steps >= 50, \
-            f"{measurement_steps} steps per tick are too short"
+        assert steps >= 50, \
+            f"{steps} steps per tick are too short"
 
     lj_sig = (LJ_SIGMAS["cation"] + LJ_SIGMAS["anion"]) / 2
     box_l = (n_part * 4. / 3. * np.pi * (lj_sig / 2.)**3
@@ -143,32 +163,32 @@ def build_and_tune(system, args):
     system.integrator.set_vv()
     system.thermostat.set_langevin(kT=KT, gamma=GAMMA, seed=SEED)
 
-    p3m = espressomd.electrostatics.P3M(**p3m_tune_kwargs(args))
+    p3m = make_p3m(args)
     print("Quick equilibration")
     system.time_step /= 10.
     system.integrator.run(100)
     system.time_step *= 10.
-    system.integrator.run(min(3 * measurement_steps, 1000))
+    system.integrator.run(min(3 * steps, 1000))
     print("Tune skin: {:.3f}".format(benchmarks.tune_skin_unless_fixed(
-        system, args, MIN_SKIN, MAX_SKIN, tol=0.05, int_steps=100,
+        system, args, min_skin, max_skin, tol=0.05, int_steps=100,
         adjust_max_skin=True)))
     print("Equilibration")
-    system.integrator.run(min(3 * measurement_steps, 3000))
+    system.integrator.run(min(3 * steps, 3000))
     print("Tune p3m")
     system.electrostatics.solver = p3m
     print("Equilibration")
-    system.integrator.run(min(3 * measurement_steps, 3000))
+    system.integrator.run(min(3 * steps, 3000))
     print("Tune skin: {:.3f}".format(benchmarks.tune_skin_unless_fixed(
-        system, args, MIN_SKIN, MAX_SKIN, tol=0.05, int_steps=100,
+        system, args, min_skin, max_skin, tol=0.05, int_steps=100,
         adjust_max_skin=True)))
     print("Re-tune p3m")
-    p3m = espressomd.electrostatics.P3M(**p3m_tune_kwargs(args))
+    p3m = make_p3m(args)
     system.electrostatics.solver = p3m
     print("Tune skin: {:.3f}".format(benchmarks.tune_skin_unless_fixed(
-        system, args, MIN_SKIN, MAX_SKIN, tol=0.05, int_steps=100,
+        system, args, min_skin, max_skin, tol=0.05, int_steps=100,
         adjust_max_skin=True)))
 
-    return {"n_part": n_part, "measurement_steps": measurement_steps, "p3m": p3m}
+    return {"n_part": n_part, "measurement_steps": steps, "p3m": p3m}
 
 
 def save_p3m_state(system, args, ctx):
@@ -180,7 +200,7 @@ def save_p3m_state(system, args, ctx):
         "n_part": int(ctx["n_part"]),
         "time_step": float(system.time_step),
         "measurement_steps": int(ctx["measurement_steps"]),
-        "n_iterations": N_ITERATIONS,
+        "n_iterations": n_iterations,
         "volume_fraction": float(args.volume_fraction),
         "prefactor": float(args.prefactor),
         "accuracy": float(ACCURACY),
@@ -247,4 +267,4 @@ if args.state_file:
 if args.mode == "tune":
     sys.exit(0)
 
-time_and_report(system, args, ctx["measurement_steps"], N_ITERATIONS)
+time_and_report(system, args, ctx["measurement_steps"], n_iterations)

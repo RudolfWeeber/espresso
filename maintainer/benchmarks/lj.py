@@ -28,14 +28,20 @@ LJ_EPS = 1.0  # LJ epsilon
 LJ_SIG = 1.0  # particle diameter
 LJ_CUT = LJ_SIG * 2**(1. / 6.)  # cutoff distance
 DEFAULT_PARTICLES_PER_CORE = 1000
-N_ITERATIONS = 30
-MIN_SKIN = 0.2
-MAX_SKIN = 1.0
 INITIAL_SKIN = 0.4
 KT = 1.0
 GAMMA = 1.0
 SEED = 42
 HARMONIC_K = 2.0
+
+# Simulation parameters. The importlib-based benchmark tests (in
+# testsuite/benchmarks) override these module-level globals to run a fast
+# smoke test. ``measurement_steps = None`` means auto-compute from the
+# particle count.
+measurement_steps = None
+n_iterations = 30
+min_skin = 0.2
+max_skin = 1.0
 
 parser = argparse.ArgumentParser(description="Benchmark LJ simulations. "
                                  "Save the results to a CSV file.")
@@ -100,11 +106,13 @@ def build_and_tune(system, args):
         "volume_fraction too dense (>0.50) for a diatomic liquid"
 
     n_part = benchmarks.resolve_n_part(system, args)
-    measurement_steps = int(np.round(
-        5e6 / n_part * system.cell_system.get_state()["n_nodes"], -2))
+    steps = measurement_steps
+    if steps is None:
+        steps = int(np.round(
+            5e6 / n_part * system.cell_system.get_state()["n_nodes"], -2))
     if not args.visualizer:
-        assert measurement_steps >= 100, \
-            f"{measurement_steps} steps per tick are too short"
+        assert steps >= 100, \
+            f"{steps} steps per tick are too short"
 
     box_l = (n_part * 4. / 3. * np.pi * (LJ_SIG / 2.)**3
              / args.volume_fraction)**(1. / 3.)
@@ -135,13 +143,13 @@ def build_and_tune(system, args):
     system.time_step /= 10.
     system.integrator.run(100)
     system.time_step *= 10.
-    system.integrator.run(min(5 * measurement_steps, 60000))
+    system.integrator.run(min(5 * steps, 60000))
     print("Tune skin: {:.3f}".format(benchmarks.tune_skin_unless_fixed(
-        system, args, MIN_SKIN, MAX_SKIN, tol=0.025, int_steps=200)))
+        system, args, min_skin, max_skin, tol=0.025, int_steps=200)))
     print("Equilibration")
-    system.integrator.run(min(10 * measurement_steps, 60000))
+    system.integrator.run(min(10 * steps, 60000))
 
-    return {"n_part": n_part, "measurement_steps": measurement_steps,
+    return {"n_part": n_part, "measurement_steps": steps,
             "bond_pairs": bond_pairs}
 
 
@@ -154,7 +162,7 @@ def save_lj_state(system, args, ctx):
         "n_part": int(ctx["n_part"]),
         "time_step": float(system.time_step),
         "measurement_steps": int(ctx["measurement_steps"]),
-        "n_iterations": N_ITERATIONS,
+        "n_iterations": n_iterations,
         "volume_fraction": float(args.volume_fraction),
         "bonds": bool(args.bonds),
         "retune_skin_after": 0 if resolved_retune is None else resolved_retune,
@@ -232,5 +240,5 @@ if args.state_file:
 if args.mode == "tune":
     sys.exit(0)
 
-time_and_report(system, args, ctx["measurement_steps"], N_ITERATIONS,
+time_and_report(system, args, ctx["measurement_steps"], n_iterations,
                 resolve_retune(args))

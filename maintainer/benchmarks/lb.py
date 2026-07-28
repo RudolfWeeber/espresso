@@ -31,13 +31,18 @@ LJ_EPS = 1.0
 LJ_SIG = 1.0
 LJ_CUT = LJ_SIG * 2**(1. / 6.)
 DEFAULT_PARTICLES_PER_CORE = 125
-N_ITERATIONS = 30
-MIN_SKIN = 0.2
-MAX_SKIN = 1.0
 INITIAL_SKIN = 0.5
 KT = 1.0
 GAMMA = 1.0
 SEED = 42
+
+# Simulation parameters. The importlib-based benchmark tests (in
+# testsuite/benchmarks) override these module-level globals to run a fast
+# smoke test. ``measurement_steps = None`` means auto-compute.
+measurement_steps = None
+n_iterations = 30
+min_skin = 0.2
+max_skin = 1.0
 
 parser = argparse.ArgumentParser(description="Benchmark LB simulations. "
                                  "Save the results to a CSV file.")
@@ -111,7 +116,7 @@ def build_and_tune(system, args):
         box_l = 3 * box_l if len(box_l) == 1 else box_l
         agrid = 1.
         lb_grid = list(box_l)
-        measurement_steps = 80
+        auto_steps = 80
         box_l = list(box_l)
     else:
         mpi_factor = min(2., float(np.amax(system.cell_system.node_grid)))
@@ -120,9 +125,11 @@ def build_and_tune(system, args):
         lb_grid = (n_part * args.lb_sites_per_particle)**(1. / 3.)
         lb_grid = int(mpi_factor * np.ceil(lb_grid / mpi_factor))
         agrid = box_l / lb_grid
-        measurement_steps = 40
+        auto_steps = 40
         lb_grid = 3 * [lb_grid]
         box_l = 3 * [box_l]
+
+    steps = measurement_steps if measurement_steps is not None else auto_steps
 
     if args.weak_scaling:
         box_l = list(np.array(box_l) * system.cell_system.node_grid)
@@ -143,11 +150,11 @@ def build_and_tune(system, args):
         system.integrator.set_vv()
         system.thermostat.set_langevin(kT=KT, gamma=GAMMA, seed=SEED)
         print("Tune skin: {:.3f}".format(benchmarks.tune_skin_unless_fixed(
-            system, args, MIN_SKIN, MAX_SKIN, tol=0.05, int_steps=100)))
+            system, args, min_skin, max_skin, tol=0.05, int_steps=100)))
         print("Equilibration")
         system.integrator.run(500)
         print("Tune skin: {:.3f}".format(benchmarks.tune_skin_unless_fixed(
-            system, args, MIN_SKIN, MAX_SKIN, tol=0.05, int_steps=100)))
+            system, args, min_skin, max_skin, tol=0.05, int_steps=100)))
         print("Equilibration")
         system.integrator.run(500)
         system.thermostat.turn_off()
@@ -164,7 +171,7 @@ def build_and_tune(system, args):
     if n_part:
         system.thermostat.set_lb(LB_fluid=lbf, gamma=1., seed=SEED)
 
-    return {"n_part": n_part, "measurement_steps": measurement_steps,
+    return {"n_part": n_part, "measurement_steps": steps,
             "lbf": lbf, "lb_meta": meta}
 
 
@@ -178,7 +185,7 @@ def save_lb_state(system, args, ctx):
         "has_particles": bool(ctx["n_part"]),
         "time_step": float(system.time_step),
         "measurement_steps": int(ctx["measurement_steps"]),
-        "n_iterations": N_ITERATIONS,
+        "n_iterations": n_iterations,
         "kT": KT, "gamma": GAMMA, "seed": SEED,
     })
     meta.update(benchmarks.topology_meta(system))
@@ -238,4 +245,4 @@ if args.state_file:
 if args.mode == "tune":
     sys.exit(0)
 
-time_and_report(system, args, ctx["measurement_steps"], N_ITERATIONS)
+time_and_report(system, args, ctx["measurement_steps"], n_iterations)
