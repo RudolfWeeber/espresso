@@ -42,6 +42,7 @@
 
 #include <boost/mpi/request.hpp>
 
+#include <memory>
 #include <vector>
 
 namespace GhostComm {
@@ -86,9 +87,11 @@ struct ExchangeBuffers {
  * Records the per-call metadata (op, data parts, geometry, plan) and holds a
  * pointer to the @ref ExchangeBuffers that back the in-flight messages.  When
  * a persistent @ref ExchangeBuffers is supplied by the caller (via the pool
- * overload), @c owns_bufs is @c false and the buffers outlive the handle.
- * When the no-pool convenience overload is used, @c owns_bufs is @c true and
- * @ref halo_exchange_finish frees the heap-allocated pool on completion.
+ * overload), @c owned is null and @c bufs points to the caller's pool (no
+ * ownership).  When the no-pool convenience overload is used, @c owned holds
+ * the heap-allocated pool and @c bufs == @c owned.get(); the pool is freed
+ * automatically when the handle is destroyed — on every exit path, including
+ * the @c GHOSTTRANS_NONE early return in @ref halo_exchange_finish.
  *
  * Created by @ref halo_exchange_start and consumed exactly once by
  * @ref halo_exchange_finish.
@@ -98,13 +101,14 @@ struct GhostExchange {
   unsigned data_parts = 0u;
   BoxGeometry const *box = nullptr;
   HaloPlan const *plan = nullptr;
-  /** Pointer to the buffer pool backing the in-flight messages. */
-  ExchangeBuffers *bufs = nullptr;
   /**
-   * True when @c bufs was heap-allocated by the no-pool overload of
-   * @ref halo_exchange_start; @ref halo_exchange_finish deletes it.
+   * Non-null only when the no-pool overload allocated the buffer pool.
+   * Destroyed (and the pool freed) when the @c GhostExchange goes out of
+   * scope, guaranteeing cleanup on every exit path.
    */
-  bool owns_bufs = false;
+  std::unique_ptr<ExchangeBuffers> owned;
+  /** Non-owning pointer to the active buffer pool (caller's or @c owned). */
+  ExchangeBuffers *bufs = nullptr;
 };
 
 /**

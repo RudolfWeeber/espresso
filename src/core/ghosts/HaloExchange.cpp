@@ -350,13 +350,14 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
 GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
                                   unsigned data_parts, ExchangeOp op) {
   // Convenience overload for callers that do not hold a persistent
-  // ExchangeBuffers (unit tests, cold resort paths).  Allocate a pool on the
-  // heap; halo_exchange_finish will delete it (owns_bufs == true).
-  // This path retains the same per-call allocation behaviour as before the
-  // buffer-reuse change; use the pool overload on hot paths.
-  auto *pool = new ExchangeBuffers{};
-  auto st = halo_exchange_start(plan, box, data_parts, op, *pool);
-  st.owns_bufs = true;
+  // ExchangeBuffers (unit tests, cold resort paths).  Allocate a pool via
+  // unique_ptr so it is freed automatically when the GhostExchange is
+  // destroyed — on every exit path, including the GHOSTTRANS_NONE early return
+  // in halo_exchange_finish.  Use the pool overload on hot paths.
+  auto st =
+      halo_exchange_start(plan, box, data_parts, op, *(new ExchangeBuffers{}));
+  // Transfer ownership: owned keeps the pool alive; bufs already points to it.
+  st.owned.reset(st.bufs);
   return st;
 }
 
@@ -404,12 +405,8 @@ void halo_exchange_finish(GhostExchange &st) {
   CALI_MARK_END("ghost/unpack");
 #endif
 
-  // Release the heap-allocated pool when this handle owns it (no-pool overload
-  // of halo_exchange_start).  The pool is no longer needed after finish.
-  if (st.owns_bufs) {
-    delete st.bufs;
-    st.bufs = nullptr;
-  }
+  // st.owned (if non-null) will free the heap-allocated pool automatically
+  // when the GhostExchange goes out of scope after this call returns.
 }
 
 void halo_exchange(HaloPlan const &plan, BoxGeometry const &box,
