@@ -36,36 +36,11 @@
 #include <utility>
 #include <vector>
 
-namespace detail {
-/** @brief Allocator that leaves trivially-constructible elements uninitialized
- *  on default construction, so a buffer that is about to be fully overwritten
- *  is not first zero-filled. Behaves like std::allocator otherwise.
+/**
+ * @brief Extract a 3D block from the halo field into a caller-provided buffer.
+ * @c out must hold at least @c product(stop - start) elements; the block is
+ * written in full, so its prior contents are irrelevant.
  */
-template <typename T, typename Base = std::allocator<T>>
-struct default_init_allocator : Base {
-  using traits = std::allocator_traits<Base>;
-  template <typename U> struct rebind {
-    using other =
-        default_init_allocator<U, typename traits::template rebind_alloc<U>>;
-  };
-  using Base::Base;
-  default_init_allocator() = default;
-  template <typename U>
-  default_init_allocator(default_init_allocator<U> const &) noexcept {}
-  template <typename U>
-  void construct(U *ptr) noexcept(std::is_nothrow_default_constructible_v<U>) {
-    ::new (static_cast<void *>(ptr)) U;
-  }
-  template <typename U, typename... Args> void construct(U *ptr, Args &&...a) {
-    traits::construct(static_cast<Base &>(*this), ptr,
-                      std::forward<Args>(a)...);
-  }
-};
-} // namespace detail
-
-// Extract a 3D block from the halo field into a caller-provided buffer.
-// @c out must hold at least @c product(stop - start) elements; the block is
-// written in full, so its prior contents are irrelevant.
 template <Utils::MemoryOrder memory_order,
           Utils::MemoryOrder output_memory_order, typename Container,
           typename OutValue>
@@ -108,23 +83,6 @@ void extract_block_into(OutValue *out, Container const &in_array,
           out[out_index] = in_array[in_index];
         });
   }
-}
-
-// Function to extract a 3D block from the halo field
-template <Utils::MemoryOrder memory_order,
-          Utils::MemoryOrder output_memory_order, typename Container>
-auto extract_block(Container const &in_array, Utils::Vector3i const &dimensions,
-                   Utils::Vector3i const &start, Utils::Vector3i const &stop) {
-  // Calculate the size of the block excluding halo regions
-  auto const size = static_cast<std::size_t>(Utils::product(stop - start));
-
-  // Output vector to hold the block. The block is written in full below, so
-  // skip the zero-initialization (no-init allocator).
-  using value_t = typename Container::value_type;
-  std::vector<value_t, detail::default_init_allocator<value_t>> out_array(size);
-  extract_block_into<memory_order, output_memory_order>(
-      out_array.data(), in_array, dimensions, start, stop);
-  return out_array;
 }
 
 /** @brief Pad a 3D matrix with zeros to restore halo regions, writing into a

@@ -115,10 +115,14 @@ HOST_ONLY_QUALIFIER void check_add_remove_halo() {
   }
 
   // Remove halo again
-  auto real_without_halo_new = extract_block<MemOrderFourier, MemOrderReal>(
-      real_with_halo, shape_with_halo, halo_left, shape_with_halo - halo_right);
-  auto cplx_without_halo_new = extract_block<MemOrderFourier, MemOrderReal>(
-      cplx_with_halo, shape_with_halo, halo_left, shape_with_halo - halo_right);
+  std::vector<double> real_without_halo_new(buf_size);
+  std::vector<double> cplx_without_halo_new(buf_size);
+  extract_block_into<MemOrderFourier, MemOrderReal>(
+      real_without_halo_new.data(), real_with_halo, shape_with_halo, halo_left,
+      shape_with_halo - halo_right);
+  extract_block_into<MemOrderFourier, MemOrderReal>(
+      cplx_without_halo_new.data(), cplx_with_halo, shape_with_halo, halo_left,
+      shape_with_halo - halo_right);
   for (std::size_t i = 0u; i < buf_size; ++i) {
     BOOST_CHECK_EQUAL(real_without_halo_new[i], real_without_halo_orig[i]);
     BOOST_CHECK_EQUAL(cplx_without_halo_new[i],
