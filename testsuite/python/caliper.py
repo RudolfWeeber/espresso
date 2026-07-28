@@ -31,11 +31,23 @@ integrate
   update_ghosts_and_resort_particle
     resort_particles
     ghosts_count
+      ghost/pack
+      ghost/post
+      ghost/wait
+      ghost/unpack
     ghosts_update
+      ghost/pack
+      ghost/post
+      ghost/wait
+      ghost/unpack
   update_cabana_state
   Initial Force Calculation
     update_ghosts_and_resort_particle
       ghosts_update
+        ghost/pack
+        ghost/post
+        ghost/wait
+        ghost/unpack
     calculate_forces
       copy_particles_to_GPU
       update_cabana_state
@@ -44,13 +56,25 @@ integrate
       cabana_short_range
       copy_forces_from_GPU
       ghosts_reduce_forces
+        ghost/pack
+        ghost/post
+        ghost/wait
+        ghost/unpack
   Integration loop
     integrator_step_1
     resort_particles_if_needed
     update_ghosts_and_resort_particle
       resort_particles
       ghosts_count
+        ghost/pack
+        ghost/post
+        ghost/wait
+        ghost/unpack
       ghosts_update
+        ghost/pack
+        ghost/post
+        ghost/wait
+        ghost/unpack
     calculate_forces
       copy_particles_to_GPU
       update_cabana_state
@@ -59,10 +83,18 @@ integrate
       cabana_short_range
       copy_forces_from_GPU
       ghosts_reduce_forces
+        ghost/pack
+        ghost/post
+        ghost/wait
+        ghost/unpack
     integrator_step_2
 calc_energies
   update_ghosts_and_resort_particle
     ghosts_update
+      ghost/pack
+      ghost/post
+      ghost/wait
+      ghost/unpack
   update_cabana_state
   cabana_short_range
 """
@@ -90,7 +122,7 @@ class Test(ut.TestCase):
         header = "Path\tMin time/rank\tAvg time/rank\tMax time/rank\tTime %"
         self.assertEqual(lines[0].split(), header.split(),
                          msg=f"Caliper summary should start with '{header}'")
-        labels = [line[:36].rstrip() for line in lines[1:]]
+        labels = [line[:38].rstrip() for line in lines[1:]]
         labels_ref = [x.rstrip() for x in EXPECTED_LABELS.strip().split("\n")
                       if x.rstrip() and ("GPU" not in x.upper() or has_cuda)]
         for l in labels_ref: assert l in labels, f"Label {l} not in profile"

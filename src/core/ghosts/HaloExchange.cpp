@@ -24,6 +24,10 @@
 
 #include "ghosts/HaloExchange.hpp"
 
+#ifdef ESPRESSO_CALIPER
+#include <caliper/cali.h>
+#endif
+
 #include "BoxGeometry.hpp"
 #include "ghosts.hpp"
 #include "ghosts/HaloPlan.hpp"
@@ -272,19 +276,11 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
     }
   }
 
-  // 1) Post ALL receives first (deadlock-free). Sizes are known a-priori from
-  //    the packed size of the cells we will receive into, except PARTNUM whose
-  //    ghost cells are not sized yet -- there we post a fixed-size recv and let
-  //    unpack_cells resize the cells (legacy bootstrap path).
-  for (std::size_t i = 0; i < n; ++i) {
-    auto const &nc = plan.neighbors[i];
-    st.recv[i].resize(
-        calc_transmit_size(as_span(st.recv_cells[i]), box, data_parts));
-    st.requests.push_back(comm.irecv(nc.peer, tag, st.recv[i].data(),
-                                     static_cast<int>(st.recv[i].size())));
-  }
-
-  // 2) Pack, then post ALL sends.
+  // 1) Pack all send buffers.  Done before posting receives so that sizes are
+  //    known; also isolates the serialisation work in the ghost/pack region.
+#ifdef ESPRESSO_CALIPER
+  CALI_MARK_BEGIN("ghost/pack");
+#endif
   for (std::size_t i = 0; i < n; ++i) {
     auto const &nc = plan.neighbors[i];
     if (push) {
@@ -293,6 +289,28 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
       // Reduce: pack plain ghost cells, no shift.
       pack_cells(st.send[i], as_span(st.send_cells[i]), {}, box, data_parts);
     }
+  }
+#ifdef ESPRESSO_CALIPER
+  CALI_MARK_END("ghost/pack");
+#endif
+
+  // 2) Post ALL receives first (deadlock-free), then ALL sends.  Sizes are
+  //    known a-priori from the packed size of the cells we will receive into,
+  //    except PARTNUM whose ghost cells are not sized yet -- there we post a
+  //    fixed-size recv and let unpack_cells resize the cells (legacy bootstrap
+  //    path).
+#ifdef ESPRESSO_CALIPER
+  CALI_MARK_BEGIN("ghost/post");
+#endif
+  for (std::size_t i = 0; i < n; ++i) {
+    auto const &nc = plan.neighbors[i];
+    st.recv[i].resize(
+        calc_transmit_size(as_span(st.recv_cells[i]), box, data_parts));
+    st.requests.push_back(comm.irecv(nc.peer, tag, st.recv[i].data(),
+                                     static_cast<int>(st.recv[i].size())));
+  }
+  for (std::size_t i = 0; i < n; ++i) {
+    auto const &nc = plan.neighbors[i];
     st.requests.push_back(comm.isend(nc.peer, tag, st.send[i].data(),
                                      static_cast<int>(st.send[i].size())));
   }
@@ -311,6 +329,9 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
       st.requests.push_back(comm.isend(nc.peer, TAG_BONDS, st.send[i].bonds()));
     }
   }
+#ifdef ESPRESSO_CALIPER
+  CALI_MARK_END("ghost/post");
+#endif
 
   return st;
 }
@@ -326,9 +347,18 @@ void halo_exchange_finish(GhostExchange &st) {
   if (st.plan->collective)
     run_collective(*st.plan, *st.box, st.data_parts, st.op);
 
+#ifdef ESPRESSO_CALIPER
+  CALI_MARK_BEGIN("ghost/wait");
+#endif
   boost::mpi::wait_all(st.requests.begin(), st.requests.end());
+#ifdef ESPRESSO_CALIPER
+  CALI_MARK_END("ghost/wait");
+#endif
 
   // Unpack / reduce into the destination cells resolved at start.
+#ifdef ESPRESSO_CALIPER
+  CALI_MARK_BEGIN("ghost/unpack");
+#endif
   bool const add = st.op.combine == Combine::Add;
   for (std::size_t i = 0; i < st.plan->neighbors.size(); ++i) {
     auto dst = as_span(st.recv_cells[i]);
@@ -344,6 +374,9 @@ void halo_exchange_finish(GhostExchange &st) {
       unpack_cells(st.recv[i], dst, *st.box, st.data_parts);
     }
   }
+#ifdef ESPRESSO_CALIPER
+  CALI_MARK_END("ghost/unpack");
+#endif
 }
 
 void halo_exchange(HaloPlan const &plan, BoxGeometry const &box,
