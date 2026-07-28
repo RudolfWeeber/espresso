@@ -262,6 +262,7 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
   bufs.recv.resize(n);
   bufs.send_cells.resize(n);
   bufs.recv_cells.resize(n);
+  bufs.slot_to_neighbor.resize(n);
   // Clear and reuse the request vector (capacity retained).
   bufs.requests.clear();
 
@@ -428,7 +429,7 @@ void halo_exchange_finish(GhostExchange &st) {
       }
 #ifdef ESPRESSO_BOND_CONSTRAINT
       else {
-        // GHOSTTRANS_RATTLE (the only remaining Add-combine data part)
+        assert(st.data_parts == GHOSTTRANS_RATTLE);
         add_rattle(bufs.recv[i], dst);
       }
 #endif
@@ -465,9 +466,10 @@ void halo_exchange_finish(GhostExchange &st) {
 #ifdef ESPRESSO_CALIPER
     CALI_MARK_BEGIN("ghost/wait");
 #endif
-    std::vector<std::size_t> slot_to_neighbor(n);
+    // Initialize the scratch map to the identity: slot i → neighbor i.
+    // The vector was pre-sized in halo_exchange_start (no allocation here).
     for (std::size_t i = 0; i < n; ++i)
-      slot_to_neighbor[i] = i;
+      bufs.slot_to_neighbor[i] = i;
 
     // active_end tracks how many recv requests are still pending.
     std::size_t active_end = n;
@@ -486,7 +488,7 @@ void halo_exchange_finish(GhostExchange &st) {
 
       std::size_t const done_slot =
           static_cast<std::size_t>(done_it - bufs.requests.begin());
-      std::size_t const neighbor_idx = slot_to_neighbor[done_slot];
+      std::size_t const neighbor_idx = bufs.slot_to_neighbor[done_slot];
 
       {
         auto dst = as_span(bufs.recv_cells[neighbor_idx]);
@@ -499,7 +501,8 @@ void halo_exchange_finish(GhostExchange &st) {
       if (done_slot != active_end) {
         std::iter_swap(done_it, bufs.requests.begin() +
                                     static_cast<std::ptrdiff_t>(active_end));
-        std::swap(slot_to_neighbor[done_slot], slot_to_neighbor[active_end]);
+        std::swap(bufs.slot_to_neighbor[done_slot],
+                  bufs.slot_to_neighbor[active_end]);
       }
 #ifdef ESPRESSO_CALIPER
       CALI_MARK_END("ghost/unpack");
@@ -509,9 +512,13 @@ void halo_exchange_finish(GhostExchange &st) {
     }
 
     // Wait for sends [n..2n) so buffers are safe to reuse next step.
-    // Caliper: if n==0 the outer ghost/wait is still open; if n>0 the last
-    // loop iteration closed it (no re-open after final unpack).  Open a fresh
-    // region for the sends wait in both cases.
+    // Caliper balance: when n==0 the outer CALI_MARK_BEGIN("ghost/wait") posted
+    // before the loop is still open (the loop body never ran, so nothing closed
+    // it).  When n>0 the last loop iteration emitted END("ghost/unpack") and
+    // then — because active_end reached 0 — did NOT re-open "ghost/wait", so
+    // the region is closed.  The guard `if (n > 0)` therefore re-opens for
+    // n>0 and is deliberately absent for n==0 (the outer region serves).
+    // Invariant: exactly one "ghost/wait" region is open entering wait_all.
 #ifdef ESPRESSO_CALIPER
     if (n > 0)
       CALI_MARK_BEGIN("ghost/wait");

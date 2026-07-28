@@ -79,6 +79,15 @@ struct ExchangeBuffers {
    */
   std::vector<std::vector<ParticleList *>> send_cells;
   std::vector<std::vector<ParticleList *>> recv_cells;
+  /**
+   * Scratch index map for the Overwrite (wait_any) path in
+   * @ref halo_exchange_finish: maps active request slot → original neighbor
+   * index.  Sized to the current neighbor count in @ref halo_exchange_start
+   * alongside the other per-neighbor vectors; capacity is retained across
+   * calls so that no heap allocation occurs on the hot position-push path
+   * after the first (warm-up) exchange.
+   */
+  std::vector<std::size_t> slot_to_neighbor;
 };
 
 /**
