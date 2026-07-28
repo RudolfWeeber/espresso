@@ -35,10 +35,24 @@
  * - @c ESPRESSO_CALI_MARK_FUNCTION — RAII guard equivalent to
  *   @c CALI_CXX_MARK_FUNCTION but zero-cost when inactive.
  * - @c ESPRESSO_CALI_MARK_BEGIN(name) / @c ESPRESSO_CALI_MARK_END(name)
- * - @c ESPRESSO_CALI_MARK_LOOP_BEGIN / @c ESPRESSO_CALI_MARK_LOOP_ITERATION /
- *   @c ESPRESSO_CALI_MARK_LOOP_END
+ * - @c EspressoCaliLoop — RAII loop wrapper replacing the
+ *   @c ESPRESSO_CALI_MARK_LOOP_BEGIN / @c ESPRESSO_CALI_MARK_LOOP_ITERATION /
+ *   @c ESPRESSO_CALI_MARK_LOOP_END macro triplet.
  *
- * All macros are no-ops when @c ESPRESSO_CALIPER is not defined.
+ * All macros and types are no-ops / empty when @c ESPRESSO_CALIPER is not
+ * defined.
+ *
+ * @par Activation path limitation
+ * @c espresso_cali_active() detects Caliper activation **solely** via the
+ * @c CALI_CONFIG environment variable.  Activation through
+ * @c CALI_SERVICES_ENABLE, Caliper config files, or programmatic
+ * @c cali::ConfigManager::start() is **not** detected — hot-path regions will
+ * silently produce no output for those activation paths.  @c CALI_CONFIG is
+ * the supported activation path for ESPResSo profiling (used by
+ * @c testsuite/python/caliper.py).  This restriction is intentional: checking
+ * @c CALI_CONFIG once and caching the result eliminates the Caliper entry cost
+ * (siglock + thread-blackboard update) on every hot-path marker when profiling
+ * is inactive.
  */
 
 #ifdef ESPRESSO_CALIPER
@@ -54,6 +68,9 @@
  *
  * @c inline ensures a single shared static across all translation units
  * (C++ ODR for inline functions with static locals).
+ *
+ * @note Only @c CALI_CONFIG activation is detected; see the file-level
+ *       documentation for the rationale and limitation.
  */
 inline bool espresso_cali_active() noexcept {
   static const bool active = (std::getenv("CALI_CONFIG") != nullptr);
@@ -81,6 +98,95 @@ struct EspressoCaliRegion {
   }
   EspressoCaliRegion(const EspressoCaliRegion &) = delete;
   EspressoCaliRegion &operator=(const EspressoCaliRegion &) = delete;
+};
+
+/**
+ * @brief RAII iteration annotation for one pass through a loop body.
+ *
+ * Returned by @c EspressoCaliLoop::iteration().  When active, calls
+ * @c cali_begin_int on the loop's iteration attribute on construction and
+ * @c cali_end_byid on destruction — identical to what @c cali::Loop::Iteration
+ * does internally.  When inactive, both operations are no-ops.
+ *
+ * The object must be stored at the top of the loop body so that its lifetime
+ * spans the loop body:
+ * @code
+ *   for (int step = 0; ...) {
+ *     auto cali_iter = cali_loop.iteration(step);
+ *     // ...
+ *   }  // cali_iter destroyed here, closing the iteration region
+ * @endcode
+ */
+struct EspressoCaliIteration {
+  cali_id_t iter_attr_;
+  bool active_;
+
+  EspressoCaliIteration(cali_id_t iter_attr, int iter, bool active)
+      : iter_attr_(iter_attr), active_(active) {
+    if (active_)
+      cali_begin_int(iter_attr_, iter);
+  }
+  ~EspressoCaliIteration() {
+    if (active_)
+      cali_end(iter_attr_);
+  }
+  EspressoCaliIteration(const EspressoCaliIteration &) = delete;
+  EspressoCaliIteration &operator=(const EspressoCaliIteration &) = delete;
+  // Moveable so it can be returned from iteration() with NRVO/move.
+  EspressoCaliIteration(EspressoCaliIteration &&other) noexcept
+      : iter_attr_(other.iter_attr_), active_(other.active_) {
+    other.active_ = false;
+  }
+  EspressoCaliIteration &operator=(EspressoCaliIteration &&) = delete;
+};
+
+/**
+ * @brief RAII loop wrapper replacing the @c CALI_CXX_MARK_LOOP_BEGIN /
+ * @c CALI_CXX_MARK_LOOP_ITERATION / @c CALI_CXX_MARK_LOOP_END macro triplet.
+ *
+ * When @c espresso_cali_active() is true at construction time, creates the
+ * same @c cali.loop region and @c iteration#name attribute as the raw Caliper
+ * macros would.  When inactive, construction, iteration(), and destruction are
+ * all no-ops with no Caliper calls.
+ *
+ * Usage:
+ * @code
+ *   EspressoCaliLoop cali_loop("Integration loop");
+ *   for (int step = 0; step < n_steps; ++step) {
+ *     auto cali_iter = cali_loop.iteration(step);  // RAII: closed at }
+ *     // ... loop body ...
+ *   }
+ *   // cali_loop destructor ends the loop region
+ * @endcode
+ */
+struct EspressoCaliLoop {
+  cali::Loop *loop_;
+  cali_id_t iter_attr_;
+
+  explicit EspressoCaliLoop(const char *name)
+      : loop_(nullptr), iter_attr_(CALI_INV_ID) {
+    if (espresso_cali_active()) {
+      loop_ = new cali::Loop(name);
+      iter_attr_ = cali_make_loop_iteration_attribute(name);
+    }
+  }
+  ~EspressoCaliLoop() {
+    if (loop_)
+      loop_->end();
+    delete loop_;
+  }
+  EspressoCaliLoop(const EspressoCaliLoop &) = delete;
+  EspressoCaliLoop &operator=(const EspressoCaliLoop &) = delete;
+
+  /**
+   * @brief Return an RAII iteration annotation for the current step.
+   *
+   * The returned @c EspressoCaliIteration must be kept alive for the duration
+   * of the loop body; store it in a named local variable.
+   */
+  EspressoCaliIteration iteration(int iter) const {
+    return EspressoCaliIteration(iter_attr_, iter, loop_ != nullptr);
+  }
 };
 
 // NOLINTBEGIN(cppcoreguidelines-macro-usage)
@@ -111,44 +217,6 @@ struct EspressoCaliRegion {
   do {                                                                         \
     if (::espresso_cali_active())                                              \
       CALI_MARK_END(name);                                                     \
-  } while (false)
-
-/**
- * @brief Guarded loop annotation: begin the loop region.
- *
- * Creates a per-loop RAII guard that emits the "loop" annotation only when
- * active.  The loop_id identifier must be unique within the enclosing scope.
- * End the loop region by calling @c ESPRESSO_CALI_MARK_LOOP_END(loop_id)
- * before the loop ends.
- *
- * Unlike @c CALI_CXX_MARK_LOOP_BEGIN, which creates a @c cali::Loop with
- * iteration-level tracking, this guard uses a plain region for the loop and
- * omits per-iteration attributes (iteration counts) when inactive.  When
- * active, both the region and the per-loop object are created so that
- * @c ESPRESSO_CALI_MARK_LOOP_ITERATION can use the loop object.
- */
-#define ESPRESSO_CALI_MARK_LOOP_BEGIN(loop_id, name)                           \
-  bool const __espresso_cali_loop_active_##loop_id = ::espresso_cali_active(); \
-  CALI_CXX_MARK_LOOP_BEGIN(loop_id, name)
-
-/**
- * @brief Guarded per-step loop-iteration annotation.
- *
- * No-op when loop was marked inactive by @c ESPRESSO_CALI_MARK_LOOP_BEGIN.
- */
-#define ESPRESSO_CALI_MARK_LOOP_ITERATION(loop_id, iter)                       \
-  do {                                                                         \
-    if (__espresso_cali_loop_active_##loop_id)                                 \
-      CALI_CXX_MARK_LOOP_ITERATION(loop_id, iter);                             \
-  } while (false)
-
-/**
- * @brief End the loop region opened by @c ESPRESSO_CALI_MARK_LOOP_BEGIN.
- */
-#define ESPRESSO_CALI_MARK_LOOP_END(loop_id)                                   \
-  do {                                                                         \
-    if (__espresso_cali_loop_active_##loop_id)                                 \
-      CALI_CXX_MARK_LOOP_END(loop_id);                                         \
   } while (false)
 
 // NOLINTEND(cppcoreguidelines-macro-usage)

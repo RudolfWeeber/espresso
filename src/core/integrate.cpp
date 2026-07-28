@@ -636,12 +636,13 @@ int System::System::integrate(int n_steps, int reuse_forces) {
 #endif
   // Integration loop
 #ifdef ESPRESSO_CALIPER
-  ESPRESSO_CALI_MARK_LOOP_BEGIN(integration_loop, "Integration loop");
+  EspressoCaliLoop espresso_cali_integration_loop("Integration loop");
 #endif
   int integrated_steps = 0;
   for (int step = 0; step < n_steps; step++) {
 #ifdef ESPRESSO_CALIPER
-    ESPRESSO_CALI_MARK_LOOP_ITERATION(integration_loop, step);
+    auto espresso_cali_integration_iter =
+        espresso_cali_integration_loop.iteration(step);
 #endif
 
 #ifdef ESPRESSO_BOND_CONSTRAINT
@@ -847,9 +848,7 @@ int System::System::integrate(int n_steps, int reuse_forces) {
     lb.ghost_communication();
   }
   lees_edwards->update_box_params(*box_geo, sim_time);
-#ifdef ESPRESSO_CALIPER
-  ESPRESSO_CALI_MARK_LOOP_END(integration_loop);
-#endif
+  // espresso_cali_integration_loop destructor ends the Caliper loop region.
 
 #ifdef ESPRESSO_VALGRIND
   CALLGRIND_STOP_INSTRUMENTATION;
