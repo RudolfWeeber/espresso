@@ -40,6 +40,10 @@
 #include "electrostatics/coulomb.hpp"
 #include "magnetostatics/dipoles.hpp"
 
+#ifdef ESPRESSO_CALIPER
+#include "caliper_utils.hpp"
+#endif
+
 #include <cmath>
 #include <cstddef>
 #include <memory>
@@ -78,7 +82,7 @@ std::shared_ptr<Observable_stat> System::calculate_energy() {
   auto const dipoles_kernel = dipoles.pair_energy_kernel();
 
 #ifdef ESPRESSO_CALIPER
-  CALI_MARK_BEGIN("cabana_short_range");
+  ESPRESSO_CALI_MARK_BEGIN("cabana_short_range");
 #endif
   VerletCriterion<> const verlet_criterion{*this,
                                            cell_structure->get_verlet_skin(),
@@ -137,7 +141,7 @@ std::shared_ptr<Observable_stat> System::calculate_energy() {
   reduce_cabana_energy(local_energy, layout, obs_energy, *bonded_ias,
                        nonbonded_ias->get_max_seen_particle_type() + 1);
 #ifdef ESPRESSO_CALIPER
-  CALI_MARK_END("cabana_short_range");
+  ESPRESSO_CALI_MARK_END("cabana_short_range");
 #endif
 
 #ifdef ESPRESSO_ELECTROSTATICS

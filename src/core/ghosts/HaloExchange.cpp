@@ -25,7 +25,7 @@
 #include "ghosts/HaloExchange.hpp"
 
 #ifdef ESPRESSO_CALIPER
-#include <caliper/cali.h>
+#include "caliper_utils.hpp"
 #endif
 
 #include "BoxGeometry.hpp"
@@ -288,7 +288,8 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
   // 1) Pack all send buffers.  Done before posting receives so that sizes are
   //    known; also isolates the serialisation work in the ghost/pack region.
 #ifdef ESPRESSO_CALIPER
-  CALI_MARK_BEGIN("ghost/pack");
+  if (espresso_cali_active())
+    CALI_MARK_BEGIN("ghost/pack");
 #endif
   for (std::size_t i = 0; i < n; ++i) {
     auto const &nc = plan.neighbors[i];
@@ -301,7 +302,8 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
     }
   }
 #ifdef ESPRESSO_CALIPER
-  CALI_MARK_END("ghost/pack");
+  if (espresso_cali_active())
+    CALI_MARK_END("ghost/pack");
 #endif
 
   // 2) Post ALL receives first (deadlock-free), then ALL sends.  Sizes are
@@ -310,7 +312,8 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
   //    fixed-size recv and let unpack_cells resize the cells (legacy bootstrap
   //    path).
 #ifdef ESPRESSO_CALIPER
-  CALI_MARK_BEGIN("ghost/post");
+  if (espresso_cali_active())
+    CALI_MARK_BEGIN("ghost/post");
 #endif
   for (std::size_t i = 0; i < n; ++i) {
     auto const &nc = plan.neighbors[i];
@@ -342,7 +345,8 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
     }
   }
 #ifdef ESPRESSO_CALIPER
-  CALI_MARK_END("ghost/post");
+  if (espresso_cali_active())
+    CALI_MARK_END("ghost/post");
 #endif
 
   return st;
@@ -390,19 +394,23 @@ void halo_exchange_finish(GhostExchange &st) {
     // each neighbor before unpack_cells can run.  Keep existing wait_all-then-
     // unpack-in-order semantics; pipelining is not safe here.
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_BEGIN("ghost/wait");
+    if (espresso_cali_active())
+      CALI_MARK_BEGIN("ghost/wait");
 #endif
     boost::mpi::wait_all(bufs.requests.begin(), bufs.requests.end());
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("ghost/wait");
-    CALI_MARK_BEGIN("ghost/unpack");
+    if (espresso_cali_active())
+      CALI_MARK_END("ghost/wait");
+    if (espresso_cali_active())
+      CALI_MARK_BEGIN("ghost/unpack");
 #endif
     for (std::size_t i = 0; i < n; ++i) {
       auto dst = as_span(bufs.recv_cells[i]);
       unpack_cells(bufs.recv[i], dst, *st.box, st.data_parts);
     }
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("ghost/unpack");
+    if (espresso_cali_active())
+      CALI_MARK_END("ghost/unpack");
 #endif
   } else if (add) {
     // Add path (FORCE / RATTLE reduce): wait receives in *fixed neighbor order*
@@ -415,13 +423,16 @@ void halo_exchange_finish(GhostExchange &st) {
     // Per-neighbor inner BEGIN/END pairs interleave with the outer ones;
     // repeated sequential begin/end accumulates — valid Caliper usage.
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_BEGIN("ghost/wait");
+    if (espresso_cali_active())
+      CALI_MARK_BEGIN("ghost/wait");
 #endif
     for (std::size_t i = 0; i < n; ++i) {
       bufs.requests[i].wait();
 #ifdef ESPRESSO_CALIPER
-      CALI_MARK_END("ghost/wait");
-      CALI_MARK_BEGIN("ghost/unpack");
+      if (espresso_cali_active())
+        CALI_MARK_END("ghost/wait");
+      if (espresso_cali_active())
+        CALI_MARK_BEGIN("ghost/unpack");
 #endif
       auto dst = as_span(bufs.recv_cells[i]);
       if (st.data_parts == GHOSTTRANS_FORCE) {
@@ -434,8 +445,10 @@ void halo_exchange_finish(GhostExchange &st) {
       }
 #endif
 #ifdef ESPRESSO_CALIPER
-      CALI_MARK_END("ghost/unpack");
-      CALI_MARK_BEGIN("ghost/wait");
+      if (espresso_cali_active())
+        CALI_MARK_END("ghost/unpack");
+      if (espresso_cali_active())
+        CALI_MARK_BEGIN("ghost/wait");
 #endif
     }
     // Wait for sends [n..2n) so buffers are safe to reuse next step.
@@ -445,9 +458,12 @@ void halo_exchange_finish(GhostExchange &st) {
                          bufs.requests.begin() +
                              static_cast<std::ptrdiff_t>(2 * n));
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("ghost/wait");
-    CALI_MARK_BEGIN("ghost/unpack");
-    CALI_MARK_END("ghost/unpack");
+    if (espresso_cali_active())
+      CALI_MARK_END("ghost/wait");
+    if (espresso_cali_active())
+      CALI_MARK_BEGIN("ghost/unpack");
+    if (espresso_cali_active())
+      CALI_MARK_END("ghost/unpack");
 #endif
   } else {
     // Overwrite path (position/property push): arrival order is safe because
@@ -464,7 +480,8 @@ void halo_exchange_finish(GhostExchange &st) {
     // emits nested end/begin pairs; an outer ghost/unpack pair fires after the
     // loop so the label appears on single-rank runs.
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_BEGIN("ghost/wait");
+    if (espresso_cali_active())
+      CALI_MARK_BEGIN("ghost/wait");
 #endif
     // Initialize the scratch map to the identity: slot i → neighbor i.
     // The vector was pre-sized in halo_exchange_start (no allocation here).
@@ -482,8 +499,10 @@ void halo_exchange_finish(GhostExchange &st) {
       auto [status, done_it] = boost::mpi::wait_any(first, last);
       (void)status;
 #ifdef ESPRESSO_CALIPER
-      CALI_MARK_END("ghost/wait");
-      CALI_MARK_BEGIN("ghost/unpack");
+      if (espresso_cali_active())
+        CALI_MARK_END("ghost/wait");
+      if (espresso_cali_active())
+        CALI_MARK_BEGIN("ghost/unpack");
 #endif
 
       std::size_t const done_slot =
@@ -505,8 +524,9 @@ void halo_exchange_finish(GhostExchange &st) {
                   bufs.slot_to_neighbor[active_end]);
       }
 #ifdef ESPRESSO_CALIPER
-      CALI_MARK_END("ghost/unpack");
-      if (active_end > 0)
+      if (espresso_cali_active())
+        CALI_MARK_END("ghost/unpack");
+      if (espresso_cali_active() && active_end > 0)
         CALI_MARK_BEGIN("ghost/wait");
 #endif
     }
@@ -520,16 +540,19 @@ void halo_exchange_finish(GhostExchange &st) {
     // n>0 and is deliberately absent for n==0 (the outer region serves).
     // Invariant: exactly one "ghost/wait" region is open entering wait_all.
 #ifdef ESPRESSO_CALIPER
-    if (n > 0)
+    if (espresso_cali_active() && n > 0)
       CALI_MARK_BEGIN("ghost/wait");
 #endif
     boost::mpi::wait_all(bufs.requests.begin() + static_cast<std::ptrdiff_t>(n),
                          bufs.requests.begin() +
                              static_cast<std::ptrdiff_t>(2 * n));
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("ghost/wait");
-    CALI_MARK_BEGIN("ghost/unpack");
-    CALI_MARK_END("ghost/unpack");
+    if (espresso_cali_active())
+      CALI_MARK_END("ghost/wait");
+    if (espresso_cali_active())
+      CALI_MARK_BEGIN("ghost/unpack");
+    if (espresso_cali_active())
+      CALI_MARK_END("ghost/unpack");
 #endif
   }
 

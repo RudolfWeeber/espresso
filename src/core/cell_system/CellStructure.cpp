@@ -47,7 +47,7 @@
 #include <utils/math/sqr.hpp>
 
 #ifdef ESPRESSO_CALIPER
-#include <caliper/cali.h>
+#include "caliper_utils.hpp"
 #endif
 
 #include <boost/mpi/collectives/all_reduce.hpp>
@@ -134,7 +134,7 @@ static auto estimate_max_counts(double pair_cutoff,
 
 void CellStructure::rebuild_local_properties(double const pair_cutoff) {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   assert(m_kokkos_handle);
   auto const num_part = get_unique_particles().size();
@@ -196,7 +196,7 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
 
 void CellStructure::reset_local_force_and_torque() {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   Kokkos::deep_copy(get_local_force(), 0.);
   m_scatter_force->reset();
@@ -260,7 +260,7 @@ void CellStructure::update_bond_storage(int &pair_count, int &angle_count,
 
 void CellStructure::set_index_map() {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   auto &unique_particles = m_unique_particles;
   unique_particles.clear();
@@ -479,7 +479,7 @@ unsigned map_data_parts(unsigned data_parts) {
 
 void CellStructure::ghosts_count() {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   GhostComm::halo_exchange(
       *decomposition().halo_plan(), *get_system().box_geo, GHOSTTRANS_PARTNUM,
@@ -488,7 +488,7 @@ void CellStructure::ghosts_count() {
 }
 void CellStructure::ghosts_update(unsigned data_parts) {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   auto const parts = map_data_parts(data_parts);
   GhostComm::halo_exchange(
@@ -498,7 +498,7 @@ void CellStructure::ghosts_update(unsigned data_parts) {
 }
 void CellStructure::ghosts_reduce_forces() {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   GhostComm::halo_exchange(
       *decomposition().halo_plan(), *get_system().box_geo, GHOSTTRANS_FORCE,
@@ -507,7 +507,7 @@ void CellStructure::ghosts_reduce_forces() {
 #ifdef ESPRESSO_BOND_CONSTRAINT
 void CellStructure::ghosts_reduce_rattle_correction() {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   GhostComm::halo_exchange(
       *decomposition().halo_plan(), *get_system().box_geo, GHOSTTRANS_RATTLE,
@@ -531,7 +531,7 @@ struct UpdateParticleIndexVisitor {
 
 void CellStructure::resort_particles(bool global_flag) {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   invalidate_ghosts();
 
@@ -615,7 +615,7 @@ void CellStructure::set_verlet_skin_heuristic() {
 
 void CellStructure::update_ghosts_and_resort_particle(unsigned data_parts) {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   /* data parts that are only updated on resort */
   auto constexpr resort_only_parts =

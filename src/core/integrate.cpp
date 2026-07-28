@@ -68,7 +68,7 @@
 #include <boost/mpi/collectives/all_reduce.hpp>
 
 #ifdef ESPRESSO_CALIPER
-#include <caliper/cali.h>
+#include "caliper_utils.hpp"
 #endif
 
 #ifdef ESPRESSO_VALGRIND
@@ -372,7 +372,7 @@ void walberla_agrid_sanity_checks(std::string const &method,
 
 static void resort_particles_if_needed(System::System &system) {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   auto &cell_structure = *system.cell_structure;
   auto const offset = LeesEdwards::verlet_list_offset(
@@ -389,7 +389,7 @@ static bool integrator_step_1(CellStructure &cell_structure,
                               Propagation const &propagation,
                               System::System &system, double time_step) {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   // steepest decent
   if (propagation.integ_switch == INTEG_METHOD_STEEPEST_DESCENT)
@@ -478,7 +478,7 @@ static void integrator_step_2(CellStructure &cell_structure,
                               [[maybe_unused]] System::System &system,
                               double time_step) {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   if (propagation.integ_switch == INTEG_METHOD_STEEPEST_DESCENT)
     return;
@@ -541,7 +541,7 @@ static void integrator_step_2(CellStructure &cell_structure,
 
 int System::System::integrate(int n_steps, int reuse_forces) {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   auto &propagation = *this->propagation;
 #ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
@@ -576,7 +576,7 @@ int System::System::integrate(int n_steps, int reuse_forces) {
       ((reuse_forces != INTEG_REUSE_FORCES_ALWAYS) and
        propagation.recalc_forces)) {
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_BEGIN("Initial Force Calculation");
+    ESPRESSO_CALI_MARK_BEGIN("Initial Force Calculation");
 #endif
     thermostat->lb_coupling_deactivate();
 
@@ -603,7 +603,7 @@ int System::System::integrate(int n_steps, int reuse_forces) {
     }
 
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("Initial Force Calculation");
+    ESPRESSO_CALI_MARK_END("Initial Force Calculation");
 #endif
   }
 
@@ -636,12 +636,12 @@ int System::System::integrate(int n_steps, int reuse_forces) {
 #endif
   // Integration loop
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_LOOP_BEGIN(integration_loop, "Integration loop");
+  ESPRESSO_CALI_MARK_LOOP_BEGIN(integration_loop, "Integration loop");
 #endif
   int integrated_steps = 0;
   for (int step = 0; step < n_steps; step++) {
 #ifdef ESPRESSO_CALIPER
-    CALI_CXX_MARK_LOOP_ITERATION(integration_loop, step);
+    ESPRESSO_CALI_MARK_LOOP_ITERATION(integration_loop, step);
 #endif
 
 #ifdef ESPRESSO_BOND_CONSTRAINT
@@ -758,19 +758,19 @@ int System::System::integrate(int n_steps, int reuse_forces) {
           propagation.lb_skipped_md_steps = 0;
           propagation.ek_skipped_md_steps = 0;
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_BEGIN("lb_propagation");
+          ESPRESSO_CALI_MARK_BEGIN("lb_propagation");
 #endif
           lb.propagate();
           lb.ghost_communication_vel();
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_END("lb_propagation");
+          ESPRESSO_CALI_MARK_END("lb_propagation");
 #endif
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_BEGIN("ek_propagation");
+          ESPRESSO_CALI_MARK_BEGIN("ek_propagation");
 #endif
           ek.propagate();
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_END("ek_propagation");
+          ESPRESSO_CALI_MARK_END("ek_propagation");
 #endif
         }
       } else if (lb_active) {
@@ -779,11 +779,11 @@ int System::System::integrate(int n_steps, int reuse_forces) {
         if (propagation.lb_skipped_md_steps >= md_steps_per_lb_step) {
           propagation.lb_skipped_md_steps = 0;
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_BEGIN("lb_propagation");
+          ESPRESSO_CALI_MARK_BEGIN("lb_propagation");
 #endif
           lb.propagate();
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_END("lb_propagation");
+          ESPRESSO_CALI_MARK_END("lb_propagation");
 #endif
         }
       } else if (ek_active) {
@@ -792,11 +792,11 @@ int System::System::integrate(int n_steps, int reuse_forces) {
         if (propagation.ek_skipped_md_steps >= md_steps_per_ek_step) {
           propagation.ek_skipped_md_steps = 0;
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_BEGIN("ek_propagation");
+          ESPRESSO_CALI_MARK_BEGIN("ek_propagation");
 #endif
           ek.propagate();
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_END("ek_propagation");
+          ESPRESSO_CALI_MARK_END("ek_propagation");
 #endif
         }
       }
@@ -809,14 +809,14 @@ int System::System::integrate(int n_steps, int reuse_forces) {
       if (thermostat->lb and
           (propagation.used_propagations & PropagationMode::TRANS_LB_TRACER)) {
 #ifdef ESPRESSO_CALIPER
-        CALI_MARK_BEGIN("lb_tracers_propagation");
+        ESPRESSO_CALI_MARK_BEGIN("lb_tracers_propagation");
 #endif
         if (lb_active) {
           lb.ghost_communication_vel();
         }
         lb_tracers_propagate(*cell_structure, lb, time_step);
 #ifdef ESPRESSO_CALIPER
-        CALI_MARK_END("lb_tracers_propagation");
+        ESPRESSO_CALI_MARK_END("lb_tracers_propagation");
 #endif
       }
 #endif
@@ -848,7 +848,7 @@ int System::System::integrate(int n_steps, int reuse_forces) {
   }
   lees_edwards->update_box_params(*box_geo, sim_time);
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_LOOP_END(integration_loop);
+  ESPRESSO_CALI_MARK_LOOP_END(integration_loop);
 #endif
 
 #ifdef ESPRESSO_VALGRIND
