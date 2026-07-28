@@ -44,6 +44,25 @@
 - [ ] **A/B** on the Release build (machine idle), 1/2/4/8 ranks, vs the pre-Ph4 async numbers: confirm the 8-rank regression shrinks and 1/2/4 don't regress. Record deltas + the `ghost/wait` change.
 - [ ] **Physics parity** on /ssd RelWithAssert (lj/lees_edwards/p3m/collision/nsquare/hybrid/lb-coupling) — identical results. Commit. If the mitigation doesn't help (or regresses), document the negative result + revert the invasive change (keep 4.1's markers).
 
+### Task 4.4: Progressive receive-unpack in `halo_exchange_finish` (wait_any pipelining)
+
+**Files:** `src/core/ghosts/HaloExchange.cpp` (`halo_exchange_finish` only; `halo_exchange_start` and the request layout stay as-is). No header/API change.
+
+**Motivation (from 4.2/4.3 profiles):** at 10k/8 the update phase pays `ghost/wait` 1.9% + `ghost/unpack` 3.1% *sequentially*, the reduce phase wait 3.1% + add 1.4%. Unpacking each neighbor's buffer as soon as its receive completes hides unpack under wait (and vice versa) — ceiling ~3% of step time at 8 ranks, and it composes with any later compute/comm overlap.
+
+**Request-vector layout (invariant, set in `halo_exchange_start`):** `bufs.requests[0..n)` = per-neighbor irecvs (neighbor order), `[n..2n)` = isends; when `GHOSTTRANS_BONDS` is set, `[2n..3n)` = bond irecvs and `[3n..4n)` = bond isends.
+
+- [ ] **Step 1 (hot path, no bonds):** replace the single `wait_all` + unpack-all with:
+  - **Overwrite combine (position/property push):** loop `boost::mpi::wait_any` over the *active* recv sub-range; on completion, immediately unpack that neighbor's buffer (arrival order — safe: the validator guarantees each ghost cell is filled by exactly one message). Swap the completed request out of the active range (`std::iter_swap` with the last active slot) and maintain a slot→neighbor index map so re-waiting a completed request is impossible.
+  - **Add combine (FORCE / RATTLE reduce):** wait the receives in **fixed neighbor order** (`wait(requests[i])` → `add_forces`/`add_rattle` for i = 0..n-1). Float addition is not associative and several neighbors add into the same local cells — fixed order keeps runs bitwise reproducible while still pipelining (adding neighbor i overlaps delivery of i+1..n-1).
+  - After the receive loop, `wait_all` the send sub-range `[n..2n)` (buffers must be complete before next-step reuse).
+- [ ] **Step 2 (cold bonds path):** when `GHOSTTRANS_BONDS` is set, keep the existing behavior (single `wait_all` over everything, then unpack in neighbor order) — `unpack_cells` needs a neighbor's data *and* bond message together, and the path is resort-only.
+- [ ] **Step 3 (Caliper):** keep the label set unchanged (`ghost/wait`, `ghost/unpack` — `testsuite/python/caliper.py` EXPECTED_LABELS must NOT change): mark each wait with `ghost/wait` BEGIN/END around the `wait_any`/`wait(i)` call and each unpack with `ghost/unpack` BEGIN/END around it (repeated sequential begin/end of the same region accumulates — valid Caliper usage; regions stay properly nested).
+- [ ] **Step 4 (edge cases):** n==0 (1 rank) must remain a no-op; `wait_any` requires a non-empty range — guard the loop. Local copies + collective stay before the wait loop (unchanged).
+- [ ] **Step 5 (verify):** `make -C /ssd/weeber/comm-build -j8 check_unit_tests` = 149/149; parity on the /ssd RelWithAssert build: lj@2+4, lees_edwards@4, collision_detection@4, nsquare@4, hybrid_decomposition@4; `ctest --test-dir /ssd/weeber/comm-build -R caliper` green.
+- [ ] **Step 6:** format + commit `core/ghosts: progressive wait_any receive-unpack in halo_exchange_finish`.
+- [ ] **A/B (controller-led):** Release build, machine idle, lj @ 1k (1/2/4/8) + 10k (4/8) vs the staggered same-build numbers; record deltas.
+
 ---
 
 ## Self-Review (author)
