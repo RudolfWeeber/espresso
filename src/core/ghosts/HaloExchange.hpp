@@ -52,18 +52,18 @@ namespace GhostComm {
  *
  * Owns the heap-allocated send/recv buffers, MPI-request slots, and
  * cell-pointer scratch arrays for one set of neighbor communications.
- * Holding this object across multiple calls to @ref halo_exchange allows
+ * Holding this object across multiple calls to @c halo_exchange allows
  * the underlying @c std::vector storage to be reused via @c resize —
  * after the first exchange (warm-up) the vectors retain capacity and
  * subsequent calls incur no heap allocations on the hot path.
  *
  * Typical ownership: held as a member of the object that drives ghost
  * communication (e.g. @c CellStructure::m_ghost_buffers) and passed to
- * @ref halo_exchange / @ref halo_exchange_start as a mutable ref.
+ * @c halo_exchange / @c halo_exchange_start as a mutable ref.
  *
  * Thread-safety: a single instance must not be used from concurrent threads.
  * The sequential ghost-exchange loop (each exchange completes via
- * @ref halo_exchange_finish before the next starts) is therefore safe.
+ * @c halo_exchange_finish before the next starts) is therefore safe.
  */
 struct ExchangeBuffers {
   /** Per-neighbor packed send buffers (index-aligned with plan->neighbors). */
@@ -102,8 +102,8 @@ struct ExchangeBuffers {
  * automatically when the handle is destroyed — on every exit path, including
  * the @c GHOSTTRANS_NONE early return in @c halo_exchange_finish.
  *
- * Created by @ref halo_exchange_start and consumed exactly once by
- * @ref halo_exchange_finish.
+ * Created by @c halo_exchange_start and consumed exactly once by
+ * @c halo_exchange_finish.
  */
 struct GhostExchange {
   ExchangeOp op{};
