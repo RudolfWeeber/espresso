@@ -828,10 +828,18 @@ RegularDecomposition::RegularDecomposition(
     }
   }
 
+  /* Plan-membership pass (source 2): mark every local cell that the plan
+   * exports as a send source.  The geometric rules above (source 1) miss
+   * plan shapes such as Lees-Edwards fully-connected boundaries and ELC
+   * periodicity-change paths, where boundary cells are determined by the
+   * plan topology rather than ghost-cell adjacency.  Both sources are
+   * complementary and must both be applied. */
+  GhostComm::mark_plan_cells_boundary(m_halo_plan, local_cells());
+
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
-  assert(
-      GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells())
-          .empty());
+  assert(GhostComm::report_violations(
+      GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells()),
+      "RegularDecomposition"));
   assert(GhostComm::validate_halo_plan_symmetry(m_halo_plan).empty());
 #endif
 }

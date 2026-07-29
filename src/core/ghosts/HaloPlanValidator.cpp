@@ -25,6 +25,7 @@
 
 #include <boost/mpi/collectives/all_to_all.hpp>
 
+#include <iostream>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -253,6 +254,14 @@ std::vector<std::string> validate_halo_plan_symmetry(HaloPlan const &plan) {
   }
 
   return violations;
+}
+
+bool report_violations(std::vector<std::string> const &violations,
+                       char const *context) {
+  for (auto const &v : violations) {
+    std::cerr << "halo plan validation (" << context << "): " << v << "\n";
+  }
+  return violations.empty();
 }
 
 } // namespace GhostComm

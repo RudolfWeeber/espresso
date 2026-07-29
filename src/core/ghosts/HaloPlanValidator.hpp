@@ -75,4 +75,15 @@ std::vector<std::string> validate_halo_plan(HaloPlan const &plan,
  */
 std::vector<std::string> validate_halo_plan_symmetry(HaloPlan const &plan);
 
+/**
+ * @brief Print violations to stderr and return whether the list was empty.
+ *
+ * Intended for use inside assert(): a bare
+ * assert(validate_halo_plan(...).empty()) aborts without showing WHICH
+ * invariant failed, which makes CI failures undebuggable.  Wrap the call:
+ * assert(GhostComm::report_violations(validate_halo_plan(...), "context")).
+ */
+bool report_violations(std::vector<std::string> const &violations,
+                       char const *context);
+
 } // namespace GhostComm

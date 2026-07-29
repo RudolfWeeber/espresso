@@ -173,9 +173,9 @@ AtomDecomposition::AtomDecomposition(boost::mpi::communicator comm,
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
   // Validate now that local_cells()/ghost_cells() are populated by
   // mark_cells().
-  assert(
-      GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells())
-          .empty());
+  assert(GhostComm::report_violations(
+      GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells()),
+      "AtomDecomposition"));
   assert(GhostComm::validate_halo_plan_symmetry(m_halo_plan).empty());
 #endif
 }

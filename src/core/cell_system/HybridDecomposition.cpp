@@ -102,9 +102,9 @@ HybridDecomposition::HybridDecomposition(boost::mpi::communicator comm,
     c->m_is_boundary = true;
   }
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
-  assert(
-      GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells())
-          .empty());
+  assert(GhostComm::report_violations(
+      GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells()),
+      "HybridDecomposition"));
   assert(GhostComm::validate_halo_plan_symmetry(m_halo_plan).empty());
 #endif
 }
