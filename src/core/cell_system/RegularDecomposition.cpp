@@ -774,22 +774,24 @@ RegularDecomposition::RegularDecomposition(
     int const c = bc / ghost_cell_grid[1];
     return {a, b, c};
   };
+  // Which axes wrap locally (the local domain spans the whole box along a
+  // periodic axis)?  Precomputed by value so the predicate lambda does not
+  // capture node_grid (AppleClang rejects that non-odr-use capture with
+  // -Werror,-Wunused-lambda-capture).
+  std::array<bool, 3> wrap_axis;
+  for (int i = 0; i < 3; ++i)
+    wrap_axis[i] = (node_grid[i] == 1) && m_box.periodic(i);
   // Build the predicate only when there is at least one wrap axis; otherwise
   // pass nullptr (no overhead in the inner loop of mark_boundary_cells).
-  bool const has_wrap_axis = [&] {
-    for (int i = 0; i < 3; ++i)
-      if (node_grid[i] == 1 && m_box.periodic(i))
-        return true;
-    return false;
-  }();
+  bool const has_wrap_axis = wrap_axis[0] || wrap_axis[1] || wrap_axis[2];
   std::function<bool(Cell const *, Cell const *)> wrap_pred;
   if (has_wrap_axis) {
-    wrap_pred = [this, &node_grid, idx_of, ghost_coord_of](
+    wrap_pred = [this, wrap_axis, idx_of, ghost_coord_of](
                     Cell const *a_cell, Cell const *b_cell) -> bool {
       auto const a_coord = ghost_coord_of(idx_of(a_cell));
       auto const b_coord = ghost_coord_of(idx_of(b_cell));
       for (int i = 0; i < 3; ++i) {
-        if (node_grid[i] == 1 && m_box.periodic(i)) {
+        if (wrap_axis[i]) {
           bool const a_first = (a_coord[i] == 1);
           bool const a_last = (a_coord[i] == cell_grid[i]);
           bool const b_first = (b_coord[i] == 1);
@@ -819,7 +821,7 @@ RegularDecomposition::RegularDecomposition(
    * wrap-adjacent).
    */
   for (int i = 0; i < 3; ++i) {
-    if (node_grid[i] == 1 && m_box.periodic(i) && cell_grid[i] == 1) {
+    if (wrap_axis[i] && cell_grid[i] == 1) {
       for (Cell *c : local_cells())
         c->m_is_boundary = true;
       break; // one degenerate axis is enough to force all-boundary

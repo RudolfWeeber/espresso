@@ -408,7 +408,7 @@ public:
    * A cell is interior iff none of its neighbors is a ghost cell
    * (@ref Cell::is_boundary returns false).  This filtered variant uses the
    * same Kokkos parallelization as @ref for_each_local_particle — it builds
-   * a filtered cell list and delegates to @ref parallel_for_each_particle_impl
+   * a filtered cell list and delegates to @c parallel_for_each_particle_impl
    * so that thread-level behavior is identical to the unfiltered path.
    *
    * The kernel is assumed to be thread-safe.

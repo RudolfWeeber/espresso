@@ -25,9 +25,9 @@
  *
  *  Drives a @ref GhostComm::HaloPlan with non-blocking point-to-point MPI
  *  (plus same-rank copies), reusing the byte-identical serialization from
- *  particle_packing.hpp. The engine is split into a @ref halo_exchange_start
+ *  particle_packing.hpp. The engine is split into a @c halo_exchange_start
  *  phase (post all receives, pack and post all sends) and a
- *  @ref halo_exchange_finish phase (same-rank copies, wait, unpack/reduce) so
+ *  @c halo_exchange_finish phase (same-rank copies, wait, unpack/reduce) so
  *  that callers can overlap other work with in-flight messages.
  *
  *  Deadlock-freedom is guaranteed by posting every @c irecv before any
@@ -81,8 +81,8 @@ struct ExchangeBuffers {
   std::vector<std::vector<ParticleList *>> recv_cells;
   /**
    * Scratch index map for the Overwrite (wait_any) path in
-   * @ref halo_exchange_finish: maps active request slot → original neighbor
-   * index.  Sized to the current neighbor count in @ref halo_exchange_start
+   * @c halo_exchange_finish: maps active request slot → original neighbor
+   * index.  Sized to the current neighbor count in @c halo_exchange_start
    * alongside the other per-neighbor vectors; capacity is retained across
    * calls so that no heap allocation occurs on the hot position-push path
    * after the first (warm-up) exchange.
@@ -100,7 +100,7 @@ struct ExchangeBuffers {
  * ownership).  When the no-pool convenience overload is used, @c owned holds
  * the heap-allocated pool and @c bufs == @c owned.get(); the pool is freed
  * automatically when the handle is destroyed — on every exit path, including
- * the @c GHOSTTRANS_NONE early return in @ref halo_exchange_finish.
+ * the @c GHOSTTRANS_NONE early return in @c halo_exchange_finish.
  *
  * Created by @ref halo_exchange_start and consumed exactly once by
  * @ref halo_exchange_finish.
