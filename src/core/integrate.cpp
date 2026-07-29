@@ -797,9 +797,26 @@ int System::System::integrate(int n_steps, int reuse_forces) {
       // in flight; boundary half-kick runs after the reduce finishes.
       // NPT, BD, steepest-descent, and LB-tracer are ineligible and never
       // reach this branch (asserted inside integrator_step_2_filtered).
+      //
+      // RAII guard: if the interior pass throws (bad_alloc, Kokkos error, user
+      // callback), finish the pending reduce on unwind so MPI requests are not
+      // left dangling and the next start-assert does not fire.
+      // ESPResSo normally propagates errors via runtimeErrorMsg rather than
+      // exceptions, so this guard fires only in exceptional circumstances; the
+      // normal path calls finish() explicitly and the guard becomes a no-op.
+      struct ReduceGuard {
+        CellStructure *cs;
+        bool active;
+        ~ReduceGuard() {
+          if (active and cs->has_pending_ghost_reduce())
+            cs->ghosts_reduce_forces_finish();
+        }
+      } guard{cell_structure.get(), true};
+
       integrator_step_2_filtered(*cell_structure, propagation, time_step,
                                  /*interior_pass=*/true);
       cell_structure->ghosts_reduce_forces_finish();
+      guard.active = false; // normal path: finish already called above
       integrator_step_2_filtered(*cell_structure, propagation, time_step,
                                  /*interior_pass=*/false);
     } else {
