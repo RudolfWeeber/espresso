@@ -227,7 +227,7 @@ private:
   /**
    * @brief Scratch cell-pointer list for filtered particle iteration.
    *
-   * Used by @ref for_each_interior_particle and @ref for_each_boundary_particle
+   * Used by @c for_each_interior_particle and @c for_each_boundary_particle
    * to hold the filtered subset of local cells.  Declared mutable so that the
    * const-qualified iteration helpers can write to it; not thread-safe — the
    * two filtered passes must not run concurrently (they never do: interior pass
@@ -437,7 +437,7 @@ public:
   /**
    * @brief Run a kernel on boundary local particles only.
    *
-   * Complement of @ref for_each_interior_particle: visits particles in cells
+   * Complement of @c for_each_interior_particle: visits particles in cells
    * where @ref Cell::is_boundary returns true.  Uses the same Kokkos
    * parallelization structure as @ref for_each_local_particle.
    *
