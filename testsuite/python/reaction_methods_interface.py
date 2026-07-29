@@ -257,7 +257,7 @@ class ReactionMethods(ut.TestCase):
                                 **single_reaction_params)
 
         # check invalid reaction id exceptions
-        # (note: reactions id = 2 * reactions index)
+        # (note: reaction index = 2 * reaction id)
         self.assertEqual(len(method.reactions), 2)
         for i in [-2, -1, 1, 2, 3]:
             with self.assertRaisesRegex(IndexError, f"No reaction with id {i}"):
@@ -362,18 +362,15 @@ class ReactionMethods(ut.TestCase):
         self.assertEqual(list(method.exclusion_radius_per_type.keys()), [1])
 
     def test_change_constant_of_second_reaction(self):
-        """Regression test for bug #36: change_reaction_constant must accept
-        odd logical reaction_ids (the 2nd, 4th, ... added reaction).
-
-        get_reaction_index() multiplies the logical reaction_id by 2 internally,
-        so reaction_id=1 addresses m_reactions indices 2 (forward) and 3
-        (backward).  A contradictory % 2 == 1 guard used to reject every odd
-        logical reaction_id with "Only forward reactions can be selected"."""
+        """
+        Check reaction indexing. Some methods use the reaction index, while
+        others use reaction id (internally, reaction index = 2 * reaction id).
+        """
         method = espressomd.reaction_methods.ReactionEnsemble(
-            kT=1.0, exclusion_range=1.0, seed=12)
+            kT=1., exclusion_range=1., seed=12)
 
-        gamma0 = 2.0   # initial forward gamma of the 1st reaction
-        gamma1 = 5.0   # initial forward gamma of the 2nd reaction
+        gamma0 = 2.   # initial forward gamma of the 1st reaction
+        gamma1 = 5.   # initial forward gamma of the 2nd reaction
 
         # 1st logical reaction -> m_reactions indices 0 (forward), 1 (backward)
         method.add_reaction(
@@ -389,25 +386,25 @@ class ReactionMethods(ut.TestCase):
             product_types=[4, 5], product_coefficients=[1, 1],
             default_charges={3: 0, 4: 0, 5: 0})
 
-        reactions = method.get_status()['reactions']
+        reactions = method.get_status()["reactions"]
         self.assertEqual(len(reactions), 4)
         # sanity: the flat container is [F0, B0, F1, B1] as expected
-        self.assertAlmostEqual(reactions[0]['gamma'], gamma0, delta=1e-10)
-        self.assertAlmostEqual(reactions[2]['gamma'], gamma1, delta=1e-10)
+        self.assertAlmostEqual(reactions[0]["gamma"], gamma0, delta=1e-10)
+        self.assertAlmostEqual(reactions[2]["gamma"], gamma1, delta=1e-10)
 
         # Per the documented convention, the SECOND added reaction is addressed
         # with reaction_id=1.  This must succeed and update indices 2 and 3.
-        new_gamma = 17.0
+        new_gamma = 17.
         method.change_reaction_constant(reaction_id=1, gamma=new_gamma)
 
-        reactions = method.get_status()['reactions']
+        reactions = method.get_status()["reactions"]
         # second reaction forward/backward updated ...
-        self.assertAlmostEqual(reactions[2]['gamma'], new_gamma, delta=1e-10)
+        self.assertAlmostEqual(reactions[2]["gamma"], new_gamma, delta=1e-10)
         self.assertAlmostEqual(
-            reactions[3]['gamma'], 1. / new_gamma, delta=1e-10)
+            reactions[3]["gamma"], 1. / new_gamma, delta=1e-10)
         # ... and the first reaction left untouched
-        self.assertAlmostEqual(reactions[0]['gamma'], gamma0, delta=1e-10)
-        self.assertAlmostEqual(reactions[1]['gamma'], 1. / gamma0, delta=1e-10)
+        self.assertAlmostEqual(reactions[0]["gamma"], gamma0, delta=1e-10)
+        self.assertAlmostEqual(reactions[1]["gamma"], 1. / gamma0, delta=1e-10)
 
 
 if __name__ == "__main__":
