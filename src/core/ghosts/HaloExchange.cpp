@@ -362,17 +362,31 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
   // Local (same-rank) copies run here, after messages are posted, so they
   // overlap with in-flight network transfers for split-phase callers.
   //
-  // Correctness argument:
+  // Direction:
+  //   Push:   copy the real (src) cell into its self-ghost (dst), applying the
+  //           periodic-image shift so the ghost holds the correct replica.
+  //   Reduce: roles swap -- the self-ghost (dst) accumulated a short-range
+  //           force contribution during the pair loop that must be added back
+  //           into the real (src) cell.  Copy dst -> src (no position shift;
+  //           GHOSTTRANS_FORCE with ReductionPolicy::UPDATE accumulates via
+  //           +=).  This mirrors the legacy GHOST_LOCL entry in the reverted
+  //           collect-forces communicator; without the swap the self-wrap
+  //           force contributions (node_grid[i]==1 periodic axes) are dropped,
+  //           which silently biases forces on particles that interact across
+  //           the local periodic boundary.
+  //
+  // Correctness (no aliasing with in-flight buffers):
   //   Push:   local_cell_copy writes ghost cells; isends carry real-cell data.
-  //           The two sets of cells are disjoint, so there is no write/read
-  //           conflict with any in-flight send buffer.
   //   Reduce: local_cell_copy writes real (owned) cells; isends carry ghost-
-  //           cell data.  Again the sets are disjoint.
-  // In both cases local copies still complete before halo_exchange_finish
-  // unpacks any receive buffer, so the FP accumulation order is identical to
-  // the previous placement in finish — results are bitwise unchanged.
-  for (auto const &lc : plan.local)
-    local_cell_copy(*lc.src, *lc.dst, lc.shift, box, data_parts);
+  //           cell data.  In both cases the written and sent cell sets are
+  //           disjoint.  Local copies complete before halo_exchange_finish
+  //           unpacks any receive buffer.
+  for (auto const &lc : plan.local) {
+    if (push)
+      local_cell_copy(*lc.src, *lc.dst, lc.shift, box, data_parts);
+    else
+      local_cell_copy(*lc.dst, *lc.src, Utils::Vector3d{}, box, data_parts);
+  }
 
   return st;
 }
