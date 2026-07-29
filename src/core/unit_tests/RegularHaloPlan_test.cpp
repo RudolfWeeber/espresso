@@ -63,8 +63,7 @@ RegularDecomposition make_dd(Utils::Vector3i const &node_grid, double box_l,
   box.set_periodic(2u, true);
   auto const local_box = LocalBox::make_regular_decomposition(
       box.length(), ::communicator.calc_node_index(), ::communicator.node_grid);
-  return RegularDecomposition(::communicator.comm, range, box, local_box,
-                              std::nullopt);
+  return {::communicator.comm, range, box, local_box, std::nullopt};
 }
 
 /**

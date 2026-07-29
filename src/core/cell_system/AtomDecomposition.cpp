@@ -166,15 +166,18 @@ AtomDecomposition::AtomDecomposition(boost::mpi::communicator comm,
    * case (multi-rank); the explicit loop below catches the single-rank case
    * where there are no ghost cells and no neighbours at all.
    */
-  GhostComm::mark_boundary_cells(local_cells(), ghost_cells());
-  for (Cell *c : local_cells()) {
+  GhostComm::mark_boundary_cells(AtomDecomposition::local_cells(),
+                                 AtomDecomposition::ghost_cells());
+  for (Cell *c : AtomDecomposition::local_cells()) {
     c->m_is_boundary = true;
   }
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
   // Validate now that local_cells()/ghost_cells() are populated by
   // mark_cells().
   assert(GhostComm::report_violations(
-      GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells()),
+      GhostComm::validate_halo_plan(m_halo_plan,
+                                    AtomDecomposition::local_cells(),
+                                    AtomDecomposition::ghost_cells()),
       "AtomDecomposition"));
   // NOTE: validate_halo_plan_symmetry is NOT called here.
   // During checkpoint loading, decompositions are transiently rebuilt while

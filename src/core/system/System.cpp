@@ -567,10 +567,8 @@ void System::on_integration_start() {
  *    carry a zero-valued TORQUE payload on the wire when orientation physics is
  *    concurrently active — harmless (bytes only, value is zero)
  */
+#ifdef ESPRESSO_ROTATION
 static bool orientation_ghosts_needed(System const &sys) {
-#ifndef ESPRESSO_ROTATION
-  return false;
-#else
   // Rotational propagation active: ghost quat needed for vs_relative position
   // update and for any kernel that uses the director of a ghost particle.
   if (sys.propagation->used_propagations &
@@ -625,8 +623,8 @@ static bool orientation_ghosts_needed(System const &sys) {
 #endif
 
   return false;
-#endif // ESPRESSO_ROTATION
 }
+#endif // ESPRESSO_ROTATION
 
 /**
  * @brief Returns the ghost flags required for running pair

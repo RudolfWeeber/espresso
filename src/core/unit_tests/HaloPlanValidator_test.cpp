@@ -59,8 +59,7 @@ RegularDecomposition make_dd(Utils::Vector3i const &node_grid, double box_l,
   auto const box = make_periodic_box(box_l);
   auto const local_box = LocalBox::make_regular_decomposition(
       box.length(), ::communicator.calc_node_index(), ::communicator.node_grid);
-  return RegularDecomposition(::communicator.comm, range, box, local_box,
-                              std::nullopt);
+  return {::communicator.comm, range, box, local_box, std::nullopt};
 }
 
 // The AtomDecomposition (n-square) covers every ghost via its collective
@@ -68,7 +67,7 @@ RegularDecomposition make_dd(Utils::Vector3i const &node_grid, double box_l,
 // ghosts as covered. The box lifetime must outlive the returned decomposition;
 // AtomDecomposition holds a BoxGeometry const& (see AtomDecomposition.hpp).
 AtomDecomposition make_atom_dd(BoxGeometry const &box) {
-  return AtomDecomposition(::communicator.comm, box);
+  return {::communicator.comm, box};
 }
 
 // The HybridDecomposition combines the regular child's point-to-point section
@@ -81,9 +80,9 @@ HybridDecomposition make_hybrid_dd(Utils::Vector3i const &node_grid,
   ::communicator.set_node_grid(node_grid);
   auto const local_box = LocalBox::make_regular_decomposition(
       box.length(), ::communicator.calc_node_index(), ::communicator.node_grid);
-  return HybridDecomposition(
+  return {
       ::communicator.comm, cutoff_regular, skin, []() { return false; }, box,
-      local_box, n_square_types);
+      local_box,           n_square_types};
 }
 } // namespace
 

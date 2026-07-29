@@ -90,7 +90,7 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
     if (!seen_peers.insert(nc.peer).second) {
       std::ostringstream oss;
       oss << "peer " << nc.peer << " appears in more than one NeighborComm";
-      violations.push_back(oss.str());
+      violations.emplace_back(oss.str());
     }
 
     // Shape: send.size() == recv.size()
@@ -99,7 +99,7 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
       oss << "NeighborComm peer=" << nc.peer
           << " has send.size()=" << nc.send.size()
           << " != recv.size()=" << nc.recv.size();
-      violations.push_back(oss.str());
+      violations.emplace_back(oss.str());
     }
 
     // Accumulate recv fill counts; check targets are in ghost set.
@@ -108,7 +108,7 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
         std::ostringstream oss;
         oss << "NeighborComm peer=" << nc.peer
             << " recv target is not a ghost cell";
-        violations.push_back(oss.str());
+        violations.emplace_back(oss.str());
       }
       ++fill_count[pl];
     }
@@ -118,7 +118,7 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
   for (auto const &lc : plan.local) {
     ParticleList const *pl = lc.dst;
     if (ghost_set.find(pl) == ghost_set.end()) {
-      violations.push_back("LocalComm dst target is not a ghost cell");
+      violations.emplace_back("LocalComm dst target is not a ghost cell");
     }
     ++fill_count[pl];
   }
@@ -139,12 +139,13 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
     if (count == 0) {
       if (collective_set.find(pl) == collective_set.end() &&
           referenced_ghosts.find(pl) != referenced_ghosts.end()) {
-        violations.push_back("ghost cell is never filled (missing recv/dst)");
+        violations.emplace_back(
+            "ghost cell is never filled (missing recv/dst)");
       }
     } else if (count > 1) {
       std::ostringstream oss;
       oss << "ghost cell is filled " << count << " times (expected 1)";
-      violations.push_back(oss.str());
+      violations.emplace_back(oss.str());
     }
   }
 
@@ -162,7 +163,7 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
       auto it = fill_count.find(pl);
       int count = (it != fill_count.end()) ? it->second : 0;
       if (count == 0) {
-        violations.push_back(
+        violations.emplace_back(
             "local cell has ghost neighbor that is not a covered recv/dst "
             "target (referenced-but-uncommunicated ghost)");
       }
@@ -177,7 +178,7 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
     }
     for (Cell *n : c->neighbors().all()) {
       if (ghost_set.find(&n->particles()) != ghost_set.end()) {
-        violations.push_back("interior cell has a ghost neighbor");
+        violations.emplace_back("interior cell has a ghost neighbor");
         break; // one violation per cell is sufficient
       }
     }
@@ -205,13 +206,13 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
           std::ostringstream oss;
           oss << "interior cell appears as NeighborComm send source (peer="
               << nc.peer << ") — overlap-safety invariant violated";
-          violations.push_back(oss.str());
+          violations.emplace_back(oss.str());
         }
       }
     }
     for (auto const &lc : plan.local) {
       if (interior_set.count(lc.src)) {
-        violations.push_back(
+        violations.emplace_back(
             "interior cell appears as LocalComm src — overlap-safety invariant "
             "violated");
       }
@@ -249,7 +250,7 @@ std::vector<std::string> validate_halo_plan_symmetry(HaloPlan const &plan) {
       oss << "symmetry mismatch with peer " << j << ": I expect to recv "
           << my_recv_from[j] << " items but peer sends " << peers_send_to_me[j]
           << " items";
-      violations.push_back(oss.str());
+      violations.emplace_back(oss.str());
     }
   }
 

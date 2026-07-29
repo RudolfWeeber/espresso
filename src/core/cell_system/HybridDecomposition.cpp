@@ -97,13 +97,16 @@ HybridDecomposition::HybridDecomposition(boost::mpi::communicator comm,
    * gracefully to a no-op interior pass — identical to today's blocking
    * path.
    */
-  GhostComm::mark_boundary_cells(local_cells(), ghost_cells());
-  for (Cell *c : local_cells()) {
+  GhostComm::mark_boundary_cells(HybridDecomposition::local_cells(),
+                                 HybridDecomposition::ghost_cells());
+  for (Cell *c : HybridDecomposition::local_cells()) {
     c->m_is_boundary = true;
   }
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
   assert(GhostComm::report_violations(
-      GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells()),
+      GhostComm::validate_halo_plan(m_halo_plan,
+                                    HybridDecomposition::local_cells(),
+                                    HybridDecomposition::ghost_cells()),
       "HybridDecomposition"));
   // NOTE: validate_halo_plan_symmetry is NOT called here.
   // During checkpoint loading, decompositions are transiently rebuilt while

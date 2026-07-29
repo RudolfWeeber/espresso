@@ -102,23 +102,21 @@ static bool ghost_reduce_overlap_eligible(System::System const &system) {
   // 3. Force capping must be off.
   if (system.get_force_cap() != 0.)
     return false;
-  // 4. Integrator must be VV or symplectic Euler (inertial with step_2
-  // half-kick).
-  auto const integ = system.propagation->integ_switch;
-  if (integ != INTEG_METHOD_NVT and integ != INTEG_METHOD_SYMPLECTIC_EULER)
-    return false;
-  // 5. NPT propagation not in use (belt-and-suspenders after check 4).
+  // 4. NPT propagation not in use (belt-and-suspenders after check 6).
 #ifdef ESPRESSO_NPT
   if (system.propagation->used_propagations &
       PropagationMode::TRANS_LANGEVIN_NPT)
     return false;
 #endif
-  // 6. LB-tracer arm not active.
+  // 5. LB-tracer arm not active.
 #ifdef ESPRESSO_VIRTUAL_SITES_INERTIALESS_TRACERS
   if (system.propagation->used_propagations & PropagationMode::TRANS_LB_TRACER)
     return false;
 #endif
-  return true;
+  // 6. Integrator must be VV or symplectic Euler (inertial with step_2
+  // half-kick).
+  auto const integ = system.propagation->integ_switch;
+  return integ == INTEG_METHOD_NVT or integ == INTEG_METHOD_SYMPLECTIC_EULER;
 }
 
 static void force_capping(CellStructure &cell_structure, double force_cap) {
