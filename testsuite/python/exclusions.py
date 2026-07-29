@@ -36,6 +36,8 @@ class Exclusions(ut.TestCase):
     def tearDown(self):
         if espressomd.has_features("P3M"):
             self.system.electrostatics.clear()
+        if espressomd.has_features("LENNARD_JONES"):
+            self.system.non_bonded_inter[0, 0].lennard_jones.deactivate()
         self.system.part.clear()
 
     def test_add_remove(self):
@@ -167,40 +169,37 @@ class Exclusions(ut.TestCase):
 @utx.skipIfMissingFeatures(["EXCLUSIONS", "LENNARD_JONES"])
 class ExclusionsGhostPairTest(ut.TestCase):
     system = system
-    system.box_l = [10.0, 10.0, 10.0]
-    system.cell_system.skin = 0.4
-    system.time_step = 0.01
-
+    n_nodes = system.cell_system.get_state()["n_nodes"]
     # place the pair at the LJ minimum so the spurious contribution is
     # exactly -epsilon = -1.0 (at r = sigma it would be 0 and invisible)
     lj_min = 2.0**(1.0 / 6.0)
 
     def setUp(self):
+        self.system.box_l = 3 * [10]
+        self.system.cell_system.skin = 0.4
+        self.system.time_step = 0.01
         self.system.non_bonded_inter[0, 0].lennard_jones.set_params(
             epsilon=1.0, sigma=1.0, cutoff=2.5, shift=0.0)
+        self.node_grid = self.system.cell_system.node_grid
 
     def tearDown(self):
         self.system.part.clear()
         self.system.non_bonded_inter[0, 0].lennard_jones.deactivate()
+        self.system.cell_system.node_grid = self.node_grid
 
+    @ut.skipIf(n_nodes == 1, "only runs for 2+ MPI ranks (needs ghost layer)")
     def test_excluded_pair_cross_rank_ghost(self):
         """
         Excluded pair on different MPI ranks, interacting only through a
         cross-rank ghost image.  The ghost is rebuilt after the
-        exclusion was set, so it carries an empty exclusion list.  Since
-        the pair is excluded, its contribution to the particle
+        exclusion was set, so it carries an empty exclusion list.
+        Since the pair is excluded, its contribution to the particle
         short-range energy must be zero; on buggy HEAD ``do_nonbonded``
         returns True for the (local, ghost) pair and the test fails
         with -1.0.
         """
-        n_nodes = self.system.cell_system.get_state()["n_nodes"]
-        if n_nodes < 2:
-            self.skipTest(
-                "needs >= 2 MPI ranks: on a single rank the neighbor loop "
-                "wraps around to real cells (no ghosts), so the bug cannot "
-                "fire; run with: mpiexec -n 2 pypresso " + __file__)
         # split the box along x so the pair straddles the rank boundary
-        self.system.cell_system.node_grid = [n_nodes, 1, 1]
+        self.system.cell_system.node_grid = [self.n_nodes, 1, 1]
 
         box_l = self.system.box_l[0]
         # minimum-image distance across the periodic x boundary
