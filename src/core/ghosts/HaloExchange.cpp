@@ -185,6 +185,14 @@ void run_collective(HaloPlan const &plan, BoxGeometry const &box,
   assert(static_cast<int>(cs.cells.size()) == comm_size);
 
   CommBuf buf;
+  // boost::mpi's pointer-based collectives bind a reference to the buffer even
+  // for count == 0; an empty CommBuf yields data() == nullptr, which is
+  // undefined behaviour (flagged by UBSan).  Substitute a dummy address for
+  // empty buffers -- the count of 0 guarantees it is never dereferenced.
+  alignas(double) static char empty_sentinel[sizeof(double)];
+  auto const safe_data = [](CommBuf &b) {
+    return b.size() != 0u ? b.data() : &empty_sentinel[0];
+  };
 
   for (int root = 0; root < comm_size; ++root) {
     ParticleList *cell = cs.cells[static_cast<std::size_t>(root)];
@@ -194,14 +202,14 @@ void run_collective(HaloPlan const &plan, BoxGeometry const &box,
       // Push: root broadcasts its owned particles to all other ranks.
       if (my_rank == root) {
         pack_cells(buf, cell_span, {}, box, data_parts);
-        boost::mpi::broadcast(comm, buf.data(), static_cast<int>(buf.size()),
-                              root);
+        boost::mpi::broadcast(comm, safe_data(buf),
+                              static_cast<int>(buf.size()), root);
         boost::mpi::broadcast(comm, buf.bonds(), root);
       } else {
         buf.resize(calc_transmit_size(cell_span, box, data_parts));
         buf.bonds().clear();
-        boost::mpi::broadcast(comm, buf.data(), static_cast<int>(buf.size()),
-                              root);
+        boost::mpi::broadcast(comm, safe_data(buf),
+                              static_cast<int>(buf.size()), root);
         boost::mpi::broadcast(comm, buf.bonds(), root);
         unpack_cells(buf, cell_span, box, data_parts);
       }
@@ -210,12 +218,12 @@ void run_collective(HaloPlan const &plan, BoxGeometry const &box,
       // accumulates into its owned cell.  Mirrors the legacy GHOST_RDCE
       // which reduces the raw double buffer with std::plus<double>.
       pack_cells(buf, cell_span, {}, box, data_parts);
-      auto *raw = reinterpret_cast<double *>(buf.data());
+      auto *raw = reinterpret_cast<double *>(safe_data(buf));
       int const count = static_cast<int>(buf.size() / sizeof(double));
       if (my_rank == root) {
         CommBuf recv_buf;
         recv_buf.resize(buf.size());
-        auto *recv_raw = reinterpret_cast<double *>(recv_buf.data());
+        auto *recv_raw = reinterpret_cast<double *>(safe_data(recv_buf));
         boost::mpi::reduce(comm, raw, count, recv_raw, std::plus<double>{},
                            root);
         unpack_cells(recv_buf, cell_span, box, data_parts);
