@@ -83,8 +83,24 @@ HybridDecomposition::HybridDecomposition(boost::mpi::communicator comm,
   }
 
   m_halo_plan = make_halo_plan();
-  /* classify local cells as interior or boundary */
+
+  /* classify local cells as interior or boundary.
+   *
+   * HybridDecomposition combines a RegularDecomposition (which already has
+   * its own wrap-aware classification) with an AtomDecomposition n-square
+   * child.  The combined cell set extends every regular local cell's
+   * neighbor list with the n-square cells, so regular cells that were
+   * interior under RegularDecomposition alone may now interact with
+   * n-square ghost cells.  Determining which cells remain genuinely
+   * interior after the coupling is non-trivial; we conservatively mark all
+   * local cells as boundary.  The compute/comm overlap degenerates
+   * gracefully to a no-op interior pass — identical to today's blocking
+   * path.
+   */
   GhostComm::mark_boundary_cells(local_cells(), ghost_cells());
+  for (Cell *c : local_cells()) {
+    c->m_is_boundary = true;
+  }
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
   assert(
       GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells())

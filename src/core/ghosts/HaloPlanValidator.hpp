@@ -43,6 +43,14 @@ namespace GhostComm {
  *    as a recv/dst target or by the collective section.
  * 3. Peer-uniqueness: each peer value appears in at most one NeighborComm.
  * 4. Shape: each NeighborComm has send.size() == recv.size().
+ * 5. Interior/boundary consistency: a cell marked interior has no ghost
+ *    neighbor (enforced by mark_boundary_cells()).
+ * 6. Overlap-safety invariant: an interior cell must not appear as a
+ *    NeighborComm send source or a LocalComm src.  This is the exact
+ *    precondition that the integrator step-2 / force-reduce overlap (Task
+ *    5.3) relies on: interior cells receive no reduce contributions and
+ *    therefore do not require the reduce to complete before their velocity
+ *    is updated.
  *
  * @returns a human-readable violation string per problem; empty = valid.
  */

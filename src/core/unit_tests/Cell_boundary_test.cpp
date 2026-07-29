@@ -103,6 +103,162 @@ BOOST_AUTO_TEST_CASE(mark_boundary_cells_is_idempotent) {
   BOOST_CHECK(first_result); // should be boundary
 }
 
+// ── wrap-predicate (Task 5.2)
+// ─────────────────────────────────────────────────
+
+// A pair of local cells connected by a wrap-predicate that always fires must
+// both be marked boundary, even without any ghost neighbors.
+BOOST_AUTO_TEST_CASE(wrap_predicate_makes_boundary) {
+  Cell local_a, local_b;
+  // local_a and local_b are mutual local neighbors (no ghosts).
+  local_a.m_neighbors = Neighbors<Cell *>(std::vector<Cell *>{&local_b}, {});
+  local_b.m_neighbors = Neighbors<Cell *>(std::vector<Cell *>{&local_a}, {});
+
+  std::vector<Cell *> locals{&local_a, &local_b};
+  std::vector<Cell *> ghosts{};
+
+  // Predicate that fires for every pair: simulates the wrap axis case.
+  auto always_wrap = [](Cell const *, Cell const *) { return true; };
+
+  GhostComm::mark_boundary_cells(locals, ghosts, always_wrap);
+
+  BOOST_CHECK_MESSAGE(
+      local_a.is_boundary(),
+      "cell with a wrap-predicate neighbor must be boundary (no ghost needed)");
+  BOOST_CHECK_MESSAGE(
+      local_b.is_boundary(),
+      "cell with a wrap-predicate neighbor must be boundary (no ghost needed)");
+}
+
+// A pair of fully-local cells with NO ghost neighbors and a wrap predicate
+// that never fires must remain interior.
+BOOST_AUTO_TEST_CASE(no_wrap_no_ghost_stays_interior) {
+  Cell local_a, local_b;
+  local_a.m_neighbors = Neighbors<Cell *>(std::vector<Cell *>{&local_b}, {});
+  local_b.m_neighbors = Neighbors<Cell *>(std::vector<Cell *>{&local_a}, {});
+
+  std::vector<Cell *> locals{&local_a, &local_b};
+  std::vector<Cell *> ghosts{};
+
+  // Predicate that never fires: no wrap axis.
+  auto never_wrap = [](Cell const *, Cell const *) { return false; };
+
+  GhostComm::mark_boundary_cells(locals, ghosts, never_wrap);
+
+  BOOST_CHECK_MESSAGE(
+      !local_a.is_boundary(),
+      "cell with only local non-wrap neighbors must be interior");
+  BOOST_CHECK_MESSAGE(
+      !local_b.is_boundary(),
+      "cell with only local non-wrap neighbors must be interior");
+}
+
+// ── validator overlap-safety invariant (Task 5.2) ────────────────────────────
+
+// An interior cell that appears as a NeighborComm send source must trigger
+// the overlap-safety invariant violation.
+BOOST_AUTO_TEST_CASE(validator_fires_for_interior_cell_in_send_region) {
+  using namespace GhostComm;
+  // Two local cells: local_a is interior (no ghost neighbors),
+  // local_b is boundary (ghost neighbor).
+  Cell local_a, local_b, ghost;
+  local_a.m_neighbors = Neighbors<Cell *>(std::vector<Cell *>{&local_b}, {});
+  local_b.m_neighbors =
+      Neighbors<Cell *>(std::vector<Cell *>{&local_a, &ghost}, {});
+
+  std::vector<Cell *> locals{&local_a, &local_b};
+  std::vector<Cell *> ghosts{&ghost};
+
+  GhostComm::mark_boundary_cells(locals, ghosts);
+  BOOST_REQUIRE(!local_a.is_boundary()); // pre-condition: local_a is interior
+  BOOST_REQUIRE(local_b.is_boundary());  // pre-condition: local_b is boundary
+
+  // Build a plan that covers the ghost (so coverage checks pass), but
+  // incorrectly lists local_a (interior) as a send source.
+  HaloPlan plan;
+  plan.neighbors.push_back(
+      NeighborComm{1,
+                   {SendRegion{&local_a.particles(), {}}, // ← interior cell!
+                    SendRegion{&local_b.particles(), {}}},
+                   {&ghost.particles(), &ghost.particles()}});
+  // Fix double-fill by using a separate ghost for the second recv slot.
+  Cell ghost2;
+  ghosts.push_back(&ghost2);
+  plan.neighbors[0].recv = {&ghost.particles(), &ghost2.particles()};
+
+  auto violations = validate_halo_plan(plan, locals, ghosts);
+  bool found_overlap =
+      std::ranges::any_of(violations, [](std::string const &v) {
+        return v.find("overlap-safety invariant") != std::string::npos;
+      });
+  BOOST_CHECK_MESSAGE(found_overlap,
+                      "expected overlap-safety invariant violation; got: " +
+                          (violations.empty() ? "(none)" : violations.front()));
+}
+
+// An interior cell that appears as a LocalComm src must trigger the
+// overlap-safety invariant violation.
+BOOST_AUTO_TEST_CASE(validator_fires_for_interior_cell_in_local_comm_src) {
+  using namespace GhostComm;
+  Cell local_interior, local_boundary, ghost;
+  local_interior.m_neighbors =
+      Neighbors<Cell *>(std::vector<Cell *>{&local_boundary}, {});
+  local_boundary.m_neighbors =
+      Neighbors<Cell *>(std::vector<Cell *>{&local_interior, &ghost}, {});
+
+  std::vector<Cell *> locals{&local_interior, &local_boundary};
+  std::vector<Cell *> ghosts{&ghost};
+
+  GhostComm::mark_boundary_cells(locals, ghosts);
+  BOOST_REQUIRE(!local_interior.is_boundary());
+  BOOST_REQUIRE(local_boundary.is_boundary());
+
+  // Plan with a LocalComm that uses local_interior as src → violation.
+  HaloPlan plan;
+  plan.local.push_back(
+      LocalComm{&local_interior.particles(), &ghost.particles(), {}});
+
+  auto violations = validate_halo_plan(plan, locals, ghosts);
+  bool found_overlap =
+      std::ranges::any_of(violations, [](std::string const &v) {
+        return v.find("overlap-safety invariant") != std::string::npos;
+      });
+  BOOST_CHECK_MESSAGE(found_overlap,
+                      "expected overlap-safety invariant violation; got: " +
+                          (violations.empty() ? "(none)" : violations.front()));
+}
+
+// A correctly-marked boundary cell as send source must NOT trigger the
+// overlap-safety invariant (sanity check that we don't over-fire).
+BOOST_AUTO_TEST_CASE(validator_silent_for_boundary_cell_in_send_region) {
+  using namespace GhostComm;
+  Cell local_boundary, ghost;
+  local_boundary.m_neighbors =
+      Neighbors<Cell *>(std::vector<Cell *>{&ghost}, {});
+
+  std::vector<Cell *> locals{&local_boundary};
+  std::vector<Cell *> ghosts{&ghost};
+
+  GhostComm::mark_boundary_cells(locals, ghosts);
+  BOOST_REQUIRE(local_boundary.is_boundary());
+
+  HaloPlan plan;
+  plan.neighbors.push_back(NeighborComm{
+      1, {SendRegion{&local_boundary.particles(), {}}}, {&ghost.particles()}});
+
+  auto violations = validate_halo_plan(plan, locals, ghosts);
+  bool found_overlap =
+      std::ranges::any_of(violations, [](std::string const &v) {
+        return v.find("overlap-safety invariant") != std::string::npos;
+      });
+  BOOST_CHECK_MESSAGE(!found_overlap,
+                      "boundary cell as send source must not trigger overlap "
+                      "invariant; violations: " +
+                          (violations.empty() ? "(none)" : violations.front()));
+  BOOST_CHECK_MESSAGE(violations.empty(),
+                      "expected no violations for a correct plan");
+}
+
 // ── validator consistency check ──────────────────────────────────────────────
 
 // A local cell whose is_boundary()==false but that has a ghost neighbor must

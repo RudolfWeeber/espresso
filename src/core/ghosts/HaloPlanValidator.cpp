@@ -182,6 +182,41 @@ validate_halo_plan(HaloPlan const &plan, std::span<Cell *const> local_cells,
     }
   }
 
+  // Overlap-safety invariant (Task 5.3 precondition): an interior cell must
+  // not appear as a send source in any NeighborComm, and must not appear as
+  // a LocalComm src.  Send sources are real cells whose data gets copied to a
+  // peer's ghost; LocalComm srcs are the matching self-copy sources.  If an
+  // interior cell were in either, the force-reduce step would overwrite its
+  // ghost copy after the interior velocity update — violating the overlap
+  // correctness assumption.
+  //
+  // Build a set of ParticleList* that belong to interior local cells.
+  std::unordered_set<ParticleList const *> interior_set;
+  for (Cell *c : local_cells) {
+    if (!c->is_boundary()) {
+      interior_set.insert(&c->particles());
+    }
+  }
+  if (!interior_set.empty()) {
+    for (auto const &nc : plan.neighbors) {
+      for (auto const &sr : nc.send) {
+        if (interior_set.count(sr.cell)) {
+          std::ostringstream oss;
+          oss << "interior cell appears as NeighborComm send source (peer="
+              << nc.peer << ") — overlap-safety invariant violated";
+          violations.push_back(oss.str());
+        }
+      }
+    }
+    for (auto const &lc : plan.local) {
+      if (interior_set.count(lc.src)) {
+        violations.push_back(
+            "interior cell appears as LocalComm src — overlap-safety invariant "
+            "violated");
+      }
+    }
+  }
+
   return violations;
 }
 

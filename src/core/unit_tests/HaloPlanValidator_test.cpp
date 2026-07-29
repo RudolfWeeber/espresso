@@ -240,6 +240,80 @@ BOOST_AUTO_TEST_CASE(hybrid_decomposition_mixed_coverage,
   BOOST_CHECK(validate_halo_plan_symmetry(*plan).empty());
 }
 
+// ── Task 5.2: wrap-aware boundary classification on 1 rank ──────────────────
+// On a single MPI rank all periodic axes are "wrap axes": no ghost cells are
+// generated for them (init_cell_interactions wires local cells directly across
+// the periodic boundary), so the base ghost-neighbour rule would leave those
+// cells interior.  The Task 5.2 wrap predicate must catch this and mark the
+// first and last local layers along each periodic axis as boundary.
+//
+// Correctness argument: every cell in the first or last local layer (ghost-grid
+// coord 1 or cell_grid[i] along axis i) has at least one neighbour in the
+// opposite boundary layer.  After mark_boundary_cells with the wrap predicate
+// those cells must be boundary.  Cells strictly in the interior (all ghost-grid
+// coords in [2, cell_grid[i]-1] along every axis) have no wrap neighbour and
+// must remain interior — PROVIDED the cell grid is large enough to have such
+// interior cells (cell_grid[i] >= 3 on every axis).
+BOOST_AUTO_TEST_CASE(single_rank_wrap_axis_cells_are_boundary,
+                     *utf::precondition([](utf::test_unit_id) {
+                       return has_1_mpi_rank();
+                     })) {
+  using namespace GhostComm;
+  // Use a box large enough for cell_grid >= 3 along every axis so that
+  // genuinely interior cells exist (they would be missed by the wrap rule).
+  // range=1.0 with box_l=6.0 gives cell_grid={6,6,6}.
+  auto const dd = make_dd({1, 1, 1}, 6., 1.0);
+
+  // Every cell in the first or last local layer along any axis must be
+  // boundary due to the periodic wrap.
+  auto const &gcg = dd.ghost_cell_grid;
+  auto const &cg = dd.cell_grid;
+
+  bool any_wrap_layer_interior = false;
+
+  for (Cell const *c : dd.local_cells()) {
+    // Compute ghost-grid coordinate.
+    int const idx = static_cast<int>(c - dd.cells.data());
+    int const gx = idx % gcg[0];
+    int const gy = (idx / gcg[0]) % gcg[1];
+    int const gz = idx / (gcg[0] * gcg[1]);
+
+    bool const in_wrap_layer = (gx == 1 || gx == cg[0] || gy == 1 ||
+                                gy == cg[1] || gz == 1 || gz == cg[2]);
+
+    if (in_wrap_layer && !c->is_boundary()) {
+      any_wrap_layer_interior = true;
+    }
+  }
+
+  BOOST_CHECK_MESSAGE(
+      !any_wrap_layer_interior,
+      "single-rank: all cells in first/last local layer must be boundary "
+      "(periodic-wrap rule)");
+
+  // Sanity: cells strictly in the interior must remain interior.
+  if (cg[0] >= 3 && cg[1] >= 3 && cg[2] >= 3) {
+    bool found_interior = false;
+    for (Cell const *c : dd.local_cells()) {
+      int const idx = static_cast<int>(c - dd.cells.data());
+      int const gx = idx % gcg[0];
+      int const gy = (idx / gcg[0]) % gcg[1];
+      int const gz = idx / (gcg[0] * gcg[1]);
+      bool const strictly_interior =
+          (gx >= 2 && gx <= cg[0] - 1 && gy >= 2 && gy <= cg[1] - 1 &&
+           gz >= 2 && gz <= cg[2] - 1);
+      if (strictly_interior) {
+        BOOST_CHECK_MESSAGE(!c->is_boundary(),
+                            "strictly interior cell must not be boundary");
+        found_interior = true;
+      }
+    }
+    BOOST_CHECK_MESSAGE(found_interior,
+                        "expected at least one strictly-interior cell "
+                        "(cell_grid >= 3 on all axes)");
+  }
+}
+
 // ── Task 2.2: cross-rank symmetry checks ────────────────────────────────────
 
 // Good case: real RegularDecomposition on 4 ranks must be symmetric.

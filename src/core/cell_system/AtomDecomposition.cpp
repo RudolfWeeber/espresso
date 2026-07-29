@@ -156,8 +156,20 @@ AtomDecomposition::AtomDecomposition(boost::mpi::communicator comm,
   configure_neighbors();
   /* fill local and ghost cell lists */
   mark_cells();
-  /* classify local cells as interior or boundary */
+  /* classify local cells as interior or boundary.
+   *
+   * AtomDecomposition has no spatial locality: the single local cell
+   * interacts with every other rank's cell and there is no subset of
+   * particles whose force contributions are guaranteed to arrive before
+   * the velocity update.  Interior is therefore always empty and all local
+   * cells are boundary.  mark_boundary_cells() handles the ghost-neighbour
+   * case (multi-rank); the explicit loop below catches the single-rank case
+   * where there are no ghost cells and no neighbours at all.
+   */
   GhostComm::mark_boundary_cells(local_cells(), ghost_cells());
+  for (Cell *c : local_cells()) {
+    c->m_is_boundary = true;
+  }
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
   // Validate now that local_cells()/ghost_cells() are populated by
   // mark_cells().

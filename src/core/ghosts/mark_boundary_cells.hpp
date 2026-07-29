@@ -20,6 +20,7 @@
 
 #include "cell_system/Cell.hpp"
 
+#include <functional>
 #include <span>
 #include <unordered_set>
 
@@ -28,9 +29,17 @@ namespace GhostComm {
 /**
  * @brief Classify each local cell as interior or boundary.
  *
- * A local cell is *boundary* iff at least one neighbor returned by
- * `cell->neighbors().all()` is a ghost cell (i.e. its `ParticleList *` is in
- * the set of ghost cells).  All other local cells are *interior*.
+ * A local cell is *boundary* iff:
+ *   (a) at least one neighbor returned by `cell->neighbors().all()` is a
+ *       ghost cell (i.e. its `ParticleList *` is in the set of ghost cells),
+ *       OR
+ *   (b) the optional @p wrap_predicate returns `true` for the (cell, neighbor)
+ *       pair — even when both cells are local.  This captures periodic
+ *       wrap-around neighborships that exist on a single MPI rank where the
+ *       local domain spans the whole box and no ghost cells are generated for
+ *       that axis.  The predicate defaults to always-false (no wrapping).
+ *
+ * All other local cells are *interior*.
  *
  * The function first resets every local cell to interior (idempotent on
  * repeated calls / plan rebuild), then marks boundary cells.
@@ -38,9 +47,17 @@ namespace GhostComm {
  * Call this right after `m_halo_plan = make_halo_plan()` in each
  * decomposition, where `local_cells()` and `ghost_cells()` are already
  * populated.
+ *
+ * @param local_cells  Local cell pointer span.
+ * @param ghost_cells  Ghost cell pointer span.
+ * @param wrap_predicate  Optional predicate `(Cell const *a, Cell const *b)
+ *   -> bool` that returns `true` when the neighbor relation a→b crosses a
+ *   periodic box boundary (both cells are local).  When omitted, no
+ *   additional wrapping boundary is detected.
  */
-inline void mark_boundary_cells(std::span<Cell *const> local_cells,
-                                std::span<Cell *const> ghost_cells) {
+inline void mark_boundary_cells(
+    std::span<Cell *const> local_cells, std::span<Cell *const> ghost_cells,
+    std::function<bool(Cell const *, Cell const *)> wrap_predicate = nullptr) {
   // Build a set of ghost ParticleList pointers for O(1) lookup.
   std::unordered_set<ParticleList const *> ghost_set;
   ghost_set.reserve(ghost_cells.size());
@@ -53,10 +70,15 @@ inline void mark_boundary_cells(std::span<Cell *const> local_cells,
     c->m_is_boundary = false;
   }
 
-  // Mark a cell as boundary iff any of its neighbors is a ghost.
+  // Mark a cell as boundary iff any of its neighbors is a ghost (rule a) or
+  // the wrap predicate fires for that neighbor pair (rule b).
   for (Cell *c : local_cells) {
     for (Cell *n : c->neighbors().all()) {
       if (ghost_set.count(&n->particles())) {
+        c->m_is_boundary = true;
+        break;
+      }
+      if (wrap_predicate && wrap_predicate(c, n)) {
         c->m_is_boundary = true;
         break;
       }

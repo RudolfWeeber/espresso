@@ -745,8 +745,63 @@ RegularDecomposition::RegularDecomposition(
 
   /* build the topology-agnostic direct-neighbor halo plan */
   m_halo_plan = make_halo_plan();
-  /* classify local cells as interior or boundary */
-  GhostComm::mark_boundary_cells(local_cells(), ghost_cells());
+
+  /* Classify local cells as interior or boundary.
+   *
+   * Rule (a): any neighbor that is a ghost cell → boundary [base rule].
+   * Rule (b): any neighbor relation that crosses a periodic box boundary
+   *   must also make the cell boundary, even when both cells are local.
+   *   This happens on a single MPI rank (node_grid[i]==1, periodic[i]):
+   *   init_cell_interactions() wires the first and last local layer along
+   *   axis i directly without going through ghost cells, so the base rule
+   *   misses those periodic wrap-around neighbours.
+   *
+   * Implementation: precise pair-predicate that fires iff the two cells
+   * sit in the "first layer ↔ last layer" pair along a wrap axis.
+   * Ghost-grid coordinate of a cell: unpack the column-major linear index
+   *   idx = a + G[0]*(b + G[1]*c)  (G = ghost_cell_grid).
+   * First local layer along axis i: ghost coord == 1.
+   * Last local layer along axis i: ghost coord == cell_grid[i].
+   */
+  auto const &node_grid = ::communicator.node_grid;
+  auto const idx_of = [this](Cell const *c) {
+    return static_cast<int>(c - cells.data());
+  };
+  auto const ghost_coord_of = [this](int idx) -> Utils::Vector3i {
+    int const a = idx % ghost_cell_grid[0];
+    int const bc = idx / ghost_cell_grid[0];
+    int const b = bc % ghost_cell_grid[1];
+    int const c = bc / ghost_cell_grid[1];
+    return {a, b, c};
+  };
+  // Build the predicate only when there is at least one wrap axis; otherwise
+  // pass nullptr (no overhead in the inner loop of mark_boundary_cells).
+  bool const has_wrap_axis = [&] {
+    for (int i = 0; i < 3; ++i)
+      if (node_grid[i] == 1 && m_box.periodic(i))
+        return true;
+    return false;
+  }();
+  std::function<bool(Cell const *, Cell const *)> wrap_pred;
+  if (has_wrap_axis) {
+    wrap_pred = [this, &node_grid, idx_of, ghost_coord_of](
+                    Cell const *a_cell, Cell const *b_cell) -> bool {
+      auto const a_coord = ghost_coord_of(idx_of(a_cell));
+      auto const b_coord = ghost_coord_of(idx_of(b_cell));
+      for (int i = 0; i < 3; ++i) {
+        if (node_grid[i] == 1 && m_box.periodic(i)) {
+          bool const a_first = (a_coord[i] == 1);
+          bool const a_last = (a_coord[i] == cell_grid[i]);
+          bool const b_first = (b_coord[i] == 1);
+          bool const b_last = (b_coord[i] == cell_grid[i]);
+          if ((a_first && b_last) || (a_last && b_first))
+            return true;
+        }
+      }
+      return false;
+    };
+  }
+  GhostComm::mark_boundary_cells(local_cells(), ghost_cells(), wrap_pred);
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
   assert(
       GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells())
