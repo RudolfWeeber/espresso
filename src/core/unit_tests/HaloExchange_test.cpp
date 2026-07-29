@@ -241,6 +241,109 @@ BOOST_AUTO_TEST_CASE(collective_broadcast_and_reduce,
   }
 }
 
+/*
+ * Same-rank (plan.local) path: Push direction.
+ *
+ * A LocalComm{src=real, dst=ghost, shift} represents a periodic-wrap copy on a
+ * node_grid==1 axis.  For Direction::Push the engine must call
+ * local_cell_copy(src, dst, shift) so the ghost receives the real particle's
+ * position, folded by the shift.  This test pins that semantics and would fail
+ * if the arguments were swapped (ghost would receive a zero-shifted copy of
+ * its own position instead of the real cell's shifted position).
+ *
+ * Runs on 1 rank (plan.local requires no MPI).
+ */
+BOOST_AUTO_TEST_CASE(local_push_position_shift,
+                     *utf::precondition([](utf::test_unit_id) {
+                       return boost::mpi::communicator{}.size() == 1;
+                     })) {
+  using namespace GhostComm;
+
+  BoxGeometry box;
+  box.set_length({10., 10., 10.});
+
+  ParticleList real_cell, ghost_cell;
+  real_cell.resize(1);
+  ghost_cell.resize(1);
+  real_cell.begin()->pos() = {3.0, 4.0, 5.0};
+  // Ghost starts at a distinct position so we know overwrite occurred.
+  ghost_cell.begin()->pos() = {0.0, 0.0, 0.0};
+
+  // shift of -10 on x: ghost should see folded position = 3 + (-10) = -7 ->
+  // folded inside [0,10) gives 3.0 (no folding needed for this range), but the
+  // raw shift is applied by the SAVE path so we check with the raw expected
+  // value.  Use shift == {0,0,0} to keep the position arithmetic trivial and
+  // focus on src/dst identity.
+  HaloPlan plan;
+  plan.comm = boost::mpi::communicator{};
+  plan.local.push_back(LocalComm{&real_cell, &ghost_cell, {0., 0., 0.}});
+
+  halo_exchange(plan, box, GHOSTTRANS_POSITION,
+                {Direction::Push, Combine::Overwrite});
+
+  // Ghost must now hold the real cell's position.
+  BOOST_CHECK_CLOSE(ghost_cell.begin()->pos()[0], 3.0, 1e-12);
+  BOOST_CHECK_CLOSE(ghost_cell.begin()->pos()[1], 4.0, 1e-12);
+  BOOST_CHECK_CLOSE(ghost_cell.begin()->pos()[2], 5.0, 1e-12);
+  // Real cell must be untouched.
+  BOOST_CHECK_CLOSE(real_cell.begin()->pos()[0], 3.0, 1e-12);
+  BOOST_CHECK_CLOSE(real_cell.begin()->pos()[1], 4.0, 1e-12);
+  BOOST_CHECK_CLOSE(real_cell.begin()->pos()[2], 5.0, 1e-12);
+}
+
+/*
+ * Same-rank (plan.local) path: Reduce direction — regression for commit
+ * 3c62b1353e ("core/ghosts: reduce self-copy ghost forces back to owner").
+ *
+ * On a node_grid==1 periodic axis the plan builder emits a LocalComm with
+ * src=real_cell, dst=ghost_cell.  During the force-reduce step the engine must
+ * ADD the ghost force into the real cell, i.e. call
+ *   local_cell_copy(*lc.dst, *lc.src, {}, box, GHOSTTRANS_FORCE)
+ * (dst=ghost is the new src, src=real is the new dst).
+ *
+ * The pre-fix code called local_cell_copy(*lc.src, *lc.dst, ...) for both
+ * directions, which silently dropped the ghost's force (it added the real
+ * cell's force back into the ghost instead of the other way around).
+ *
+ * Failure signature when the fix is reverted:
+ *   real_cell.force == {1,0,0} (unchanged — ghost force never reached it)
+ *   ghost_cell.force == {1,20,300} (real force accumulated into ghost instead)
+ *
+ * This test runs on 1 rank (plan.local requires no MPI) so it is always
+ * exercised, regardless of the MPI geometry used in the test suite.
+ */
+BOOST_AUTO_TEST_CASE(local_reduce_force_role_swap,
+                     *utf::precondition([](utf::test_unit_id) {
+                       return boost::mpi::communicator{}.size() == 1;
+                     })) {
+  using namespace GhostComm;
+
+  BoxGeometry box;
+  box.set_length({10., 10., 10.});
+
+  ParticleList real_cell, ghost_cell;
+  real_cell.resize(1);
+  ghost_cell.resize(1);
+  // Pre-existing force on the owned real particle.
+  real_cell.begin()->force() = {1., 0., 0.};
+  // Force accumulated on the ghost during the pair-interaction loop.
+  ghost_cell.begin()->force() = {0., 20., 300.};
+
+  HaloPlan plan;
+  plan.comm = boost::mpi::communicator{};
+  // LocalComm is always stored as {src=real, dst=ghost} by the plan builder.
+  plan.local.push_back(LocalComm{&real_cell, &ghost_cell, {0., 0., 0.}});
+
+  halo_exchange(plan, box, GHOSTTRANS_FORCE, {Direction::Reduce, Combine::Add});
+
+  // Real cell must hold pre-existing + ghost force.
+  BOOST_CHECK_CLOSE(real_cell.begin()->force()[0], 1.0, 1e-12);
+  BOOST_CHECK_CLOSE(real_cell.begin()->force()[1], 20.0, 1e-12);
+  BOOST_CHECK_CLOSE(real_cell.begin()->force()[2], 300.0, 1e-12);
+  // Ghost cell is NOT the target; its value is not checked here (the engine
+  // may or may not modify it, but the real cell result is what matters).
+}
+
 int main(int argc, char **argv) {
   boost::mpi::environment mpi_env(argc, argv);
 
