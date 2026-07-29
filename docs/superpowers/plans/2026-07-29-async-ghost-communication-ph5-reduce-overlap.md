@@ -62,3 +62,14 @@
 - 5.1 is behavior-preserving for blocking callers (same op order) and pure win for split-phase; collective stays blocking in finish — documented.
 - 5.2 implements the user-mandated wrap rule as first-class infrastructure and adds the exact validator invariant 5.3 depends on; conservative choices (Atom/Hybrid all-boundary) degrade gracefully.
 - 5.3 is whitelist-gated with today's path as fallback, per-particle reorder only (bitwise identity), pending-exchange lifecycle asserted, and value-gated by A/B with an explicit revert clause.
+
+### Task 5.4: Non-zeroing CommBuf resize (perf-mandated)
+
+**Files:** `src/core/ghosts/particle_packing.hpp` (CommBuf), engine call sites if signatures shift.
+
+perf @10k/8 (cycles:u, async vs staggered): `__memset_avx2` +~1.0% of total cycles — `CommBuf`'s `std::vector<char>::resize` value-initializes (memset) every grown buffer before `pack_cells` immediately overwrites it; recv buffers are likewise overwritten by MPI. Largest single fixable delta.
+
+- [ ] Replace the zero-filling grow with an uninitialized-capacity scheme: keep `std::vector<char>` but grow via `reserve` + track a separate logical size, or switch the storage to a small buffer type with `malloc`-style uninitialized grow (pick the least invasive that keeps `data()/size()/bonds()` semantics; document the choice). Bond buffer (`std::vector<char>` serialized via boost.mpi) stays as-is (cold path).
+- [ ] No behavior change: buffers are fully written by pack (send) or by MPI receive before any read — state this invariant in a comment; `ADDITIONAL_CHECKS`-guarded canary optional.
+- [ ] Verify: 149/149; parity gate; A/B is covered by the Ph5 combined A/B.
+- [ ] Commit `core/ghosts: grow exchange buffers without zero-fill (perf: -1% memset at 10k/8)`.
