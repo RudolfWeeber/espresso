@@ -74,11 +74,8 @@ inline void mark_boundary_cells(
   // the wrap predicate fires for that neighbor pair (rule b).
   for (Cell *c : local_cells) {
     for (Cell *n : c->neighbors().all()) {
-      if (ghost_set.count(&n->particles())) {
-        c->m_is_boundary = true;
-        break;
-      }
-      if (wrap_predicate && wrap_predicate(c, n)) {
+      if (ghost_set.count(&n->particles()) ||
+          (wrap_predicate && wrap_predicate(c, n))) {
         c->m_is_boundary = true;
         break;
       }

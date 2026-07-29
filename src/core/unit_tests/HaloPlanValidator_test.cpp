@@ -314,6 +314,37 @@ BOOST_AUTO_TEST_CASE(single_rank_wrap_axis_cells_are_boundary,
   }
 }
 
+// Degenerate wrap case: cell_grid==1 along at least one periodic axis.
+//
+// When node_grid[i]==1 && periodic[i] && cell_grid[i]==1 the single cell
+// layer on that axis is its own periodic neighbour.  init_cell_interactions()
+// drops the self-pair (ind1==ind2), so neighbors().all() has no entry along
+// that axis and the wrap predicate in mark_boundary_cells() is never invoked.
+// Without the post-predicate fixup every local cell would be left INTERIOR —
+// wrong, because each cell interacts with itself across the periodic boundary.
+//
+// box_l=1.0, range=2.0 → cell_grid[i]=floor(1/2)=0 → clamped to 1 on all
+// three axes.  Every local cell must be boundary.
+BOOST_AUTO_TEST_CASE(single_rank_cell_grid_one_all_cells_are_boundary,
+                     *utf::precondition([](utf::test_unit_id) {
+                       return has_1_mpi_rank();
+                     })) {
+  using namespace GhostComm;
+  // range > box_l → cell_grid clamps to {1,1,1}
+  auto const dd = make_dd({1, 1, 1}, 1.0, 2.0);
+  // Verify the precondition: cell_grid should be {1,1,1}.
+  BOOST_REQUIRE_EQUAL(dd.cell_grid[0], 1);
+  BOOST_REQUIRE_EQUAL(dd.cell_grid[1], 1);
+  BOOST_REQUIRE_EQUAL(dd.cell_grid[2], 1);
+  // Every local cell must be boundary (self-interaction across periodic
+  // boundary).
+  for (Cell const *c : dd.local_cells()) {
+    BOOST_CHECK_MESSAGE(c->is_boundary(),
+                        "cell_grid==1 wrap axis: every local cell must be "
+                        "boundary (self-interaction across periodic boundary)");
+  }
+}
+
 // ── Task 2.2: cross-rank symmetry checks ────────────────────────────────────
 
 // Good case: real RegularDecomposition on 4 ranks must be symmetric.

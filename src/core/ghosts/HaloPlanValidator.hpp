@@ -50,7 +50,9 @@ namespace GhostComm {
  *    precondition that the integrator step-2 / force-reduce overlap (Task
  *    5.3) relies on: interior cells receive no reduce contributions and
  *    therefore do not require the reduce to complete before their velocity
- *    is updated.
+ *    is updated.  LocalComm.dst and NeighborComm.recv are ghost cells by
+ *    construction (guaranteed by the dst-in-ghost-set coverage check #1),
+ *    so they are not checked here.
  *
  * @returns a human-readable violation string per problem; empty = valid.
  */

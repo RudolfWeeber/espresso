@@ -802,6 +802,30 @@ RegularDecomposition::RegularDecomposition(
     };
   }
   GhostComm::mark_boundary_cells(local_cells(), ghost_cells(), wrap_pred);
+
+  /* Degenerate case: node_grid[i]==1, periodic[i], cell_grid[i]==1.
+   *
+   * When cell_grid[i]==1 on a wrap axis, the single local cell layer along
+   * that axis has itself as the only periodic neighbour (both ends fold to
+   * the same global index).  init_cell_interactions() therefore excludes
+   * the self-pair (ind1==ind2 guard at line ~552), leaving neighbors().all()
+   * empty along that axis.  The wrap_predicate above is never called for
+   * that cell, so mark_boundary_cells() leaves it interior — wrong.
+   *
+   * Correct interpretation: the cell interacts with itself across the
+   * periodic boundary, so it is by definition wrap-adjacent and must be
+   * boundary.  The simplest safe fix: if any wrap axis has cell_grid[i]==1,
+   * every local cell is boundary (they all span that axis, so all are
+   * wrap-adjacent).
+   */
+  for (int i = 0; i < 3; ++i) {
+    if (node_grid[i] == 1 && m_box.periodic(i) && cell_grid[i] == 1) {
+      for (Cell *c : local_cells())
+        c->m_is_boundary = true;
+      break; // one degenerate axis is enough to force all-boundary
+    }
+  }
+
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
   assert(
       GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells())
