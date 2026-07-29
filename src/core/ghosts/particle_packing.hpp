@@ -35,16 +35,61 @@
 #include <utils/Vector.hpp>
 
 #include <cstddef>
+#include <memory>
 #include <span>
 #include <vector>
 
 namespace GhostComm {
 
+namespace detail {
+/**
+ * @brief Allocator wrapper that skips value-initialization on grow.
+ *
+ * `std::vector<T, DefaultInitAllocator<T>>::resize(n)` extends storage
+ * without zero-filling when n > size(), leaving new bytes in an
+ * indeterminate state.  Use only when all grown bytes are overwritten
+ * before being read (e.g. by pack_cells / MPI irecv).
+ *
+ * All other allocator operations (allocate, deallocate, copy/move) are
+ * forwarded to `std::allocator<T>`.
+ */
+template <class T> struct DefaultInitAllocator : std::allocator<T> {
+  using value_type = T;
+  // Inherit all constructors from std::allocator<T>.
+  using std::allocator<T>::allocator;
+
+  template <class U> struct rebind {
+    using other = DefaultInitAllocator<U>;
+  };
+
+  /** Called by vector::resize for each newly appended element.
+   *  Plain `new (p) T` uses default-initialization: trivial types like
+   *  `char` are left uninitialized rather than zero-filled. */
+  void construct(T *p) noexcept { ::new (static_cast<void *>(p)) T; }
+
+  /** Forward non-default construction unchanged. */
+  template <class... Args> void construct(T *p, Args &&...args) {
+    ::new (static_cast<void *>(p)) T(std::forward<Args>(args)...);
+  }
+};
+} // namespace detail
+
 /**
  * Class that stores marshalled data for ghost communications.
  * To store and retrieve data, use the adapter classes below.
+ *
+ * Invariant: every byte in the non-bond buffer is written by the caller
+ * (pack_cells / MPI irecv) before it is read (unpack_cells / add_forces).
+ * The buffer therefore uses a default-init allocator so that resize()-on-grow
+ * does not zero-fill bytes that will be immediately overwritten, eliminating
+ * the `__memset_avx2` overhead visible in perf profiles at large particle
+ * counts.  The bond buffer is kept as a plain std::vector<char> because it is
+ * serialized via boost.mpi (which requires exact byte semantics) and is on the
+ * cold resort-only path.
  */
 class CommBuf {
+  using ByteVec = std::vector<char, detail::DefaultInitAllocator<char>>;
+
 public:
   /** Returns a pointer to the non-bond storage. */
   char *data() { return buf.data(); }
@@ -53,9 +98,9 @@ public:
   /** Returns the number of elements in the non-bond storage. */
   std::size_t size() const { return buf.size(); }
 
-  /** Resizes the underlying storage s.t. the object is capable
-   * of holding "new_size" chars.
-   * @param new_size new size
+  /** Resizes the underlying storage s.t. the object is capable of holding
+   *  @p new_size chars.  Bytes added by growth are left uninitialized —
+   *  the caller must write them (pack_cells / MPI irecv) before reading.
    */
   void resize(std::size_t new_size) { buf.resize(new_size); }
 
@@ -66,8 +111,9 @@ public:
   auto make_span() { return std::span(buf.data(), buf.size()); }
 
 private:
-  std::vector<char> buf;     ///< Buffer for everything but bonds
-  std::vector<char> bondbuf; ///< Buffer for bond lists
+  ByteVec buf; ///< Buffer for everything but bonds (default-init grow)
+  std::vector<char>
+      bondbuf; ///< Buffer for bond lists (boost.mpi-serialized, cold path)
 };
 
 /**
