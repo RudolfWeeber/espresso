@@ -73,3 +73,17 @@ perf @10k/8 (cycles:u, async vs staggered): `__memset_avx2` +~1.0% of total cycl
 - [ ] No behavior change: buffers are fully written by pack (send) or by MPI receive before any read — state this invariant in a comment; `ADDITIONAL_CHECKS`-guarded canary optional.
 - [ ] Verify: 149/149; parity gate; A/B is covered by the Ph5 combined A/B.
 - [ ] Commit `core/ghosts: grow exchange buffers without zero-fill (perf: -1% memset at 10k/8)`.
+
+### Task 5.5: Runtime-conditional orientation payload (GHOSTTRANS_QUAT / GHOSTTRANS_TORQUE)
+
+**Files:** `src/core/ghosts.hpp` (bits), `src/core/ghosts/particle_packing.cpp` (serialize_and_reduce keys quat/torque on the new bits), `src/core/system/System.cpp` (`get_global_ghost_flags`), `src/core/cell_system/CellStructure.cpp` (`map_data_parts`, ghosts_update/reduce paths), tests.
+
+**Finding:** with ESPRESSO_ROTATION compiled in, every per-step position push carries `quat` (32 of 68 B/particle) and every force reduce carries `torque` (24 of 48 B/particle) keyed only on the compile-time feature — pure waste for non-rotating systems (LJ). Runtime-conditional payload halves serialization bytes in the common case; the architectural pattern already exists (MOMENTUM/BONDS bits in `get_global_ghost_flags`).
+
+- [ ] New bits `GHOSTTRANS_QUAT`, `GHOSTTRANS_TORQUE` (under `#ifdef ESPRESSO_ROTATION`). `serialize_and_reduce`: quat moves from the POSITION arm to a QUAT arm; torque from the FORCE arm to a TORQUE arm. `calc_transmit_size` follows automatically (same function).
+- [ ] **Reader audit (correctness gate):** grep every reader of `p.quat()`, `calc_director()`, `p.torque()`, `p.calc_dip()` reachable for GHOST particles (nonbonded anisotropic kernels e.g. Gay-Berne, dipolar solvers, vs_relative update/back-transfer, engine/swimming, collision detection variants, LB coupling). Derive the whitelist in `get_global_ghost_flags`: set QUAT (and TORQUE for the reduce) when ANY of: rotational propagation in use (`used_propagations & ROT_*`), dipolar solver set, vs_relative in use, anisotropic nonbonded interaction configured, engine/swimming with director coupling — document each condition next to the code like the MOMENTUM ones. When in doubt for a reader, include it (conservative).
+- [ ] `ghosts_reduce_forces` (blocking + split-phase): TORQUE bit computed from the same whitelist (thread through or recompute — keep both paths consistent).
+- [ ] Wire symmetry: pack and unpack use the same `data_parts` per exchange (existing invariant) → layout stays symmetric automatically; state this in a comment.
+- [ ] Tests: rotation parity `testsuite/python/rotation_per_particle.py` or an existing rotating-system test @2+4 ranks (quat must still propagate when rotation used); dipolar test if cheap (`dawaanr-and-dds-gpu`? pick an existing CPU dipolar test); plus the standard parity gate (lj/lees_edwards/collision/nsquare/hybrid). `check_unit_tests` all green.
+- [ ] A/B (controller-led): lj 1k/8 + 10k/4+8 — expect a visible cut of the 10k/8 residual.
+- [ ] Commit `core/ghosts: send quat/torque only when orientation physics is active`.
