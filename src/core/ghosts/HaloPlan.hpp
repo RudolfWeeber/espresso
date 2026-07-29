@@ -59,5 +59,17 @@ struct HaloPlan {
   std::vector<NeighborComm> neighbors;
   std::vector<LocalComm> local;
   std::optional<CollectiveSection> collective;
+  /**
+   * @brief Lazily-set flag for the once-per-plan symmetry check.
+   *
+   * Set to true on the first call to halo_exchange_start for this plan
+   * (see HaloExchange.cpp, ESPRESSO_ADDITIONAL_CHECKS guard).  The plan
+   * object is rebuilt on every decomposition change, so the flag naturally
+   * rearms: a new plan always starts with symmetry_validated = false.
+   *
+   * mutable so halo_exchange_start can set it through a const HaloPlan&
+   * without requiring a non-const overload.
+   */
+  mutable bool symmetry_validated = false;
 };
 } // namespace GhostComm

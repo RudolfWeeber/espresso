@@ -31,6 +31,7 @@
 #include "BoxGeometry.hpp"
 #include "ghosts.hpp"
 #include "ghosts/HaloPlan.hpp"
+#include "ghosts/HaloPlanValidator.hpp"
 #include "ghosts/particle_packing.hpp"
 
 #include <boost/mpi/collectives.hpp>
@@ -240,6 +241,28 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
     return st;
 
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
+  // Cross-rank symmetry check: run once per plan at first use.
+  //
+  // This check is deferred from the decomposition constructors to here because:
+  //   (a) During checkpoint loading, decompositions are transiently rebuilt
+  //       while maximal_cutoff is rank-divergent (different cell grids per rank
+  //       for a brief window before the next consistent rebuild).  The
+  //       transient plan is never used, so its asymmetry is harmless — but a
+  //       ctor-time collective would fire and abort.
+  //   (b) A collective inside a ctor risks partial-abort deadlock: if one rank
+  //       throws before entering the all_to_all, the others spin forever.
+  //
+  // All ranks enter halo_exchange_start together (ghost exchange is
+  // collective), so the all_to_all inside validate_halo_plan_symmetry is safe
+  // here. plan.symmetry_validated is mutable and rearmed to false whenever the
+  // plan object is rebuilt (every decomposition change constructs a fresh
+  // HaloPlan).
+  if (!plan.symmetry_validated) {
+    assert(GhostComm::report_violations(
+        GhostComm::validate_halo_plan_symmetry(plan),
+        "halo_exchange first use"));
+    plan.symmetry_validated = true;
+  }
   // Peer-uniqueness is validated at plan-build time by validate_halo_plan().
   // Op-sanity: Combine::Add is only valid for reducible parts
   // (FORCE, FORCE|TORQUE, RATTLE).  TORQUE may only appear together with

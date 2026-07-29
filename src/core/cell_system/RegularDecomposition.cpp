@@ -840,6 +840,15 @@ RegularDecomposition::RegularDecomposition(
   assert(GhostComm::report_violations(
       GhostComm::validate_halo_plan(m_halo_plan, local_cells(), ghost_cells()),
       "RegularDecomposition"));
-  assert(GhostComm::validate_halo_plan_symmetry(m_halo_plan).empty());
+  // NOTE: validate_halo_plan_symmetry is NOT called here.
+  // During checkpoint loading, decompositions are transiently rebuilt while
+  // maximal_cutoff is rank-divergent (ranks may have different cell grids for a
+  // brief window before the next consistent rebuild).  The transient plan is
+  // never used — it is immediately replaced — so the asymmetry is harmless.
+  // A construction-time collective all_to_all inside a ctor is also dangerous:
+  // if one rank aborts the others block forever in the collective.
+  // Symmetry is instead validated at FIRST USE of the plan in
+  // halo_exchange_start (see GhostComm::halo_exchange_start in
+  // HaloExchange.cpp).
 #endif
 }
