@@ -552,12 +552,20 @@ void System::on_integration_start() {
  *    when ESPRESSO_ENGINE and LB are both active
  *  - HomogeneousMagneticField constraint: p.calc_dip() (local particles only
  *    — does NOT read ghosts; included conservatively via dipole check)
- *  - dipolar solvers (dp3m, dds, dlc, scafacos): p.calc_dip() on local
- *    particles only (they all-gather; ghost quat not required directly, but
- *    included conservatively because the dipole moment depends on quat via
- *    PROPRTS dipm scalar; included via dipole check)
- *  - Stoner-Wohlfarth: modifies p.quat() on local particles only (OK)
+ *  - dipolar solvers (dp3m, dds, dlc, scafacos): p.calc_dip() on
+ *    unique_particles which includes ghost particles that have no local
+ *    counterpart (see CellStructure::set_index_map, lines 310-322); covered by
+ *    the dipolar-solver-set condition
+ *  - ShapeBasedConstraint / calc_non_central_force: reads p.quat() on LOCAL
+ *    particles only (Constraints iterate local_particles) — safe without the
+ *    bit
+ *  - Stoner-Wohlfarth integrate_magnetodynamics: calls p_ref->calc_director()
+ *    where p_ref comes from get_reference_particle / get_local_particle, which
+ *    CAN return a ghost; covered by the explicit #ifdef below
  *  - rotational integrators: operate on local particles only (OK)
+ *  - ICC blocking reduce: resets force_and_torque on local particles and may
+ *    carry a zero-valued TORQUE payload on the wire when orientation physics is
+ *    concurrently active — harmless (bytes only, value is zero)
  */
 static bool orientation_ghosts_needed(System const &sys) {
 #ifndef ESPRESSO_ROTATION
@@ -601,6 +609,17 @@ static bool orientation_ghosts_needed(System const &sys) {
   // LB active with ENGINE compiled in: coupling loop includes ghost particles
   // and calls p.calc_director() for swimmer_force_on_fluid particles.
   if (sys.lb.is_solver_set()) {
+    return true;
+  }
+#endif
+
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+  // Stoner-Wohlfarth integrate_magnetodynamics calls
+  // get_reference_particle / get_local_particle which can return a ghost, then
+  // reads p_ref->calc_director() on it.  SW requires the Langevin thermostat
+  // (enforced in integrate.cpp integrator_sanity_checks); use that as the
+  // cheapest reliable system-level runtime signal.
+  if (sys.thermostat->thermo_switch & THERMO_LANGEVIN) {
     return true;
   }
 #endif
