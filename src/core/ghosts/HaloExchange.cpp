@@ -349,6 +349,21 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
     CALI_MARK_END("ghost/post");
 #endif
 
+  // Local (same-rank) copies run here, after messages are posted, so they
+  // overlap with in-flight network transfers for split-phase callers.
+  //
+  // Correctness argument:
+  //   Push:   local_cell_copy writes ghost cells; isends carry real-cell data.
+  //           The two sets of cells are disjoint, so there is no write/read
+  //           conflict with any in-flight send buffer.
+  //   Reduce: local_cell_copy writes real (owned) cells; isends carry ghost-
+  //           cell data.  Again the sets are disjoint.
+  // In both cases local copies still complete before halo_exchange_finish
+  // unpacks any receive buffer, so the FP accumulation order is identical to
+  // the previous placement in finish — results are bitwise unchanged.
+  for (auto const &lc : plan.local)
+    local_cell_copy(*lc.src, *lc.dst, lc.shift, box, data_parts);
+
   return st;
 }
 
@@ -372,9 +387,8 @@ void halo_exchange_finish(GhostExchange &st) {
 
   auto &bufs = *st.bufs;
 
-  // Same-rank copies can run while messages are in flight.
-  for (auto const &lc : st.plan->local)
-    local_cell_copy(*lc.src, *lc.dst, lc.shift, *st.box, st.data_parts);
+  // Local (same-rank) copies were already performed in halo_exchange_start
+  // to overlap with in-flight messages; nothing to do here.
 
   if (st.plan->collective)
     run_collective(*st.plan, *st.box, st.data_parts, st.op);
