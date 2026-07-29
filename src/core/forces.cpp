@@ -68,6 +68,59 @@
 #include <span>
 #include <variant>
 
+/**
+ * @brief Eligibility check for the split-phase ghost force reduction.
+ *
+ * The overlap is safe only when ALL of the following hold:
+ *
+ *  1. More than one MPI rank: at 1 rank the reduce is a local-only copy,
+ *     there is nothing to hide, so the split adds overhead for no gain.
+ *  2. ComFixed is inactive: ComFixed applies a per-type force correction that
+ *     must see the final (post-reduce) forces, which arrive on the blocking
+ * path.
+ *  3. force_cap == 0: force capping requires the final forces (post-reduce).
+ *  4. Integrator is VV or symplectic Euler: only these inertial methods use
+ *     step_2; steepest-descent, BD, SD, and NPT are not eligible (NPT virial
+ *     is not accumulated during step_2 overlap; BD/SD have no step_2
+ * half-kick).
+ *  5. NPT propagation not in use: the NPT step_2 updates the box pressure and
+ *     box length using the virial gathered from forces; it must run after the
+ *     full reduce.  NPT also implies integ_switch != NVT/SE, so condition 4
+ *     already excludes it, but we check explicitly for clarity.
+ *  6. LB-tracer arm not active: TRANS_LB_TRACER particles have forces
+ * transferred to the LB fluid in the integrate loop *after* calculate_forces
+ * and before step_2; with the split-phase path the fluid coupling would run
+ * while the reduction is in flight, leading to incorrect force accumulation.
+ */
+static bool ghost_reduce_overlap_eligible(System::System const &system) {
+  // 1. Must have more than one MPI rank.
+  if (::comm_cart.size() <= 1)
+    return false;
+  // 2. ComFixed must be inactive.
+  if (not system.comfixed->get_fixed_types().empty())
+    return false;
+  // 3. Force capping must be off.
+  if (system.get_force_cap() != 0.)
+    return false;
+  // 4. Integrator must be VV or symplectic Euler (inertial with step_2
+  // half-kick).
+  auto const integ = system.propagation->integ_switch;
+  if (integ != INTEG_METHOD_NVT and integ != INTEG_METHOD_SYMPLECTIC_EULER)
+    return false;
+  // 5. NPT propagation not in use (belt-and-suspenders after check 4).
+#ifdef ESPRESSO_NPT
+  if (system.propagation->used_propagations &
+      PropagationMode::TRANS_LANGEVIN_NPT)
+    return false;
+#endif
+  // 6. LB-tracer arm not active.
+#ifdef ESPRESSO_VIRTUAL_SITES_INERTIALESS_TRACERS
+  if (system.propagation->used_propagations & PropagationMode::TRANS_LB_TRACER)
+    return false;
+#endif
+  return true;
+}
+
 static void force_capping(CellStructure &cell_structure, double force_cap) {
   if (force_cap > 0.) {
     auto const force_cap_sq = Utils::sqr(force_cap);
@@ -483,14 +536,28 @@ void System::System::calculate_forces() {
   }
 #endif
 
-  // Communication step: ghost forces
-  cell_structure->ghosts_reduce_forces();
+  if (ghost_reduce_overlap_eligible(*this)) {
+    // Split-phase path: start the ghost force reduction now (non-blocking);
+    // integrate.cpp will run interior-cell step_2, finish the reduce, then
+    // run boundary-cell step_2.  comfixed and force_capping are inactive on
+    // this path (asserted by eligibility; the assert below is a belt-and-
+    // suspenders cross-check).
+    assert(comfixed->get_fixed_types().empty() &&
+           "ghost_reduce_overlap: comfixed must be inactive on the eligible "
+           "path");
+    assert(force_cap == 0. &&
+           "ghost_reduce_overlap: force_cap must be 0 on the eligible path");
+    cell_structure->ghosts_reduce_forces_start();
+  } else {
+    // Blocking path: finish the reduce here, then apply comfixed/capping.
+    cell_structure->ghosts_reduce_forces();
 
-  // should be pretty late, since it needs to zero out the total force
-  comfixed->apply(particles);
+    // should be pretty late, since it needs to zero out the total force
+    comfixed->apply(particles);
 
-  // Needs to be the last one to be effective
-  force_capping(*cell_structure, force_cap);
+    // Needs to be the last one to be effective
+    force_capping(*cell_structure, force_cap);
+  }
 
   // mark that forces are now up-to-date
   propagation->recalc_forces = false;

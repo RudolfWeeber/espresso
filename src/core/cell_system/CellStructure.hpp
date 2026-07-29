@@ -220,6 +220,26 @@ private:
    * particle data but mutate this scratch storage.
    */
   mutable GhostComm::ExchangeBuffers m_ghost_buffers;
+  /**
+   * @brief Scratch cell-pointer list for filtered particle iteration.
+   *
+   * Used by @ref for_each_interior_particle and @ref for_each_boundary_particle
+   * to hold the filtered subset of local cells.  Declared mutable so that the
+   * const-qualified iteration helpers can write to it; not thread-safe — the
+   * two filtered passes must not run concurrently (they never do: interior pass
+   * completes before the ghost-reduce finish, which precedes the boundary
+   * pass).
+   */
+  mutable std::vector<Cell *> m_filtered_cells_scratch;
+  /**
+   * @brief In-flight ghost force reduction started by
+   *        @ref ghosts_reduce_forces_start.
+   *
+   * When set, @ref ghosts_reduce_forces_finish must be called before any
+   * resort or decomposition change.  Stored as optional so that the
+   * unfinished state is detectable at runtime.
+   */
+  mutable std::optional<GhostComm::GhostExchange> m_pending_ghost_reduce;
   /** particle properties using individual Kokkos Views */
   std::unique_ptr<AoSoA_pack> m_aosoa;
   /** The local id-to-index for aosoa data */
@@ -375,6 +395,68 @@ public:
     }
     for (auto &p : local_particles()) {
       f(p);
+    }
+  }
+
+  /**
+   * @brief Run a kernel on interior (non-boundary) local particles only.
+   *
+   * A cell is interior iff none of its neighbors is a ghost cell
+   * (@ref Cell::is_boundary returns false).  This filtered variant uses the
+   * same Kokkos parallelization as @ref for_each_local_particle — it builds
+   * a filtered cell list and delegates to @ref parallel_for_each_particle_impl
+   * so that thread-level behavior is identical to the unfiltered path.
+   *
+   * The kernel is assumed to be thread-safe.
+   */
+  template <typename Callable>
+  void for_each_interior_particle(Callable &&f) const {
+    auto const all_cells = decomposition().local_cells();
+    // Build a filtered list of interior cells (those that are not boundary).
+    m_filtered_cells_scratch.clear();
+    for (auto *c : all_cells) {
+      if (not c->is_boundary())
+        m_filtered_cells_scratch.push_back(c);
+    }
+    if (m_filtered_cells_scratch.empty())
+      return;
+    std::span<Cell *const> span{m_filtered_cells_scratch};
+    if (use_parallel_for_each_local_particle()) {
+      parallel_for_each_particle_impl(span, f);
+    } else {
+      for (auto *c : span)
+        for (auto &p : c->particles())
+          f(p);
+    }
+  }
+
+  /**
+   * @brief Run a kernel on boundary local particles only.
+   *
+   * Complement of @ref for_each_interior_particle: visits particles in cells
+   * where @ref Cell::is_boundary returns true.  Uses the same Kokkos
+   * parallelization structure as @ref for_each_local_particle.
+   *
+   * The kernel is assumed to be thread-safe.
+   */
+  template <typename Callable>
+  void for_each_boundary_particle(Callable &&f) const {
+    auto const all_cells = decomposition().local_cells();
+    // Build a filtered list of boundary cells.
+    m_filtered_cells_scratch.clear();
+    for (auto *c : all_cells) {
+      if (c->is_boundary())
+        m_filtered_cells_scratch.push_back(c);
+    }
+    if (m_filtered_cells_scratch.empty())
+      return;
+    std::span<Cell *const> span{m_filtered_cells_scratch};
+    if (use_parallel_for_each_local_particle()) {
+      parallel_for_each_particle_impl(span, f);
+    } else {
+      for (auto *c : span)
+        for (auto &p : c->particles())
+          f(p);
     }
   }
 
@@ -561,6 +643,34 @@ public:
    */
   void ghosts_reduce_forces();
 
+  /**
+   * @brief Begin the split-phase ghost force reduction (non-blocking).
+   *
+   * Posts all MPI sends/receives for the force reduction and returns
+   * immediately.  The caller must later call @ref ghosts_reduce_forces_finish.
+   * Asserts that no reduction is already in flight.
+   *
+   * Only meaningful when @c comm_cart.size() > 1.  At one rank the blocking
+   * @ref ghosts_reduce_forces must be used instead (the reduction is then a
+   * pure local copy with nothing to hide).
+   */
+  void ghosts_reduce_forces_start();
+
+  /**
+   * @brief Complete the split-phase ghost force reduction.
+   *
+   * Waits for all outstanding MPI requests and unpacks/reduces force data
+   * into real particles.  Clears the pending state afterwards.
+   *
+   * Must be called exactly once after @ref ghosts_reduce_forces_start.
+   */
+  void ghosts_reduce_forces_finish();
+
+  /** @brief True when a split-phase force reduction is in flight. */
+  bool has_pending_ghost_reduce() const {
+    return m_pending_ghost_reduce.has_value();
+  }
+
   /** Set forces and torques on all ghosts to zero. */
   void ghosts_reset_forces() {
     for_each_ghost_particle([](Particle &p) { p.force_and_torque() = {}; });
@@ -667,6 +777,9 @@ private:
   /** @brief Set the particle decomposition, keeping the particles. */
   void set_particle_decomposition(
       std::unique_ptr<ParticleDecomposition> &&decomposition) {
+    assert(not m_pending_ghost_reduce.has_value() &&
+           "set_particle_decomposition: ghost force reduction is still in "
+           "flight — call ghosts_reduce_forces_finish() first");
     clear_particle_index();
 
     /* Swap in new cell system */

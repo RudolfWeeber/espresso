@@ -73,6 +73,9 @@
 #include <vector>
 
 CellStructure::~CellStructure() {
+  assert(not m_pending_ghost_reduce.has_value() &&
+         "~CellStructure: ghost force reduction still in flight at destruction "
+         "— ghosts_reduce_forces_finish() was not called");
   clear_local_properties();
   // Kokkos handle can only be freed after all Cabana containers have been freed
   m_kokkos_handle.reset();
@@ -504,6 +507,28 @@ void CellStructure::ghosts_reduce_forces() {
       *decomposition().halo_plan(), *get_system().box_geo, GHOSTTRANS_FORCE,
       {GhostComm::Direction::Reduce, GhostComm::Combine::Add}, m_ghost_buffers);
 }
+
+void CellStructure::ghosts_reduce_forces_start() {
+  assert(not m_pending_ghost_reduce.has_value() &&
+         "ghosts_reduce_forces_start: a reduction is already in flight");
+#ifdef ESPRESSO_CALIPER
+  ESPRESSO_CALI_MARK_BEGIN("ghosts_reduce_forces");
+#endif
+  m_pending_ghost_reduce.emplace(GhostComm::halo_exchange_start(
+      *decomposition().halo_plan(), *get_system().box_geo, GHOSTTRANS_FORCE,
+      {GhostComm::Direction::Reduce, GhostComm::Combine::Add},
+      m_ghost_buffers));
+}
+
+void CellStructure::ghosts_reduce_forces_finish() {
+  assert(m_pending_ghost_reduce.has_value() &&
+         "ghosts_reduce_forces_finish: no reduction is in flight");
+  GhostComm::halo_exchange_finish(*m_pending_ghost_reduce);
+  m_pending_ghost_reduce.reset();
+#ifdef ESPRESSO_CALIPER
+  ESPRESSO_CALI_MARK_END("ghosts_reduce_forces");
+#endif
+}
 #ifdef ESPRESSO_BOND_CONSTRAINT
 void CellStructure::ghosts_reduce_rattle_correction() {
 #ifdef ESPRESSO_CALIPER
@@ -533,6 +558,9 @@ void CellStructure::resort_particles(bool global_flag) {
 #ifdef ESPRESSO_CALIPER
   ESPRESSO_CALI_MARK_FUNCTION;
 #endif
+  assert(not m_pending_ghost_reduce.has_value() &&
+         "resort_particles: ghost force reduction is still in flight — "
+         "call ghosts_reduce_forces_finish() first");
   invalidate_ghosts();
 
   std::vector<ParticleChange> diff;

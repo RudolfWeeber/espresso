@@ -473,17 +473,25 @@ static bool integrator_step_1(CellStructure &cell_structure,
   return false;
 }
 
-static void integrator_step_2(CellStructure &cell_structure,
-                              Propagation const &propagation,
-                              [[maybe_unused]] System::System &system,
-                              double time_step) {
-#ifdef ESPRESSO_CALIPER
-  ESPRESSO_CALI_MARK_FUNCTION;
-#endif
-  if (propagation.integ_switch == INTEG_METHOD_STEEPEST_DESCENT)
-    return;
-
-  cell_structure.for_each_local_particle([&](Particle &p) {
+/**
+ * @brief Build the per-particle half-kick callable for step_2.
+ *
+ * Returns a lambda that captures @p propagation and @p time_step by reference
+ * and applies the velocity (and torque, if ROTATION is enabled) update for a
+ * single particle.  Virtual sites are skipped.
+ *
+ * Shared verbatim by @ref integrator_step_2 (full pass) and
+ * @ref integrator_step_2_filtered (interior / boundary passes): the lambda is
+ * constructed once, then handed to @c for_each_local_particle,
+ * @c for_each_interior_particle, or @c for_each_boundary_particle.
+ *
+ * NPT particles are intentionally absent: the NPT arm must run only on the
+ * ineligible (full-reduce-then-step_2) path and is handled separately inside
+ * @ref integrator_step_2.
+ */
+static auto make_step2_particle_kernel(Propagation const &propagation,
+                                       double time_step) {
+  return [&propagation, time_step](Particle &p) {
 #ifdef ESPRESSO_VIRTUAL_SITES
     // virtual sites are updated later in the integration loop
     if (p.is_virtual())
@@ -522,7 +530,21 @@ static void integrator_step_2(CellStructure &cell_structure,
         velocity_verlet_rotator_2(p, time_step);
 #endif
     }
-  });
+  };
+}
+
+static void integrator_step_2(CellStructure &cell_structure,
+                              Propagation const &propagation,
+                              [[maybe_unused]] System::System &system,
+                              double time_step) {
+#ifdef ESPRESSO_CALIPER
+  ESPRESSO_CALI_MARK_FUNCTION;
+#endif
+  if (propagation.integ_switch == INTEG_METHOD_STEEPEST_DESCENT)
+    return;
+
+  cell_structure.for_each_local_particle(
+      make_step2_particle_kernel(propagation, time_step));
 
 #ifdef ESPRESSO_NPT
   if ((propagation.used_propagations & PropagationMode::TRANS_LANGEVIN_NPT) and
@@ -537,6 +559,42 @@ static void integrator_step_2(CellStructure &cell_structure,
     }
   }
 #endif
+}
+
+/**
+ * @brief Restricted step_2 for the split-phase ghost-force-reduce overlap.
+ *
+ * Called twice per step: once with @p interior_pass = true (while the ghost
+ * reduce is in flight) and once with @p interior_pass = false (after
+ * @ref CellStructure::ghosts_reduce_forces_finish completes).  The per-particle
+ * kernel is identical to the one used by @ref integrator_step_2 — shared via
+ * @ref make_step2_particle_kernel.
+ *
+ * NPT is absent here: the eligibility check in calculate_forces() guarantees
+ * TRANS_LANGEVIN_NPT is never active when this path runs.
+ */
+static void integrator_step_2_filtered(CellStructure &cell_structure,
+                                       Propagation const &propagation,
+                                       double time_step, bool interior_pass) {
+#ifdef ESPRESSO_CALIPER
+  ESPRESSO_CALI_MARK_FUNCTION;
+#endif
+  // steepest_descent and NPT are excluded by the eligibility check; both
+  // asserts are belt-and-suspenders cross-checks.
+  assert(propagation.integ_switch != INTEG_METHOD_STEEPEST_DESCENT &&
+         "integrator_step_2_filtered: steepest-descent is ineligible");
+#ifdef ESPRESSO_NPT
+  assert((propagation.used_propagations &
+          PropagationMode::TRANS_LANGEVIN_NPT) == 0 &&
+         "integrator_step_2_filtered: NPT propagation is ineligible");
+#endif
+
+  auto const kernel = make_step2_particle_kernel(propagation, time_step);
+  if (interior_pass) {
+    cell_structure.for_each_interior_particle(kernel);
+  } else {
+    cell_structure.for_each_boundary_particle(kernel);
+  }
 }
 
 int System::System::integrate(int n_steps, int reuse_forces) {
@@ -595,6 +653,14 @@ int System::System::integrate(int n_steps, int reuse_forces) {
     cell_structure->update_ghosts_and_resort_particle(get_global_ghost_flags());
 
     calculate_forces();
+
+    // If calculate_forces started a split-phase ghost reduce, finish it now:
+    // the initial-force path has no step_2 to overlap with (n_steps may be 0,
+    // or the forces are for the previous step's record), so we just complete
+    // the reduce immediately.
+    if (cell_structure->has_pending_ghost_reduce()) {
+      cell_structure->ghosts_reduce_forces_finish();
+    }
 
     if (propagation.integ_switch != INTEG_METHOD_STEEPEST_DESCENT) {
 #ifdef ESPRESSO_ROTATION
@@ -718,11 +784,27 @@ int System::System::integrate(int n_steps, int reuse_forces) {
 #ifdef ESPRESSO_VIRTUAL_SITES_INERTIALESS_TRACERS
     if (thermostat->lb and
         (propagation.used_propagations & PropagationMode::TRANS_LB_TRACER)) {
+      // LB-tracer arm is ineligible for the split path; this block only runs
+      // on the blocking path where has_pending_ghost_reduce() is false.
+      assert(not cell_structure->has_pending_ghost_reduce() &&
+             "LB-tracer arm must be inactive on the split-phase path");
       lb_tracers_add_particle_force_to_fluid(*cell_structure, *box_geo,
                                              *local_geo, lb);
     }
 #endif
-    integrator_step_2(*cell_structure, propagation, *this, time_step);
+    if (cell_structure->has_pending_ghost_reduce()) {
+      // Split-phase path: interior half-kick runs while the ghost reduce is
+      // in flight; boundary half-kick runs after the reduce finishes.
+      // NPT, BD, steepest-descent, and LB-tracer are ineligible and never
+      // reach this branch (asserted inside integrator_step_2_filtered).
+      integrator_step_2_filtered(*cell_structure, propagation, time_step,
+                                 /*interior_pass=*/true);
+      cell_structure->ghosts_reduce_forces_finish();
+      integrator_step_2_filtered(*cell_structure, propagation, time_step,
+                                 /*interior_pass=*/false);
+    } else {
+      integrator_step_2(*cell_structure, propagation, *this, time_step);
+    }
     if (propagation.integ_switch == INTEG_METHOD_BD) {
       resort_particles_if_needed(*this);
     }
