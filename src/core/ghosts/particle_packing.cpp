@@ -138,13 +138,19 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
       ar & p.pos();
       ar & p.image_box();
     }
-#ifdef ESPRESSO_ROTATION
-    ar & p.quat();
-#endif
 #ifdef ESPRESSO_BOND_CONSTRAINT
     ar & p.pos_last_time_step();
 #endif
   }
+  // Wire-symmetry: pack and unpack use the same data_parts per exchange,
+  // so the layout is always symmetric; QUAT follows POSITION in the stream
+  // when both are set (position push), and TORQUE follows FORCE when both
+  // are set (force reduce).
+#ifdef ESPRESSO_ROTATION
+  if (data_parts & GHOSTTRANS_QUAT) {
+    ar & p.quat();
+  }
+#endif
   if (data_parts & GHOSTTRANS_MOMENTUM) {
     ar & p.v();
 #ifdef ESPRESSO_ROTATION
@@ -160,7 +166,9 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
     } else {
       ar & p.force();
     }
+  }
 #ifdef ESPRESSO_ROTATION
+  if (data_parts & GHOSTTRANS_TORQUE) {
     if (policy == ReductionPolicy::UPDATE and
         direction == SerializationDirection::LOAD) {
       Utils::Vector3d torque;
@@ -169,8 +177,8 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
     } else {
       ar & p.torque();
     }
-#endif
   }
+#endif
 #ifdef ESPRESSO_BOND_CONSTRAINT
   if (data_parts & GHOSTTRANS_RATTLE) {
     if (policy == ReductionPolicy::UPDATE and
@@ -289,14 +297,24 @@ void unpack_cells(CommBuf &buf, std::span<ParticleList *const> cells,
   buf.bonds().clear();
 }
 
-void add_forces(CommBuf &buf, std::span<ParticleList *const> cells) {
+void add_forces(CommBuf &buf, std::span<ParticleList *const> cells,
+                unsigned data_parts) {
   /* put back data */
   auto archiver = Utils::MemcpyIArchive{buf.make_span()};
   for (auto &part_list : cells) {
     for (Particle &part : *part_list) {
-      ParticleForce pf;
-      archiver >> pf;
-      part.force_and_torque() += pf;
+      if (data_parts & GHOSTTRANS_FORCE) {
+        Utils::Vector3d force;
+        archiver >> force;
+        part.force() += force;
+      }
+#ifdef ESPRESSO_ROTATION
+      if (data_parts & GHOSTTRANS_TORQUE) {
+        Utils::Vector3d torque;
+        archiver >> torque;
+        part.torque() += torque;
+      }
+#endif
     }
   }
 }

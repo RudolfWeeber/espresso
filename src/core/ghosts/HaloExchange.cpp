@@ -241,15 +241,25 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
 
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
   // Peer-uniqueness is validated at plan-build time by validate_halo_plan().
-  // Op-sanity: Combine::Add is only valid for reducible parts (FORCE/RATTLE).
+  // Op-sanity: Combine::Add is only valid for reducible parts
+  // (FORCE, FORCE|TORQUE, RATTLE).  TORQUE may only appear together with
+  // FORCE (it is never sent alone).
   // Compute the predicate outside assert() so the #ifdef is not embedded in
   // macro arguments (non-portable under -Werror).
-  [[maybe_unused]] bool reducible = (data_parts == GHOSTTRANS_FORCE);
+  [[maybe_unused]] bool const force_only = (data_parts == GHOSTTRANS_FORCE);
+#ifdef ESPRESSO_ROTATION
+  [[maybe_unused]] bool const force_with_torque =
+      (data_parts == (GHOSTTRANS_FORCE | GHOSTTRANS_TORQUE));
+#else
+  [[maybe_unused]] bool const force_with_torque = false;
+#endif
+  [[maybe_unused]] bool reducible = (force_only || force_with_torque);
 #ifdef ESPRESSO_BOND_CONSTRAINT
   reducible = reducible || (data_parts == GHOSTTRANS_RATTLE);
 #endif
   assert((op.combine != Combine::Add || reducible) &&
-         "Combine::Add only valid for reducible parts (FORCE/RATTLE)");
+         "Combine::Add only valid for reducible parts (FORCE, FORCE|TORQUE, "
+         "RATTLE)");
 #endif
 
   auto const &comm = plan.comm;
@@ -449,12 +459,11 @@ void halo_exchange_finish(GhostExchange &st) {
         CALI_MARK_BEGIN("ghost/unpack");
 #endif
       auto dst = as_span(bufs.recv_cells[i]);
-      if (st.data_parts == GHOSTTRANS_FORCE) {
-        add_forces(bufs.recv[i], dst);
+      if (st.data_parts & GHOSTTRANS_FORCE) {
+        add_forces(bufs.recv[i], dst, st.data_parts);
       }
 #ifdef ESPRESSO_BOND_CONSTRAINT
-      else {
-        assert(st.data_parts == GHOSTTRANS_RATTLE);
+      else if (st.data_parts == GHOSTTRANS_RATTLE) {
         add_rattle(bufs.recv[i], dst);
       }
 #endif

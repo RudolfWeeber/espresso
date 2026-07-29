@@ -163,11 +163,18 @@ void unpack_cells(CommBuf &buf, std::span<ParticleList *const> cells,
                   BoxGeometry const &box_geo, unsigned data_parts);
 
 /**
- * @brief Add forces from a communication buffer to particles in cells.
+ * @brief Add forces (and optionally torques) from a communication buffer
+ *        to particles in cells.
+ *
+ * @param buf        Buffer produced by a force-reduce exchange.
+ * @param cells      Destination (owned) particle lists.
+ * @param data_parts Bitmask of GHOSTTRANS_* flags; must include
+ *                   GHOSTTRANS_FORCE, may include GHOSTTRANS_TORQUE.
  *
  * Equivalent to add_forces_from_recv_buffer() in the original ghosts.cpp.
  */
-void add_forces(CommBuf &buf, std::span<ParticleList *const> cells);
+void add_forces(CommBuf &buf, std::span<ParticleList *const> cells,
+                unsigned data_parts);
 
 #ifdef ESPRESSO_BOND_CONSTRAINT
 /**

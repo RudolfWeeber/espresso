@@ -147,6 +147,14 @@ public:
 
   unsigned get_global_ghost_flags() const;
 
+  /**
+   * @brief Returns the ghost flags for the force-reduce step.
+   *
+   * Always includes GHOSTTRANS_FORCE; adds GHOSTTRANS_TORQUE when orientation
+   * physics is active (same whitelist as get_global_ghost_flags for QUAT).
+   */
+  unsigned get_force_reduce_ghost_flags() const;
+
   /** Check electrostatic and magnetostatic methods are properly initialized.
    *  @return true if sanity checks failed.
    */

@@ -476,7 +476,12 @@ unsigned map_data_parts(unsigned data_parts) {
 #ifdef ESPRESSO_BOND_CONSTRAINT
          | ((data_parts & DATA_PART_RATTLE) ? GHOSTTRANS_RATTLE : 0u)
 #endif
-         | ((data_parts & DATA_PART_BONDS) ? GHOSTTRANS_BONDS : 0u);
+         | ((data_parts & DATA_PART_BONDS) ? GHOSTTRANS_BONDS : 0u)
+#ifdef ESPRESSO_ROTATION
+         | ((data_parts & DATA_PART_QUAT) ? GHOSTTRANS_QUAT : 0u)
+         | ((data_parts & DATA_PART_TORQUE) ? GHOSTTRANS_TORQUE : 0u)
+#endif
+         ;
   /* clang-format on */
 }
 
@@ -504,7 +509,8 @@ void CellStructure::ghosts_reduce_forces() {
   ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   GhostComm::halo_exchange(
-      *decomposition().halo_plan(), *get_system().box_geo, GHOSTTRANS_FORCE,
+      *decomposition().halo_plan(), *get_system().box_geo,
+      get_system().get_force_reduce_ghost_flags(),
       {GhostComm::Direction::Reduce, GhostComm::Combine::Add}, m_ghost_buffers);
 }
 
@@ -514,7 +520,8 @@ void CellStructure::ghosts_reduce_forces_start() {
   // BEGIN fires only after emplace succeeds so a throwing start cannot
   // leave the Caliper region open without a matching END.
   m_pending_ghost_reduce.emplace(GhostComm::halo_exchange_start(
-      *decomposition().halo_plan(), *get_system().box_geo, GHOSTTRANS_FORCE,
+      *decomposition().halo_plan(), *get_system().box_geo,
+      get_system().get_force_reduce_ghost_flags(),
       {GhostComm::Direction::Reduce, GhostComm::Combine::Add},
       m_ghost_buffers));
 #ifdef ESPRESSO_CALIPER

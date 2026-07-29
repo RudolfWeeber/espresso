@@ -36,6 +36,7 @@
 #include "communication.hpp"
 #include "electrostatics/icc.hpp"
 #include "errorhandling.hpp"
+#include "ghosts.hpp"
 #include "integrators/steepest_descent.hpp"
 #include "nonbonded_interactions/VerletCriterion.hpp"
 #include "npt.hpp"
@@ -536,6 +537,79 @@ void System::on_integration_start() {
 }
 
 /**
+ * @brief Returns true when any active physics requires orientation of ghost
+ *        particles.  Used by both get_global_ghost_flags (QUAT push) and
+ *        get_force_reduce_ghost_flags (TORQUE reduce).
+ *
+ * Conservative: include a reader when in doubt.  Non-rotating plain LJ
+ * must yield false so that both bits stay OFF for that common case.
+ *
+ * Readers of ghost particle quat / director / calc_dip:
+ *  - short_range_cabana commit_particle: quat → director for Gay-Berne /
+ *    Dipoles pair kernels (ghost particles in AoSoA)
+ *  - vs_relative_update_particles: p_ref.quat() where p_ref may be a ghost
+ *  - LB particle coupling (swimmer): p.calc_director() on ghost particles
+ *    when ESPRESSO_ENGINE and LB are both active
+ *  - HomogeneousMagneticField constraint: p.calc_dip() (local particles only
+ *    — does NOT read ghosts; included conservatively via dipole check)
+ *  - dipolar solvers (dp3m, dds, dlc, scafacos): p.calc_dip() on local
+ *    particles only (they all-gather; ghost quat not required directly, but
+ *    included conservatively because the dipole moment depends on quat via
+ *    PROPRTS dipm scalar; included via dipole check)
+ *  - Stoner-Wohlfarth: modifies p.quat() on local particles only (OK)
+ *  - rotational integrators: operate on local particles only (OK)
+ */
+static bool orientation_ghosts_needed(System const &sys) {
+#ifndef ESPRESSO_ROTATION
+  return false;
+#else
+  // Rotational propagation active: ghost quat needed for vs_relative position
+  // update and for any kernel that uses the director of a ghost particle.
+  if (sys.propagation->used_propagations &
+      (PropagationMode::ROT_EULER | PropagationMode::ROT_LANGEVIN |
+       PropagationMode::ROT_BROWNIAN | PropagationMode::ROT_STOKESIAN |
+       PropagationMode::ROT_VS_RELATIVE |
+       PropagationMode::ROT_VS_INDEPENDENT)) {
+    return true;
+  }
+
+  // Virtual sites relative uses p_ref.quat() where p_ref may be a ghost.
+  if (sys.propagation->used_propagations &
+      (PropagationMode::TRANS_VS_RELATIVE | PropagationMode::ROT_VS_RELATIVE |
+       PropagationMode::ROT_VS_INDEPENDENT)) {
+    return true;
+  }
+
+#ifdef ESPRESSO_DIPOLES
+  // Dipolar solver set: particles have a dipole moment derived from quat;
+  // short_range_cabana reads quat → director for dipole pair kernels on ghosts.
+  if (sys.dipoles.impl && sys.dipoles.impl->solver) {
+    return true;
+  }
+#endif
+
+#ifdef ESPRESSO_GAY_BERNE
+  // Gay-Berne anisotropic nonbonded interaction configured: short_range_cabana
+  // commits ghost quat → director for the Cabana pair kernel.
+  if (sys.nonbonded_ias->combined_active_pair_mask() &
+      pair_potential_bit(PairPotential::GayBerne)) {
+    return true;
+  }
+#endif
+
+#ifdef ESPRESSO_ENGINE
+  // LB active with ENGINE compiled in: coupling loop includes ghost particles
+  // and calls p.calc_director() for swimmer_force_on_fluid particles.
+  if (sys.lb.is_solver_set()) {
+    return true;
+  }
+#endif
+
+  return false;
+#endif // ESPRESSO_ROTATION
+}
+
+/**
  * @brief Returns the ghost flags required for running pair
  *        kernels for the global state, e.g. the force calculation.
  * @return Required data parts;
@@ -561,7 +635,23 @@ unsigned System::get_global_ghost_flags() const {
   }
 #endif
 
+#ifdef ESPRESSO_ROTATION
+  if (orientation_ghosts_needed(*this)) {
+    data_parts |= Cells::DATA_PART_QUAT;
+  }
+#endif
+
   return data_parts;
+}
+
+unsigned System::get_force_reduce_ghost_flags() const {
+  unsigned flags = GHOSTTRANS_FORCE;
+#ifdef ESPRESSO_ROTATION
+  if (orientation_ghosts_needed(*this)) {
+    flags |= GHOSTTRANS_TORQUE;
+  }
+#endif
+  return flags;
 }
 
 #ifdef ESPRESSO_NPT

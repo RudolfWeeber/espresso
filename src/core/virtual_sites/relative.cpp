@@ -120,8 +120,15 @@ static bool is_vs(Particle const &p) {
 
 void vs_relative_update_particles(CellStructure &cell_structure,
                                   BoxGeometry const &box_geo) {
-  cell_structure.ghosts_update(Cells::DATA_PART_POSITION |
-                               Cells::DATA_PART_MOMENTUM);
+  cell_structure.ghosts_update(
+      Cells::DATA_PART_POSITION |
+      Cells::DATA_PART_MOMENTUM
+#ifdef ESPRESSO_ROTATION
+      // Orientation of the reference particle is needed
+      // for vs_relative position/orientation update
+      | Cells::DATA_PART_QUAT
+#endif
+  );
 
   cell_structure.for_each_local_particle([&](Particle &p) {
     if (!is_vs(p)) {

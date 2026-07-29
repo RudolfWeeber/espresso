@@ -47,5 +47,12 @@ enum : unsigned {
 #endif
   /// resize the receiver particle arrays to the size of the senders
   GHOSTTRANS_PARTNUM = 64u,
-  GHOSTTRANS_BONDS = 128u
+  GHOSTTRANS_BONDS = 128u,
+#ifdef ESPRESSO_ROTATION
+  /// transfer orientation quaternion (pushed with position;
+  /// runtime-conditional)
+  GHOSTTRANS_QUAT = 256u,
+  /// transfer torque (reduced with force; runtime-conditional)
+  GHOSTTRANS_TORQUE = 512u,
+#endif
 };
