@@ -344,7 +344,7 @@ BOOST_FIXTURE_TEST_CASE(ReactionAlgorithm_test, ParticleFactory) {
   }
 }
 
-// Regression test for bug-sweep #7: the order_n exclusion-range check must
+// Test exclusion range larger than ghost layer. The order N range check must
 // detect a candidate particle that is owned by a *different* MPI rank and is
 // not a ghost on the inserted particle's rank. On the buggy code the distance
 // loop runs only on the inserted particle's owning rank and resolves the

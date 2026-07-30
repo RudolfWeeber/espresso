@@ -366,7 +366,7 @@ void ReactionAlgorithm::check_exclusion_range(int p_id, int p_type) {
      * partial results. This keeps the check correct even when a candidate
      * sits within exclusion_range of the inserted particle but beyond the
      * ghost layer of the inserted particle's domain, where get_local_particle
-     * would return nullptr (bug-sweep #7). */
+     * would return nullptr. */
     auto all_ids = get_particle_ids_parallel();
     /* remove the inserted particle id */
     std::erase(all_ids, p_id);
