@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2010-2026 The ESPResSo project
+# Copyright (C) 2026 The ESPResSo project
 #
 # This file is part of ESPResSo.
 #
@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
+
 import unittest as ut
 import numpy as np
 import espressomd
@@ -33,9 +34,7 @@ class RecalcForcesTest(ut.TestCase):
     during the prior ``run(1)``, a genuine recompute re-draws the random
     force at the new counter value, so the forces *change*.
 
-    If the ``recalc_forces`` flag is dropped (mapped to
-    ``INTEG_REUSE_FORCES_CONDITIONALLY`` instead of
-    ``INTEG_REUSE_FORCES_NEVER``), the recompute is skipped because
+    If the ``recalc_forces`` flag is dropped, the recompute is skipped because
     ``propagation.recalc_forces`` is false after the prior run, leaving the
     forces byte-identical (stale).
     """
@@ -49,8 +48,7 @@ class RecalcForcesTest(ut.TestCase):
         for _ in range(20):
             system.part.add(pos=rng.random(3) * system.box_l)
 
-        # Stochastic Langevin force, deterministic seed -> reproducible.
-        system.thermostat.set_langevin(kT=1.0, gamma=1.0, seed=123)
+        system.thermostat.set_langevin(kT=1., gamma=1., seed=123)
 
         # Prior run(1): advances the Philox counter and leaves
         # propagation.recalc_forces == false.
@@ -58,10 +56,10 @@ class RecalcForcesTest(ut.TestCase):
         forces_before = np.copy(system.part.all().f)
 
         # The trigger: request an explicit recompute of forces. A correct
-        # implementation maps recalc_forces=True -> NEVER and re-draws the
-        # Langevin force at the advanced counter. Crucially, no particle /
-        # constraint / interaction property is touched between the two runs,
-        # since that would set propagation.recalc_forces=true and mask the bug.
+        # implementation reads recalc_forces=True and re-draws the Langevin
+        # force at the advanced counter. Crucially, no particle / constraint /
+        # interaction property is touched between the two runs, since that
+        # would set propagation.recalc_forces=true and mask the bug.
         system.integrator.run(0, recalc_forces=True)
         forces_after = np.copy(system.part.all().f)
 
