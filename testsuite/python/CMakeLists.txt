@@ -104,6 +104,9 @@ function(python_test)
         ${CMAKE_BINARY_DIR}/pypresso ${PYPRESSO_OPTIONS}
         ${TEST_FILE_CONFIGURED} --verbose ${TEST_ARGUMENTS}
         ${MPIEXEC_POSTFLAGS})
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL NVHPC)
+    # NVHPC doesn't support singleton mode
+    return()
   else()
     add_test(NAME ${TEST_NAME}
              COMMAND ${CMAKE_BINARY_DIR}/pypresso ${PYPRESSO_OPTIONS}
@@ -264,6 +267,8 @@ python_test(FILE long_range_actors.py MAX_NUM_PROC 4 GPU_SLOTS 2)
 python_test(FILE tabulated.py MAX_NUM_PROC 2)
 python_test(FILE particle_slice.py MAX_NUM_PROC 4)
 python_test(FILE rigid_bond.py MAX_NUM_PROC 4)
+python_test(FILE rigid_bond_virial.py MAX_NUM_PROC 4)
+python_test(FILE rigid_bond_virial_stats.py MAX_NUM_PROC 4 LABELS long)
 python_test(FILE rotation_per_particle.py MAX_NUM_PROC 4)
 python_test(FILE rotational_inertia.py MAX_NUM_PROC 2)
 python_test(FILE rotational-diffusion-aniso.py MAX_NUM_PROC 1 LABELS long)
@@ -453,6 +458,7 @@ python_test(FILE integrator_symplectic_euler_langevin.py MAX_NUM_PROC 4)
 python_test(FILE integrator_steepest_descent.py MAX_NUM_PROC 4)
 python_test(FILE integrator_exceptions.py MAX_NUM_PROC 1)
 python_test(FILE integrator_recalc_forces.py MAX_NUM_PROC 1 NUM_THREADS 1)
+python_test(FILE integrator_time_step_restore.py MAX_NUM_PROC 1 NUM_THREADS 1)
 python_test(FILE integrator_langevin_stats.py MAX_NUM_PROC 1 LABELS long)
 python_test(FILE integrator_brownian_stats.py MAX_NUM_PROC 1 LABELS long)
 python_test(FILE integrator_npt_stats.py MAX_NUM_PROC 4 LABELS long)
