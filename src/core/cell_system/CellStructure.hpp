@@ -205,10 +205,18 @@ private:
 #ifdef ESPRESSO_ROTATION
   std::unique_ptr<ForceType> m_local_torque;
   std::optional<ScatterForce> m_scatter_torque;
+  /** @brief True if a kernel may have written to @ref m_scatter_torque since
+   *  the last reset. Cleared by the resets; when false, the torque buffers
+   *  are known to be all-zero and their O(n_threads * N) zeroing and
+   *  reduction can be skipped.
+   */
+  bool m_torque_replicas_dirty = false;
 #endif
 #ifdef ESPRESSO_NPT
   std::unique_ptr<VirialType> m_local_virial;
   std::optional<ScatterVirial> m_scatter_virial;
+  /** @brief Same contract as @ref m_torque_replicas_dirty, for the virial. */
+  bool m_virial_replicas_dirty = false;
 #endif
   std::unique_ptr<LocalBondState> m_bond_state;
   std::unique_ptr<ListType> m_verlet_list_cabana;
@@ -857,7 +865,8 @@ public:
   void set_kokkos_handle(std::shared_ptr<KokkosHandle> handle);
   void rebuild_local_properties(double pair_cutoff);
   void reset_local_properties();
-  void reset_local_force_and_torque();
+  /** @brief Zero the local force view and its scatter replicas. */
+  void reset_local_force_buffers();
 
   auto &get_id_to_index() { return *m_id_to_index; }
   auto &get_local_force() { return *m_local_force; }
@@ -865,10 +874,17 @@ public:
 #ifdef ESPRESSO_ROTATION
   auto &get_local_torque() { return *m_local_torque; }
   auto get_scatter_torque() { return *m_scatter_torque; }
+  /** @brief Declare that a kernel scattering into the torque view is about
+   *  to run. Must be called before @ref reduce via the force loop dispatch.
+   */
+  void mark_torque_replicas_dirty() { m_torque_replicas_dirty = true; }
+  auto torque_replicas_dirty() const { return m_torque_replicas_dirty; }
 #endif
 #ifdef ESPRESSO_NPT
   auto &get_local_virial() { return *m_local_virial; }
   auto get_scatter_virial() { return *m_scatter_virial; }
+  void mark_virial_replicas_dirty() { m_virial_replicas_dirty = true; }
+  auto virial_replicas_dirty() const { return m_virial_replicas_dirty; }
 #endif
 
   auto &get_aosoa() { return *m_aosoa; }
@@ -929,6 +945,13 @@ public:
   }
 
 private:
+  /** @brief Zero the torque buffers iff a kernel scattered into them since
+   *  the last reset (no-op otherwise, and without the ROTATION feature).
+   */
+  void reset_torque_replicas_if_dirty();
+  /** @brief Same contract for the virial buffers (NPT feature). */
+  void reset_virial_replicas_if_dirty();
+
   /** Non-bonded pair loop with verlet lists.
    *
    * @param pair_kernel Kernel to apply

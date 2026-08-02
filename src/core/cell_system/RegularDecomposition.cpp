@@ -41,16 +41,23 @@
 #include <boost/mpi/request.hpp>
 #include <boost/range/numeric.hpp>
 
+#include <Kokkos_Core.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <exception>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
 #include <map>
+#include <mutex>
+#include <numeric>
 #include <set>
+#include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -181,31 +188,124 @@ void RegularDecomposition::resort(bool global,
                                   std::vector<ParticleChange> &diff) {
   ParticleList displaced_parts;
 
-  for (auto &c : local_cells()) {
-    for (auto it = c->particles().begin(); it != c->particles().end();) {
-      fold_and_reset(*it, m_box);
+  auto const cells_span = local_cells();
+  auto const n_cells = cells_span.size();
 
-      auto target_cell = particle_to_cell(*it);
+  /* Remove a misplaced particle from its cell and hand it to its target
+   * cell (or the displaced list when it left the local domain), recording
+   * the changes. Shared by the serial and the two-phase parallel sweep. */
+  auto const apply_move = [&](ParticleList &parts, Particle &&p,
+                              Cell *target_cell) {
+    diff.emplace_back(ModifiedList{parts});
+    /* Particle is not local */
+    if (target_cell == nullptr) {
+      diff.emplace_back(RemovedParticle{p.id()});
+      displaced_parts.insert(std::move(p));
+    }
+    /* Particle belongs on this node but is in the wrong cell. */
+    else {
+      target_cell->particles().insert(std::move(p));
+      diff.emplace_back(ModifiedList{target_cell->particles()});
+    }
+  };
 
-      /* Particle is in place */
-      if (target_cell == c) {
-        std::advance(it, 1);
+  if (Kokkos::DefaultHostExecutionSpace().concurrency() <= 1) {
+    /* Single-threaded rank: one-pass sweep without the bookkeeping overhead
+     * of the two-phase version below. */
+    for (auto *const c : cells_span) {
+      for (auto it = c->particles().begin(); it != c->particles().end();) {
+        fold_and_reset(*it, m_box);
+
+        auto *const target_cell = particle_to_cell(*it);
+
+        /* Particle is in place */
+        if (target_cell == c) {
+          std::advance(it, 1);
+          continue;
+        }
+
+        auto p = std::move(*it);
+        it = c->particles().erase(it);
+        apply_move(c->particles(), std::move(p), target_cell);
+      }
+    }
+  } else {
+    /* Phase 1 (parallel): fold every particle position and classify it
+     * against its target cell. Only particle-local state and this cell's own
+     * move list are written, so cells can be swept concurrently.
+     * fold_and_reset() throws on image-box overflow; exceptions must not
+     * escape the parallel region, so the first error is captured and
+     * rethrown afterwards. */
+    struct Move {
+      int index;
+      Cell *target;
+    };
+    std::vector<std::vector<Move>> moves(n_cells);
+    std::mutex fold_error_mutex;
+    std::string fold_error_msg;
+    Kokkos::parallel_for(
+        "RegularDecomposition::resort::classify",
+        Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(std::size_t{0},
+                                                               n_cells),
+        [&](std::size_t const ci) {
+          auto *cell = cells_span[ci];
+          int index = 0;
+          for (auto &p : cell->particles()) {
+            try {
+              fold_and_reset(p, m_box);
+            } catch (std::exception const &err) {
+              std::lock_guard<std::mutex> guard{fold_error_mutex};
+              if (fold_error_msg.empty()) {
+                fold_error_msg = err.what();
+              }
+              return;
+            }
+            if (auto *const target = particle_to_cell(p); target != cell) {
+              moves[ci].push_back({index, target});
+            }
+            ++index;
+          }
+        });
+    Kokkos::fence();
+    if (not fold_error_msg.empty()) {
+      throw std::runtime_error(fold_error_msg);
+    }
+
+    /* Phase 2 (serial): apply the moves. This replays the serial sweep
+     * exactly: ParticleList::erase() swaps the last element into the erased
+     * slot, so a slot-to-original-index map is maintained to look up the
+     * phase-1 classification of swapped-in elements. Cells without moves
+     * (the vast majority) are skipped entirely. */
+    std::vector<int> slot;
+    std::vector<Cell *> target_of;
+    for (std::size_t ci = 0; ci < n_cells; ++ci) {
+      if (moves[ci].empty()) {
         continue;
       }
-
-      auto p = std::move(*it);
-      it = c->particles().erase(it);
-      diff.emplace_back(ModifiedList{c->particles()});
-
-      /* Particle is not local */
-      if (target_cell == nullptr) {
-        diff.emplace_back(RemovedParticle{p.id()});
-        displaced_parts.insert(std::move(p));
+      auto *const c = cells_span[ci];
+      auto &parts = c->particles();
+      auto const n = static_cast<int>(parts.size());
+      target_of.assign(n, c); // target == own cell: particle is in place
+      for (auto const &move : moves[ci]) {
+        target_of[move.index] = move.target;
       }
-      /* Particle belongs on this node but is in the wrong cell. */
-      else if (target_cell != c) {
-        target_cell->particles().insert(std::move(p));
-        diff.emplace_back(ModifiedList{target_cell->particles()});
+      slot.resize(n);
+      std::iota(slot.begin(), slot.end(), 0);
+      int i = 0;
+      int end = n;
+      while (i < end) {
+        auto *const target_cell = target_of[slot[i]];
+
+        /* Particle is in place */
+        if (target_cell == c) {
+          ++i;
+          continue;
+        }
+
+        auto p = std::move(*(parts.begin() + i));
+        parts.erase(parts.begin() + i); // swaps the last element into slot i
+        slot[i] = slot[--end];
+        apply_move(parts, std::move(p), target_cell);
       }
     }
   }
