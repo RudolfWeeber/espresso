@@ -146,7 +146,7 @@ def build_and_tune(system, args):
         system.non_bonded_inter[0, 0].lennard_jones.set_params(
             epsilon=LJ_EPS, sigma=LJ_SIG, cutoff=LJ_CUT, shift="auto")
         system.part.add(pos=np.random.random((n_part, 3)) * system.box_l)
-        benchmarks.minimize(system, n_part / 2.)
+        benchmarks.minimize(system, 100)
         system.integrator.set_vv()
         system.thermostat.set_langevin(kT=KT, gamma=GAMMA, seed=SEED)
         print("Tune skin: {:.3f}".format(benchmarks.tune_skin_unless_fixed(

@@ -24,31 +24,31 @@ import pathlib
 import numpy as np
 
 
-def minimize(system, energy_target):
+def minimize(system, force_target):
     '''
     Run a minimization loop with the steepest descent algorithm.
-    Exit with a non-zero error code if the target energy cannot be reached.
+    Exit with a non-zero error code if the target force cannot be reached.
 
     Parameters
     ----------
     system: :class:`espressomd.system.System`
         System to minimize.
-    energy_target: :obj:`float`
-        Energy threshold.
+    force_target: :obj:`float`
+        Force threshold.
 
     '''
-    system.integrator.set_steepest_descent(
-        f_max=0,
-        gamma=0.001,
-        max_displacement=0.01)
-    for _ in range(20):
-        energy = system.analysis.energy()["total"]
-        print(f"Minimization: {energy:.1f}")
-        if energy < energy_target:
+    for i in range(20):
+        system.integrator.set_steepest_descent(
+            f_max=force_target,
+            gamma=0.001 * i,
+            max_displacement=0.01)
+        steps = system.integrator.run(100)
+        if steps < 100:
             break
-        system.integrator.run(20)
-    else:
-        print(f"Minimization failed to converge to {energy_target:.1f}")
+        print("Max force", np.amax(np.abs(system.part.all().f)))
+    if np.amax(np.abs(system.part.all().f)) > force_target:
+        print(f"Minimization failed to converge to a force of "
+              f"{force_target:.2f}")
         exit(1)
 
 

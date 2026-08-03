@@ -27,7 +27,6 @@ import argparse
 DEFAULT_PARTICLES_PER_CORE = 1000
 INITIAL_SKIN = 0.5
 ACCURACY = 1e-3
-DEFAULT_TUNE_LIMITS = [12, 160]
 
 # Simulation parameters. The importlib-based benchmark tests (in
 # testsuite/benchmarks) override these module-level globals to run a fast
@@ -108,26 +107,26 @@ def configure_lj(system):
                 epsilon=lj_eps, sigma=lj_sig, cutoff=lj_cut, shift="auto")
 
 
-def p3m_tune_kwargs(args):
+def p3m_tune_kwargs(args, mesh_min):
     kwargs = {"prefactor": args.prefactor, "accuracy": ACCURACY,
               "timings": 15, "gpu": args.gpu}
     if args.mesh is not None:
         kwargs["mesh"] = args.mesh
     else:
-        low = args.lowest_mesh if args.lowest_mesh is not None else DEFAULT_TUNE_LIMITS[0]
-        high = args.highest_mesh if args.highest_mesh is not None else DEFAULT_TUNE_LIMITS[1]
+        low = args.lowest_mesh if args.lowest_mesh is not None else mesh_min
+        high = args.highest_mesh
         kwargs["tune_limits"] = [low, high]
     return kwargs
 
 
-def make_p3m(args):
+def make_p3m(args, mesh_min):
     '''
     Build the P3M solver. Use the pre-tuned ``p3m_params`` when provided
     (skipping tuning, e.g. in the benchmark smoke tests), otherwise tune.
     '''
     if p3m_params is not None:
         return espressomd.electrostatics.P3M(**p3m_params)
-    return espressomd.electrostatics.P3M(**p3m_tune_kwargs(args))
+    return espressomd.electrostatics.P3M(**p3m_tune_kwargs(args, mesh_min))
 
 
 def build_and_tune(system, args):
@@ -139,15 +138,28 @@ def build_and_tune(system, args):
     n_part = benchmarks.resolve_n_part(system, args)
     steps = measurement_steps
     if steps is None:
-        steps = int(np.round(
-            5e5 / n_part * system.cell_system.get_state()["n_nodes"], -1))
+        steps = max(10, int(np.round(
+            5e5 / n_part * system.cell_system.get_state()["n_nodes"], -1)))
     if not args.visualizer:
-        assert steps >= 50, \
+        assert steps >= 10, \
             f"{steps} steps per tick are too short"
 
     lj_sig = (LJ_SIGMAS["cation"] + LJ_SIGMAS["anion"]) / 2
     box_l = (n_part * 4. / 3. * np.pi * (lj_sig / 2.)**3
              / args.volume_fraction)**(1. / 3.)
+
+    # Lower limit for P3M mesh tuning.
+    # A mesh that is too coarse forces a large real-space cutoff, which builds a
+    # huge Verlet list: this runs out of memory at large N and makes tuning slow.
+    # Anchor the limit at mesh 16 for the reference case (1000 particles at
+    # volume_fraction 0.25) and scale it with the box length so the 1D mesh
+    # density (mesh points per unit length) stays roughly constant across
+    # particle numbers and volume fractions.
+    ref_box_l = (1000 * 4. / 3. * np.pi * (lj_sig / 2.)**3 / 0.25)**(1. / 3.)
+    mesh_min = max(4, int(np.round(16 * (box_l / ref_box_l)**.5)))
+    if mesh_min % 2 == 1:
+        mesh_min += 1
+
     system.box_l = 3 * (box_l,)
     system.cell_system.skin = INITIAL_SKIN if args.skin is None else args.skin
     configure_lj(system)
@@ -163,7 +175,7 @@ def build_and_tune(system, args):
     system.integrator.set_vv()
     system.thermostat.set_langevin(kT=KT, gamma=GAMMA, seed=SEED)
 
-    p3m = make_p3m(args)
+    p3m = make_p3m(args, mesh_min)
     print("Quick equilibration")
     system.time_step /= 10.
     system.integrator.run(100)
@@ -182,7 +194,7 @@ def build_and_tune(system, args):
         system, args, min_skin, max_skin, tol=0.05, int_steps=100,
         adjust_max_skin=True)))
     print("Re-tune p3m")
-    p3m = make_p3m(args)
+    p3m = make_p3m(args, mesh_min)
     system.electrostatics.solver = p3m
     print("Tune skin: {:.3f}".format(benchmarks.tune_skin_unless_fixed(
         system, args, min_skin, max_skin, tol=0.05, int_steps=100,

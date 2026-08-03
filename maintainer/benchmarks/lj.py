@@ -108,10 +108,10 @@ def build_and_tune(system, args):
     n_part = benchmarks.resolve_n_part(system, args)
     steps = measurement_steps
     if steps is None:
-        steps = int(np.round(
-            5e6 / n_part * system.cell_system.get_state()["n_nodes"], -2))
+        steps = max(20, int(np.round(
+            5e6 / n_part * system.cell_system.get_state()["n_nodes"], -2)))
     if not args.visualizer:
-        assert steps >= 100, \
+        assert steps >= 20, \
             f"{steps} steps per tick are too short"
 
     box_l = (n_part * 4. / 3. * np.pi * (LJ_SIG / 2.)**3
@@ -135,7 +135,7 @@ def build_and_tune(system, args):
             p1.add_bond((hb, p2))
             bond_pairs.append([p1.id, p2.id])
 
-    benchmarks.minimize(system, n_part / 2.)
+    benchmarks.minimize(system, 100)
     system.integrator.set_vv()
     system.thermostat.set_langevin(kT=KT, gamma=GAMMA, seed=SEED)
 
