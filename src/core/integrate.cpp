@@ -808,8 +808,15 @@ int System::System::integrate(int n_steps, int reuse_forces) {
         CellStructure *cs;
         bool active;
         ~ReduceGuard() {
-          if (active and cs->has_pending_ghost_reduce())
-            cs->ghosts_reduce_forces_finish();
+          if (active and cs->has_pending_ghost_reduce()) {
+            try {
+              cs->ghosts_reduce_forces_finish();
+            } catch (...) {
+              // The guard only runs during unwind from another exception;
+              // letting a second one escape this (implicitly noexcept)
+              // destructor would call std::terminate. Keep the original.
+            }
+          }
         }
       } guard{cell_structure.get(), true};
 

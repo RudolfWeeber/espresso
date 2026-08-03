@@ -42,6 +42,7 @@
 #include <cassert>
 #include <cstddef>
 #include <functional>
+#include <memory>
 #include <span>
 #include <vector>
 
@@ -131,11 +132,7 @@ void pack_regions(CommBuf &buf, std::vector<SendRegion> const &regions,
   Utils::Vector3d const common_shift =
       regions.empty() ? Utils::Vector3d{} : regions.front().shift;
 
-  std::vector<ParticleList *> cells;
-  cells.reserve(regions.size());
-  for (auto const &r : regions)
-    cells.push_back(r.cell);
-
+  auto const cells = region_cells(regions);
   pack_cells(buf, as_span(cells), common_shift, box, data_parts);
 }
 
@@ -429,10 +426,10 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
   // unique_ptr so it is freed automatically when the GhostExchange is
   // destroyed — on every exit path, including the GHOSTTRANS_NONE early return
   // in halo_exchange_finish.  Use the pool overload on hot paths.
-  auto st =
-      halo_exchange_start(plan, box, data_parts, op, *(new ExchangeBuffers{}));
+  auto pool = std::make_unique<ExchangeBuffers>();
+  auto st = halo_exchange_start(plan, box, data_parts, op, *pool);
   // Transfer ownership: owned keeps the pool alive; bufs already points to it.
-  st.owned.reset(st.bufs);
+  st.owned = std::move(pool);
   return st;
 }
 

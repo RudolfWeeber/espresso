@@ -310,25 +310,24 @@ void CellStructure::set_index_map() {
   };
   std::vector<PerThreadCounts> thread_counts(n_threads);
 
-  enumerate_local_particles(
-      *this,
-      [&unique_particles, &thread_counts](std::size_t index, Particle &p) {
-        unique_particles[index] = &p;
-        auto &counts = thread_counts[omp_get_thread_num()];
-        counts.max_id = std::max(p.id(), counts.max_id);
-        for (auto const bond : p.bonds()) {
-          if (not bond.partner_ids().empty()) {
-            auto const partner_ids = bond.partner_ids();
-            if (partner_ids.size() == 1u) {
-              counts.pair += 1;
-            } else if (partner_ids.size() == 2u) {
-              counts.angle += 1;
-            } else if (partner_ids.size() == 3u) {
-              counts.dihedral += 1;
-            }
-          }
+  enumerate_local_particles(*this, [&unique_particles, &thread_counts](
+                                       std::size_t index, Particle &p) {
+    unique_particles[index] = &p;
+    auto &counts = thread_counts[omp_get_thread_num()];
+    counts.max_id = std::max(p.id(), counts.max_id);
+    for (auto const bond : p.bonds()) {
+      if (not bond.partner_ids().empty()) {
+        auto const partner_ids = bond.partner_ids();
+        if (partner_ids.size() == 1u) {
+          counts.pair += 1;
+        } else if (partner_ids.size() == 2u) {
+          counts.angle += 1;
+        } else if (partner_ids.size() == 3u) {
+          counts.dihedral += 1;
         }
-      });
+      }
+    }
+  });
   Kokkos::fence();
   int pair_count = 0;
   int angle_count = 0;
@@ -567,10 +566,21 @@ void CellStructure::ghosts_reduce_forces_start() {
 void CellStructure::ghosts_reduce_forces_finish() {
   assert(m_pending_ghost_reduce.has_value() &&
          "ghosts_reduce_forces_finish: no reduction is in flight");
-  GhostComm::halo_exchange_finish(*m_pending_ghost_reduce);
+  try {
+    GhostComm::halo_exchange_finish(*m_pending_ghost_reduce);
+  } catch (...) {
+    // A failed finish cannot be retried: the exchange state is half-consumed
+    // (some requests waited, some buffers unpacked). Drop the pending state so
+    // a later finish attempt (e.g. the ReduceGuard in integrate.cpp) does not
+    // re-run MPI waits on completed requests.
+    m_pending_ghost_reduce.reset();
 #ifdef ESPRESSO_CALIPER
-  // END before reset so the region is closed before the optional is cleared;
-  // a throwing finish cannot leave both the region open and the optional reset.
+    ESPRESSO_CALI_MARK_END("ghosts_reduce_forces");
+#endif
+    throw;
+  }
+#ifdef ESPRESSO_CALIPER
+  // END before reset so the region is closed before the optional is cleared.
   ESPRESSO_CALI_MARK_END("ghosts_reduce_forces");
 #endif
   m_pending_ghost_reduce.reset();
