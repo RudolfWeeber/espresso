@@ -43,9 +43,9 @@ def minimize(system, force_target):
             gamma=0.001 * i,
             max_displacement=0.01)
         steps = system.integrator.run(100)
+        print("Max force", np.amax(np.abs(system.part.all().f)))
         if steps < 100:
             break
-        print("Max force", np.amax(np.abs(system.part.all().f)))
     if np.amax(np.abs(system.part.all().f)) > force_target:
         print(f"Minimization failed to converge to a force of "
               f"{force_target:.2f}")

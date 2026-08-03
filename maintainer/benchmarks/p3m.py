@@ -171,7 +171,7 @@ def build_and_tune(system, args):
                             id=pid, q=CHARGES[t], type=TYPES[t])
             pid += 1
 
-    benchmarks.minimize(system, n_part / 2.)
+    benchmarks.minimize(system, 1 / system.time_step)
     system.integrator.set_vv()
     system.thermostat.set_langevin(kT=KT, gamma=GAMMA, seed=SEED)
 
