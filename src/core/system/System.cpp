@@ -597,8 +597,7 @@ static bool orientation_ghosts_needed(System const &sys) {
 #ifdef ESPRESSO_GAY_BERNE
   // Gay-Berne anisotropic nonbonded interaction configured: short_range_cabana
   // commits ghost quat → director for the Cabana pair kernel.
-  if (sys.nonbonded_ias->combined_active_pair_mask() &
-      pair_potential_bit(PairPotential::GayBerne)) {
+  if (sys.nonbonded_ias->pair_potential_active(PairPotential::GayBerne)) {
     return true;
   }
 #endif

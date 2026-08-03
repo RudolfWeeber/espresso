@@ -35,6 +35,7 @@
 #include "forces_init.hpp"
 #include "forces_inline.hpp"
 #include "galilei/ComFixed.hpp"
+#include "ghosts.hpp"
 #include "immersed_boundary/ImmersedBoundaries.hpp"
 #include "integrators/Propagation.hpp"
 #include "lb/particle_coupling.hpp"
@@ -487,17 +488,19 @@ void System::System::calculate_forces() {
   // Within the generic kernel, only orientation-dependent pair potentials
   // (Gay-Berne) and the dipolar pair kernel scatter into the torque view.
   auto const gay_berne_active =
-      (nonbonded_ias->combined_active_pair_mask() &
-       pair_potential_bit(PairPotential::GayBerne)) != 0u;
+      nonbonded_ias->pair_potential_active(PairPotential::GayBerne);
   auto const dipolar_pair_kernel_active =
 #ifdef ESPRESSO_DIPOLES
       get_ptr(dipoles_kernel) != nullptr;
 #else
       false;
 #endif
-  if (generic_pair_path and
-      (gay_berne_active or dipolar_pair_kernel_active)) {
+  if (generic_pair_path and (gay_berne_active or dipolar_pair_kernel_active)) {
     cell_structure->mark_torque_replicas_dirty();
+    // Pair-kernel torques also land on ghost particles and only get home via
+    // the TORQUE ghost reduce. Each torque-scattering kernel therefore needs
+    // a matching arm in orientation_ghosts_needed() (System.cpp).
+    assert(get_force_reduce_ghost_flags() & GHOSTTRANS_TORQUE);
   }
 #endif
 #ifdef ESPRESSO_NPT
