@@ -101,7 +101,8 @@ void init_forces_and_thermostat(System::System const &system) {
 #endif
     }
   });
-  cell_structure.reset_local_force_and_torque();
+  // The local force/torque scatter buffers were already zeroed this force
+  // call by prepare_verlet_list_cabana() (via update_verlet_state).
 
   // Initialize ghost forces (unchanged)
   cell_structure.ghosts_reset_forces();

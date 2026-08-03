@@ -314,20 +314,31 @@ static ShortRangeVerletPairLoop create_specialized_verlet_pair_loop(
 
 static void reduce_cabana_forces_and_torques(System::System const &system,
                                              Utils::Vector3d *virial) {
+#ifdef ESPRESSO_CALIPER
+  ESPRESSO_CALI_MARK_FUNCTION;
+#endif
 
   auto const &unique_particles = system.cell_structure->get_unique_particles();
   auto &local_force = system.cell_structure->get_local_force();
   auto scatter_force = system.cell_structure->get_scatter_force();
   Kokkos::Experimental::contribute(local_force, scatter_force);
 #ifdef ESPRESSO_ROTATION
+  // when no kernel scattered into the torque buffers this pass, they are
+  // all-zero and both the reduction over replicas and the per-particle
+  // accumulation would only add zeros
+  auto const reduce_torque = system.cell_structure->torque_replicas_dirty();
   auto &local_torque = system.cell_structure->get_local_torque();
-  auto scatter_torque = system.cell_structure->get_scatter_torque();
-  Kokkos::Experimental::contribute(local_torque, scatter_torque);
+  if (reduce_torque) {
+    auto scatter_torque = system.cell_structure->get_scatter_torque();
+    Kokkos::Experimental::contribute(local_torque, scatter_torque);
+  }
 #endif
 #ifdef ESPRESSO_NPT
   auto &local_virial = system.cell_structure->get_local_virial();
-  auto scatter_virial = system.cell_structure->get_scatter_virial();
-  Kokkos::Experimental::contribute(local_virial, scatter_virial);
+  if (system.cell_structure->virial_replicas_dirty()) {
+    auto scatter_virial = system.cell_structure->get_scatter_virial();
+    Kokkos::Experimental::contribute(local_virial, scatter_virial);
+  }
 #endif
 
   using execution_space = Kokkos::DefaultHostExecutionSpace;
@@ -336,24 +347,22 @@ static void reduce_cabana_forces_and_torques(System::System const &system,
   Kokkos::parallel_for("reduction", policy,
                        [&local_force,
 #ifdef ESPRESSO_ROTATION
-                        &local_torque,
+                        &local_torque, reduce_torque,
 #endif
                         &unique_particles](std::size_t const i) {
                          Utils::Vector3d force{};
-#ifdef ESPRESSO_ROTATION
-                         Utils::Vector3d torque{};
-#endif
                          force[0] += local_force(i, 0);
                          force[1] += local_force(i, 1);
                          force[2] += local_force(i, 2);
-#ifdef ESPRESSO_ROTATION
-                         torque[0] += local_torque(i, 0);
-                         torque[1] += local_torque(i, 1);
-                         torque[2] += local_torque(i, 2);
-#endif
                          unique_particles.at(i)->force() += force;
 #ifdef ESPRESSO_ROTATION
-                         unique_particles.at(i)->torque() += torque;
+                         if (reduce_torque) {
+                           Utils::Vector3d torque{};
+                           torque[0] += local_torque(i, 0);
+                           torque[1] += local_torque(i, 1);
+                           torque[2] += local_torque(i, 2);
+                           unique_particles.at(i)->torque() += torque;
+                         }
 #endif
                        });
   Kokkos::fence();
@@ -460,6 +469,46 @@ void System::System::calculate_forces() {
 
   auto const specialized_pair_loop = create_specialized_verlet_pair_loop(
       *this, virial, elc_kernel, coulomb_kernel, dipoles_kernel);
+
+  // The specialized pair kernel scatters only into the force view. Record
+  // before the launch whether this pass can write the torque/virial scatter
+  // buffers at all, so their O(n_threads * N) zeroing and reduction can be
+  // skipped otherwise (see CellStructure::reset_local_properties). All other
+  // torque sources (Langevin rotation, virtual sites back-transfer, the
+  // dipolar solvers except dp3m, constraints) write Particle::torque()
+  // directly and never touch the scatter buffers; dp3m marks the flag at its
+  // own scatter site.
+  [[maybe_unused]] auto const generic_pair_path =
+      get_interaction_range() > 0. and
+      (not specialized_pair_loop or
+       propagation->integ_switch == INTEG_METHOD_STEEPEST_DESCENT or
+       not cell_structure->use_verlet_list);
+#ifdef ESPRESSO_ROTATION
+  // Within the generic kernel, only orientation-dependent pair potentials
+  // (Gay-Berne) and the dipolar pair kernel scatter into the torque view.
+  auto const gay_berne_active =
+      (nonbonded_ias->combined_active_pair_mask() &
+       pair_potential_bit(PairPotential::GayBerne)) != 0u;
+  auto const dipolar_pair_kernel_active =
+#ifdef ESPRESSO_DIPOLES
+      get_ptr(dipoles_kernel) != nullptr;
+#else
+      false;
+#endif
+  if (generic_pair_path and
+      (gay_berne_active or dipolar_pair_kernel_active)) {
+    cell_structure->mark_torque_replicas_dirty();
+  }
+#endif
+#ifdef ESPRESSO_NPT
+  auto const have_bonds = cell_structure->get_local_pair_bond_numbers() > 0 or
+                          cell_structure->get_local_angle_bond_numbers() > 0 or
+                          cell_structure->get_local_dihedral_bond_numbers() > 0;
+  if (generic_pair_path or
+      (bonded_ias->maximal_cutoff() >= 0. and have_bonds)) {
+    cell_structure->mark_virial_replicas_dirty();
+  }
+#endif
 
   cabana_short_range(pair_bonds_kernel, angle_bonds_kernel,
                      dihedral_bonds_kernel, first_neighbor_kernel,
