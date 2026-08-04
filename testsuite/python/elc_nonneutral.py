@@ -229,14 +229,5 @@ class ELCNonNeutralTestCPU(ELCNonNeutralTest, ut.TestCase):
     atol_image = 1e-4
 
 
-@utx.skipIfMissingGPU()
-@utx.skipIfMissingFeatures(["P3M"])
-class ELCNonNeutralTestGPU(ELCNonNeutralTest, ut.TestCase):
-
-    p3m_params = {"gpu": True}
-    atol = 1e-5
-    atol_image = 1e-4
-
-
 if __name__ == "__main__":
     ut.main()

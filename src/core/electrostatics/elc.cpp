@@ -1070,6 +1070,11 @@ elc_data::elc_data(double maxPWerror, double gap_size, double far_cut,
     throw std::invalid_argument(
         "Parameter 'const_pot' must be True when 'pot_diff' is non-zero");
   }
+  if (with_const_pot and not dielectric_contrast_on) {
+    throw std::invalid_argument(
+        "Parameter 'const_pot' requires a dielectric contrast; set "
+        "'delta_mid_top' and 'delta_mid_bot' (use -1 for metallic walls)");
+  }
   if (delta_top < -delta_range or delta_top > delta_range) {
     throw std::domain_error(
         "Parameter 'delta_mid_top' must be >= -1 and <= +1");
@@ -1091,6 +1096,17 @@ elc_data::elc_data(double maxPWerror, double gap_size, double far_cut,
 ElectrostaticLayerCorrection::ElectrostaticLayerCorrection(
     elc_data &&parameters, BaseSolver &&solver)
     : elc{parameters}, base_solver{solver} {
+  // The P3M-GPU ignores images charges, disabled for now
+  if (elc.dielectric_contrast_on) {
+    auto const on_gpu =
+        std::visit([](auto const &solver_ptr) { return solver_ptr->is_gpu(); },
+                   base_solver);
+    if (on_gpu) {
+      throw std::runtime_error(
+          "ELC with a dielectric contrast is not supported by the GPU "
+          "variant of P3M");
+    }
+  }
   adapt_solver();
 }
 
