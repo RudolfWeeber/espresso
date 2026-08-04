@@ -135,7 +135,7 @@ def build_and_tune(system, args):
             p1.add_bond((hb, p2))
             bond_pairs.append([p1.id, p2.id])
 
-    benchmarks.minimize(system, 1 / system.time_step) 
+    benchmarks.minimize(system, 1 / system.time_step)
     system.integrator.set_vv()
     system.thermostat.set_langevin(kT=KT, gamma=GAMMA, seed=SEED)
 
