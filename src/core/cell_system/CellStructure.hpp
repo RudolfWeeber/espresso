@@ -205,7 +205,7 @@ private:
 #ifdef ESPRESSO_ROTATION
   std::unique_ptr<ForceType> m_local_torque;
   std::optional<ScatterForce> m_scatter_torque;
-  /** @brief True if a kernel may have written to @ref m_scatter_torque since
+  /** @brief True if a kernel may have written to @c m_scatter_torque since
    *  the last reset. Cleared by the resets; when false, the torque buffers
    *  are known to be all-zero and their O(n_threads * N) zeroing and
    *  reduction can be skipped.
@@ -215,7 +215,7 @@ private:
 #ifdef ESPRESSO_NPT
   std::unique_ptr<VirialType> m_local_virial;
   std::optional<ScatterVirial> m_scatter_virial;
-  /** @brief Same contract as @ref m_torque_replicas_dirty, for the virial. */
+  /** @brief Same contract as @c m_torque_replicas_dirty, for the virial. */
   bool m_virial_replicas_dirty = false;
 #endif
   std::unique_ptr<LocalBondState> m_bond_state;
@@ -875,7 +875,8 @@ public:
   auto &get_local_torque() { return *m_local_torque; }
   auto get_scatter_torque() { return *m_scatter_torque; }
   /** @brief Declare that a kernel scattering into the torque view is about
-   *  to run. Must be called before @ref reduce via the force loop dispatch.
+   *  to run. Must be called before the torque replicas are reduced via the
+   *  force loop dispatch.
    */
   void mark_torque_replicas_dirty() { m_torque_replicas_dirty = true; }
   auto torque_replicas_dirty() const { return m_torque_replicas_dirty; }
