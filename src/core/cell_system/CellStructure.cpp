@@ -171,10 +171,11 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
       m_torque_replicas_dirty = false;
 #endif
     }
+    auto const required_index_size = get_cached_max_local_particle_id() + 1;
     if (get_id_to_index().extent(0) !=
-        static_cast<std::size_t>(get_cached_max_local_particle_id() + 1)) {
+        static_cast<std::size_t>(required_index_size)) {
       Kokkos::realloc(Kokkos::WithoutInitializing, get_id_to_index(),
-                      get_cached_max_local_particle_id() + 1);
+                      required_index_size);
     }
     Kokkos::deep_copy(get_id_to_index(), -1);
     // Resize particle views using AoSoA_pack's resize method
