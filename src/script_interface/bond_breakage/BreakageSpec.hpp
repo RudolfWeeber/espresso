@@ -24,8 +24,6 @@
 #include "script_interface/ScriptInterface.hpp"
 
 #include <memory>
-#include <ranges>
-#include <set>
 #include <stdexcept>
 #include <string>
 #include <variant>
@@ -40,7 +38,7 @@ public:
     add_parameters({
         {"breakage_length", m_breakage_spec->breakage_length},
         {"action_type",
-         [this](const Variant &v) {
+         [this](Variant const &v) {
            m_breakage_spec->action_type = ::BondBreakage::ActionType{
                m_breakage_str_to_enum.at(std::get<std::string>(v))};
          },
@@ -67,8 +65,8 @@ private:
                                    "' is missing");
         }
       }
-      AutoParameters<BreakageSpec>::do_construct(params);
     });
+    AutoParameters<BreakageSpec>::do_construct(params);
   }
 
   std::shared_ptr<::BondBreakage::BreakageSpec> m_breakage_spec;
