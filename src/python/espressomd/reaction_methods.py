@@ -54,7 +54,6 @@ class SingleReaction(ScriptInterfaceHelper):
 
 class ReactionAlgorithm(ScriptInterfaceHelper):
     """
-
     This class provides the base class for Reaction Algorithms like
     the Reaction Ensemble algorithm and the constant pH method.
     Initialize the reaction algorithm by setting the
@@ -100,8 +99,8 @@ class ReactionAlgorithm(ScriptInterfaceHelper):
             x coordinate of center of the cylinder.
         center_y : :obj:`float`
             y coordinate of center of the cylinder.
-        radius_of_cylinder : :obj:`float`
-            radius of the cylinder
+        radius : :obj:`float`
+            radius of the cylinder.
 
     set_wall_constraints_in_z_direction()
         Restrict the sampling area to a slab in z-direction. Requires setting
@@ -181,7 +180,8 @@ class ReactionAlgorithm(ScriptInterfaceHelper):
         Parameters
         ----------
         reaction_id : :obj:`int`
-            Reaction id
+            Identifier of the reaction to modify.
+            Will *not* be multiplied by 2 internally!
 
     set_non_interacting_type()
         Sets the particle type for non-interacting particles.
