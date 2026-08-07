@@ -25,7 +25,7 @@ import numpy as np
 
 
 def minimize(system, force_target):
-    '''
+    """
     Run a minimization loop with the steepest descent algorithm.
     Exit with a non-zero error code if the target force cannot be reached.
 
@@ -36,15 +36,16 @@ def minimize(system, force_target):
     force_target: :obj:`float`
         Force threshold.
 
-    '''
+    """
+    n_steps = 100
     for i in range(20):
         system.integrator.set_steepest_descent(
             f_max=force_target,
             gamma=0.001 * i,
             max_displacement=0.01)
-        steps = system.integrator.run(100)
-        print("Max force", np.amax(np.abs(system.part.all().f)))
-        if steps < 100:
+        steps = system.integrator.run(n_steps)
+        print(f"Max force {np.amax(np.abs(system.part.all().f)):.2e}")
+        if steps < n_steps:
             break
     if np.amax(np.abs(system.part.all().f)) > force_target:
         print(f"Minimization failed to converge to a force of "
@@ -54,7 +55,7 @@ def minimize(system, force_target):
 
 def get_timings(system, n_steps, n_iterations, verbose=True,
                 retune_skin_after_steps=None):
-    '''
+    """
     Time the integration loop and write the state of the system to stdout.
 
     Parameters
@@ -76,7 +77,7 @@ def get_timings(system, n_steps, n_iterations, verbose=True,
     :obj:`ndarray` of :obj:`float`
         Timings.
 
-    '''
+    """
     if verbose:
         print(f"Timing every {n_steps} steps")
     timings = []
@@ -110,7 +111,7 @@ def get_timings(system, n_steps, n_iterations, verbose=True,
 
 
 def get_average_time(timings):
-    '''
+    """
     Calculate the average and 95% confidence interval of the timings.
 
     Parameters
@@ -123,30 +124,30 @@ def get_average_time(timings):
     (2,) array_like of :obj:`float`
         Average and confidence interval.
 
-    '''
+    """
     avg = np.average(timings)
     ci = 1.96 * np.std(timings) / np.sqrt(len(timings) - 1)
     return (avg, ci)
 
 
 def get_omp_num_threads(system):
-    '''Number of OpenMP threads per MPI rank (from the script interface).'''
+    """Number of OpenMP threads per MPI rank (from the script interface)."""
     return int(system.cell_system.get_state()["omp_num_threads"])
 
 
 def n_cores(system):
-    '''Total cores = MPI ranks * OpenMP threads.'''
+    """Total cores = MPI ranks * OpenMP threads."""
     state = system.cell_system.get_state()
     return int(state["n_nodes"]) * int(state["omp_num_threads"])
 
 
 def add_common_args(parser, default_particles_per_core):
-    '''
+    """
     Register the arguments shared by all benchmark scripts: the optional
     ``tune``/``run`` subcommand, ``--state_file``, ``--skin``, and the
     mutually-exclusive particle-count group. The default particles-per-core
     is stored on the namespace as ``_default_ppc`` for :func:`resolve_n_part`.
-    '''
+    """
     parser.add_argument(
         "mode", nargs="?", choices=["tune", "run"], default=None,
         help="'tune': build and tune, then save --state_file (no timing); "
@@ -171,23 +172,24 @@ def add_common_args(parser, default_particles_per_core):
 
 
 def validate_mode(args):
-    '''
+    """
     Validate and normalize the mode arguments: exit with an error if
     ``tune``/``run`` was requested without a state file, and append the
     ``.npz`` suffix to ``--state_file`` when it is missing.
-    '''
+    """
     if args.mode in ("tune", "run") and not args.state_file:
         raise SystemExit(f"error: '{args.mode}' mode requires --state_file")
-    if getattr(args, "state_file", None) and not args.state_file.endswith(".npz"):
+    state_file = getattr(args, "state_file", None)
+    if state_file and not state_file.endswith(".npz"):
         args.state_file += ".npz"
 
 
 def resolve_n_part(system, args):
-    '''
+    """
     Total particle count from ``--n_particles`` (fixed) or
     ``--particles_per_core`` (times the number of cores). Falls back to the
     per-script default particles-per-core when neither is given.
-    '''
+    """
     if getattr(args, "n_particles", None) is not None:
         return int(args.n_particles)
     ppc = args.particles_per_core
@@ -197,7 +199,7 @@ def resolve_n_part(system, args):
 
 
 def topology_meta(system):
-    '''Parallel topology to embed in a state file.'''
+    """Parallel topology to embed in a state file."""
     state = system.cell_system.get_state()
     return {
         "n_nodes": int(state["n_nodes"]),
@@ -207,10 +209,10 @@ def topology_meta(system):
 
 
 def verify_topology(system, meta):
-    '''
+    """
     Refuse to run a state file under a different parallel topology than it was
     tuned with, then restore the exact MPI node grid.
-    '''
+    """
     state = system.cell_system.get_state()
     current_threads = int(state["omp_num_threads"])
     current_nodes = int(state["n_nodes"])
@@ -226,17 +228,17 @@ def verify_topology(system, meta):
 
 
 def save_state(path, meta, **arrays):
-    '''
+    """
     Save benchmark state to a single ``.npz`` archive: ``meta`` (a dict of
     scalars/short lists) plus named numpy arrays (positions, velocities, ...).
-    '''
+    """
     if not path.endswith(".npz"):
         path = path + ".npz"
     np.savez(path, meta=np.array(meta, dtype=object), **arrays)
 
 
 def load_state(path):
-    '''Load a state file. Returns ``(meta_dict, npz_handle)``.'''
+    """Load a state file. Returns ``(meta_dict, npz_handle)``."""
     if not os.path.exists(path) and not path.endswith(".npz"):
         path = path + ".npz"
     handle = np.load(path, allow_pickle=True)
@@ -245,10 +247,10 @@ def load_state(path):
 
 
 def tune_skin_unless_fixed(system, args, min_skin, max_skin, **tune_kwargs):
-    '''
+    """
     Tune the skin, unless the user fixed it via ``--skin`` (in which case set
     that value and skip tuning). Returns the resulting skin.
-    '''
+    """
     if args.skin is not None:
         system.cell_system.skin = args.skin
         return args.skin
@@ -256,8 +258,9 @@ def tune_skin_unless_fixed(system, args, min_skin, max_skin, **tune_kwargs):
         min_skin=min_skin, max_skin=max_skin, **tune_kwargs)
 
 
-def write_report(filepath, n_ranks, timings, n_steps, label='', n_threads=None):
-    '''
+def write_report(filepath, n_ranks, timings,
+                 n_steps, label="", n_threads=None):
+    """
     Append timing data to a CSV file. If it doesn't exist, it is created
     with a header.
 
@@ -274,7 +277,7 @@ def write_report(filepath, n_ranks, timings, n_steps, label='', n_threads=None):
     label: :obj:`str`, optional
         Label to distinguish e.g. MD from MC or LB steps.
 
-    '''
+    """
     if n_threads is None:
         n_threads = int(os.environ.get("OMP_NUM_THREADS", 1))
     script = pathlib.Path(sys.argv[0]).name

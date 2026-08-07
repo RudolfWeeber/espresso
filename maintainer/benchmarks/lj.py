@@ -80,12 +80,12 @@ def configure_lj(system):
 
 
 def resolve_retune(args, meta=None):
-    '''
+    """
     Resolve the skin-retune interval for the timing loop. An explicit
     --retune_skin_after always wins. Otherwise --skin (a fixed skin) disables
     retuning; failing that, fall back to the state-file value or the default 5.
     A value <= 0 disables retuning.
-    '''
+    """
     if args.retune_skin_after is not None:
         value = args.retune_skin_after
     elif args.skin is not None:
@@ -98,7 +98,7 @@ def resolve_retune(args, meta=None):
 
 
 def build_and_tune(system, args):
-    '''Build the LJ system, warm up, equilibrate and tune the skin.'''
+    """Build the LJ system, warm up, equilibrate and tune the skin."""
     assert args.volume_fraction > 0, "volume_fraction must be a positive number"
     assert args.volume_fraction < np.pi / (3 * np.sqrt(2)), \
         "volume_fraction exceeds the physical limit of sphere packing (~0.74)"

@@ -120,10 +120,10 @@ def p3m_tune_kwargs(args, mesh_min):
 
 
 def make_p3m(args, mesh_min):
-    '''
+    """
     Build the P3M solver. Use the pre-tuned ``p3m_params`` when provided
     (skipping tuning, e.g. in the benchmark smoke tests), otherwise tune.
-    '''
+    """
     if p3m_params is not None:
         return espressomd.electrostatics.P3M(**p3m_params)
     return espressomd.electrostatics.P3M(**p3m_tune_kwargs(args, mesh_min))
