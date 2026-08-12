@@ -90,7 +90,7 @@ class Test(ut.TestCase):
                 MDLC(gap_size=2., maxPWerror=0.1, actor=ddsr_gpu)
             with self.assertRaisesRegex(ValueError, "Parameter 'n_replicas' must be >= 0"):
                 DDSR(prefactor=1., n_replicas=-2, gpu=True)
-        else:
+        elif not espressomd.has_features("CUDA"):
             # requesting the GPU implementation without CUDA support compiled
             # in must raise a clear error at construction time, rather than
             # silently constructing a CPU actor that reports is_gpu() == True
