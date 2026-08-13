@@ -29,6 +29,7 @@
 #include "cells.hpp"
 #include "communication.hpp"
 #include "errorhandling.hpp"
+#include "particle_reduction.hpp"
 #include "system/System.hpp"
 
 #include "magnetostatics/dipolar_direct_sum_kernels.hpp"
@@ -37,6 +38,7 @@
 #include <Kokkos_ScatterView.hpp>
 
 #include <utils/Vector.hpp>
+#include <utils/math/tensor_product.hpp>
 #include <utils/mpi/iall_gatherv.hpp>
 
 #include <boost/mpi/collectives.hpp>
@@ -294,6 +296,16 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
       });
   Kokkos::fence();
 
+#ifdef ESPRESSO_NPT
+  // As with DipolarP3M, the energy is not a valid
+  // substitute for the virial trace for dipole-dipole interactions, so the
+  // pressure tensor (see long_range_pressure()) is reused instead.
+  if (system.has_npt_enabled()) {
+    auto const pressure_tensor = long_range_pressure();
+    get_system().npt_add_virial_contribution(
+        pressure_tensor[0u] + pressure_tensor[4u] + pressure_tensor[8u]);
+  }
+#endif
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
   if (not m_is_gpu) {
     dipole_field_at_part_cpu();
@@ -394,6 +406,125 @@ double DipolarDirectSum::long_range_energy_cpu() const {
       uB);
 
   return prefactor * (uA + uB);
+}
+
+/**
+ * @brief Calculate the dipolar pressure tensor.
+ *
+ * This employs a parallel N-square loop over all particle pairs.
+ * The dipole-dipole force is not central (unlike Coulomb), so the pair
+ * contribution to the virial only accounts for the force, not the torque,
+ * matching the convention used by @ref DipolarP3M.
+ */
+Utils::Vector9d DipolarDirectSum::long_range_pressure() const {
+  if (m_is_gpu) {
+    runtimeWarningMsg() << "Pressure calculation not implemented for "
+                           "DipolarDirectSum on GPU.";
+    return Utils::Vector9d{};
+  }
+
+  auto const &system = get_system();
+  auto const &box_geo = *system.box_geo;
+  auto const &box_l = box_geo.length();
+  auto const particles = system.cell_structure->local_particles();
+  auto [local_particles, all_posmom, reqs, offset_signed] =
+      gather_particle_data(box_geo, particles);
+
+  /* Number of image boxes considered */
+  auto const ncut = get_n_cut(box_geo, n_replicas);
+  auto const with_replicas = (ncut.norm2() > 0);
+  auto const shifts = make_image_shifts(ncut, box_l);
+
+  auto const offset = static_cast<std::size_t>(offset_signed);
+  auto const n_local = local_particles.size();
+  auto const n_total = all_posmom.size();
+
+  /* Raw pointer to the gathered AoS data; the local slice is populated before
+   * wait_all, so Phase A may read it, and it outlives all fences. Safe to
+   * capture by value in the Kokkos [=] lambdas. */
+  auto const *pm = all_posmom.data();
+
+  using execution_space = Kokkos::DefaultExecutionSpace;
+
+  /* Raw pointers so the Kokkos lambdas do not capture std::vector by value. */
+  auto const *shifts_ptr = shifts.data();
+  auto const n_shifts = shifts.size();
+
+  /* The pair contribution to the virial is r_n (x) F(r_n), reduced as a flat
+   * 9-component array. The dipole-dipole force is not central, so only the
+   * force enters the virial (not the torque). */
+
+  /* Phase A: local upper-triangular sum over j in [gi, offset + n_local) --
+   * the self-image term (shifts[1..], primary excluded) plus the pairs with
+   * j in (gi, offset + n_local). Computed while remote data is in flight. */
+  Utils::Vector9d pA{};
+  Kokkos::RangePolicy<execution_space, Kokkos::Schedule<Kokkos::Dynamic>>
+  policy_local(std::size_t{0}, n_local);
+  policy_local.set_chunk_size(64);
+  auto const join_op = [](Utils::Vector9d &acc, Utils::Vector9d const &val) {
+    acc += val;
+  };
+  auto reducerA = Reduction::make_kokkos_reducer<Utils::Vector9d>(
+      // NOLINTNEXTLINE(bugprone-exception-escape)
+      [=](std::size_t const i, Utils::Vector9d &psum) noexcept {
+        auto const gi = offset + i;
+        Utils::Vector3d const pos_i = pm[gi].pos;
+        Utils::Vector3d const m_i = pm[gi].m;
+
+        /* (a) self-images (shifts[1..], primary excluded) */
+        for (std::size_t s = 1; s < n_shifts; ++s) {
+          auto const rn = shifts_ptr[s];
+          psum += Utils::flatten(
+              Utils::tensor_product(rn, pair_force(rn, m_i, m_i).f));
+        }
+
+        /* (b) pairs with j in (gi, offset + n_local) */
+        for (auto j = gi + 1; j < offset + n_local; ++j) {
+          Utils::Vector3d const pos_j = pm[j].pos;
+          Utils::Vector3d const m_j = pm[j].m;
+          auto const d0 = with_replicas ? (pos_i - pos_j)
+                                        : box_geo.get_mi_vector(pos_i, pos_j);
+          for (std::size_t s = 0; s < n_shifts; ++s) {
+            auto const rn = d0 + shifts_ptr[s];
+            psum += Utils::flatten(
+                Utils::tensor_product(rn, pair_force(rn, m_i, m_j).f));
+          }
+        }
+      },
+      join_op);
+  Kokkos::parallel_reduce("dds_pressure_local", policy_local, reducerA, pA);
+
+  /* Wait for remote data, fill the black slice. The red range [0, offset) is
+   * never summed (each pair is counted once on the rank owning its lower
+   * index). */
+  boost::mpi::wait_all(reqs.begin(), reqs.end());
+
+  /* Phase B: remote-black sum over j in [offset + n_local, n_total). No self
+   * term and no primary exclusion -- the range is entirely remote. */
+  Utils::Vector9d pB{};
+  Kokkos::RangePolicy<execution_space> policy_remote(std::size_t{0}, n_local);
+  auto reducerB = Reduction::make_kokkos_reducer<Utils::Vector9d>(
+      // NOLINTNEXTLINE(bugprone-exception-escape)
+      [=](std::size_t const i, Utils::Vector9d &psum) noexcept {
+        auto const gi = offset + i;
+        Utils::Vector3d const pos_i = pm[gi].pos;
+        Utils::Vector3d const m_i = pm[gi].m;
+        for (auto j = offset + n_local; j < n_total; ++j) {
+          Utils::Vector3d const pos_j = pm[j].pos;
+          Utils::Vector3d const m_j = pm[j].m;
+          auto const d0 = with_replicas ? (pos_i - pos_j)
+                                        : box_geo.get_mi_vector(pos_i, pos_j);
+          for (std::size_t s = 0; s < n_shifts; ++s) {
+            auto const rn = d0 + shifts_ptr[s];
+            psum += Utils::flatten(
+                Utils::tensor_product(rn, pair_force(rn, m_i, m_j).f));
+          }
+        }
+      },
+      join_op);
+  Kokkos::parallel_reduce("dds_pressure_remote", policy_local, reducerB, pB);
+
+  return prefactor * (pA + pB);
 }
 
 /**
