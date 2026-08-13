@@ -24,6 +24,7 @@
 #ifdef ESPRESSO_DIPOLES
 
 #include "magnetostatics/dipolar_direct_sum.hpp"
+#include "magnetostatics/dipolar_direct_sum_kernels.hpp"
 
 #include "BoxGeometry.hpp"
 #include "cells.hpp"
@@ -31,8 +32,6 @@
 #include "errorhandling.hpp"
 #include "particle_reduction.hpp"
 #include "system/System.hpp"
-
-#include "magnetostatics/dipolar_direct_sum_kernels.hpp"
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_ScatterView.hpp>
@@ -112,8 +111,10 @@ static auto get_n_cut(BoxGeometry const &box_geo, int n_replicas) {
                                       static_cast<int>(box_geo.periodic(2))};
 }
 
-/** Real-space image shifts n .* box_l inside the |ncut| sphere; index 0 is the
- *  primary (zero) shift so self-interaction loops start at index 1. */
+/**
+ * Real-space image shifts n x box_l inside the |ncut| sphere. Index 0 is the
+ * primary (zero) shift so self-interaction loops start at index 1.
+ */
 static std::vector<Utils::Vector3d>
 make_image_shifts(Utils::Vector3i const &ncut, Utils::Vector3d const &box_l) {
   auto const ncut2 = ncut.norm2();
@@ -202,8 +203,8 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
   Kokkos::parallel_for(
       "dds_local_pairs", policy_local, [=](std::size_t const i) {
         auto const gi = offset + i;
-        Utils::Vector3d const pos_i = pm[gi].pos;
-        Utils::Vector3d const m_i = pm[gi].m;
+        auto const &pos_i = pm[gi].pos;
+        auto const &m_i = pm[gi].m;
         PairForce fi{};
 
         /* (a) self-images (shifts[1..], primary excluded) */
@@ -215,8 +216,8 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
 
         /* (b) pairs with j in (gi, offset + n_local) */
         for (auto j = gi + 1; j < offset + n_local; ++j) {
-          Utils::Vector3d const pos_j = pm[j].pos;
-          Utils::Vector3d const m_j = pm[j].m;
+          auto const &pos_j = pm[j].pos;
+          auto const &m_j = pm[j].m;
           auto const d0 = with_replicas ? (pos_i - pos_j)
                                         : box_geo.get_mi_vector(pos_i, pos_j);
           auto const jl = j - offset;
@@ -244,26 +245,26 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
   boost::mpi::wait_all(reqs.begin(), reqs.end());
 
   /* Phase B: remote pairs (red [0, offset) + black [offset + n_local,
-   * n_total)), visit-twice, no scatter — accumulate only i. */
+   * n_total)), visit-twice, no scatter; accumulate only i. */
   Kokkos::RangePolicy<execution_space> policy_remote(std::size_t{0}, n_local);
   Kokkos::parallel_for(
       "dds_remote_pairs", policy_remote, [=](std::size_t const i) {
         auto const gi = offset + i;
-        Utils::Vector3d const pos_i = pm[gi].pos;
-        Utils::Vector3d const m_i = pm[gi].m;
+        auto const &pos_i = pm[gi].pos;
+        auto const &m_i = pm[gi].m;
         PairForce fi{};
 
         /* Two remote ranges: red [0, offset) and black [offset + n_local,
          * n_total). Visit-twice (each remote pair is visited once per owning
-         * rank), so only i accumulates — no scatter. */
+         * rank), so only i accumulates; no scatter. */
         std::size_t const ranges[2][2] = {{std::size_t{0}, offset},
                                           {offset + n_local, n_total}};
         for (auto const &range : ranges) {
           auto const range_begin = range[0];
           auto const range_end = range[1];
           for (auto j = range_begin; j < range_end; ++j) {
-            Utils::Vector3d const pos_j = pm[j].pos;
-            Utils::Vector3d const m_j = pm[j].m;
+            auto const &pos_j = pm[j].pos;
+            auto const &m_j = pm[j].m;
             auto const d0 = with_replicas ? (pos_i - pos_j)
                                           : box_geo.get_mi_vector(pos_i, pos_j);
             for (std::size_t s = 0; s < n_shifts; ++s) {
@@ -359,8 +360,8 @@ double DipolarDirectSum::long_range_energy_cpu() const {
       "dds_energy_local", policy_local,
       [=](std::size_t const i, double &u_local) {
         auto const gi = offset + i;
-        Utils::Vector3d const pos_i = pm[gi].pos;
-        Utils::Vector3d const m_i = pm[gi].m;
+        auto const &pos_i = pm[gi].pos;
+        auto const &m_i = pm[gi].m;
 
         /* (a) self-images (shifts[1..], primary excluded) */
         for (std::size_t s = 1; s < n_shifts; ++s)
@@ -368,8 +369,8 @@ double DipolarDirectSum::long_range_energy_cpu() const {
 
         /* (b) pairs with j in (gi, offset + n_local) */
         for (auto j = gi + 1; j < offset + n_local; ++j) {
-          Utils::Vector3d const pos_j = pm[j].pos;
-          Utils::Vector3d const m_j = pm[j].m;
+          auto const &pos_j = pm[j].pos;
+          auto const &m_j = pm[j].m;
           auto const d0 = with_replicas ? (pos_i - pos_j)
                                         : box_geo.get_mi_vector(pos_i, pos_j);
           for (std::size_t s = 0; s < n_shifts; ++s)
@@ -384,19 +385,19 @@ double DipolarDirectSum::long_range_energy_cpu() const {
   boost::mpi::wait_all(reqs.begin(), reqs.end());
 
   /* Phase B: remote-black sum over j in [offset + n_local, n_total). No self
-   * term and no primary exclusion — the range is entirely remote. */
+   * term and no primary exclusion; the range is entirely remote. */
   double uB = 0.;
   Kokkos::RangePolicy<execution_space> policy_remote(std::size_t{0}, n_local);
   Kokkos::parallel_reduce(
       "dds_energy_remote", policy_remote,
       [=](std::size_t const i, double &u_local) {
         auto const gi = offset + i;
-        Utils::Vector3d const pos_i = pm[gi].pos;
-        Utils::Vector3d const m_i = pm[gi].m;
+        auto const &pos_i = pm[gi].pos;
+        auto const &m_i = pm[gi].m;
         /* sum over j in [offset + n_local, n_total) */
         for (auto j = offset + n_local; j < n_total; ++j) {
-          Utils::Vector3d const pos_j = pm[j].pos;
-          Utils::Vector3d const m_j = pm[j].m;
+          auto const &pos_j = pm[j].pos;
+          auto const &m_j = pm[j].m;
           auto const d0 = with_replicas ? (pos_i - pos_j)
                                         : box_geo.get_mi_vector(pos_i, pos_j);
           for (std::size_t s = 0; s < n_shifts; ++s)
@@ -468,8 +469,8 @@ Utils::Vector9d DipolarDirectSum::long_range_pressure() const {
       // NOLINTNEXTLINE(bugprone-exception-escape)
       [=](std::size_t const i, Utils::Vector9d &psum) noexcept {
         auto const gi = offset + i;
-        Utils::Vector3d const pos_i = pm[gi].pos;
-        Utils::Vector3d const m_i = pm[gi].m;
+        auto const &pos_i = pm[gi].pos;
+        auto const &m_i = pm[gi].m;
 
         /* (a) self-images (shifts[1..], primary excluded) */
         for (std::size_t s = 1; s < n_shifts; ++s) {
@@ -480,8 +481,8 @@ Utils::Vector9d DipolarDirectSum::long_range_pressure() const {
 
         /* (b) pairs with j in (gi, offset + n_local) */
         for (auto j = gi + 1; j < offset + n_local; ++j) {
-          Utils::Vector3d const pos_j = pm[j].pos;
-          Utils::Vector3d const m_j = pm[j].m;
+          auto const &pos_j = pm[j].pos;
+          auto const &m_j = pm[j].m;
           auto const d0 = with_replicas ? (pos_i - pos_j)
                                         : box_geo.get_mi_vector(pos_i, pos_j);
           for (std::size_t s = 0; s < n_shifts; ++s) {
@@ -507,11 +508,11 @@ Utils::Vector9d DipolarDirectSum::long_range_pressure() const {
       // NOLINTNEXTLINE(bugprone-exception-escape)
       [=](std::size_t const i, Utils::Vector9d &psum) noexcept {
         auto const gi = offset + i;
-        Utils::Vector3d const pos_i = pm[gi].pos;
-        Utils::Vector3d const m_i = pm[gi].m;
+        auto const &pos_i = pm[gi].pos;
+        auto const &m_i = pm[gi].m;
         for (auto j = offset + n_local; j < n_total; ++j) {
-          Utils::Vector3d const pos_j = pm[j].pos;
-          Utils::Vector3d const m_j = pm[j].m;
+          auto const &pos_j = pm[j].pos;
+          auto const &m_j = pm[j].m;
           auto const d0 = with_replicas ? (pos_i - pos_j)
                                         : box_geo.get_mi_vector(pos_i, pos_j);
           for (std::size_t s = 0; s < n_shifts; ++s) {
@@ -576,8 +577,8 @@ void DipolarDirectSum::dipole_field_at_part_cpu() const {
   Kokkos::RangePolicy<execution_space> policy(std::size_t{0}, n_local);
   Kokkos::parallel_for("dds_dipole_field", policy, [=](std::size_t const i) {
     auto const gi = offset + i;
-    Utils::Vector3d const pos_i = pm[gi].pos;
-    Utils::Vector3d const m_i = pm[gi].m;
+    auto const &pos_i = pm[gi].pos;
+    auto const &m_i = pm[gi].m;
     Utils::Vector3d u{};
 
     /* (a) self-image term over shifts[1..] (primary excluded) */
@@ -591,8 +592,8 @@ void DipolarDirectSum::dipole_field_at_part_cpu() const {
       auto const range_begin = range[0];
       auto const range_end = range[1];
       for (auto j = range_begin; j < range_end; ++j) {
-        Utils::Vector3d const pos_j = pm[j].pos;
-        Utils::Vector3d const m_j = pm[j].m;
+        auto const &pos_j = pm[j].pos;
+        auto const &m_j = pm[j].m;
         auto const d0 = with_replicas ? (pos_i - pos_j)
                                       : box_geo.get_mi_vector(pos_i, pos_j);
         for (std::size_t s = 0; s < n_shifts; ++s)
@@ -603,7 +604,7 @@ void DipolarDirectSum::dipole_field_at_part_cpu() const {
   });
   Kokkos::fence();
 }
-#endif
+#endif // ESPRESSO_DIPOLE_FIELD_TRACKING
 
 DipolarDirectSum::DipolarDirectSum(double prefactor, int n_replicas, bool gpu) {
   set_prefactor(prefactor);
