@@ -35,6 +35,7 @@
 #include <set>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -59,22 +60,19 @@ public:
     auto &cell_structure = *system.cell_structure;
 
     // Collect local (pid, position) pairs for all particles in m_pairs
+    std::unordered_set<int> visited_pids;
     std::vector<std::pair<int, Utils::Vector3d>> local_pid_pos;
     for (auto const &[pid1, pid2] : m_pairs) {
       for (auto const pid : {pid1, pid2}) {
-        auto const *p = cell_structure.get_local_particle(pid);
-        if (p and not p->is_ghost()) {
-          local_pid_pos.emplace_back(pid, p->pos());
+        if (not visited_pids.contains(pid)) {
+          auto const *p = cell_structure.get_local_particle(pid);
+          if (p and not p->is_ghost()) {
+            local_pid_pos.emplace_back(pid, p->pos());
+          }
+          visited_pids.emplace(pid);
         }
       }
     }
-
-    // Remove duplicate pids (a pid may appear in multiple pairs)
-    std::ranges::sort(local_pid_pos, {},
-                      [](auto const &kv) { return kv.first; });
-    auto [it, end] = std::ranges::unique(
-        local_pid_pos, {}, [](auto const &kv) { return kv.first; });
-    local_pid_pos.erase(it, end);
 
     // Gather from all ranks to rank 0
     std::vector<std::vector<std::pair<int, Utils::Vector3d>>> all_pid_pos;

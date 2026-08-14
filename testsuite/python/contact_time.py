@@ -131,7 +131,7 @@ class ContactTimeTest(ut.TestCase):
     def test_pairwise_distance_across_ranks(self):
         """
         Place particles on two different MPI ranks well past the ghost layer.
-        The observable only works with a MPI gather operation.
+        The observable must collect data from all other ranks.
         """
         system = self.system
         dist_larger_than_skin = 2. * system.cell_system.skin
