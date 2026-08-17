@@ -408,8 +408,8 @@ public:
    * @brief Run a kernel on all local particles.
    * The kernel is assumed to be thread-safe.
    */
-  template <typename Callable>
-  void for_each_local_particle(Callable &&f, bool parallel = true) const {
+  void for_each_local_particle(ParticleCallback auto &&f,
+                               bool parallel = true) const {
     if (parallel and use_parallel_for_each_local_particle()) {
       parallel_for_each_particle_impl(decomposition().local_cells(), f);
       return;
@@ -430,8 +430,7 @@ public:
    *
    * The kernel is assumed to be thread-safe.
    */
-  template <typename Callable>
-  void for_each_interior_particle(Callable &&f) const {
+  void for_each_interior_particle(ParticleCallback auto &&f) const {
     auto const all_cells = decomposition().local_cells();
     // Build a filtered list of interior cells (those that are not boundary).
     m_filtered_cells_scratch.clear();
@@ -460,8 +459,7 @@ public:
    *
    * The kernel is assumed to be thread-safe.
    */
-  template <typename Callable>
-  void for_each_boundary_particle(Callable &&f) const {
+  void for_each_boundary_particle(ParticleCallback auto &&f) const {
     auto const all_cells = decomposition().local_cells();
     // Build a filtered list of boundary cells.
     m_filtered_cells_scratch.clear();
@@ -485,8 +483,7 @@ public:
    * @brief Run a kernel on all ghost particles.
    * The kernel is assumed to be thread-safe.
    */
-  template <typename Callable>
-  void for_each_ghost_particle(Callable &&f) const {
+  void for_each_ghost_particle(ParticleCallback auto &&f) const {
     for (auto &p : ghost_particles()) {
       f(p);
     }
@@ -506,9 +503,8 @@ private:
     return decomposition().particle_to_cell(p);
   }
 
-  template <typename Callable>
   inline void parallel_for_each_particle_impl(std::span<Cell *const> cells,
-                                              Callable &f) const;
+                                              ParticleCallback auto &&f) const;
 
 public:
   /**
@@ -775,11 +771,9 @@ private:
    *                partners as arguments. Its return value
    *                should indicate if the bond was broken.
    */
-  template <class Handler>
-  void execute_bond_handler(Particle &p, Handler const &handler) {
+  void execute_bond_handler(Particle &p, auto const &handler) {
     for (const BondView bond : p.bonds()) {
       auto const partner_ids = bond.partner_ids();
-
       try {
         auto partners = resolve_bond_partners(partner_ids);
         auto const partners_span = std::span(partners.data(), partners.size());
@@ -854,7 +848,7 @@ private:
    * @tparam Kernel Needs to be callable with (Particle, Particle, Distance).
    * @param kernel Pair kernel functor.
    */
-  template <class Kernel> void link_cell(Kernel kernel) {
+  void link_cell(auto kernel) {
     auto const maybe_box = decomposition().minimum_image_distance();
     auto const local_cells_span = decomposition().local_cells();
     auto const first = boost::make_indirect_iterator(local_cells_span.begin());

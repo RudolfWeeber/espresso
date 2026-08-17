@@ -540,7 +540,7 @@ void System::System::calculate_forces() {
     // a matching arm in orientation_ghosts_needed() (System.cpp).
     assert(get_force_reduce_ghost_flags() & GHOSTTRANS_TORQUE);
   }
-#endif
+#endif // ESPRESSO_ROTATION
 #ifdef ESPRESSO_NPT
   auto const have_bonds = cell_structure->get_local_pair_bond_numbers() > 0 or
                           cell_structure->get_local_angle_bond_numbers() > 0 or
@@ -549,7 +549,7 @@ void System::System::calculate_forces() {
       (bonded_ias->maximal_cutoff() >= 0. and have_bonds)) {
     cell_structure->mark_virial_replicas_dirty();
   }
-#endif
+#endif // ESPRESSO_NPT
 
   cabana_short_range(pair_bonds_kernel, angle_bonds_kernel,
                      dihedral_bonds_kernel, first_neighbor_kernel,
@@ -626,10 +626,9 @@ void System::System::calculate_forces() {
 
   if (ghost_reduce_overlap_eligible(*this)) {
     // Split-phase path: start the ghost force reduction now (non-blocking);
-    // integrate.cpp will run interior-cell step_2, finish the reduce, then
+    // the integrator will run interior-cell step_2, finish the reduce, then
     // run boundary-cell step_2.  comfixed and force_capping are inactive on
-    // this path (asserted by eligibility; the assert below is a belt-and-
-    // suspenders cross-check).
+    // this path.
     assert(comfixed->get_fixed_types().empty() &&
            "ghost_reduce_overlap: comfixed must be inactive on the eligible "
            "path");

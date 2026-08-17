@@ -20,20 +20,21 @@
  */
 #pragma once
 
-/** \file
- *  Asynchronous, split-phase ghost-communication engine.
+/**
+ * @file
+ * Asynchronous, split-phase ghost-communication engine.
  *
- *  Drives a @ref GhostComm::HaloPlan with non-blocking point-to-point MPI
- *  (plus same-rank copies), reusing the byte-identical serialization from
- *  particle_packing.hpp. The engine is split into a @c halo_exchange_start
- *  phase (post all receives, pack and post all sends) and a
- *  @c halo_exchange_finish phase (same-rank copies, wait, unpack/reduce) so
- *  that callers can overlap other work with in-flight messages.
+ * Drive a @ref GhostComm::HaloPlan with non-blocking point-to-point MPI
+ * (plus same-rank copies), reusing the byte-identical serialization from
+ * @ref particle_packing.hpp. The engine is split into a
+ * @ref halo_exchange_start phase (post all receives, pack and post all sends)
+ * and a @ref halo_exchange_finish phase (same-rank copies, wait, unpack/reduce)
+ * so that callers can overlap other work with in-flight messages.
  *
- *  Deadlock-freedom is guaranteed by posting every @c irecv before any
- *  @c isend and matching each message by @c (peer, tag); message sizes are
- *  known a-priori from the receiving cells' packed size (see
- *  @ref GhostComm::calc_transmit_size), except for the PARTNUM bootstrap.
+ * Deadlock-freedom is guaranteed by posting every @c irecv before any
+ * @c isend and matching each message by @c (peer, tag); message sizes are
+ * known a-priori from the receiving cells' packed size (see
+ * @ref GhostComm::calc_transmit_size), except for the PARTNUM bootstrap.
  */
 
 #include "BoxGeometry.hpp"
@@ -81,7 +82,7 @@ struct ExchangeBuffers {
   std::vector<std::vector<ParticleList *>> recv_cells;
   /**
    * Scratch index map for the Overwrite (wait_any) path in
-   * @c halo_exchange_finish: maps active request slot → original neighbor
+   * @c halo_exchange_finish: maps active request slot -> original neighbor
    * index.  Sized to the current neighbor count in @c halo_exchange_start
    * alongside the other per-neighbor vectors; capacity is retained across
    * calls so that no heap allocation occurs on the hot position-push path

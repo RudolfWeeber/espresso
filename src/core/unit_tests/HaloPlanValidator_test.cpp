@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2026 The ESPResSo project
+ * Copyright (C) 2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -19,6 +19,9 @@
 
 #define BOOST_TEST_MODULE HaloPlanValidator test
 #define BOOST_TEST_DYN_LINK
+
+#include <boost/test/unit_test.hpp>
+
 #include "EspressoCoreGlobalConfig.hpp"
 
 #include "BoxGeometry.hpp"
@@ -33,7 +36,6 @@
 #include "ghosts/mark_boundary_cells.hpp"
 
 #include <boost/mpi.hpp>
-#include <boost/test/unit_test.hpp>
 
 #include <functional>
 #include <optional>
@@ -90,7 +92,9 @@ namespace utf = boost::unit_test;
 static bool has_4_mpi_ranks() { return boost::mpi::communicator{}.size() == 4; }
 static bool has_1_mpi_rank() { return boost::mpi::communicator{}.size() == 1; }
 
-// ── Task 2.1: single-rank local checks ──────────────────────────────────────
+// ========================
+// single-rank local checks
+// ========================
 // These use hand-made cells and are rank-independent, so they pass at NUM_PROC
 // 4 without modification.
 
@@ -148,7 +152,9 @@ BOOST_AUTO_TEST_CASE(detects_defects) {
                       "Expected shape-mismatch violation");
 }
 
-// ── Task 2.3: real-plan local checks ────────────────────────────────────────
+// ======================
+// real-plan local checks
+// ======================
 // Build a real RegularDecomposition on 4 ranks and assert that the local
 // validator (coverage + neighborship-match + peer-uniqueness + shape) passes.
 // This is the guard that the wiring in RegularDecomposition.cpp won't
@@ -196,7 +202,9 @@ BOOST_AUTO_TEST_CASE(local_checks_pass_single_rank_decomposition,
                       "RegularDecomposition (unreferenced halo-layer ghosts)");
 }
 
-// ── Fix 2 guard: collective-covered ghosts ──────────────────────────────────
+// =========================
+// collective-covered ghosts
+// =========================
 // A real AtomDecomposition (n-square) covers ALL of its ghosts via the
 // collective broadcast/reduce section, not via point-to-point recv/dst
 // targets. Before the fix the validator false-positived on every such ghost
@@ -239,11 +247,13 @@ BOOST_AUTO_TEST_CASE(hybrid_decomposition_mixed_coverage,
   BOOST_CHECK(validate_halo_plan_symmetry(*plan).empty());
 }
 
-// ── Task 5.2: wrap-aware boundary classification on 1 rank ──────────────────
+// ============================================
+// wrap-aware boundary classification on 1 rank
+// ============================================
 // On a single MPI rank all periodic axes are "wrap axes": no ghost cells are
 // generated for them (init_cell_interactions wires local cells directly across
 // the periodic boundary), so the base ghost-neighbour rule would leave those
-// cells interior.  The Task 5.2 wrap predicate must catch this and mark the
+// cells interior.  The wrap predicate must catch this and mark the
 // first and last local layers along each periodic axis as boundary.
 //
 // Correctness argument: every cell in the first or last local layer (ghost-grid
@@ -322,14 +332,14 @@ BOOST_AUTO_TEST_CASE(single_rank_wrap_axis_cells_are_boundary,
 // Without the post-predicate fixup every local cell would be left INTERIOR —
 // wrong, because each cell interacts with itself across the periodic boundary.
 //
-// box_l=1.0, range=2.0 → cell_grid[i]=floor(1/2)=0 → clamped to 1 on all
+// box_l=1.0, range=2.0 -> cell_grid[i]=floor(1/2)=0 -> clamped to 1 on all
 // three axes.  Every local cell must be boundary.
 BOOST_AUTO_TEST_CASE(single_rank_cell_grid_one_all_cells_are_boundary,
                      *utf::precondition([](utf::test_unit_id) {
                        return has_1_mpi_rank();
                      })) {
   using namespace GhostComm;
-  // range > box_l → cell_grid clamps to {1,1,1}
+  // range > box_l -> cell_grid clamps to {1,1,1}
   auto const dd = make_dd({1, 1, 1}, 1.0, 2.0);
   // Verify the precondition: cell_grid should be {1,1,1}.
   BOOST_REQUIRE_EQUAL(dd.cell_grid[0], 1);
@@ -344,7 +354,9 @@ BOOST_AUTO_TEST_CASE(single_rank_cell_grid_one_all_cells_are_boundary,
   }
 }
 
-// ── Task 2.2: cross-rank symmetry checks ────────────────────────────────────
+// ==========================
+// cross-rank symmetry checks
+// ==========================
 
 // Good case: real RegularDecomposition on 4 ranks must be symmetric.
 BOOST_AUTO_TEST_CASE(symmetry_good_real_decomposition,

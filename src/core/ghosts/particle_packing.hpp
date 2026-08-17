@@ -18,13 +18,15 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 #pragma once
 
-/** \file
- *  Reusable particle packing/unpacking for ghost communications.
+/**
+ * @file
+ * Reusable particle packing/unpacking for ghost communications.
  *
- *  Extracted from ghosts.cpp so that both the legacy ghost_communicator()
- *  and future async engines can share the same byte-identical serialization.
+ * Extracted from ghosts.cpp so that both the legacy ghost_communicator()
+ * and future async engines can share the same byte-identical serialization.
  */
 
 #include <config/config.hpp>
@@ -62,9 +64,11 @@ template <class T> struct DefaultInitAllocator : std::allocator<T> {
     using other = DefaultInitAllocator<U>;
   };
 
-  /** Called by vector::resize for each newly appended element.
-   *  Plain `new (p) T` uses default-initialization: trivial types like
-   *  `char` are left uninitialized rather than zero-filled. */
+  /**
+   * @brief Called by vector::resize for each newly appended element.
+   * Plain `new (p) T` uses default-initialization: trivial types like
+   * `char` are left uninitialized rather than zero-filled.
+   */
   void construct(T *p) noexcept { ::new (static_cast<void *>(p)) T; }
 
   /** Forward non-default construction unchanged. */
@@ -75,7 +79,7 @@ template <class T> struct DefaultInitAllocator : std::allocator<T> {
 } // namespace detail
 
 /**
- * Class that stores marshalled data for ghost communications.
+ * @brief Class that stores marshalled data for ghost communications.
  * To store and retrieve data, use the adapter classes below.
  *
  * Invariant: every byte in the non-bond buffer is written by the caller
@@ -98,9 +102,10 @@ public:
   /** Returns the number of elements in the non-bond storage. */
   std::size_t size() const { return buf.size(); }
 
-  /** Resizes the underlying storage s.t. the object is capable of holding
-   *  @p new_size chars.  Bytes added by growth are left uninitialized —
-   *  the caller must write them (pack_cells / MPI irecv) before reading.
+  /**
+   * @brief Resizes the underlying storage s.t. the object is capable of holding
+   * @p new_size chars.  Bytes added by growth are left uninitialized;
+   * the caller must write them (pack_cells / MPI irecv) before reading.
    */
   void resize(std::size_t new_size) { buf.resize(new_size); }
 
@@ -133,7 +138,6 @@ std::size_t calc_transmit_size(std::span<ParticleList *const> cells,
 /**
  * @brief Pack particle data from cells into a communication buffer.
  *
- * Equivalent to prepare_send_buffer() in the original ghosts.cpp.
  * Handles GHOSTTRANS_PARTNUM (writes cell sizes) and GHOSTTRANS_BONDS
  * (separate bond buffer) special cases.
  *
@@ -150,7 +154,6 @@ void pack_cells(CommBuf &buf, std::span<ParticleList *const> cells,
 /**
  * @brief Unpack particle data from a communication buffer into cells.
  *
- * Equivalent to put_recv_buffer() in the original ghosts.cpp.
  * Handles GHOSTTRANS_PARTNUM (resizes ghost cells) and GHOSTTRANS_BONDS
  * (separate bond buffer) special cases.
  *
@@ -170,8 +173,6 @@ void unpack_cells(CommBuf &buf, std::span<ParticleList *const> cells,
  * @param cells      Destination (owned) particle lists.
  * @param data_parts Bitmask of GHOSTTRANS_* flags; must include
  *                   GHOSTTRANS_FORCE, may include GHOSTTRANS_TORQUE.
- *
- * Equivalent to add_forces_from_recv_buffer() in the original ghosts.cpp.
  */
 void add_forces(CommBuf &buf, std::span<ParticleList *const> cells,
                 unsigned data_parts);

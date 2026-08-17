@@ -98,8 +98,16 @@ espresso_unit_test(SRC HaloPlan_test.cpp DEPENDS espresso::core Kokkos::kokkos
                    Boost::mpi MPI::MPI_CXX)
 espresso_unit_test(SRC RegularHaloPlan_test.cpp DEPENDS espresso::core
                    Kokkos::kokkos Boost::mpi MPI::MPI_CXX NUM_PROC 4)
-espresso_unit_test(SRC HaloExchange_test.cpp DEPENDS espresso::core
-                   Kokkos::kokkos Boost::mpi MPI::MPI_CXX NUM_PROC 2)
+espresso_unit_test_executable(
+  NAME HaloExchange_test SRC HaloExchange_test.cpp DEPENDS espresso::core
+  Kokkos::kokkos Boost::mpi MPI::MPI_CXX)
+foreach(TEST_NUM_PROC 1 2)
+  if(${TEST_NUM_PROC} LESS_EQUAL ${ESPRESSO_TEST_NP})
+    espresso_unit_test_register(
+      NAME HaloExchange_test_${TEST_NUM_PROC}_mpi_ranks TARGET
+      HaloExchange_test NUM_PROC ${TEST_NUM_PROC})
+  endif()
+endforeach()
 # Register the validator test on both 4 ranks (exercises face/edge/corner peers
 # on a non-trivial node grid) and 1 rank (where make_halo_plan is intentionally
 # empty and the halo-layer cells are unreferenced ghosts).
@@ -107,9 +115,11 @@ espresso_unit_test_executable(
   NAME HaloPlanValidator_test SRC HaloPlanValidator_test.cpp DEPENDS
   espresso::core Kokkos::kokkos Boost::mpi MPI::MPI_CXX)
 foreach(TEST_NUM_PROC 1 4)
-  espresso_unit_test_register(
-    NAME HaloPlanValidator_test_${TEST_NUM_PROC}_mpi_ranks TARGET
-    HaloPlanValidator_test NUM_PROC ${TEST_NUM_PROC})
+  if(${TEST_NUM_PROC} LESS_EQUAL ${ESPRESSO_TEST_NP})
+    espresso_unit_test_register(
+      NAME HaloPlanValidator_test_${TEST_NUM_PROC}_mpi_ranks TARGET
+      HaloPlanValidator_test NUM_PROC ${TEST_NUM_PROC})
+  endif()
 endforeach()
 espresso_unit_test(SRC TabulatedPotential_test.cpp DEPENDS espresso::core
                    Kokkos::kokkos)

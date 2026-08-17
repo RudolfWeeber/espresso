@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2026 The ESPResSo project
+ * Copyright (C) 2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -17,22 +17,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/**
- * @file
- * TDD for Task 3.1: interior/boundary cell classification.
- *
- * Tests:
- *  1. mark_boundary_cells: a local cell with only local neighbors → interior.
- *  2. mark_boundary_cells: a local cell with a ghost neighbor → boundary.
- *  3. mark_boundary_cells is idempotent (second call gives same result).
- *  4. validate_halo_plan consistency check: fires when a cell is mis-marked
- *     interior but has a ghost neighbor.
- *  5. validate_halo_plan consistency check: silent for a correctly-marked
- *     boundary cell.
- */
-
 #define BOOST_TEST_MODULE Cell_boundary test
 #define BOOST_TEST_DYN_LINK
+
 #include <boost/test/unit_test.hpp>
 
 #include "cell_system/Cell.hpp"
@@ -40,10 +27,13 @@
 #include "ghosts/HaloPlanValidator.hpp"
 #include "ghosts/mark_boundary_cells.hpp"
 
-#include <span>
+#include <algorithm>
+#include <string>
 #include <vector>
 
-// ── mark_boundary_cells ──────────────────────────────────────────────────────
+// ===================
+// mark_boundary_cells
+// ===================
 
 // A local cell whose only neighbors are other local cells must be interior.
 BOOST_AUTO_TEST_CASE(local_only_neighbors_is_interior) {
@@ -103,8 +93,9 @@ BOOST_AUTO_TEST_CASE(mark_boundary_cells_is_idempotent) {
   BOOST_CHECK(first_result); // should be boundary
 }
 
-// ── wrap-predicate (Task 5.2)
-// ─────────────────────────────────────────────────
+// ==============
+// wrap-predicate
+// ==============
 
 // A pair of local cells connected by a wrap-predicate that always fires must
 // both be marked boundary, even without any ghost neighbors.
@@ -153,7 +144,9 @@ BOOST_AUTO_TEST_CASE(no_wrap_no_ghost_stays_interior) {
       "cell with only local non-wrap neighbors must be interior");
 }
 
-// ── validator overlap-safety invariant (Task 5.2) ────────────────────────────
+// ==================================
+// validator overlap-safety invariant
+// ==================================
 
 // An interior cell that appears as a NeighborComm send source must trigger
 // the overlap-safety invariant violation.
@@ -213,7 +206,7 @@ BOOST_AUTO_TEST_CASE(validator_fires_for_interior_cell_in_local_comm_src) {
   BOOST_REQUIRE(!local_interior.is_boundary());
   BOOST_REQUIRE(local_boundary.is_boundary());
 
-  // Plan with a LocalComm that uses local_interior as src → violation.
+  // Plan with a LocalComm that uses local_interior as src -> violation.
   HaloPlan plan;
   plan.local.push_back(
       LocalComm{&local_interior.particles(), &ghost.particles(), {}});
@@ -259,7 +252,9 @@ BOOST_AUTO_TEST_CASE(validator_silent_for_boundary_cell_in_send_region) {
                       "expected no violations for a correct plan");
 }
 
-// ── validator consistency check ──────────────────────────────────────────────
+// ===========================
+// validator consistency check
+// ===========================
 
 // A local cell whose is_boundary()==false but that has a ghost neighbor must
 // trigger the "interior cell has a ghost neighbor" consistency violation.

@@ -19,7 +19,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 /** \file
- *  Asynchronous, split-phase ghost-communication engine. See HaloExchange.hpp.
+ *  Asynchronous, split-phase ghost-communication engine.
  */
 
 #include "ghosts/HaloExchange.hpp"
@@ -89,7 +89,7 @@ std::vector<ParticleList *> region_cells(std::vector<SendRegion> const &send) {
   std::vector<ParticleList *> cells;
   cells.reserve(send.size());
   for (auto const &r : send)
-    cells.push_back(r.cell);
+    cells.emplace_back(r.cell);
   return cells;
 }
 
@@ -116,10 +116,10 @@ std::vector<ParticleList *> region_cells(std::vector<SendRegion> const &send) {
  */
 void pack_regions(CommBuf &buf, std::vector<SendRegion> const &regions,
                   BoxGeometry const &box, unsigned data_parts) {
-#ifdef ESPRESSO_ADDITIONAL_CHECKS
+#if defined(ESPRESSO_ADDITIONAL_CHECKS) and not defined(NDEBUG)
   // All regions in a NeighborComm must share the same shift.  If per-region
   // shifts ever diverge the packer must be generalized (separate archives).
-  if (!regions.empty()) {
+  if (not regions.empty()) {
     auto const &ref = regions.front().shift;
     for (auto const &r : regions) {
       assert(r.shift == ref &&
@@ -139,20 +139,19 @@ void pack_regions(CommBuf &buf, std::vector<SendRegion> const &regions,
 /**
  * @brief Collective (broadcast/reduce-sum) section.
  *
- * Mirrors the legacy GHOST_BCST / GHOST_RDCE loop from ghost_communicator()
- * in ghosts.cpp.  For each root rank in [0, comm.size()):
+ * Mirror the legacy GHOST_BCST / GHOST_RDCE loop from ghost_communicator()
+ * in @ref ghosts.cpp.  For each root rank in <tt>[0, comm.size())</tt>:
  *
- *   Broadcast (Push): root packs its owned cell (cells[root]) and broadcasts
- *   the buffer to all ranks; every non-root rank unpacks into cells[root]
- *   (their ghost copy of root's data).
- *
- *   ReduceSum (Reduce): every rank packs cells[root] (ghost-force contribution)
- *   and reduces to root with std::plus on the raw double buffer; root unpacks
- *   into cells[root] (the owned cell, so forces accumulate there).
+ * 1. Broadcast (Push): root packs its owned cell (cells[root]) and broadcasts
+ *    the buffer to all ranks; every non-root rank unpacks into cells[root]
+ *    (their ghost copy of root's data).
+ * 2. ReduceSum (Reduce): every rank packs cells[root] (ghost-force
+ * contribution) and reduces to root with @c std::plus on the raw double buffer;
+ * root unpacks into cells[root] (the owned cell, so forces accumulate there).
  *
  * The legacy code uses one GHOST_BCST (or GHOST_RDCE) step per rank, each
- * step addressing a single cell pointer (ghost_comm.part_lists[0] ==
- * &cells.at(n)).  We replicate that loop exactly.
+ * step addressing a single cell pointer (<tt>ghost_comm.part_lists[0] ==
+ * &cells.at(n)</tt>).  We replicate that loop exactly.
  */
 void run_collective(HaloPlan const &plan, BoxGeometry const &box,
                     unsigned data_parts, ExchangeOp op) {
@@ -281,9 +280,9 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
 #else
   [[maybe_unused]] bool const force_with_torque = false;
 #endif
-  [[maybe_unused]] bool reducible = (force_only || force_with_torque);
+  [[maybe_unused]] bool reducible = (force_only or force_with_torque);
 #ifdef ESPRESSO_BOND_CONSTRAINT
-  reducible = reducible || (data_parts == GHOSTTRANS_RATTLE);
+  reducible = reducible or (data_parts == GHOSTTRANS_RATTLE);
 #endif
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
   reducible = reducible or (data_parts == GHOSTTRANS_DIPFLD);
@@ -291,7 +290,7 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
   assert((op.combine != Combine::Add or reducible) &&
          "Combine::Add only valid for reducible parts (FORCE, FORCE|TORQUE, "
          "RATTLE, DIPFLD)");
-#endif
+#endif // ESPRESSO_ADDITIONAL_CHECKS
 
   auto const &comm = plan.comm;
   auto const n = plan.neighbors.size();
@@ -544,7 +543,7 @@ void halo_exchange_finish(GhostExchange &st) {
     // message. Use wait_any to unpack each neighbor's buffer as soon as it
     // arrives.
     //
-    // Bookkeeping: maintain a slot→neighbor index map so we always know which
+    // Bookkeeping: maintain a slot->neighbor index map so we always know which
     // recv buffer to unpack for the completed request slot.  Completed requests
     // are swapped to the end of the active range and the map is updated in
     // sync.
@@ -556,7 +555,7 @@ void halo_exchange_finish(GhostExchange &st) {
     if (espresso_cali_active())
       CALI_MARK_BEGIN("ghost/wait");
 #endif
-    // Initialize the scratch map to the identity: slot i → neighbor i.
+    // Initialize the scratch map to the identity: slot i -> neighbor i.
     // The vector was pre-sized in halo_exchange_start (no allocation here).
     for (std::size_t i = 0; i < n; ++i)
       bufs.slot_to_neighbor[i] = i;

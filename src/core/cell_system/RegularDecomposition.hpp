@@ -132,19 +132,6 @@ private:
    */
   void mark_cells();
 
-  /** Fill a communication cell pointer list. Fill the cell pointers of
-   *  all cells which are inside a rectangular subgrid of the 3D cell
-   *  grid starting from the
-   *  lower left corner @p lc up to the high top corner @p hc. The cell
-   *  pointer list @p part_lists must already be large enough.
-   *  \param part_lists  List of cell pointers to store the result.
-   *  \param lc          lower left corner of the subgrid.
-   *  \param hc          high up corner of the subgrid.
-   */
-  void fill_comm_cell_lists(ParticleList **part_lists,
-                            Utils::Vector3i const &lc,
-                            Utils::Vector3i const &hc);
-
   int calc_processor_min_num_cells() const;
 
   int position_to_cell_index(Utils::Vector3d const &pos) const;

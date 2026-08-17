@@ -538,35 +538,35 @@ void System::on_integration_start() {
 }
 
 /**
- * @brief Returns true when any active physics requires orientation of ghost
- *        particles.  Used by both get_global_ghost_flags (QUAT push) and
- *        get_force_reduce_ghost_flags (TORQUE reduce).
+ * @brief Return true when any active physics requires orientation of ghost
+ * particles.  Used by both @ref get_global_ghost_flags (QUAT push) and
+ * @ref get_force_reduce_ghost_flags (TORQUE reduce).
  *
  * Conservative: include a reader when in doubt.  Non-rotating plain LJ
  * must yield false so that both bits stay OFF for that common case.
  *
  * Readers of ghost particle quat / director / calc_dip:
- *  - short_range_cabana commit_particle: quat → director for Gay-Berne /
- *    Dipoles pair kernels (ghost particles in AoSoA)
- *  - vs_relative_update_particles: p_ref.quat() where p_ref may be a ghost
- *  - LB particle coupling (swimmer): p.calc_director() on ghost particles
- *    when ESPRESSO_ENGINE and LB are both active
- *  - HomogeneousMagneticField constraint: p.calc_dip() (local particles only
- *    — does NOT read ghosts; included conservatively via dipole check)
- *  - dipolar solvers (dp3m, dds, dlc, scafacos): p.calc_dip() on
- *    unique_particles which includes ghost particles that have no local
- *    counterpart (see CellStructure::set_index_map, lines 310-322); covered by
- *    the dipolar-solver-set condition
- *  - ShapeBasedConstraint / calc_non_central_force: reads p.quat() on LOCAL
- *    particles only (Constraints iterate local_particles) — safe without the
- *    bit
- *  - Stoner-Wohlfarth integrate_magnetodynamics: calls p_ref->calc_director()
- *    where p_ref comes from get_reference_particle / get_local_particle, which
- *    CAN return a ghost; covered by the explicit #ifdef below
- *  - rotational integrators: operate on local particles only (OK)
- *  - ICC blocking reduce: resets force_and_torque on local particles and may
- *    carry a zero-valued TORQUE payload on the wire when orientation physics is
- *    concurrently active — harmless (bytes only, value is zero)
+ * - short_range_cabana commit_particle: quat -> director for Gay-Berne /
+ *   Dipoles pair kernels (ghost particles in AoSoA)
+ * - vs_relative_update_particles: p_ref.quat() where p_ref may be a ghost
+ * - LB particle coupling (swimmer): p.calc_director() on ghost particles
+ *   when ESPRESSO_ENGINE and LB are both active
+ * - HomogeneousMagneticField constraint: p.calc_dip() (local particles only,
+ *   does NOT read ghosts; included conservatively via dipole check)
+ * - dipolar solvers (dp3m, dds, dlc, scafacos): p.calc_dip() on
+ *   unique_particles which includes ghost particles that have no local
+ *   counterpart (see @ref CellStructure::set_index_map); covered by
+ *   the dipolar-solver-set condition
+ * - ShapeBasedConstraint / calc_non_central_force: reads p.quat() on LOCAL
+ *   particles only (Constraints iterate local_particles); safe without the
+ *   bit
+ * - Stoner-Wohlfarth integrate_magnetodynamics: calls p_ref->calc_director()
+ *   where p_ref comes from get_reference_particle / get_local_particle, which
+ *   CAN return a ghost; covered by the explicit #ifdef below
+ * - rotational integrators: operate on local particles only (OK)
+ * - ICC blocking reduce: resets force_and_torque on local particles and may
+ *   carry a zero-valued TORQUE payload on the wire when orientation physics is
+ *   concurrently active — harmless (bytes only, value is zero)
  */
 #ifdef ESPRESSO_ROTATION
 static bool orientation_ghosts_needed(System const &sys) {
@@ -589,7 +589,7 @@ static bool orientation_ghosts_needed(System const &sys) {
 
 #ifdef ESPRESSO_DIPOLES
   // Dipolar solver set: particles have a dipole moment derived from quat;
-  // short_range_cabana reads quat → director for dipole pair kernels on ghosts.
+  // short_range_cabana reads quat -> director for dipole pair kernels on ghosts
   if (sys.dipoles.impl && sys.dipoles.impl->solver) {
     return true;
   }
@@ -597,7 +597,7 @@ static bool orientation_ghosts_needed(System const &sys) {
 
 #ifdef ESPRESSO_GAY_BERNE
   // Gay-Berne anisotropic nonbonded interaction configured: short_range_cabana
-  // commits ghost quat → director for the Cabana pair kernel.
+  // commits ghost quat -> director for the Cabana pair kernel.
   if (sys.nonbonded_ias->pair_potential_active(PairPotential::GayBerne)) {
     return true;
   }

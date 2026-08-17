@@ -209,7 +209,7 @@ void RegularDecomposition::resort(bool global,
     }
   };
 
-  if (Kokkos::DefaultHostExecutionSpace().concurrency() <= 1) {
+  if (Kokkos::DefaultHostExecutionSpace().concurrency() == 1) {
     /* Single-threaded rank: one-pass sweep without the bookkeeping overhead
      * of the two-phase version below. */
     for (auto *const c : cells_span) {
@@ -356,18 +356,6 @@ void RegularDecomposition::mark_cells() {
           m_local_cells.push_back(&cells.at(cnt_c++));
         else
           m_ghost_cells.push_back(&cells.at(cnt_c++));
-      }
-}
-
-void RegularDecomposition::fill_comm_cell_lists(ParticleList **part_lists,
-                                                Utils::Vector3i const &lc,
-                                                Utils::Vector3i const &hc) {
-  for (int o = lc[0]; o <= hc[0]; o++)
-    for (int n = lc[1]; n <= hc[1]; n++)
-      for (int m = lc[2]; m <= hc[2]; m++) {
-        auto const i = Utils::get_linear_index(o, n, m, ghost_cell_grid);
-
-        *part_lists++ = &(cells.at(i).particles());
       }
 }
 
@@ -848,7 +836,7 @@ RegularDecomposition::RegularDecomposition(
 
   /* Classify local cells as interior or boundary.
    *
-   * Rule (a): any neighbor that is a ghost cell → boundary [base rule].
+   * Rule (a): any neighbor that is a ghost cell -> boundary [base rule].
    * Rule (b): any neighbor relation that crosses a periodic box boundary
    *   must also make the cell boundary, even when both cells are local.
    *   This happens on a single MPI rank (node_grid[i]==1, periodic[i]):

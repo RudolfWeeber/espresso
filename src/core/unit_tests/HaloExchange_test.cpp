@@ -1,7 +1,5 @@
 /*
- * Copyright (C) 2010-2026 The ESPResSo project
- * Copyright (C) 2002,2003,2004,2005,2006,2007,2008,2009,2010
- *   Max-Planck-Institute for Polymer Research, Theory Group
+ * Copyright (C) 2026 The ESPResSo project
  *
  * This file is part of ESPResSo.
  *
@@ -18,10 +16,12 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 #define BOOST_TEST_NO_MAIN
-#define BOOST_TEST_MODULE HaloExchange test
+#define BOOST_TEST_MODULE "HaloExchange test"
 #define BOOST_TEST_ALTERNATIVE_INIT_API
 #define BOOST_TEST_DYN_LINK
+
 #include <boost/test/unit_test.hpp>
 
 #include <boost/mpi.hpp>
@@ -292,8 +292,7 @@ BOOST_AUTO_TEST_CASE(local_push_position_shift,
 }
 
 /*
- * Same-rank (plan.local) path: Reduce direction — regression for commit
- * 3c62b1353e ("core/ghosts: reduce self-copy ghost forces back to owner").
+ * Same-rank (plan.local) path: Reduce direction.
  *
  * On a node_grid==1 periodic axis the plan builder emits a LocalComm with
  * src=real_cell, dst=ghost_cell.  During the force-reduce step the engine must

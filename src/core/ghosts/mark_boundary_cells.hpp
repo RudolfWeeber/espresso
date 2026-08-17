@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 #pragma once
 
 #include "cell_system/Cell.hpp"
@@ -61,10 +62,10 @@ namespace GhostComm {
  *
  * @param local_cells  Local cell pointer span.
  * @param ghost_cells  Ghost cell pointer span.
- * @param wrap_predicate  Optional predicate `(Cell const *a, Cell const *b)
- *   -> bool` that returns `true` when the neighbor relation a→b crosses a
- *   periodic box boundary (both cells are local).  When omitted, no
- *   additional wrapping boundary is detected.
+ * @param wrap_predicate  Optional predicate <tt>(Cell const *a, Cell const *b)
+ *   -> bool</tt> that returns @c true when the neighbor relation a->b crosses
+ *   a periodic box boundary (both cells are local).
+ *   When omitted, no additional wrapping boundary is detected.
  */
 inline void mark_boundary_cells(
     std::span<Cell *const> local_cells, std::span<Cell *const> ghost_cells,
@@ -107,12 +108,12 @@ inline void mark_boundary_cells(
  * invariant "interior ⇒ not exported by the plan" holds for any plan shape.
  *
  * @param plan        The halo plan produced by `make_halo_plan()`.
- * @param local_cells Local cell pointer span (used to build the ParticleList →
+ * @param local_cells Local cell pointer span (used to build the ParticleList ->
  *                    Cell reverse map in O(n)).
  */
 inline void mark_plan_cells_boundary(HaloPlan const &plan,
                                      std::span<Cell *const> local_cells) {
-  // Build a reverse map: ParticleList* → Cell* for O(1) lookup.
+  // Build a reverse map: ParticleList* -> Cell* for O(1) lookup.
   std::unordered_map<ParticleList const *, Cell *> pl_to_cell;
   pl_to_cell.reserve(local_cells.size());
   for (Cell *c : local_cells) {
