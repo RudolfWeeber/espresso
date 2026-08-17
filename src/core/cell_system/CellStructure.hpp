@@ -100,6 +100,9 @@ enum DataPart : unsigned {
   DATA_PART_QUAT = 128u,   /**< orientation quaternion (pushed with position) */
   DATA_PART_TORQUE = 256u, /**< torque (reduced with force) */
 #endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  DATA_PART_DIPFLD = 512u, /**< Particle::dip_fld */
+#endif
 };
 } // namespace Cells
 
@@ -205,12 +208,19 @@ private:
 #ifdef ESPRESSO_ROTATION
   std::unique_ptr<ForceType> m_local_torque;
   std::optional<ScatterForce> m_scatter_torque;
-  /** @brief True if a kernel may have written to @c m_scatter_torque since
-   *  the last reset. Cleared by the resets; when false, the torque buffers
-   *  are known to be all-zero and their O(n_threads * N) zeroing and
-   *  reduction can be skipped.
+  /**
+   * @brief True if a kernel may have written to @c m_scatter_torque since
+   * the last reset. Cleared by the resets; when false, the torque buffers
+   * are known to be all-zero and their O(n_threads * N) zeroing and
+   * reduction can be skipped.
    */
   bool m_torque_replicas_dirty = false;
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  std::unique_ptr<ForceType> m_local_dip_fld;
+  std::optional<ScatterForce> m_scatter_dip_fld;
+  /** @brief Same contract as @c m_torque_replicas_dirty, for dipole fields. */
+  bool m_dip_fld_replicas_dirty = false;
 #endif
 #ifdef ESPRESSO_NPT
   std::unique_ptr<VirialType> m_local_virial;
@@ -254,7 +264,6 @@ private:
   mutable std::optional<GhostComm::GhostExchange> m_pending_ghost_reduce;
   /** particle properties using individual Kokkos Views */
   std::unique_ptr<AoSoA_pack> m_aosoa;
-  /** The local id-to-index for aosoa data */
   std::vector<Particle *> m_unique_particles;
   std::shared_ptr<KokkosHandle> m_kokkos_handle;
 
@@ -683,6 +692,16 @@ public:
     return m_pending_ghost_reduce.has_value();
   }
 
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  /** Add dipole fields from ghost particles to real particles. */
+  void ghosts_reduce_dipole_field();
+
+  /** Set dipole fields on all ghosts to zero. */
+  void ghosts_reset_dipole_fields() {
+    for_each_ghost_particle([](Particle &p) { p.dip_fld() = {}; });
+  }
+#endif
+
   /** Set forces and torques on all ghosts to zero. */
   void ghosts_reset_forces() {
     for_each_ghost_particle([](Particle &p) { p.force_and_torque() = {}; });
@@ -881,6 +900,12 @@ public:
   void mark_torque_replicas_dirty() { m_torque_replicas_dirty = true; }
   auto torque_replicas_dirty() const { return m_torque_replicas_dirty; }
 #endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  auto &get_local_dip_fld() { return *m_local_dip_fld; }
+  auto get_scatter_dip_fld() { return *m_scatter_dip_fld; }
+  void mark_dip_fld_replicas_dirty() { m_dip_fld_replicas_dirty = true; }
+  auto dip_fld_replicas_dirty() const { return m_dip_fld_replicas_dirty; }
+#endif
 #ifdef ESPRESSO_NPT
   auto &get_local_virial() { return *m_local_virial; }
   auto get_scatter_virial() { return *m_scatter_virial; }
@@ -950,6 +975,8 @@ private:
    *  the last reset (no-op otherwise, and without the ROTATION feature).
    */
   void reset_torque_replicas_if_dirty();
+  /** @brief Same contract for the dipolar fields buffers. */
+  void reset_dip_fld_replicas_if_dirty();
   /** @brief Same contract for the virial buffers (NPT feature). */
   void reset_virial_replicas_if_dirty();
 

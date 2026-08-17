@@ -91,6 +91,9 @@ struct ForcesKernel {
 #ifdef ESPRESSO_ROTATION
   CellStructure::ScatterForce local_torque;
 #endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  CellStructure::ScatterForce local_dip_fld;
+#endif
 #ifdef ESPRESSO_NPT
   Utils::Vector3d *const global_virial;
   CellStructure::ScatterVirial local_virial;
@@ -115,6 +118,9 @@ struct ForcesKernel {
 #ifdef ESPRESSO_ROTATION
       CellStructure::ScatterForce local_torque_,
 #endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+      CellStructure::ScatterForce local_dip_fld_,
+#endif
 #ifdef ESPRESSO_NPT
       Utils::Vector3d *const global_virial_,
       CellStructure::ScatterVirial local_virial_,
@@ -128,6 +134,9 @@ struct ForcesKernel {
         local_force(std::move(local_force_)),
 #ifdef ESPRESSO_ROTATION
         local_torque(std::move(local_torque_)),
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+        local_dip_fld(std::move(local_dip_fld_)),
 #endif
 #ifdef ESPRESSO_NPT
         global_virial(global_virial_), local_virial(std::move(local_virial_)),
@@ -231,9 +240,11 @@ struct ForcesKernel {
     } // not dist > ia_params.max_cut
 
     /*********************************************************************/
-    /* everything before this contributes to the virial pressure in NpT, */
-    /* but nothing afterwards, since the contribution to pressure from   */
-    /* electrostatic is calculated by energy                             */
+    /* everything before this contributes to the virial pressure in NpT  */
+    /* via d (x) pf.f; electrostatic and dipolar real-space contributions */
+    /* are added in explicitly below instead: Coulomb reuses the pair    */
+    /* energy as a virial proxy, dipoles compute d . F directly (see     */
+    /* rationale below)                                                 */
     /*********************************************************************/
 #ifdef ESPRESSO_NPT
     Utils::Vector3d virial{};
@@ -271,15 +282,43 @@ struct ForcesKernel {
     }
 #endif // ESPRESSO_ELECTROSTATICS
 
-    // Only call dipole force kernel if active
 #ifdef ESPRESSO_DIPOLES
     if (dipoles_kernel != nullptr) {
       auto const d1d2 = aosoa.dipm(i) * aosoa.dipm(j);
       if (d1d2 != 0.) {
         auto const dir1 = aosoa.get_vector_at(aosoa.director, i);
         auto const dir2 = aosoa.get_vector_at(aosoa.director, j);
-        pf += (*dipoles_kernel)(d1d2, aosoa.dipm(i) * dir1,
-                                aosoa.dipm(j) * dir2, d, dist, dist_sq);
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+        Utils::Vector3d dip_fld_i{};
+        Utils::Vector3d dip_fld_j{};
+#endif
+        auto const dip_pf =
+            (*dipoles_kernel)(d1d2, aosoa.dipm(i) * dir1, aosoa.dipm(j) * dir2,
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+                              dip_fld_i, dip_fld_j,
+#endif
+                              d, dist, dist_sq);
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+        auto access_dip_fld = local_dip_fld.access();
+        access_dip_fld(i, 0) += dip_fld_i[0];
+        access_dip_fld(i, 1) += dip_fld_i[1];
+        access_dip_fld(i, 2) += dip_fld_i[2];
+        access_dip_fld(j, 0) += dip_fld_j[0];
+        access_dip_fld(j, 1) += dip_fld_j[1];
+        access_dip_fld(j, 2) += dip_fld_j[2];
+#endif
+#ifdef ESPRESSO_NPT
+        if (npt_active()) {
+          // d . F = -n * U for a homogeneous potential of degree n
+          // (Euler's theorem, independent of centrality); n=-3 here vs
+          // n=-1 for Coulomb. Ewald screening makes that only
+          // approximate, and for dipoles the approximation measurably
+          // fails NpT pressure consistency (see test_pressure_with_dp3m),
+          // so d . F is computed explicitly here instead.
+          virial[0] += d * dip_pf.f;
+        }
+#endif // ESPRESSO_NPT
+        pf += dip_pf;
       }
     }
 #endif // ESPRESSO_DIPOLES
@@ -395,7 +434,7 @@ template <bool HasCoulomb> struct SpecializedForcesKernel {
 #endif
 #endif
 
-  ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION void
+  ESPRESSO_ATTR_ALWAYS_INLINE inline void
   operator()(std::size_t const i) const {
     auto const n_neighbors = counts(i);
     if (n_neighbors == 0)
@@ -425,7 +464,9 @@ template <bool HasCoulomb> struct SpecializedForcesKernel {
     double dx0[tile_size], dx1[tile_size], dx2[tile_size], dsq[tile_size];
 
     for (int base = 0; base < n_neighbors; base += tile_size) {
-      auto const m = Kokkos::min(tile_size, n_neighbors - base);
+      // ``+tile_size`` creates a prvalue and avoids an ODR-use of a host-space
+      // variable from device code (Kokkos::min() takes arguments by const &T)
+      auto const m = Kokkos::min(+tile_size, n_neighbors - base);
 
       // Pass 1: scalar gather of the tile's neighbor positions.
       for (int t = 0; t < m; ++t) {

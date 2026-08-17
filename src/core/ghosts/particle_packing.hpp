@@ -179,10 +179,15 @@ void add_forces(CommBuf &buf, std::span<ParticleList *const> cells,
 #ifdef ESPRESSO_BOND_CONSTRAINT
 /**
  * @brief Add rattle corrections from a communication buffer to particles.
- *
- * Equivalent to add_rattle_correction_from_recv_buffer() in ghosts.cpp.
  */
 void add_rattle(CommBuf &buf, std::span<ParticleList *const> cells);
+#endif
+
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+/**
+ * @brief Add dipole fields from a communication buffer to particles.
+ */
+void add_dip_fld(CommBuf &buf, std::span<ParticleList *const> cells);
 #endif
 
 /**

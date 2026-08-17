@@ -55,4 +55,8 @@ enum : unsigned {
   /// transfer torque (reduced with force; runtime-conditional)
   GHOSTTRANS_TORQUE = 512u,
 #endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  /// transfer dipole field tracking data
+  GHOSTTRANS_DIPFLD = 1024u,
+#endif
 };

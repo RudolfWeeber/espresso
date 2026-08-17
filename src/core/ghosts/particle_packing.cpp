@@ -191,6 +191,18 @@ serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
     }
   }
 #endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  if (data_parts & GHOSTTRANS_DIPFLD) {
+    if (policy == ReductionPolicy::UPDATE and
+        direction == SerializationDirection::LOAD) {
+      Utils::Vector3d dip_fld;
+      ar & dip_fld;
+      p.dip_fld() += dip_fld;
+    } else {
+      ar & p.dip_fld();
+    }
+  }
+#endif
 }
 
 static void prepare_ghost_cell(ParticleList *cell, std::size_t size) {
@@ -328,6 +340,19 @@ void add_rattle(CommBuf &buf, std::span<ParticleList *const> cells) {
       ParticleRattle pr;
       archiver >> pr;
       part.rattle_params() += pr;
+    }
+  }
+}
+#endif
+
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+void add_dip_fld(CommBuf &buf, std::span<ParticleList *const> cells) {
+  auto archiver = Utils::MemcpyIArchive{buf.make_span()};
+  for (auto &part_list : cells) {
+    for (Particle &part : *part_list) {
+      Utils::Vector3d dip_fld;
+      archiver >> dip_fld;
+      part.dip_fld() += dip_fld;
     }
   }
 }

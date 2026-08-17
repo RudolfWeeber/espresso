@@ -78,20 +78,22 @@
  *     there is nothing to hide, so the split adds overhead for no gain.
  *  2. ComFixed is inactive: ComFixed applies a per-type force correction that
  *     must see the final (post-reduce) forces, which arrive on the blocking
- * path.
+ *     path.
  *  3. force_cap == 0: force capping requires the final forces (post-reduce).
  *  4. Integrator is VV or symplectic Euler: only these inertial methods use
  *     step_2; steepest-descent, BD, SD, and NPT are not eligible (NPT virial
  *     is not accumulated during step_2 overlap; BD/SD have no step_2
- * half-kick).
+ *     half-kick).
  *  5. NPT propagation not in use: the NPT step_2 updates the box pressure and
  *     box length using the virial gathered from forces; it must run after the
  *     full reduce.  NPT also implies integ_switch != NVT/SE, so condition 4
  *     already excludes it, but we check explicitly for clarity.
- *  6. LB-tracer arm not active: TRANS_LB_TRACER particles have forces
- * transferred to the LB fluid in the integrate loop *after* calculate_forces
- * and before step_2; with the split-phase path the fluid coupling would run
- * while the reduction is in flight, leading to incorrect force accumulation.
+ *  6. Dipole field tracking not in use
+ *  7. LB-tracer arm not active: TRANS_LB_TRACER particles have forces
+ *     transferred to the LB fluid in the integrate loop *after*
+ * calculate_forces and before step_2; with the split-phase path the fluid
+ * coupling would run while the reduction is in flight, leading to incorrect
+ * force accumulation.
  */
 static bool ghost_reduce_overlap_eligible(System::System const &system) {
   // 1. Must have more than one MPI rank.
@@ -103,7 +105,7 @@ static bool ghost_reduce_overlap_eligible(System::System const &system) {
   // 3. Force capping must be off.
   if (system.get_force_cap() != 0.)
     return false;
-  // 4. NPT propagation not in use (belt-and-suspenders after check 6).
+  // 4. NPT propagation not in use.
 #ifdef ESPRESSO_NPT
   if (system.propagation->used_propagations &
       PropagationMode::TRANS_LANGEVIN_NPT)
@@ -114,7 +116,13 @@ static bool ghost_reduce_overlap_eligible(System::System const &system) {
   if (system.propagation->used_propagations & PropagationMode::TRANS_LB_TRACER)
     return false;
 #endif
-  // 6. Integrator must be VV or symplectic Euler (inertial with step_2
+  // 6. Dipole field tracking not active.
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  if (system.dipoles.impl->solver.has_value()) {
+    return false;
+  }
+#endif
+  // 7. Integrator must be VV or symplectic Euler (inertial with step_2
   // half-kick).
   auto const integ = system.propagation->integ_switch;
   return integ == INTEG_METHOD_NVT or integ == INTEG_METHOD_SYMPLECTIC_EULER;
@@ -169,6 +177,9 @@ static ForcesKernel create_cabana_neighbor_kernel(
 #ifdef ESPRESSO_ROTATION
   auto scatter_torque = system.cell_structure->get_scatter_torque();
 #endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  auto scatter_dip_fld = system.cell_structure->get_scatter_dip_fld();
+#endif
 #ifdef ESPRESSO_NPT
   auto scatter_virial = system.cell_structure->get_scatter_virial();
 #endif
@@ -187,6 +198,9 @@ static ForcesKernel create_cabana_neighbor_kernel(
                              scatter_force,
 #ifdef ESPRESSO_ROTATION
                              scatter_torque,
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+                             scatter_dip_fld,
 #endif
 #ifdef ESPRESSO_NPT
                              virial,
@@ -334,6 +348,14 @@ static void reduce_cabana_forces_and_torques(System::System const &system,
     Kokkos::Experimental::contribute(local_torque, scatter_torque);
   }
 #endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  auto const reduce_dip_fld = system.cell_structure->dip_fld_replicas_dirty();
+  auto &local_dip_fld = system.cell_structure->get_local_dip_fld();
+  if (reduce_dip_fld) {
+    auto scatter_dip_fld = system.cell_structure->get_scatter_dip_fld();
+    Kokkos::Experimental::contribute(local_dip_fld, scatter_dip_fld);
+  }
+#endif
 #ifdef ESPRESSO_NPT
   auto &local_virial = system.cell_structure->get_local_virial();
   if (system.cell_structure->virial_replicas_dirty()) {
@@ -350,6 +372,9 @@ static void reduce_cabana_forces_and_torques(System::System const &system,
 #ifdef ESPRESSO_ROTATION
                         &local_torque, reduce_torque,
 #endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+                        &local_dip_fld, reduce_dip_fld,
+#endif
                         &unique_particles](std::size_t const i) {
                          Utils::Vector3d force{};
                          force[0] += local_force(i, 0);
@@ -364,7 +389,16 @@ static void reduce_cabana_forces_and_torques(System::System const &system,
                            torque[2] += local_torque(i, 2);
                            unique_particles.at(i)->torque() += torque;
                          }
-#endif
+#endif // ESPRESSO_ROTATION
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+                         if (reduce_dip_fld) {
+                           Utils::Vector3d dip_fld{};
+                           dip_fld[0] += local_dip_fld(i, 0);
+                           dip_fld[1] += local_dip_fld(i, 1);
+                           dip_fld[2] += local_dip_fld(i, 2);
+                           unique_particles.at(i)->dip_fld() += dip_fld;
+                         }
+#endif // ESPRESSO_DIPOLE_FIELD_TRACKING
                        });
   Kokkos::fence();
 
@@ -408,8 +442,9 @@ void System::System::calculate_forces() {
   }
 #endif
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
-  // reset dipole field
-  reinit_dip_fld(*cell_structure);
+  if (dipoles.impl->solver.has_value()) {
+    reinit_dip_fld(*cell_structure);
+  }
 #endif
 
   // Use combined function instead of two separate calls
@@ -497,6 +532,9 @@ void System::System::calculate_forces() {
 #endif
   if (generic_pair_path and (gay_berne_active or dipolar_pair_kernel_active)) {
     cell_structure->mark_torque_replicas_dirty();
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+    cell_structure->mark_dip_fld_replicas_dirty();
+#endif
     // Pair-kernel torques also land on ghost particles and only get home via
     // the TORQUE ghost reduce. Each torque-scattering kernel therefore needs
     // a matching arm in orientation_ghosts_needed() (System.cpp).
@@ -601,6 +639,11 @@ void System::System::calculate_forces() {
   } else {
     // Blocking path: finish the reduce here, then apply comfixed/capping.
     cell_structure->ghosts_reduce_forces();
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+    if (dipoles.impl->solver.has_value()) {
+      cell_structure->ghosts_reduce_dipole_field();
+    }
+#endif
 
     // should be pretty late, since it needs to zero out the total force
     comfixed->apply(particles);

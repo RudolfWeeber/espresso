@@ -285,9 +285,12 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
 #ifdef ESPRESSO_BOND_CONSTRAINT
   reducible = reducible || (data_parts == GHOSTTRANS_RATTLE);
 #endif
-  assert((op.combine != Combine::Add || reducible) &&
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  reducible = reducible or (data_parts == GHOSTTRANS_DIPFLD);
+#endif
+  assert((op.combine != Combine::Add or reducible) &&
          "Combine::Add only valid for reducible parts (FORCE, FORCE|TORQUE, "
-         "RATTLE)");
+         "RATTLE, DIPFLD)");
 #endif
 
   auto const &comm = plan.comm;
@@ -507,6 +510,11 @@ void halo_exchange_finish(GhostExchange &st) {
 #ifdef ESPRESSO_BOND_CONSTRAINT
       else if (st.data_parts == GHOSTTRANS_RATTLE) {
         add_rattle(bufs.recv[i], dst);
+      }
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+      else if (st.data_parts == GHOSTTRANS_DIPFLD) {
+        add_dip_fld(bufs.recv[i], dst);
       }
 #endif
 #ifdef ESPRESSO_CALIPER
