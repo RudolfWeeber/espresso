@@ -24,9 +24,6 @@
 /**
  * @file
  * Reusable particle packing/unpacking for ghost communications.
- *
- * Extracted from ghosts.cpp so that both the legacy ghost_communicator()
- * and future async engines can share the same byte-identical serialization.
  */
 
 #include <config/config.hpp>
@@ -194,7 +191,6 @@ void add_dip_fld(CommBuf &buf, std::span<ParticleList *const> cells);
 /**
  * @brief Copy particle data from src to dst applying a ghost shift.
  *
- * Corresponds to one src/dst pair in cell_cell_transfer() from ghosts.cpp.
  * For GHOSTTRANS_PARTNUM, resizes dst to match src.
  * Otherwise serializes each particle from src and deserializes into dst,
  * applying the shift and folding the position. Bond data is copied directly.

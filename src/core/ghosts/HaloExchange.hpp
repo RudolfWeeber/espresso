@@ -27,8 +27,8 @@
  * Drive a @ref GhostComm::HaloPlan with non-blocking point-to-point MPI
  * (plus same-rank copies), reusing the byte-identical serialization from
  * @ref particle_packing.hpp. The engine is split into a
- * @ref halo_exchange_start phase (post all receives, pack and post all sends)
- * and a @ref halo_exchange_finish phase (same-rank copies, wait, unpack/reduce)
+ * @c halo_exchange_start phase (post all receives, pack and post all sends)
+ * and a @c halo_exchange_finish phase (same-rank copies, wait, unpack/reduce)
  * so that callers can overlap other work with in-flight messages.
  *
  * Deadlock-freedom is guaranteed by posting every @c irecv before any

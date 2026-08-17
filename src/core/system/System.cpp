@@ -539,8 +539,8 @@ void System::on_integration_start() {
 
 /**
  * @brief Return true when any active physics requires orientation of ghost
- * particles.  Used by both @ref get_global_ghost_flags (QUAT push) and
- * @ref get_force_reduce_ghost_flags (TORQUE reduce).
+ * particles.  Used by both @c get_global_ghost_flags (QUAT push) and
+ * @c get_force_reduce_ghost_flags (TORQUE reduce).
  *
  * Conservative: include a reader when in doubt.  Non-rotating plain LJ
  * must yield false so that both bits stay OFF for that common case.

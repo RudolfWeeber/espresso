@@ -139,8 +139,7 @@ void pack_regions(CommBuf &buf, std::vector<SendRegion> const &regions,
 /**
  * @brief Collective (broadcast/reduce-sum) section.
  *
- * Mirror the legacy GHOST_BCST / GHOST_RDCE loop from ghost_communicator()
- * in @ref ghosts.cpp.  For each root rank in <tt>[0, comm.size())</tt>:
+ * For each root rank in <tt>[0, comm.size())</tt>:
  *
  * 1. Broadcast (Push): root packs its owned cell (cells[root]) and broadcasts
  *    the buffer to all ranks; every non-root rank unpacks into cells[root]
