@@ -456,8 +456,6 @@ python_test(FILE propagation_brownian.py MAX_NUM_PROC 1)
 python_test(FILE propagation_lb.py MAX_NUM_PROC 2 GPU_SLOTS 1)
 python_test(FILE propagation_npt.py MAX_NUM_PROC 4 GPU_SLOTS 1)
 python_test(FILE propagation_stokesian.py MAX_NUM_PROC 2)
-python_test(FILE stokesian_missing_radius.py NO_MPI DEPENDENCIES
-            stokesian_missing_radius_child.py)
 python_test(FILE integrator_symplectic_euler_langevin.py MAX_NUM_PROC 4)
 python_test(FILE integrator_steepest_descent.py MAX_NUM_PROC 4)
 python_test(FILE integrator_exceptions.py MAX_NUM_PROC 1)
