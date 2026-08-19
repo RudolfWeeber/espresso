@@ -53,11 +53,7 @@ public:
   void set_cut_off(double c) { m_cut_off = c; }
 
 private:
-  // in-class initializer: the user-provided ctor takes a System argument and
-  // thus direct-initializes the object (no value-initialization), so without
-  // this default m_cut_off would be indeterminate until set_cut_off runs
-  // (bug-sweep #29).
-  double m_cut_off = 0.0;
+  double m_cut_off;
   System::System const &m_system;
 };
 } // namespace PairCriteria
