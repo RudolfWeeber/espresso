@@ -549,6 +549,28 @@ BOOST_FIXTURE_TEST_CASE(espresso_system_stand_alone, ParticleFactory) {
     cs.check_particle_index();
   }
 
+  // check particle folding exception propagation
+  if (n_nodes != 3) {
+    auto constexpr global_resort = false;
+    auto &cs = *system.cell_structure;
+    set_particle_property(
+        pid1, &Particle::image_box,
+        Utils::Vector3i::broadcast(std::numeric_limits<int>::min()));
+    if (rank == 0) {
+      BOOST_CHECK_THROW(cs.resort_particles(global_resort), std::runtime_error);
+    }
+    set_particle_property(
+        pid1, &Particle::image_box,
+        Utils::Vector3i::broadcast(std::numeric_limits<int>::max()));
+    if (rank == 0) {
+      BOOST_CHECK_THROW(cs.resort_particles(global_resort), std::runtime_error);
+    }
+    // no exception is thrown with original position
+    set_particle_property(pid1, &Particle::pos, start_positions.at(pid1));
+    set_particle_property(pid1, &Particle::image_box, {0, 0, 0});
+    cs.resort_particles(global_resort);
+  }
+
   // check bond counting
   {
     auto &cs = *system.cell_structure;

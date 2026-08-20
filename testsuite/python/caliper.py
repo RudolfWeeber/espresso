@@ -109,7 +109,7 @@ class Test(ut.TestCase):
         script = str(pathlib.Path(__file__).parent / "caliper_child.py")
         my_env = os.environ.copy()
         my_env["CALI_CONFIG"] = "runtime-report"
-        process = subprocess.Popen([sys.executable, script],
+        process = subprocess.Popen(["mpirun", "-n", "2", sys.executable, script],
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE,
                                    env=my_env)
@@ -122,7 +122,8 @@ class Test(ut.TestCase):
         header = "Path\tMin time/rank\tAvg time/rank\tMax time/rank\tTime %"
         self.assertEqual(lines[0].split(), header.split(),
                          msg=f"Caliper summary should start with '{header}'")
-        labels = [line[:38].rstrip() for line in lines[1:]]
+        cutoff = lines[0].index("Min time/rank Avg")
+        labels = [line[:cutoff].rstrip() for line in lines[1:]]
         labels_ref = [x.rstrip() for x in EXPECTED_LABELS.strip().split("\n")
                       if x.rstrip() and ("GPU" not in x.upper() or has_cuda)]
         for l in labels_ref: assert l in labels, f"Label {l} not in profile"

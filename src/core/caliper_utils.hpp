@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 #pragma once
 
 /**
@@ -54,6 +55,8 @@
  * (siglock + thread-blackboard update) on every hot-path marker when profiling
  * is inactive.
  */
+
+#include <config/config.hpp>
 
 #ifdef ESPRESSO_CALIPER
 

@@ -373,10 +373,7 @@ void CellStructure::set_index_map() {
   m_bond_state->allocate();
   for (auto &p : ghost_particles()) {
     auto const *local_particle = get_local_particle(p.id());
-    if (not local_particle) {
-      continue;
-    }
-    if (not local_particle->is_ghost()) {
+    if (not local_particle or not local_particle->is_ghost()) {
       continue;
     }
     if (registered_index.contains(p.id())) {
@@ -400,7 +397,7 @@ void CellStructure::check_particle_index() const {
   for (auto const &p : local_particles()) {
     auto const id = p.id();
 
-    if (id < 0 || id > max_id) {
+    if (id < 0 or id > max_id) {
       throw std::runtime_error("Particle id out of bounds.");
     }
 
@@ -560,6 +557,7 @@ void CellStructure::ghosts_count() {
       {GhostComm::Direction::Push, GhostComm::Combine::Overwrite},
       m_ghost_buffers);
 }
+
 void CellStructure::ghosts_update(unsigned data_parts) {
 #ifdef ESPRESSO_CALIPER
   ESPRESSO_CALI_MARK_FUNCTION;
@@ -570,6 +568,7 @@ void CellStructure::ghosts_update(unsigned data_parts) {
       {GhostComm::Direction::Push, GhostComm::Combine::Overwrite},
       m_ghost_buffers);
 }
+
 void CellStructure::ghosts_reduce_forces() {
 #ifdef ESPRESSO_CALIPER
   ESPRESSO_CALI_MARK_FUNCTION;
@@ -579,6 +578,19 @@ void CellStructure::ghosts_reduce_forces() {
       get_system().get_force_reduce_ghost_flags(),
       {GhostComm::Direction::Reduce, GhostComm::Combine::Add}, m_ghost_buffers);
 }
+
+#ifdef ESPRESSO_CALIPER
+// caliper annotation for split phase ghost forces reduction
+static cali_id_t ghost_reduce_async_attr() {
+  static const cali_id_t id =
+      espresso_cali_active()
+          ? cali_create_attribute("ghosts_reduce_forces_async",
+                                  CALI_TYPE_STRING,
+                                  CALI_ATTR_ASVALUE | CALI_ATTR_SCOPE_THREAD)
+          : CALI_INV_ID;
+  return id;
+}
+#endif // ESPRESSO_CALIPER
 
 void CellStructure::ghosts_reduce_forces_start() {
   assert(not m_pending_ghost_reduce.has_value() &&
@@ -591,7 +603,8 @@ void CellStructure::ghosts_reduce_forces_start() {
       {GhostComm::Direction::Reduce, GhostComm::Combine::Add},
       m_ghost_buffers));
 #ifdef ESPRESSO_CALIPER
-  ESPRESSO_CALI_MARK_BEGIN("ghosts_reduce_forces");
+  if (auto id = ghost_reduce_async_attr(); id != CALI_INV_ID)
+    cali_begin_string(id, "in_flight");
 #endif
 }
 
@@ -607,13 +620,15 @@ void CellStructure::ghosts_reduce_forces_finish() {
     // re-run MPI waits on completed requests.
     m_pending_ghost_reduce.reset();
 #ifdef ESPRESSO_CALIPER
-    ESPRESSO_CALI_MARK_END("ghosts_reduce_forces");
+    if (auto id = ghost_reduce_async_attr(); id != CALI_INV_ID)
+      cali_end(id);
 #endif
     throw;
   }
 #ifdef ESPRESSO_CALIPER
   // END before reset so the region is closed before the optional is cleared.
-  ESPRESSO_CALI_MARK_END("ghosts_reduce_forces");
+  if (auto id = ghost_reduce_async_attr(); id != CALI_INV_ID)
+    cali_end(id);
 #endif
   m_pending_ghost_reduce.reset();
 }

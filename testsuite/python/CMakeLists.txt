@@ -301,9 +301,15 @@ python_test(FILE virtual_sites_tracers_gpu.py MAX_NUM_PROC 2 GPU_SLOTS 1
             DEPENDENCIES virtual_sites_tracers_common.py)
 python_test(FILE virtual_sites_center_of_mass.py MAX_NUM_PROC 4)
 python_test(FILE regular_decomposition.py MAX_NUM_PROC 4)
-python_test(FILE regular_decomposition.py MAX_NUM_PROC 1 SUFFIX 1_core)
-python_test(FILE hybrid_decomposition.py MAX_NUM_PROC 1 SUFFIX 1_core)
+python_test(FILE regular_decomposition.py MAX_NUM_PROC 1 NUM_THREADS 2 SUFFIX
+            1_mpi_ranks_2_omp_threads)
+python_test(FILE regular_decomposition.py MAX_NUM_PROC 2 NUM_THREADS 1 SUFFIX
+            2_mpi_ranks_1_omp_threads)
 python_test(FILE hybrid_decomposition.py MAX_NUM_PROC 4)
+python_test(FILE hybrid_decomposition.py MAX_NUM_PROC 1 NUM_THREADS 2 SUFFIX
+            1_mpi_ranks_2_omp_threads)
+python_test(FILE hybrid_decomposition.py MAX_NUM_PROC 2 NUM_THREADS 1 SUFFIX
+            2_mpi_ranks_1_omp_threads)
 python_test(FILE coordinates_folding.py MAX_NUM_PROC 2)
 python_test(FILE ibm.py MAX_NUM_PROC 2)
 python_test(FILE dipolar_mdlc_p3m_scafacos_p2nfft.py MAX_NUM_PROC 1)
