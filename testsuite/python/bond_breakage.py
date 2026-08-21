@@ -397,7 +397,8 @@ class BreakageAPI(BondBreakageCommon, ut.TestCase):
         p1.bonds = ((bond, p2))
         self.system.bond_breakage[bond] = BreakageSpec(
             breakage_length=1.1, action_type="none")
-        self.system.integrator.run(100)
+        with self.assertRaisesRegex(Exception, "bond broken between particles 0, 1"):
+            self.system.integrator.run(100)
         assert np.linalg.norm(p2.pos - p1.pos) > bond.r_cut
         self.assertEqual(len(p1.bonds), 1)
 

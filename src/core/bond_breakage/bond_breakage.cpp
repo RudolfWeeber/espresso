@@ -79,19 +79,10 @@ static ActionSet actions_for_breakage(CellStructure const &cell_structure,
     return bond_partners[1];
   }; // optional for second partner engaged
 
-  if (spec.action_type == ActionType::DELETE_BOND) {
-    if (is_angle_bond(e.bond_partners)) {
-      return {DeleteAngleBond{e.particle_id,
-                              {{*(e.bond_partners[0]), *(e.bond_partners[1])}},
-                              e.bond_type}};
-    }
-    return {DeleteBond{e.particle_id, *(e.bond_partners[0]), e.bond_type}};
-  }
-
 #ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
-  // revert bind at point of collision for pair bonds
   if (spec.action_type == ActionType::REVERT_BIND_AT_POINT_OF_COLLISION) {
     if (not is_angle_bond(e.bond_partners)) {
+      // revert bind at point of collision for pair bonds
       // We need to find the base particles for the two virtual sites
       // between which the bond broke.
       auto p1 = cell_structure.get_local_particle(e.particle_id);
@@ -143,7 +134,14 @@ static ActionSet actions_for_breakage(CellStructure const &cell_structure,
     }
   }
 #endif // ESPRESSO_VIRTUAL_SITES_RELATIVE
-  return {};
+
+  assert(spec.action_type == ActionType::DELETE_BOND);
+  if (is_angle_bond(e.bond_partners)) {
+    return {DeleteAngleBond{e.particle_id,
+                            {{*(e.bond_partners[0]), *(e.bond_partners[1])}},
+                            e.bond_type}};
+  }
+  return {DeleteBond{e.particle_id, *(e.bond_partners[0]), e.bond_type}};
 }
 
 /**
