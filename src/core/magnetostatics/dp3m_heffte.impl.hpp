@@ -274,6 +274,7 @@ template <int cao> struct AssignTorques {
 
     auto const n_part = dp3m.inter_weights.size();
     auto const &unique_particles = cell_structure.get_unique_particles();
+    cell_structure.mark_torque_replicas_dirty();
     auto scatter_torque = cell_structure.get_scatter_torque();
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
     auto scatter_dip_fld = cell_structure.get_scatter_dip_fld();

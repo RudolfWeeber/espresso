@@ -486,6 +486,11 @@ public:
   /** @brief Bitfield of currently active pair potentials. */
   auto combined_active_pair_mask() const { return m_combined_active_pair_mask; }
 
+  /** @brief Whether @p potential is active for any type pair. */
+  bool pair_potential_active(PairPotential potential) const {
+    return (m_combined_active_pair_mask & pair_potential_bit(potential)) != 0u;
+  }
+
 #ifdef ESPRESSO_THOLE
   /** @brief Whether any type pair has Thole damping configured. */
   auto any_thole_configured() const { return m_any_thole_configured; }

@@ -42,6 +42,10 @@
 #include "electrostatics/coulomb.hpp"
 #include "magnetostatics/dipoles.hpp"
 
+#ifdef ESPRESSO_CALIPER
+#include "caliper_utils.hpp"
+#endif
+
 #include <cmath>
 #include <cstddef>
 #include <memory>
@@ -94,7 +98,7 @@ Observable_stat const &System::calculate_energy() {
   auto const dipoles_kernel = dipoles.pair_energy_kernel();
 
 #ifdef ESPRESSO_CALIPER
-  CALI_MARK_BEGIN("cabana_short_range");
+  ESPRESSO_CALI_MARK_BEGIN("cabana_short_range");
 #endif
   // Factory instead of an eager criterion: construction fills an O(n_types^2)
   // cutoff table, so it only runs on the link-cell fallback path.
@@ -159,7 +163,7 @@ Observable_stat const &System::calculate_energy() {
   reduce_cabana_energy(local_energy, layout, obs_energy, *bonded_ias,
                        nonbonded_ias->get_max_seen_particle_type() + 1);
 #ifdef ESPRESSO_CALIPER
-  CALI_MARK_END("cabana_short_range");
+  ESPRESSO_CALI_MARK_END("cabana_short_range");
 #endif
 
 #ifdef ESPRESSO_ELECTROSTATICS

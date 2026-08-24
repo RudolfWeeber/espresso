@@ -33,7 +33,7 @@
 #include <Cabana_NeighborList.hpp>
 
 #ifdef ESPRESSO_CALIPER
-#include <caliper/cali.h>
+#include "caliper_utils.hpp"
 #endif
 
 #include <functional>
@@ -175,7 +175,7 @@ update_cabana_state(CellStructure &cell_structure,
                     auto const &make_verlet_criterion, double const pair_cutoff,
                     auto const integ_switch) {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   auto const rebuild = cell_structure.prepare_verlet_list_cabana(pair_cutoff);
   auto const &unique_particles = cell_structure.get_unique_particles();
@@ -190,7 +190,7 @@ update_cabana_state(CellStructure &cell_structure,
     // Fill particle storage (full commit)
     // ===================================================
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_BEGIN("AoSoA commit full");
+    ESPRESSO_CALI_MARK_BEGIN("AoSoA commit full");
 #endif
     int pair_count = 0;
     int angle_count = 0;
@@ -251,7 +251,7 @@ update_cabana_state(CellStructure &cell_structure,
       Kokkos::fence();
     }
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("AoSoA commit full");
+    ESPRESSO_CALI_MARK_END("AoSoA commit full");
 #endif
 
     // ===================================================
@@ -260,7 +260,7 @@ update_cabana_state(CellStructure &cell_structure,
     bool rebuild_vl = (integ_switch != INTEG_METHOD_STEEPEST_DESCENT and
                        cell_structure.use_verlet_list);
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_BEGIN("Verlet list creation");
+    ESPRESSO_CALI_MARK_BEGIN("Verlet list creation");
 #endif
     cell_structure.rebuild_verlet_list_cabana(
         [&](std::span<Cell *const> cells, BoxGeometry const &box,
@@ -289,14 +289,14 @@ update_cabana_state(CellStructure &cell_structure,
         },
         rebuild_vl);
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("Verlet list creation");
+    ESPRESSO_CALI_MARK_END("Verlet list creation");
 #endif
   } else {
     // ===================================================
     // Fill particle storage (partial update)
     // ===================================================
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_BEGIN("AoSoA commit partial");
+    ESPRESSO_CALI_MARK_BEGIN("AoSoA commit partial");
 #endif
 #ifdef ESPRESSO_EXCLUSIONS
     // commit_particle accumulates the any-exclusion aggregate below; clear it
@@ -311,7 +311,7 @@ update_cabana_state(CellStructure &cell_structure,
         });
     Kokkos::fence();
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("AoSoA commit partial");
+    ESPRESSO_CALI_MARK_END("AoSoA commit partial");
 #endif
   }
 }
@@ -357,7 +357,7 @@ void cabana_short_range(auto const &pair_bonds_kernel,
 
   if (bond_cutoff >= 0.) {
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_BEGIN("cabana_bond_loop");
+    ESPRESSO_CALI_MARK_BEGIN("cabana_bond_loop");
 #endif
     using host_space = Kokkos::DefaultHostExecutionSpace;
     auto const n_pair_bonds = cell_structure.get_local_pair_bond_numbers();
@@ -383,14 +383,14 @@ void cabana_short_range(auto const &pair_bonds_kernel,
       Kokkos::fence();
     }
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("cabana_bond_loop");
+    ESPRESSO_CALI_MARK_END("cabana_bond_loop");
 #endif
   }
 
   // Cabana short range loop
   if (pair_cutoff > 0.) {
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_BEGIN("cabana_pair_loop");
+    ESPRESSO_CALI_MARK_BEGIN("cabana_pair_loop");
 #endif
     if (integ_switch != INTEG_METHOD_STEEPEST_DESCENT and
         cell_structure.use_verlet_list) {
@@ -433,7 +433,7 @@ void cabana_short_range(auto const &pair_bonds_kernel,
     }
     Kokkos::fence();
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("cabana_pair_loop");
+    ESPRESSO_CALI_MARK_END("cabana_pair_loop");
 #endif
   }
 }

@@ -30,7 +30,9 @@ add_library(
   errorhandling.cpp
   forces.cpp
   forces_init.cpp
-  ghosts.cpp
+  ghosts/HaloExchange.cpp
+  ghosts/HaloPlanValidator.cpp
+  ghosts/particle_packing.cpp
   integrate.cpp
   npt.cpp
   particle_node.cpp

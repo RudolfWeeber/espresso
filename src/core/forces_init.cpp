@@ -42,6 +42,8 @@
 #include "thermostats/langevin_inline.hpp"
 
 #ifdef ESPRESSO_CALIPER
+#include "caliper_utils.hpp"
+
 #include <caliper/cali.h>
 #endif
 
@@ -70,7 +72,7 @@ static ParticleForce external_force(Particle const &p) {
 /** Combined force initialization and Langevin noise application */
 void init_forces_and_thermostat(System::System const &system) {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
 
   auto &cell_structure = *system.cell_structure;
@@ -102,13 +104,14 @@ void init_forces_and_thermostat(System::System const &system) {
 #endif
     }
   });
-  cell_structure.reset_local_force_and_torque();
+  // The local force/torque scatter buffers were already zeroed this force
+  // call by prepare_verlet_list_cabana() (via update_verlet_state).
 
   // Initialize ghost forces
   cell_structure.ghosts_reset_forces();
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
   if (system.dipoles.impl->solver.has_value()) {
-    cell_structure.ghosts_reset_dipole_field();
+    cell_structure.ghosts_reset_dipole_fields();
   }
 #endif
 }
