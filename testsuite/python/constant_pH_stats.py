@@ -18,14 +18,15 @@
 #
 
 import unittest as ut
+import unittest_decorators as utx
 import numpy as np
 import espressomd
 import espressomd.reaction_methods
 
 
+@utx.skipIfMissingFeatures(["ELECTROSTATICS"])
 class Test(ut.TestCase):
-
-    """Test the core implementation of the constant pH reaction ensemble."""
+    """Test the constant pH reaction ensemble."""
 
     N0 = 40
     c0 = 0.00028
@@ -53,7 +54,7 @@ class Test(ut.TestCase):
     system.time_step = 0.01
     RE = espressomd.reaction_methods.ConstantpHEnsemble(
         kT=1., exclusion_range=1., seed=44, constant_pH=pH,
-        search_algorithm="parallel")
+        system=system, search_algorithm="parallel")
     RE.set_non_interacting_type(type=max(types.values()) + 1)
 
     @classmethod
