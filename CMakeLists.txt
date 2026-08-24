@@ -1101,8 +1101,8 @@ if(ESPRESSO_BUILD_WITH_WALBERLA)
     if(CMAKE_BUILD_TYPE MATCHES "^Release$|^RelWith|^MinSizeRel$")
       # reduce build time and RAM usage of one source file with 50k lines
       set_source_files_properties(
-          ${walberla_SOURCE_DIR}/src/core/math/Parser.cpp
-          TARGET_DIRECTORY walberla_core PROPERTIES COMPILE_OPTIONS "-O2")
+        ${walberla_SOURCE_DIR}/src/core/math/Parser.cpp TARGET_DIRECTORY
+        walberla_core PROPERTIES COMPILE_OPTIONS "-O2")
     endif()
   endif()
   add_library(espresso_walberla_deps INTERFACE)
