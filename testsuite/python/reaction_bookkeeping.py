@@ -46,11 +46,13 @@ class ReactionMethodsBookkeepingTest(ut.TestCase):
     system = espressomd.System(box_l=[BOX_LENGTH, ] * 3)
 
     cph = espressomd.reaction_methods.ConstantpHEnsemble(
+        system=system,
         constant_pH=pH,
         kT=kT,
         exclusion_range=exclusion_range,
         seed=seed)
     widom = espressomd.reaction_methods.WidomInsertion(
+        system=system,
         kT=kT,
         seed=seed)
 
@@ -84,7 +86,6 @@ class ReactionMethodsBookkeepingTest(ut.TestCase):
             default_charges={cls.types["Na"]: cls.charges["Na"],
                              cls.types["Cl"]: cls.charges["Cl"]}
         )
-        cls.system.setup_type_map(type_list=list(cls.types.values()))
 
     def test_reaction_bookeeping(self):
         self.widom.calculate_particle_insertion_potential_energy(reaction_id=0)
