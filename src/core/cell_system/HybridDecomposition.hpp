@@ -59,9 +59,12 @@ class HybridDecomposition : public ParticleDecomposition {
   std::vector<Cell *> m_local_cells;
   std::vector<Cell *> m_ghost_cells;
 
-  /// Holds ParticleList* into this decomposition's cells — value-copying this
-  /// object leaves these pointers dangling. TODO(Task 1.7): make non-copyable
-  /// or rebuild-on-copy.
+  /**
+   * Topology-agnostic direct-neighbor halo plan (see @c make_halo_plan).
+   * Holds ParticleList pointers into this decomposition's cells.
+   * Value-copying this object leaves these pointers dangling.
+   * @todo make non-copyable or rebuild-on-copy.
+   */
   GhostComm::HaloPlan m_halo_plan;
 
   /** RegularDecomposition to hold the small particles */

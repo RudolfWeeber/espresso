@@ -87,8 +87,8 @@ struct RegularDecomposition : public ParticleDecomposition {
   std::vector<Cell *> m_ghost_cells;
   /**
    * Topology-agnostic direct-neighbor halo plan (see @c make_halo_plan).
-   * Holds ParticleList pointers into this decomposition's cells. Value-copying
-   * this object leaves these pointers dangling.
+   * Holds ParticleList pointers into this decomposition's cells.
+   * Value-copying this object leaves these pointers dangling.
    * @todo make non-copyable or rebuild-on-copy.
    */
   GhostComm::HaloPlan m_halo_plan;
