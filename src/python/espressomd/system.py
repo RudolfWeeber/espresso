@@ -238,7 +238,7 @@ class System(ScriptInterfaceHelper):
             New box length
         dir : :obj:`str`, optional
             Coordinate to work on, ``"x"``, ``"y"``, ``"z"`` or ``"xyz"`` for isotropic.
-            Isotropic assumes a cubic box.
+            Isotropic makes the box cubic.
 
         """
 
