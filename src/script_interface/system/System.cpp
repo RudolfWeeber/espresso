@@ -428,22 +428,6 @@ static void rotate_system(CellStructure &cell_structure, double phi,
                                                    Cells::DATA_PART_PROPERTIES);
 }
 
-/** Rescale all particle positions in direction @p dir by a factor @p scale.
- *  @param cell_structure cell structure
- *  @param dir   direction to scale (0/1/2 = x/y/z, 3 = x+y+z isotropically)
- *  @param scale factor by which to rescale (>1: stretch, <1: contract)
- */
-static void rescale_particles(CellStructure &cell_structure, int dir,
-                              double scale) {
-  for (auto &p : cell_structure.local_particles()) {
-    if (dir < 3)
-      p.pos()[dir] *= scale;
-    else {
-      p.pos() *= scale;
-    }
-  }
-}
-
 Variant System::do_call_method(std::string const &name,
                                VariantMap const &parameters) {
   if (name == "lock_system_creation") {
@@ -451,10 +435,15 @@ Variant System::do_call_method(std::string const &name,
     return {};
   }
   if (name == "rescale_boxl") {
-    auto &box_geo = *m_instance->box_geo;
+    auto const rescale_particles = [this](unsigned dir, double scale) {
+      for (auto &p : m_instance->cell_structure->local_particles()) {
+        p.pos()[dir] *= scale;
+      }
+    };
+    auto const &box_geo = *m_instance->box_geo;
     auto const coord = get_value<int>(parameters, "coord");
     auto const length = get_value<double>(parameters, "length");
-    assert(coord >= 0);
+    assert(coord >= 0 and coord <= 3);
     context()->parallel_try_catch([&]() {
       if (length <= 0.) {
         throw std::domain_error("Parameter 'd_new' must be > 0");
@@ -462,39 +451,40 @@ Variant System::do_call_method(std::string const &name,
       m_instance->veto_boxl_change(true);
     });
     if (coord == 3) {
-      auto const old_lengths = box_geo.length();
+      auto const old_length_inv = box_geo.length_inv();
       auto const new_value = Utils::Vector3d::broadcast(length);
-      // shrink: apply axes where scale <= 1 first (before box resize)
-      for (int axis = 0; axis < 3; axis++) {
-        auto const ax_scale = length * box_geo.length_inv()[axis];
-        if (ax_scale <= 1.) {
-          rescale_particles(*m_instance->cell_structure, axis, ax_scale);
+      auto const rescale = Utils::hadamard_product(new_value, old_length_inv);
+      // when shrinking, rescale particles before the box resize
+      for (auto axis = 0u; axis < 3u; ++axis) {
+        if (rescale[axis] <= 1.) {
+          rescale_particles(axis, rescale[axis]);
         }
       }
       m_instance->on_particle_change();
       m_instance->box_geo->set_length(new_value);
       m_instance->on_boxl_change();
-      // grow: apply axes where scale > 1 after box resize
-      for (int axis = 0; axis < 3; axis++) {
-        auto const ax_scale = length / old_lengths[axis];
-        if (ax_scale > 1.) {
-          rescale_particles(*m_instance->cell_structure, axis, ax_scale);
+      // when growing, rescale particles after the box resize
+      for (auto axis = 0u; axis < 3u; ++axis) {
+        if (rescale[axis] > 1.) {
+          rescale_particles(axis, rescale[axis]);
         }
       }
       m_instance->on_particle_change();
     } else {
-      auto const scale = length * box_geo.length_inv()[coord];
+      auto const axis = static_cast<unsigned>(coord);
+      auto const scale = length * box_geo.length_inv()[axis];
       auto new_value = box_geo.length();
-      new_value[static_cast<unsigned>(coord)] = length;
-      // when shrinking, rescale the particles first
+      new_value[axis] = length;
+      // when shrinking, rescale particles before the box resize
       if (scale <= 1.) {
-        rescale_particles(*m_instance->cell_structure, coord, scale);
+        rescale_particles(axis, scale);
         m_instance->on_particle_change();
       }
       m_instance->box_geo->set_length(new_value);
       m_instance->on_boxl_change();
+      // when growing, rescale particles after the box resize
       if (scale > 1.) {
-        rescale_particles(*m_instance->cell_structure, coord, scale);
+        rescale_particles(axis, scale);
         m_instance->on_particle_change();
       }
     }

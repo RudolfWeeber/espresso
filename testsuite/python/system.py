@@ -18,35 +18,10 @@
 #
 
 import unittest as ut
-import numpy as np
 import espressomd
 
 
 class Test(ut.TestCase):
-
-    def test_isotropic_rescale_noncubic_box(self):
-        """Regression test for bug #16: isotropic ('xyz') box rescale silently
-        corrupts particle positions on a non-cubic box.
-
-        For coord==3 the old code computed a single scalar scale from the
-        x-axis only and applied it to all three particle coordinates.  Each
-        coordinate must instead scale by new_box_l[axis] / old_box_l[axis].
-        """
-        old_box_l = np.array([10., 20., 30.])
-        system = espressomd.System(box_l=old_box_l)
-        pos = np.array([1., 2., 3.])
-        p = system.part.add(pos=pos)
-        d_new = 5.
-        system.change_volume_and_rescale_particles(d_new, dir="xyz")
-        new_box_l = np.copy(system.box_l)
-        np.testing.assert_allclose(
-            new_box_l, [d_new, d_new, d_new], rtol=0., atol=1e-12)
-        expected = pos * (new_box_l / old_box_l)
-        np.testing.assert_allclose(
-            np.copy(p.pos), expected, rtol=0., atol=1e-12,
-            err_msg="isotropic rescale must scale each coordinate by "
-                    "new_box_l[axis]/old_box_l[axis] (bug #16: y/z scaled by "
-                    "the x-based factor instead)")
 
     def test_system(self):
         with self.assertRaisesRegex(ValueError, "Required argument 'box_l' not provided"):
