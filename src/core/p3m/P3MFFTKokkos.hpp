@@ -58,9 +58,10 @@
  * from the exact buffers it will run on (keyed and cached by pointer): the P3M
  * k-space and no-halo real-space buffers are allocated once and stable, so
  * their plans are built on the first step and reused thereafter with no data
- * copies. The forward input is the only exception — @c extract_block hands us a
- * freshly allocated buffer each step — so it is staged once into an owned,
- * consistently aligned scratch view before the forward transform.
+ * copies. The forward input goes through an owned, consistently aligned
+ * scratch view for the same reason; P3M fills it directly (via
+ * @ref forward_input_buffer) so no staging copy occurs, and only an external
+ * caller passing a foreign buffer pays one.
  */
 template <typename FloatType, class FFTConfig>
 struct P3MFFTKokkos final : public P3MFFTBackend<FloatType, FFTConfig> {
@@ -142,12 +143,12 @@ struct P3MFFTKokkos final : public P3MFFTBackend<FloatType, FFTConfig> {
                        KokkosFFT::Normalization::none);
   }
 
-  void backward(ComplexType const *in, RSpaceScalar *out) override {
-    // c2r destroys its input; ks_E_fields[d] is recomputed every step and not
-    // read afterwards, so running in place on it is safe.
-    CplxViewU const in_view(
-        reinterpret_cast<KComplex *>(const_cast<ComplexType *>(in)),
-        m_ks_size[0], m_ks_size[1], m_ks_size[2]);
+  void backward(ComplexType *in, RSpaceScalar *out) override {
+    // The c2r transform runs in place on the input and destroys it, which
+    // the interface's non-const parameter permits (see
+    // P3MFFTBackend::backward).
+    CplxViewU const in_view(reinterpret_cast<KComplex *>(in), m_ks_size[0],
+                            m_ks_size[1], m_ks_size[2]);
     RealViewU const out_view(out, m_mesh[0], m_mesh[1], m_mesh[2]);
     KokkosFFT::execute(backward_plan(in, out, in_view, out_view), in_view,
                        out_view, KokkosFFT::Normalization::none);

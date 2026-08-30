@@ -59,19 +59,18 @@ public:
   bool overflow = false;
 
   // Method to initialize _data without filling neighbors
-  KOKKOS_INLINE_FUNCTION
-  void initializeData(std::size_t const num_particles,
-                      std::size_t const max_neigh) {
+  inline void initializeData(std::size_t const num_particles,
+                             std::size_t const max_neigh) {
     counts = Kokkos::View<int *, MemorySpace>("num_neighbors", num_particles);
     neighbors = Kokkos::View<int **, Kokkos::LayoutRight, MemorySpace>(
-        Kokkos::ViewAllocateWithoutInitializing("neighbors"), num_particles,
-        max_neigh);
+        Kokkos::view_alloc(MemorySpace{}, Kokkos::WithoutInitializing,
+                           "neighbors"),
+        num_particles, max_neigh);
   }
 
   // Method to realloc _data
-  KOKKOS_INLINE_FUNCTION
-  void reallocData(std::size_t const num_particles,
-                   std::size_t const max_neigh) {
+  inline void reallocData(std::size_t const num_particles,
+                          std::size_t const max_neigh) {
     Kokkos::realloc(counts, num_particles);
     Kokkos::realloc(Kokkos::WithoutInitializing, neighbors, num_particles,
                     max_neigh);

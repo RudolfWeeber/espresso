@@ -28,30 +28,45 @@
 #include <config/config.hpp>
 
 #include "cell_system/CellStructure.hpp"
+#include "electrostatics/coulomb.hpp"
+#include "integrators/Propagation.hpp"
+#include "magnetostatics/dipoles.hpp"
 #include "nonbonded_interactions/VerletCriterion.hpp"
+#include "system/System.hpp"
 
 #include "short_range_cabana.hpp"
 
-void update_verlet_state(CellStructure &cell_structure,
-                         System::System const &system, double coulomb_cut,
-                         double dipolar_cut, double collision_cut,
-                         double pair_cutoff, int integ_switch) {
+void update_verlet_state(System::System const &system,
+                         double const collision_cut) {
+  auto &cell_structure = *system.cell_structure;
   auto const skin = cell_structure.get_verlet_skin();
+  auto const coulomb_cut = system.coulomb.cutoff();
+  auto const dipolar_cut = system.dipoles.cutoff();
+  auto const pair_cutoff = system.get_interaction_range();
+  auto const integ_switch = system.propagation->integ_switch;
   // When no electrostatics/dipolar/collision cutoff is active, build the
   // criterion variant that compiles those dead per-candidate branches out of
   // the build loop; otherwise the full one. pair_cutoff is the interaction
   // range, which is also the criterion's maximum cutoff. Both
-  // update_cabana_state instantiations live in this single TU.
+  // update_cabana_state instantiations live in this single TU. The criterion
+  // is handed over as a factory so its O(n_types^2) cutoff table is only
+  // built when the Verlet list is actually rebuilt.
   bool const short_range_only = coulomb_cut == inactive_cutoff and
                                 dipolar_cut == inactive_cutoff and
                                 collision_cut == inactive_cutoff;
   if (short_range_only) {
-    VerletCriterion<GetNonbondedCutoff, true> const criterion{
-        system, skin, pair_cutoff, coulomb_cut, dipolar_cut, collision_cut};
-    update_cabana_state(cell_structure, criterion, pair_cutoff, integ_switch);
+    auto const make_criterion = [&] {
+      return VerletCriterion<GetNonbondedCutoff, true>{
+          system, skin, pair_cutoff, coulomb_cut, dipolar_cut, collision_cut};
+    };
+    update_cabana_state(cell_structure, make_criterion, pair_cutoff,
+                        integ_switch);
   } else {
-    VerletCriterion<GetNonbondedCutoff, false> const criterion{
-        system, skin, pair_cutoff, coulomb_cut, dipolar_cut, collision_cut};
-    update_cabana_state(cell_structure, criterion, pair_cutoff, integ_switch);
+    auto const make_criterion = [&] {
+      return VerletCriterion<GetNonbondedCutoff, false>{
+          system, skin, pair_cutoff, coulomb_cut, dipolar_cut, collision_cut};
+    };
+    update_cabana_state(cell_structure, make_criterion, pair_cutoff,
+                        integ_switch);
   }
 }

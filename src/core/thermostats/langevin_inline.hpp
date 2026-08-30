@@ -23,13 +23,13 @@
 
 #include "config/config.hpp"
 
-#include "../attributes.hpp"
 #include "Particle.hpp"
 #include "random.hpp"
 #include "rotation.hpp"
 #include "thermostat.hpp"
 
 #include <utils/Vector.hpp>
+#include <utils/attributes.hpp>
 #include <utils/matrix.hpp>
 
 // The Langevin friction kernels have column-kernel overloads (below) that read
@@ -42,7 +42,7 @@
 // Force-inline the Langevin friction kernels: friction_thermo_langevin must
 // stay within gcc's inline budget for the init_forces_and_thermostat lambda
 // (forces.cpp) to avoid an out-of-line call overhead. See
-// src/core/attributes.hpp for the macro definition.
+// src/utils/include/utils/attributes.hpp for the macro definition.
 
 /** Langevin thermostat for particle translational velocities.
  *  @param[in]     langevin       Parameters

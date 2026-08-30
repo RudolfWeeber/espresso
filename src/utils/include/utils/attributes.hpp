@@ -20,16 +20,11 @@
 #pragma once
 
 /** \file
- *  Compiler-attribute macros shared across utils headers.
- *
- *  Uses the same macro name and guard as the core attributes header, so
- *  either header can be included first without redefinition.
+ *  Compiler-attribute macros shared across ESPResSo headers.
  */
 
-#ifndef ESPRESSO_ATTR_ALWAYS_INLINE
 #if defined(__GNUG__) or defined(__clang__)
 #define ESPRESSO_ATTR_ALWAYS_INLINE [[gnu::always_inline]]
 #else
 #define ESPRESSO_ATTR_ALWAYS_INLINE
-#endif
 #endif

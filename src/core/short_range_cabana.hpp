@@ -27,12 +27,13 @@
 #include "bond_forces_kokkos.hpp"
 #include "custom_verlet_list.hpp"
 #include "forces_cabana.hpp"
+#include "kokkos_helpers.hpp"
 
 #include <Cabana_Core.hpp>
 #include <Cabana_NeighborList.hpp>
 
 #ifdef ESPRESSO_CALIPER
-#include <caliper/cali.h>
+#include "caliper_utils.hpp"
 #endif
 
 #include <functional>
@@ -41,21 +42,6 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
-
-template <class KokkosRangePolicy =
-              Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>>
-ESPRESSO_ATTR_ALWAYS_INLINE inline void
-kokkos_parallel_range_for(auto const &name, auto start, auto end,
-                          auto const &kernel) {
-  if (Kokkos::num_threads() > 1) {
-    KokkosRangePolicy policy(start, end);
-    Kokkos::parallel_for(name, policy, kernel);
-  } else {
-    for (auto p_index = start; p_index < end; ++p_index) {
-      kernel(p_index);
-    }
-  }
-}
 
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 commit_particle(Particle const &p, auto const index,
@@ -67,7 +53,7 @@ commit_particle(Particle const &p, auto const index,
   // refresh_pack_charges / refresh_pack_dipm, not here.
   // `type` is PACK-OWNED and written here on rebuild (read pack-indexed by the
   // hot pair kernels). The ParticleStore type column stays authoritative; a
-  // mid-run type change forces a rebuild (on_particle_type_change ->
+  // mid-run type change forces a rebuild (System::on_particle_change ->
   // set_resort_particles), so this cache is refreshed before it is next read.
   // The has-exclusion flag (like `type`) is written ONLY on rebuild. Exclusions
   // cannot change between rebuilds: every add/delete goes through
@@ -80,7 +66,15 @@ commit_particle(Particle const &p, auto const index,
   if (rebuild) {
     aosoa.type(index) = p.type();
 #ifdef ESPRESSO_EXCLUSIONS
-    aosoa.set_has_exclusion(index, !p.exclusions().empty());
+    bool const has_exclusion = not p.exclusions().empty();
+    aosoa.set_has_exclusion(index, has_exclusion);
+    // Record the any-exclusion aggregate on the host. This is intentionally NOT
+    // done inside the device-qualified set_has_exclusion: this commit sweep
+    // runs on the host execution space, and the aggregate is a host
+    // std::atomic. It is cleared before the sweep in update_cabana_state.
+    if (has_exclusion) {
+      aosoa.mark_any_exclusion();
+    }
 #else
     aosoa.flags(index) = 0;
 #endif
@@ -277,27 +271,26 @@ link_cell_kokkos(std::span<Cell *const> cells, BoxGeometry const &box_geo,
     }
   };
 
-  Kokkos::parallel_for("intra",
-                       Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
-                           std::size_t{0}, cells.size()),
-                       intra_kernel);
+  kokkos_parallel_range_for<Kokkos::DefaultHostExecutionSpace>(
+      "intra", std::size_t{0}, cells.size(), intra_kernel);
   Kokkos::fence();
 
-  Kokkos::parallel_for("inter",
-                       Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
-                           std::size_t{0}, cells.size()),
-                       inter_kernel);
+  kokkos_parallel_range_for<Kokkos::DefaultHostExecutionSpace>(
+      "inter", std::size_t{0}, cells.size(), inter_kernel);
   Kokkos::fence();
 }
 
+// @p make_verlet_criterion is a nullary factory: constructing the criterion
+// fills an O(n_types^2) cutoff table, so it is only invoked when the Verlet
+// list is actually rebuilt, not on every force call.
+template <class execution_space = Kokkos::DefaultHostExecutionSpace>
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
-update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
-                    double const pair_cutoff, auto const integ_switch) {
+update_cabana_state(CellStructure &cell_structure,
+                    auto const &make_verlet_criterion, double const pair_cutoff,
+                    auto const integ_switch) {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
-  using execution_space = Kokkos::DefaultHostExecutionSpace;
-  using policy_type = Kokkos::RangePolicy<execution_space>;
   auto const rebuild = cell_structure.prepare_verlet_list_cabana(pair_cutoff);
   auto const &unique_particles = cell_structure.get_unique_particles();
   auto const n_part = unique_particles.size();
@@ -318,12 +311,17 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
     // Fill particle storage (full commit)
     // ===================================================
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_BEGIN("AoSoA commit full");
+    ESPRESSO_CALI_MARK_BEGIN("AoSoA commit full");
 #endif
     int pair_count = 0;
     int angle_count = 0;
     int dihedral_count = 0;
-    kokkos_parallel_range_for<policy_type>(
+#ifdef ESPRESSO_EXCLUSIONS
+    // commit_particle accumulates the any-exclusion aggregate below; clear it
+    // before the sweep repopulates it (read O(1) at the dispatch gate).
+    aosoa.reset_any_exclusion();
+#endif
+    kokkos_parallel_range_for<execution_space>(
         "AoSoA write", std::size_t{0}, n_part,
         [&unique_particles, &aosoa, &id_to_index, &cell_structure, &pair_count,
          &angle_count, &dihedral_count](int const index) {
@@ -336,40 +334,45 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
           }
         });
     Kokkos::fence();
+    using host_space = Kokkos::DefaultHostExecutionSpace;
     auto &bs = cell_structure.bond_state();
-    auto &pair_bond_list = bs.pair_list;
-    Kokkos::parallel_for("resolve_pair_bond_indices",
-                         Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
-                             std::size_t{0}, pair_count),
-                         [&pair_bond_list, &id_to_index](int idx) {
-                           for (int col = 0; col < 2; ++col) {
-                             pair_bond_list(idx, col) =
-                                 id_to_index(pair_bond_list(idx, col));
-                           }
-                         });
-    auto &angle_bond_list = bs.angle_list;
-    Kokkos::parallel_for("resolve_angle_bond_indices",
-                         Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
-                             std::size_t{0}, angle_count),
-                         [&angle_bond_list, &id_to_index](int idx) {
-                           for (int col = 0; col < 3; ++col) {
-                             angle_bond_list(idx, col) =
-                                 id_to_index(angle_bond_list(idx, col));
-                           }
-                         });
-    auto &dihedral_bond_list = bs.dihedral_list;
-    Kokkos::parallel_for("resolve_dihedral_bond_indices",
-                         Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
-                             std::size_t{0}, dihedral_count),
-                         [&dihedral_bond_list, &id_to_index](int idx) {
-                           for (int col = 0; col < 4; ++col) {
-                             dihedral_bond_list(idx, col) =
-                                 id_to_index(dihedral_bond_list(idx, col));
-                           }
-                         });
-    Kokkos::fence();
+    if (pair_count) {
+      auto &pair_bond_list = bs.pair_list;
+      kokkos_parallel_range_for<host_space>(
+          "resolve_pair_bond_indices", std::size_t{0}, pair_count,
+          [&pair_bond_list, &id_to_index](int idx) {
+            for (int col = 0; col < 2; ++col) {
+              pair_bond_list(idx, col) = id_to_index(pair_bond_list(idx, col));
+            }
+          });
+    }
+    if (angle_count) {
+      auto &angle_bond_list = bs.angle_list;
+      kokkos_parallel_range_for<host_space>(
+          "resolve_angle_bond_indices", std::size_t{0}, angle_count,
+          [&angle_bond_list, &id_to_index](int idx) {
+            for (int col = 0; col < 3; ++col) {
+              angle_bond_list(idx, col) =
+                  id_to_index(angle_bond_list(idx, col));
+            }
+          });
+    }
+    if (dihedral_count) {
+      auto &dihedral_bond_list = bs.dihedral_list;
+      kokkos_parallel_range_for<host_space>(
+          "resolve_dihedral_bond_indices", std::size_t{0}, dihedral_count,
+          [&dihedral_bond_list, &id_to_index](int idx) {
+            for (int col = 0; col < 4; ++col) {
+              dihedral_bond_list(idx, col) =
+                  id_to_index(dihedral_bond_list(idx, col));
+            }
+          });
+    }
+    if (pair_count != 0 or angle_count != 0 or dihedral_count != 0) {
+      Kokkos::fence();
+    }
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("AoSoA commit full");
+    ESPRESSO_CALI_MARK_END("AoSoA commit full");
 #endif
 
     // ===================================================
@@ -378,11 +381,12 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
     bool rebuild_vl = (integ_switch != INTEG_METHOD_STEEPEST_DESCENT and
                        cell_structure.use_verlet_list);
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_BEGIN("Verlet list creation");
+    ESPRESSO_CALI_MARK_BEGIN("Verlet list creation");
 #endif
     cell_structure.rebuild_verlet_list_cabana(
         [&](std::span<Cell *const> cells, BoxGeometry const &box,
             CellStructure::ListType &verlet_list) {
+          auto const verlet_criterion = make_verlet_criterion();
           link_cell_kokkos(
               std::move(cells), box, verlet_criterion, id_to_index, max_id,
               [&](const int i, const int j) {
@@ -406,7 +410,7 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
         },
         rebuild_vl);
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("Verlet list creation");
+    ESPRESSO_CALI_MARK_END("Verlet list creation");
 #endif
   }
   // Partial-update (no-rebuild) branch: NOTHING to commit. The pack does not
@@ -427,11 +431,10 @@ update_cabana_state(CellStructure &cell_structure, auto const &verlet_criterion,
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 refresh_pack_charges(CellStructure &cell_structure) {
   using execution_space = Kokkos::DefaultHostExecutionSpace;
-  using policy_type = Kokkos::RangePolicy<execution_space>;
   auto const &unique_particles = cell_structure.get_unique_particles();
   auto const n_part = unique_particles.size();
   auto &aosoa = cell_structure.get_aosoa();
-  kokkos_parallel_range_for<policy_type>(
+  kokkos_parallel_range_for<execution_space>(
       "refresh pack charges", std::size_t{0}, n_part,
       [&unique_particles, &aosoa](std::size_t const index) {
         aosoa.pair_charge(index) = unique_particles.at(index)->q();
@@ -445,11 +448,10 @@ refresh_pack_charges(CellStructure &cell_structure) {
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 refresh_pack_dipm(CellStructure &cell_structure) {
   using execution_space = Kokkos::DefaultHostExecutionSpace;
-  using policy_type = Kokkos::RangePolicy<execution_space>;
   auto const &unique_particles = cell_structure.get_unique_particles();
   auto const n_part = unique_particles.size();
   auto &aosoa = cell_structure.get_aosoa();
-  kokkos_parallel_range_for<policy_type>(
+  kokkos_parallel_range_for<execution_space>(
       "refresh pack dipm", std::size_t{0}, n_part,
       [&unique_particles, &aosoa](std::size_t const index) {
         aosoa.pair_dipm(index) = unique_particles.at(index)->dipm();
@@ -482,58 +484,56 @@ create_device_short_range_pair_loop(System::System &system, bool has_coulomb,
                                     bool has_dpd, bool has_npt_virial);
 #endif // ESPRESSO_CUDA
 
+// @p make_verlet_criterion is a nullary factory: constructing the criterion
+// fills an O(n_types^2) cutoff table, so it is only invoked on the link-cell
+// fallback path, which is the only consumer here.
+template <class execution_space = Kokkos::DefaultHostExecutionSpace>
 void cabana_short_range(auto const &pair_bonds_kernel,
                         auto const &angle_bonds_kernel,
                         auto const &dihedral_bonds_kernel,
                         auto const &nonbonded_kernel,
                         CellStructure &cell_structure, double pair_cutoff,
-                        double bond_cutoff, auto const &verlet_criterion,
+                        double bond_cutoff, auto const &make_verlet_criterion,
                         auto const integ_switch,
                         ShortRangeVerletPairLoop const &verlet_pair_loop = {}) {
-  using execution_space = Kokkos::DefaultHostExecutionSpace;
   assert(cell_structure.get_resort_particles() == Cells::RESORT_NONE);
 
   if (bond_cutoff >= 0.) {
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_BEGIN("cabana_bond_loop");
+    ESPRESSO_CALI_MARK_BEGIN("cabana_bond_loop");
 #endif
+    using host_space = Kokkos::DefaultHostExecutionSpace;
     auto const n_pair_bonds = cell_structure.get_local_pair_bond_numbers();
     auto const n_angle_bonds = cell_structure.get_local_angle_bond_numbers();
     auto const n_dihedral_bonds =
         cell_structure.get_local_dihedral_bond_numbers();
     if (n_pair_bonds > 0) {
-      Kokkos::parallel_for( // loop over bonds
-          "for_each_local_pair_bonds",
-          Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(std::size_t{0},
-                                                                 n_pair_bonds),
-          pair_bonds_kernel);
-      Kokkos::fence();
+      kokkos_parallel_range_for<host_space>("for_each_local_pair_bonds",
+                                            std::size_t{0}, n_pair_bonds,
+                                            pair_bonds_kernel);
     }
     if (n_angle_bonds > 0) {
-      Kokkos::parallel_for( // loop over bonds
-          "for_each_local_angle_bonds",
-          Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(std::size_t{0},
-                                                                 n_angle_bonds),
-          angle_bonds_kernel);
-      Kokkos::fence();
+      kokkos_parallel_range_for<host_space>("for_each_local_angle_bonds",
+                                            std::size_t{0}, n_angle_bonds,
+                                            angle_bonds_kernel);
     }
     if (n_dihedral_bonds > 0) {
-      Kokkos::parallel_for( // loop over bonds
-          "for_each_local_dihedral_bonds",
-          Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
-              std::size_t{0}, n_dihedral_bonds),
-          dihedral_bonds_kernel);
+      kokkos_parallel_range_for<host_space>("for_each_local_dihedral_bonds",
+                                            std::size_t{0}, n_dihedral_bonds,
+                                            dihedral_bonds_kernel);
+    }
+    if (n_pair_bonds != 0 or n_angle_bonds != 0 or n_dihedral_bonds != 0) {
       Kokkos::fence();
     }
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("cabana_bond_loop");
+    ESPRESSO_CALI_MARK_END("cabana_bond_loop");
 #endif
   }
 
   // Cabana short range loop
   if (pair_cutoff > 0.) {
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_BEGIN("cabana_pair_loop");
+    ESPRESSO_CALI_MARK_BEGIN("cabana_pair_loop");
 #endif
     if (integ_switch != INTEG_METHOD_STEEPEST_DESCENT and
         cell_structure.use_verlet_list) {
@@ -541,6 +541,14 @@ void cabana_short_range(auto const &pair_bonds_kernel,
       auto const n_particles = cell_structure.get_unique_particles().size();
       if (verlet_pair_loop) {
         verlet_pair_loop(verlet_list, n_particles);
+      } else if (Kokkos::num_threads() == 1) {
+        using NL = Cabana::NeighborList<CellStructure::ListType>;
+        for (std::size_t i = 0; i < n_particles; ++i) {
+          auto const nn = NL::numNeighbor(verlet_list, i);
+          for (std::size_t n = 0; n < nn; ++n) {
+            nonbonded_kernel(i, NL::getNeighbor(verlet_list, i, n));
+          }
+        }
       } else {
         Kokkos::RangePolicy<execution_space> policy(std::size_t{0},
                                                     n_particles);
@@ -551,6 +559,7 @@ void cabana_short_range(auto const &pair_bonds_kernel,
     } else {
       cell_structure.cell_list_loop(
           [&](std::span<Cell *const> cells, BoxGeometry const &box) {
+            auto const verlet_criterion = make_verlet_criterion();
             link_cell_kokkos(
                 std::move(cells), box, verlet_criterion,
                 cell_structure.get_id_to_index(),
@@ -567,7 +576,7 @@ void cabana_short_range(auto const &pair_bonds_kernel,
     }
     Kokkos::fence();
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("cabana_pair_loop");
+    ESPRESSO_CALI_MARK_END("cabana_pair_loop");
 #endif
   }
 }

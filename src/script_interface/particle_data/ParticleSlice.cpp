@@ -119,14 +119,12 @@ static void set_particles_types(std::vector<int> const &pids,
   for (std::size_t i = 0; i < pids.size(); ++i) {
     auto const pid = pids[i];
     auto p = cell_structure.get_local_particle(pid);
-    if (p and not p->is_ghost()) {
-      auto const old_type = p->type();
+    if (p.has_value() and not p->is_ghost()) {
       auto const &new_type = types[i];
       if (new_type < 0) {
         throw std::domain_error(error_msg("type", "must be an integer >= 0"));
       }
       system.nonbonded_ias->make_particle_type_exist(new_type);
-      on_particle_type_change(pid, old_type, new_type);
       p->type() = new_type;
     }
   }

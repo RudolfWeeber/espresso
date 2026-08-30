@@ -57,14 +57,14 @@ struct EnergyBinLayout {
     total = off_dipolar + 1;
   }
 
-  KOKKOS_INLINE_FUNCTION
-  std::size_t nb_inter_idx(int t1, int t2) const {
+  ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION std::size_t
+  nb_inter_idx(int t1, int t2) const {
     return off_nb_inter +
            Utils::lower_triangular(std::max(t1, t2), std::min(t1, t2));
   }
 
-  KOKKOS_INLINE_FUNCTION
-  std::size_t nb_intra_idx(int t1, int t2) const {
+  ESPRESSO_ATTR_ALWAYS_INLINE KOKKOS_INLINE_FUNCTION std::size_t
+  nb_intra_idx(int t1, int t2) const {
     return off_nb_intra +
            Utils::lower_triangular(std::max(t1, t2), std::min(t1, t2));
   }
@@ -77,6 +77,7 @@ struct EnergyBinLayout {
 };
 
 struct EnergyKernel {
+  using memory_space = Kokkos::HostSpace;
   BondedInteractionsMap const &bonded_ias;
   InteractionsNonBonded const &nonbonded_ias;
   Coulomb::Solver const &coulomb;
@@ -84,10 +85,10 @@ struct EnergyKernel {
   Dipoles::ShortRangeEnergyKernel::kernel_type const *dipoles_u_kernel;
   BoxGeometry const &box_geo;
   std::vector<Particle *> const &unique_particles;
-  Kokkos::View<double **, Kokkos::LayoutRight, Kokkos::HostSpace> local_energy;
+  Kokkos::View<double **, Kokkos::LayoutRight, memory_space> local_energy;
   EnergyBinLayout layout;
   CellStructure::AoSoA_pack const &aosoa;
-  Kokkos::View<int *, Kokkos::HostSpace> mol_id_view;
+  Kokkos::View<int *, Kokkos::LayoutRight, memory_space> mol_id_view;
   double system_max_cutoff_sq;
 
   EnergyKernel(
@@ -98,11 +99,10 @@ struct EnergyKernel {
       Dipoles::ShortRangeEnergyKernel::kernel_type const *dipoles_u_kernel_,
       BoxGeometry const &box_geo_,
       std::vector<Particle *> const &unique_particles_,
-      Kokkos::View<double **, Kokkos::LayoutRight, Kokkos::HostSpace> const
+      Kokkos::View<double **, Kokkos::LayoutRight, memory_space> const
           &local_energy_,
       EnergyBinLayout layout_, CellStructure::AoSoA_pack const &aosoa_,
-      Kokkos::View<int *, Kokkos::HostSpace> mol_id_view_,
-      double system_max_cutoff_)
+      Kokkos::View<int *, memory_space> mol_id_view_, double system_max_cutoff_)
       : bonded_ias(bonded_ias_), nonbonded_ias(nonbonded_ias_),
         coulomb(coulomb_), coulomb_u_kernel(coulomb_u_kernel_),
         dipoles_u_kernel(dipoles_u_kernel_), box_geo(box_geo_),

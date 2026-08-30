@@ -23,6 +23,7 @@
 
 #include "Cell.hpp"
 #include "CellStructure.hpp"
+#include "kokkos_helpers.hpp"
 
 #include <Kokkos_Core.hpp>
 
@@ -55,10 +56,8 @@ inline void enumerate_local_particles(CellStructure const &cs,
         std::size_t{0},
         [](auto acc, auto const &cell) { return acc + cell->count(); });
 
-    Kokkos::parallel_for(
-        "enumerate_local_particles",
-        Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
-            std::size_t{0}, local_cells.size()),
+    kokkos_parallel_range_for(
+        "enumerate_local_particles", std::size_t{0}, local_cells.size(),
         [&](auto cell_idx) {
           auto const base_offset = cell_offsets[cell_idx];
           // The cell's committed rows are the contiguous range

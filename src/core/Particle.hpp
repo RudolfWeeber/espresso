@@ -39,7 +39,8 @@
 #include <cstdint>
 
 namespace detail {
-inline bool get_nth_bit(uint8_t const bitfield, unsigned int const bit_idx) {
+constexpr inline bool get_nth_bit(uint8_t const bitfield,
+                                  unsigned int const bit_idx) {
   return bitfield & (1u << bit_idx);
 }
 } // namespace detail
@@ -551,8 +552,8 @@ public:
     return Utils::convert_quaternion_to_director(quat());
   }
 #else  // ESPRESSO_ROTATION
-  auto can_rotate() const { return false; }
-  auto can_rotate_around(unsigned int const) const { return false; }
+  constexpr auto can_rotate() const { return false; }
+  constexpr auto can_rotate_around(unsigned int const) const { return false; }
 #endif // ESPRESSO_ROTATION
 #ifdef ESPRESSO_DIPOLES
   double const &dipm() const {

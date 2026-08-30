@@ -21,6 +21,10 @@
 
 #include "p3m/P3MFFTBackend.hpp"
 
+#include "communication.hpp"
+
+#include <instrumentation/fe_trap.hpp>
+
 #include <utils/Vector.hpp>
 #include <utils/index.hpp>
 
@@ -34,25 +38,39 @@
 #include <initializer_list>
 #include <memory>
 
+#if defined(__CUDACC__)
+#include "cuda/utils.cuh"
+#endif
+
 /**
  * @brief FFT manager.
  */
-template <typename FloatType, class FFTConfig> class P3MFFT {
+template <typename FloatType, Arch Architecture, class FFTConfig> class P3MFFT {
+public:
+  using OutputType = typename heffte::fft_output<FloatType>::type;
+  using backend =
+      std::conditional_t<Architecture == Arch::CPU, heffte::backend::fftw,
+                         heffte::backend::cufft>;
+  template <class T = OutputType>
+  using buffer_container = heffte::fft3d<backend>::template buffer_container<T>;
+
 private:
-  using backend_tag = heffte::backend::default_backend<heffte::tag::cpu>::type;
   using FFT3D =
-      std::conditional_t<FFTConfig::use_r2c, heffte::fft3d_r2c<backend_tag>,
-                         heffte::fft3d<backend_tag>>;
+      std::conditional_t<FFTConfig::use_r2c, heffte::fft3d_r2c<backend>,
+                         heffte::fft3d<backend>>;
   using Box = heffte::box3d<>;
+  using stream_type =
+      heffte::backend::device_instance<heffte::tag::gpu>::stream_type;
 
   /* input box */
   std::unique_ptr<Box> in_box;
   /* output box */
   std::unique_ptr<Box> out_box;
   /* workspace for the FFT */
-  std::vector<std::complex<FloatType>> m_workspace;
+  buffer_container<OutputType> m_workspace;
   /* FFT backend */
   std::unique_ptr<FFT3D> fft3d;
+  std::shared_ptr<boost::mpi::environment> m_mpi_env_lock;
 
   template <typename T, std::size_t N>
   static auto to_array(Utils::Vector<T, N> const &vec) {
@@ -62,7 +80,12 @@ private:
   }
 
 public:
-  P3MFFT(boost::mpi::communicator comm, Utils::Vector3i const &global_mesh,
+  ~P3MFFT() {
+    fft3d.reset();
+    m_mpi_env_lock.reset();
+  }
+  P3MFFT(stream_type gpu_stream, boost::mpi::communicator comm,
+         Utils::Vector3i const &global_mesh,
          Utils::Vector3i const &rs_local_ld_index,
          Utils::Vector3i const &rs_local_ur_index,
          Utils::Vector3i const &node_grid) {
@@ -99,7 +122,7 @@ public:
         in_box_order);
 
     // at this stage we can manually adjust some HeFFTe options
-    heffte::plan_options options = heffte::default_options<backend_tag>();
+    heffte::plan_options options = heffte::default_options<backend>();
 
     // use strided 1-D FFT operations
     // some backends work just as well when the entries of the data are not
@@ -118,13 +141,31 @@ public:
     // pencil decomposition is better but for smaller problems, the slabs may
     // perform better (depending on hardware and backend)
     options.use_pencils = true;
-    if constexpr (FFTConfig::use_r2c) {
-      fft3d = std::make_unique<FFT3D>(*in_box, *out_box, FFTConfig::r2c_dir,
-                                      comm, options);
-    } else {
-      fft3d = std::make_unique<FFT3D>(*in_box, *out_box, comm, options);
+#if defined(__CUDACC__)
+    if constexpr (Architecture == Arch::CUDA) {
+      options.use_gpu_aware = ::communication_environment->is_mpi_gpu_aware();
     }
-    m_workspace.resize(fft3d->size_workspace());
+#endif
+#ifdef ESPRESSO_FPE
+    // cuFFT builds device kernels using CUDA-JIT
+    // (https://docs.nvidia.com/cuda/archive/13.1.1/cufft/#plan-initialization-time)
+    // but this operation is not guaranteed to succeed for all mesh sizes,
+    // and in rare cases, it can send the SIGFPE signal
+    auto const trap_pause = (Architecture == Arch::CUDA)
+                                ? fe_trap::make_shared_pause_scoped()
+                                : nullptr;
+#endif
+
+    if constexpr (FFTConfig::use_r2c) {
+      fft3d = std::make_unique<FFT3D>(gpu_stream, *in_box, *out_box,
+                                      FFTConfig::r2c_dir, comm, options);
+    } else {
+      fft3d =
+          std::make_unique<FFT3D>(gpu_stream, *in_box, *out_box, comm, options);
+    }
+    m_workspace = decltype(m_workspace)(fft3d->size_workspace());
+    // MPI communicator is needed to destroy the FFT plans
+    m_mpi_env_lock = ::communication_environment->get_mpi_env();
   }
 
   Utils::Vector3i ks_local_ld_index() const {
@@ -166,10 +207,9 @@ struct P3MFFTHeffte final : public P3MFFTBackend<FloatType, FFTConfig> {
                Utils::Vector3i const &rs_local_ld_index,
                Utils::Vector3i const &rs_local_ur_index,
                Utils::Vector3i const &node_grid)
-      : m_impl(comm, global_mesh, rs_local_ld_index, rs_local_ur_index,
+      : m_impl(nullptr, comm, global_mesh, rs_local_ld_index, rs_local_ur_index,
                node_grid),
-        m_input(
-            static_cast<std::size_t>(Utils::product(m_impl.rs_local_size()))) {}
+        m_input(static_cast<std::size_t>(Utils::product(rs_local_size()))) {}
 
   Utils::Vector3i ks_local_ld_index() const override {
     return m_impl.ks_local_ld_index();
@@ -187,11 +227,13 @@ struct P3MFFTHeffte final : public P3MFFTBackend<FloatType, FFTConfig> {
   void forward(RSpaceScalar const *in, ComplexType *out) override {
     m_impl.forward(in, out);
   }
-  void backward(ComplexType const *in, RSpaceScalar *out) override {
+  void backward(ComplexType *in, RSpaceScalar *out) override {
+    // heFFTe preserves the input; the non-const parameter is the interface's
+    // contract for backends that cannot (see P3MFFTBackend::backward).
     m_impl.backward(in, out);
   }
 
 private:
-  P3MFFT<FloatType, FFTConfig> m_impl;
+  P3MFFT<FloatType, Arch::CPU, FFTConfig> m_impl;
   std::vector<RSpaceScalar> m_input;
 };

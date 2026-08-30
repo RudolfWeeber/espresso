@@ -21,14 +21,18 @@
 
 #include <config/config.hpp>
 
-#include "attributes.hpp"
 #include "cell_system/CellStructure.hpp"
+
+#include <utils/attributes.hpp>
+#include <utils/device_qualifier.hpp>
 
 #include <Kokkos_Core.hpp>
 
 #include <omp.h>
 
+#include <atomic>
 #include <cstdint>
+#include <span>
 
 struct CellStructure::AoSoA_pack {
   // Particle-major (@ref ParticleStore::StateVectorLayout, LayoutRight) to
@@ -44,8 +48,8 @@ struct CellStructure::AoSoA_pack {
   // commit_particle (`type(index)=p.type()`) and read pack-indexed by the hot
   // pair kernels (forces/energy/pressure_cabana). The ParticleStore type column
   // REMAINS authoritative; this pack copy is a derived cache refreshed on
-  // rebuild (a mid-run type change forces a rebuild via on_particle_type_change
-  // -> set_resort_particles).
+  // rebuild (a mid-run type change goes through System::on_particle_change,
+  // which calls set_resort_particles).
   //
   // Likewise `charge`/`dipm` are pack-owned contiguous arrays, refreshed per
   // step ONLY when a coulomb (resp. dipolar) actor is active (see
@@ -111,6 +115,7 @@ struct CellStructure::AoSoA_pack {
     return row_map(i);
   }
 
+  HOST_ONLY_QUALIFIER
   void resize(std::size_t num_particles) {
     // id/mass/charge are store-aliased (bound in bind_pack_store_views), not
     // allocated here. `type`/`pair_charge`/`pair_dipm`/`flags` are pack-owned
@@ -138,7 +143,14 @@ struct CellStructure::AoSoA_pack {
   }
 
   template <typename array_layout, typename T, std::size_t N>
-  Utils::Vector<T, N> get_vector_at(
+  DEVICE_QUALIFIER std::span<T, N>
+  get_span_at(Kokkos::View<T *[N], array_layout, Kokkos::HostSpace> const &view,
+              std::size_t i) const {
+    return std::span<T, N>(const_cast<T *>(&view(i, 0)), N);
+  }
+
+  template <typename array_layout, typename T, std::size_t N>
+  DEVICE_QUALIFIER Utils::Vector<T, N> get_vector_at(
       Kokkos::View<T *[N], array_layout, Kokkos::HostSpace> const &view,
       std::size_t i) const {
     Utils::Vector<T, N> result;
@@ -157,7 +169,7 @@ struct CellStructure::AoSoA_pack {
   }
 
   template <typename array_layout, typename T, std::size_t N>
-  void
+  DEVICE_QUALIFIER void
   set_vector_at(Kokkos::View<T *[N], array_layout, Kokkos::HostSpace> &view,
                 std::size_t i, Utils::Vector<T, N> const &value) {
 #if !defined(__NVCOMPILER) && !defined(__CUDACC__)
@@ -172,11 +184,44 @@ struct CellStructure::AoSoA_pack {
     }
   }
 
-  void set_has_exclusion(std::size_t i, bool value) {
+  // Aggregate of the per-particle exclusion flag over the whole pack (local +
+  // ghost). It lets the specialized-kernel dispatch decide in O(1) whether any
+  // packed particle carries an exclusion, instead of sweeping every flag on
+  // every force call. It is only ever transitioned false->true during a commit
+  // sweep (which runs under Kokkos::parallel_for on the host execution space),
+  // so a relaxed atomic store suffices; reads happen after the sweep's
+  // Kokkos::fence() and are therefore race-free. The atomic member makes
+  // AoSoA_pack non-copyable and non-movable, which is fine: it is only ever
+  // default-constructed via std::make_unique and accessed by reference (see
+  // CellStructure::m_aosoa).
+  std::atomic<bool> any_exclusion{false};
+
+  void reset_any_exclusion() {
+    any_exclusion.store(false, std::memory_order_relaxed);
+  }
+
+  bool has_any_exclusion() const {
+    return any_exclusion.load(std::memory_order_relaxed);
+  }
+
+  // Host-only: record that some particle carries an exclusion. Kept out of the
+  // device-qualified set_has_exclusion so the atomic never appears in device
+  // code; commit_particle calls this from the host commit sweep. Test before
+  // setting: after the first write the flag's cache line stays shared, so
+  // exclusion-heavy sweeps don't ping-pong it across threads.
+  void mark_any_exclusion() {
+    if (not any_exclusion.load(std::memory_order_relaxed)) {
+      any_exclusion.store(true, std::memory_order_relaxed);
+    }
+  }
+
+  DEVICE_QUALIFIER void set_has_exclusion(std::size_t i, bool value) {
     flags(i) = value ? uint8_t{1} : uint8_t{0};
   }
 
-  bool has_exclusion(std::size_t i) const { return flags(i) == uint8_t{1}; }
+  DEVICE_QUALIFIER bool has_exclusion(std::size_t i) const {
+    return flags(i) == uint8_t{1};
+  }
 
 #ifdef ESPRESSO_ELECTROSTATICS
   /**

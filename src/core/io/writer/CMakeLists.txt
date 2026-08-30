@@ -30,4 +30,5 @@ if(ESPRESSO_BUILD_WITH_HDF5)
   target_link_libraries(espresso_core PUBLIC espresso_hdf5)
   install(TARGETS espresso_hdf5
           LIBRARY DESTINATION ${ESPRESSO_INSTALL_PYTHON}/espressomd)
+  espresso_set_kokkos_properties_on_source_files(espresso_hdf5)
 endif()

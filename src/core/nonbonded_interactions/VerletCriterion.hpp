@@ -92,9 +92,8 @@ public:
                             inactive_cutoff);
     for (int type_i = 0; type_i <= max_type; ++type_i) {
       for (int type_j = type_i; type_j <= max_type; ++type_j) {
-        auto const cut = get_nonbonded_cutoff(type_i, type_j);
         auto const eff_cut2 =
-            (cut == inactive_cutoff) ? inactive_cutoff : Utils::sqr(cut + skin);
+            eff_cutoff_sqr(get_nonbonded_cutoff(type_i, type_j));
         m_eff_cut2_table[static_cast<std::size_t>(type_i) *
                              static_cast<std::size_t>(m_n_types) +
                          static_cast<std::size_t>(type_j)] = eff_cut2;

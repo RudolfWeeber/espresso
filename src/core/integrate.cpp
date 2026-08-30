@@ -68,7 +68,7 @@
 #include <boost/mpi/collectives/all_reduce.hpp>
 
 #ifdef ESPRESSO_CALIPER
-#include <caliper/cali.h>
+#include "caliper_utils.hpp"
 #endif
 
 #ifdef ESPRESSO_VALGRIND
@@ -258,6 +258,24 @@ void System::System::integrator_sanity_checks() const {
     runtimeErrorMsg()
         << "Thermalized bonds require the thermalized_bond thermostat";
   }
+#ifdef ESPRESSO_BOND_CONSTRAINT
+  if (bonded_ias->get_n_rigid_bonds() >= 1) {
+    if (not propagation->is_inertial()) {
+      runtimeErrorMsg()
+          << "Rigid bonds (RATTLE) require an inertial integrator "
+             "(VV or symplectic Euler); BD and SD are not supported";
+    }
+  }
+#endif
+
+#ifdef ESPRESSO_STOKESIAN_DYNAMICS
+  if ((propagation->used_propagations & PropagationMode::TRANS_STOKESIAN) and
+      (propagation->default_propagation & PropagationMode::TRANS_STOKESIAN)) {
+    auto pred = PropagationPredicateStokesian(propagation->default_propagation);
+    stokesian_dynamics->sanity_checks(
+        cell_structure->local_particles().filter(pred));
+  }
+#endif // ESPRESSO_STOKESIAN_DYNAMICS
 
 #ifdef ESPRESSO_ROTATION
   for (auto const &p : cell_structure->local_particles()) {
@@ -364,7 +382,7 @@ void walberla_agrid_sanity_checks(std::string const &method,
 
 static void resort_particles_if_needed(System::System &system) {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   auto &cell_structure = *system.cell_structure;
   auto const offset = LeesEdwards::verlet_list_offset(
@@ -381,7 +399,7 @@ static bool integrator_step_1(CellStructure &cell_structure,
                               Propagation const &propagation,
                               System::System &system, double time_step) {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   // steepest decent
   if (propagation.integ_switch == INTEG_METHOD_STEEPEST_DESCENT)
@@ -558,20 +576,30 @@ static bool integrator_step_1(CellStructure &cell_structure,
   return false;
 }
 
-static void integrator_step_2(CellStructure &cell_structure,
-                              Propagation const &propagation,
-                              [[maybe_unused]] System::System &system,
-                              double time_step) {
-#ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
-#endif
-  if (propagation.integ_switch == INTEG_METHOD_STEEPEST_DESCENT)
-    return;
-
-  // Hoist the per-particle scalar/rotation column-view handles ONCE outside the
-  // parallel_for (see integrator_step_1). The VV translation velocity/force
-  // rows are resolved per row via velocity_reference/force_reference
-  // (VectorReference), so no 2D velocity/force view handle is hoisted here.
+/**
+ * @brief Build the per-particle half-kick callable for step_2.
+ *
+ * Returns a lambda that applies the velocity (and torque, if ROTATION is
+ * enabled) update for a single particle. Virtual sites are skipped.
+ *
+ * Shared verbatim by @ref integrator_step_2 (full pass) and
+ * @ref integrator_step_2_filtered (interior / boundary passes): the lambda is
+ * constructed once, then handed to @c for_each_local_particle,
+ * @c for_each_interior_particle, or @c for_each_boundary_particle.
+ *
+ * The per-particle scalar/rotation column-view handles are resolved ONCE here
+ * (see integrator_step_1) and captured by the returned lambda, which then
+ * indexes them by the particle's store row. The VV translation velocity/force
+ * rows are resolved per row via velocity_reference/force_reference
+ * (VectorReference), so no 2D velocity/force view handle is hoisted.
+ *
+ * NPT particles are intentionally absent: the NPT arm must run only on the
+ * ineligible (full-reduce-then-step_2) path and is handled separately inside
+ * @ref integrator_step_2.
+ */
+static auto make_step2_particle_kernel(CellStructure &cell_structure,
+                                       Propagation const &propagation,
+                                       double time_step) {
   auto &store = cell_structure.particle_store();
 #ifdef ESPRESSO_MASS
   auto mass_view = store.mass_view();
@@ -593,9 +621,21 @@ static void integrator_step_2(CellStructure &cell_structure,
   auto rinertia_view = store.dummy_vector_view();
 #endif
 #endif
-  cell_structure.for_each_local_particle_row([&](int const row) {
-    Particle p;
-    p.attach_to_store(store, row);
+  return [&propagation, time_step, &store
+#ifdef ESPRESSO_MASS
+          ,
+          mass_view
+#endif
+#ifdef ESPRESSO_EXTERNAL_FORCES
+          ,
+          ext_flag_view
+#endif
+#ifdef ESPRESSO_ROTATION
+          ,
+          quat_view, omega_view, torque_view, rotation_view, rinertia_view
+#endif
+  ](Particle &p) {
+    auto const row = p.store_row();
 #ifdef ESPRESSO_VIRTUAL_SITES
     // virtual sites are updated later in the integration loop
     if (p.is_virtual())
@@ -657,7 +697,21 @@ static void integrator_step_2(CellStructure &cell_structure,
                                   torque_view, rotation_view, row, time_step);
 #endif
     }
-  });
+  };
+}
+
+static void integrator_step_2(CellStructure &cell_structure,
+                              Propagation const &propagation,
+                              [[maybe_unused]] System::System &system,
+                              double time_step) {
+#ifdef ESPRESSO_CALIPER
+  ESPRESSO_CALI_MARK_FUNCTION;
+#endif
+  if (propagation.integ_switch == INTEG_METHOD_STEEPEST_DESCENT)
+    return;
+
+  cell_structure.for_each_local_particle(
+      make_step2_particle_kernel(cell_structure, propagation, time_step));
 
 #ifdef ESPRESSO_NPT
   if ((propagation.used_propagations & PropagationMode::TRANS_LANGEVIN_NPT) and
@@ -674,9 +728,46 @@ static void integrator_step_2(CellStructure &cell_structure,
 #endif
 }
 
+/**
+ * @brief Restricted step_2 for the split-phase ghost-force-reduce overlap.
+ *
+ * Called twice per step: once with @p interior_pass = true (while the ghost
+ * reduce is in flight) and once with @p interior_pass = false (after
+ * @ref CellStructure::ghosts_reduce_forces_finish completes).  The per-particle
+ * kernel is identical to the one used by @ref integrator_step_2 — shared via
+ * @ref make_step2_particle_kernel.
+ *
+ * NPT is absent here: the eligibility check in calculate_forces() guarantees
+ * TRANS_LANGEVIN_NPT is never active when this path runs.
+ */
+static void integrator_step_2_filtered(CellStructure &cell_structure,
+                                       Propagation const &propagation,
+                                       double time_step, bool interior_pass) {
+#ifdef ESPRESSO_CALIPER
+  ESPRESSO_CALI_MARK_FUNCTION;
+#endif
+  // steepest_descent and NPT are excluded by the eligibility check; both
+  // asserts are belt-and-suspenders cross-checks.
+  assert(propagation.integ_switch != INTEG_METHOD_STEEPEST_DESCENT &&
+         "integrator_step_2_filtered: steepest-descent is ineligible");
+#ifdef ESPRESSO_NPT
+  assert((propagation.used_propagations &
+          PropagationMode::TRANS_LANGEVIN_NPT) == 0 &&
+         "integrator_step_2_filtered: NPT propagation is ineligible");
+#endif
+
+  auto const kernel =
+      make_step2_particle_kernel(cell_structure, propagation, time_step);
+  if (interior_pass) {
+    cell_structure.for_each_interior_particle(kernel);
+  } else {
+    cell_structure.for_each_boundary_particle(kernel);
+  }
+}
+
 int System::System::integrate(int n_steps, int reuse_forces) {
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_FUNCTION;
+  ESPRESSO_CALI_MARK_FUNCTION;
 #endif
   auto &propagation = *this->propagation;
 #ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
@@ -711,7 +802,7 @@ int System::System::integrate(int n_steps, int reuse_forces) {
       ((reuse_forces != INTEG_REUSE_FORCES_ALWAYS) and
        propagation.recalc_forces)) {
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_BEGIN("Initial Force Calculation");
+    ESPRESSO_CALI_MARK_BEGIN("Initial Force Calculation");
 #endif
     thermostat->lb_coupling_deactivate();
 
@@ -731,6 +822,14 @@ int System::System::integrate(int n_steps, int reuse_forces) {
 
     calculate_forces();
 
+    // If calculate_forces started a split-phase ghost reduce, finish it now:
+    // the initial-force path has no step_2 to overlap with (n_steps may be 0,
+    // or the forces are for the previous step's record), so we just complete
+    // the reduce immediately.
+    if (cell_structure->has_pending_ghost_reduce()) {
+      cell_structure->ghosts_reduce_forces_finish();
+    }
+
     if (propagation.integ_switch != INTEG_METHOD_STEEPEST_DESCENT) {
 #ifdef ESPRESSO_ROTATION
       convert_initial_torques(cell_structure->local_particles());
@@ -738,7 +837,7 @@ int System::System::integrate(int n_steps, int reuse_forces) {
     }
 
 #ifdef ESPRESSO_CALIPER
-    CALI_MARK_END("Initial Force Calculation");
+    ESPRESSO_CALI_MARK_END("Initial Force Calculation");
 #endif
   }
 
@@ -771,12 +870,13 @@ int System::System::integrate(int n_steps, int reuse_forces) {
 #endif
   // Integration loop
 #ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_LOOP_BEGIN(integration_loop, "Integration loop");
+  EspressoCaliLoop espresso_cali_integration_loop("Integration loop");
 #endif
   int integrated_steps = 0;
   for (int step = 0; step < n_steps; step++) {
 #ifdef ESPRESSO_CALIPER
-    CALI_CXX_MARK_LOOP_ITERATION(integration_loop, step);
+    auto espresso_cali_integration_iter =
+        espresso_cali_integration_loop.iteration(step);
 #endif
 
     // Ensure every local/ghost particle has a valid ParticleStore row before
@@ -859,11 +959,51 @@ int System::System::integrate(int n_steps, int reuse_forces) {
 #ifdef ESPRESSO_VIRTUAL_SITES_INERTIALESS_TRACERS
     if (thermostat->lb and
         (propagation.used_propagations & PropagationMode::TRANS_LB_TRACER)) {
+      // LB-tracer arm is ineligible for the split path; this block only runs
+      // on the blocking path where has_pending_ghost_reduce() is false.
+      assert(not cell_structure->has_pending_ghost_reduce() &&
+             "LB-tracer arm must be inactive on the split-phase path");
       lb_tracers_add_particle_force_to_fluid(*cell_structure, *box_geo,
                                              *local_geo, lb);
     }
 #endif
-    integrator_step_2(*cell_structure, propagation, *this, time_step);
+    if (cell_structure->has_pending_ghost_reduce()) {
+      // Split-phase path: interior half-kick runs while the ghost reduce is
+      // in flight; boundary half-kick runs after the reduce finishes.
+      // NPT, BD, steepest-descent, and LB-tracer are ineligible and never
+      // reach this branch (asserted inside integrator_step_2_filtered).
+      //
+      // RAII guard: if the interior pass throws (bad_alloc, Kokkos error, user
+      // callback), finish the pending reduce on unwind so MPI requests are not
+      // left dangling and the next start-assert does not fire.
+      // ESPResSo normally propagates errors via runtimeErrorMsg rather than
+      // exceptions, so this guard fires only in exceptional circumstances; the
+      // normal path calls finish() explicitly and the guard becomes a no-op.
+      struct ReduceGuard {
+        CellStructure *cs;
+        bool active;
+        ~ReduceGuard() {
+          if (active and cs->has_pending_ghost_reduce()) {
+            try {
+              cs->ghosts_reduce_forces_finish();
+            } catch (...) { // NOLINT(bugprone-empty-catch)
+              // The guard only runs during unwind from another exception;
+              // letting a second one escape this (implicitly noexcept)
+              // destructor would call std::terminate. Keep the original.
+            }
+          }
+        }
+      } guard{cell_structure.get(), true};
+
+      integrator_step_2_filtered(*cell_structure, propagation, time_step,
+                                 /*interior_pass=*/true);
+      cell_structure->ghosts_reduce_forces_finish();
+      guard.active = false; // normal path: finish already called above
+      integrator_step_2_filtered(*cell_structure, propagation, time_step,
+                                 /*interior_pass=*/false);
+    } else {
+      integrator_step_2(*cell_structure, propagation, *this, time_step);
+    }
     if (propagation.integ_switch == INTEG_METHOD_BD) {
       resort_particles_if_needed(*this);
     }
@@ -900,19 +1040,19 @@ int System::System::integrate(int n_steps, int reuse_forces) {
           propagation.lb_skipped_md_steps = 0;
           propagation.ek_skipped_md_steps = 0;
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_BEGIN("lb_propagation");
+          ESPRESSO_CALI_MARK_BEGIN("lb_propagation");
 #endif
           lb.propagate();
           lb.ghost_communication_vel();
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_END("lb_propagation");
+          ESPRESSO_CALI_MARK_END("lb_propagation");
 #endif
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_BEGIN("ek_propagation");
+          ESPRESSO_CALI_MARK_BEGIN("ek_propagation");
 #endif
           ek.propagate();
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_END("ek_propagation");
+          ESPRESSO_CALI_MARK_END("ek_propagation");
 #endif
         }
       } else if (lb_active) {
@@ -921,11 +1061,11 @@ int System::System::integrate(int n_steps, int reuse_forces) {
         if (propagation.lb_skipped_md_steps >= md_steps_per_lb_step) {
           propagation.lb_skipped_md_steps = 0;
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_BEGIN("lb_propagation");
+          ESPRESSO_CALI_MARK_BEGIN("lb_propagation");
 #endif
           lb.propagate();
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_END("lb_propagation");
+          ESPRESSO_CALI_MARK_END("lb_propagation");
 #endif
         }
       } else if (ek_active) {
@@ -934,11 +1074,11 @@ int System::System::integrate(int n_steps, int reuse_forces) {
         if (propagation.ek_skipped_md_steps >= md_steps_per_ek_step) {
           propagation.ek_skipped_md_steps = 0;
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_BEGIN("ek_propagation");
+          ESPRESSO_CALI_MARK_BEGIN("ek_propagation");
 #endif
           ek.propagate();
 #ifdef ESPRESSO_CALIPER
-          CALI_MARK_END("ek_propagation");
+          ESPRESSO_CALI_MARK_END("ek_propagation");
 #endif
         }
       }
@@ -951,14 +1091,14 @@ int System::System::integrate(int n_steps, int reuse_forces) {
       if (thermostat->lb and
           (propagation.used_propagations & PropagationMode::TRANS_LB_TRACER)) {
 #ifdef ESPRESSO_CALIPER
-        CALI_MARK_BEGIN("lb_tracers_propagation");
+        ESPRESSO_CALI_MARK_BEGIN("lb_tracers_propagation");
 #endif
         if (lb_active) {
           lb.ghost_communication_vel();
         }
         lb_tracers_propagate(*cell_structure, lb, time_step);
 #ifdef ESPRESSO_CALIPER
-        CALI_MARK_END("lb_tracers_propagation");
+        ESPRESSO_CALI_MARK_END("lb_tracers_propagation");
 #endif
       }
 #endif
@@ -989,9 +1129,7 @@ int System::System::integrate(int n_steps, int reuse_forces) {
     lb.ghost_communication();
   }
   lees_edwards->update_box_params(*box_geo, sim_time);
-#ifdef ESPRESSO_CALIPER
-  CALI_CXX_MARK_LOOP_END(integration_loop);
-#endif
+  // espresso_cali_integration_loop destructor ends the Caliper loop region.
 
 #ifdef ESPRESSO_VALGRIND
   CALLGRIND_STOP_INSTRUMENTATION;

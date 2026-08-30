@@ -37,6 +37,7 @@
 #include "config/config.hpp"
 #include "custom_verlet_list.hpp"
 #include "ghosts.hpp"
+#include "ghosts/HaloExchange.hpp"
 #include "particle_store/ParticleStore.hpp"
 #include "particle_store/StoreGenerationGuard.hpp"
 #include "system/Leaf.hpp"
@@ -99,7 +100,14 @@ enum DataPart : unsigned {
 #ifdef ESPRESSO_BOND_CONSTRAINT
   DATA_PART_RATTLE = 32u, /**< Particle::rattle */
 #endif
-  DATA_PART_BONDS = 64u /**< Particle::bonds */
+  DATA_PART_BONDS = 64u, /**< Particle::bonds */
+#ifdef ESPRESSO_ROTATION
+  DATA_PART_QUAT = 128u,   /**< orientation quaternion (pushed with position) */
+  DATA_PART_TORQUE = 256u, /**< torque (reduced with force) */
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  DATA_PART_DIPFLD = 512u, /**< Particle::dip_fld */
+#endif
 };
 } // namespace Cells
 
@@ -169,21 +177,21 @@ struct DeviceShortRangeBuffers;
 class CellStructure : public System::Leaf<CellStructure> {
 public:
   static constexpr auto vector_length = 1;
+  using memory_space = Kokkos::HostSpace;
+  using execution_space = Kokkos::DefaultHostExecutionSpace;
   struct AoSoA_pack;
   using ForceType =
-      Kokkos::View<double *[3], Kokkos::LayoutRight, Kokkos::HostSpace>;
-  using VirialType =
-      Kokkos::View<double[3], Kokkos::LayoutRight, Kokkos::HostSpace>;
+      Kokkos::View<double *[3], Kokkos::LayoutRight, memory_space>;
+  using VirialType = Kokkos::View<double[3], Kokkos::LayoutRight, memory_space>;
   using ScatterForce =
       Kokkos::Experimental::ScatterView<double *[3], Kokkos::LayoutRight,
-                                        Kokkos::DefaultHostExecutionSpace>;
+                                        memory_space>;
   using ScatterVirial =
       Kokkos::Experimental::ScatterView<double[3], Kokkos::LayoutRight,
-                                        Kokkos::DefaultHostExecutionSpace>;
-  using memory_space = Kokkos::HostSpace;
+                                        memory_space>;
   using ListAlgorithm = Cabana::HalfNeighborTag;
   using ListType =
-      CustomVerletList<Kokkos::HostSpace, ListAlgorithm, Cabana::VerletLayout2D,
+      CustomVerletList<memory_space, ListAlgorithm, Cabana::VerletLayout2D,
                        Cabana::TeamVectorOpTag>;
 
 private:
@@ -237,16 +245,31 @@ private:
   int m_cached_max_local_particle_id = 0;
   std::size_t m_num_local_particles_cached = 0;
   int m_max_id = 0;
-  std::unique_ptr<Kokkos::View<int *, Kokkos::HostSpace>> m_id_to_index;
+  std::unique_ptr<Kokkos::View<int *, memory_space>> m_id_to_index;
   std::unique_ptr<ForceType> m_local_force;
   std::optional<ScatterForce> m_scatter_force;
 #ifdef ESPRESSO_ROTATION
   std::unique_ptr<ForceType> m_local_torque;
   std::optional<ScatterForce> m_scatter_torque;
+  /**
+   * @brief True if a kernel may have written to @c m_scatter_torque since
+   * the last reset. Cleared by the resets; when false, the torque buffers
+   * are known to be all-zero and their O(n_threads * N) zeroing and
+   * reduction can be skipped.
+   */
+  bool m_torque_replicas_dirty = false;
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  std::unique_ptr<ForceType> m_local_dip_fld;
+  std::optional<ScatterForce> m_scatter_dip_fld;
+  /** @brief Same contract as @c m_torque_replicas_dirty, for dipole fields. */
+  bool m_dip_fld_replicas_dirty = false;
 #endif
 #ifdef ESPRESSO_NPT
   std::unique_ptr<VirialType> m_local_virial;
   std::optional<ScatterVirial> m_scatter_virial;
+  /** @brief Same contract as @c m_torque_replicas_dirty, for the virial. */
+  bool m_virial_replicas_dirty = false;
 #endif
   std::unique_ptr<LocalBondState> m_bond_state;
   std::unique_ptr<ListType> m_verlet_list_cabana;
@@ -257,6 +280,38 @@ private:
    *  KokkosHandle via the cell structure lifetime). */
   std::shared_ptr<DeviceShortRangeBuffers> m_device_sr_buffers;
 #endif
+  /**
+   * @brief Persistent per-neighbor buffer pool for ghost exchanges.
+   *
+   * Reused across calls to @ref ghosts_count / @ref ghosts_update /
+   * @ref ghosts_reduce_forces so that, after the first (warm-up) exchange,
+   * the underlying @c std::vector storage is retained and no per-step heap
+   * allocation occurs on the hot ghost-communication path.
+   *
+   * Mutable because the ghost methods are logically const with respect to
+   * particle data but mutate this scratch storage.
+   */
+  mutable GhostComm::ExchangeBuffers m_ghost_buffers;
+  /**
+   * @brief Scratch cell-pointer list for filtered particle iteration.
+   *
+   * Used by @c for_each_interior_particle and @c for_each_boundary_particle
+   * to hold the filtered subset of local cells.  Declared mutable so that the
+   * const-qualified iteration helpers can write to it; not thread-safe — the
+   * two filtered passes must not run concurrently (they never do: interior pass
+   * completes before the ghost-reduce finish, which precedes the boundary
+   * pass).
+   */
+  mutable std::vector<Cell *> m_filtered_cells_scratch;
+  /**
+   * @brief In-flight ghost force reduction started by
+   *        @ref ghosts_reduce_forces_start.
+   *
+   * When set, @ref ghosts_reduce_forces_finish must be called before any
+   * resort or decomposition change.  Stored as optional so that the
+   * unfinished state is detectable at runtime.
+   */
+  mutable std::optional<GhostComm::GhostExchange> m_pending_ghost_reduce;
   /** particle properties using individual Kokkos Views */
   std::unique_ptr<AoSoA_pack> m_aosoa;
   /** Pack-ordered list of the particles that participate in the pack /
@@ -492,8 +547,8 @@ public:
    * @brief Run a kernel on all local particles.
    * The kernel is assumed to be thread-safe.
    */
-  template <typename Callable>
-  void for_each_local_particle(Callable &&f, bool parallel = true) const {
+  void for_each_local_particle(ParticleCallback auto &&f,
+                               bool parallel = true) const {
     if (parallel and use_parallel_for_each_local_particle()) {
       parallel_for_each_particle_impl(decomposition().local_cells(), f);
       return;
@@ -529,11 +584,70 @@ public:
   }
 
   /**
+   * @brief Run a kernel on interior (non-boundary) local particles only.
+   *
+   * A cell is interior iff none of its neighbors is a ghost cell
+   * (@ref Cell::is_boundary returns false).  This filtered variant uses the
+   * same Kokkos parallelization as @ref for_each_local_particle — it builds
+   * a filtered cell list and delegates to @c parallel_for_each_particle_impl
+   * so that thread-level behavior is identical to the unfiltered path.
+   *
+   * The kernel is assumed to be thread-safe.
+   */
+  void for_each_interior_particle(ParticleCallback auto &&f) const {
+    auto const all_cells = decomposition().local_cells();
+    // Build a filtered list of interior cells (those that are not boundary).
+    m_filtered_cells_scratch.clear();
+    for (auto *c : all_cells) {
+      if (not c->is_boundary())
+        m_filtered_cells_scratch.push_back(c);
+    }
+    if (m_filtered_cells_scratch.empty())
+      return;
+    std::span<Cell *const> span{m_filtered_cells_scratch};
+    if (use_parallel_for_each_local_particle()) {
+      parallel_for_each_particle_impl(span, f);
+    } else {
+      for (auto *c : span)
+        for (auto &p : c->particles())
+          f(p);
+    }
+  }
+
+  /**
+   * @brief Run a kernel on boundary local particles only.
+   *
+   * Complement of @c for_each_interior_particle: visits particles in cells
+   * where @ref Cell::is_boundary returns true.  Uses the same Kokkos
+   * parallelization structure as @ref for_each_local_particle.
+   *
+   * The kernel is assumed to be thread-safe.
+   */
+  void for_each_boundary_particle(ParticleCallback auto &&f) const {
+    auto const all_cells = decomposition().local_cells();
+    // Build a filtered list of boundary cells.
+    m_filtered_cells_scratch.clear();
+    for (auto *c : all_cells) {
+      if (c->is_boundary())
+        m_filtered_cells_scratch.push_back(c);
+    }
+    if (m_filtered_cells_scratch.empty())
+      return;
+    std::span<Cell *const> span{m_filtered_cells_scratch};
+    if (use_parallel_for_each_local_particle()) {
+      parallel_for_each_particle_impl(span, f);
+    } else {
+      for (auto *c : span)
+        for (auto &p : c->particles())
+          f(p);
+    }
+  }
+
+  /**
    * @brief Run a kernel on all ghost particles.
    * The kernel is assumed to be thread-safe.
    */
-  template <typename Callable>
-  void for_each_ghost_particle(Callable &&f) const {
+  void for_each_ghost_particle(ParticleCallback auto &&f) const {
     for (auto &p : ghost_particles()) {
       f(p);
     }
@@ -553,9 +667,8 @@ private:
     return decomposition().particle_to_cell(p);
   }
 
-  template <typename Callable>
   inline void parallel_for_each_particle_impl(std::span<Cell *const> cells,
-                                              Callable &f) const;
+                                              ParticleCallback auto &&f) const;
 
   template <typename RowKernel>
   inline void parallel_for_each_local_row_impl(std::span<Cell *const> cells,
@@ -715,6 +828,44 @@ public:
    */
   void ghosts_reduce_forces();
 
+  /**
+   * @brief Begin the split-phase ghost force reduction (non-blocking).
+   *
+   * Posts all MPI sends/receives for the force reduction and returns
+   * immediately.  The caller must later call @ref ghosts_reduce_forces_finish.
+   * Asserts that no reduction is already in flight.
+   *
+   * Only meaningful when @c comm_cart.size() > 1.  At one rank the blocking
+   * @ref ghosts_reduce_forces must be used instead (the reduction is then a
+   * pure local copy with nothing to hide).
+   */
+  void ghosts_reduce_forces_start();
+
+  /**
+   * @brief Complete the split-phase ghost force reduction.
+   *
+   * Waits for all outstanding MPI requests and unpacks/reduces force data
+   * into real particles.  Clears the pending state afterwards.
+   *
+   * Must be called exactly once after @ref ghosts_reduce_forces_start.
+   */
+  void ghosts_reduce_forces_finish();
+
+  /** @brief True when a split-phase force reduction is in flight. */
+  bool has_pending_ghost_reduce() const {
+    return m_pending_ghost_reduce.has_value();
+  }
+
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  /** Add dipole fields from ghost particles to real particles. */
+  void ghosts_reduce_dipole_field();
+
+  /** Set dipole fields on all ghosts to zero. */
+  void ghosts_reset_dipole_fields() {
+    for_each_ghost_particle([](Particle &p) { p.dip_fld() = {}; });
+  }
+#endif
+
   /** Set forces and torques on all ghosts to zero. */
   void ghosts_reset_forces() {
     for_each_ghost_particle([](Particle &p) {
@@ -826,7 +977,6 @@ private:
     auto const bond_epoch_generation = m_particle_store.generation();
     for (const BondView bond : p.bonds()) {
       auto const partner_ids = bond.partner_ids();
-
       try {
         auto partners = resolve_bond_partners(partner_ids);
         boost::container::static_vector<Particle *, 4> partner_ptrs;
@@ -850,6 +1000,9 @@ private:
   /** @brief Set the particle decomposition, keeping the particles. */
   void set_particle_decomposition(
       std::unique_ptr<ParticleDecomposition> &&decomposition) {
+    assert(not m_pending_ghost_reduce.has_value() &&
+           "set_particle_decomposition: ghost force reduction is still in "
+           "flight — call ghosts_reduce_forces_finish() first");
     clear_particle_index();
 
     /* Copy every particle out of the OLD decomposition into staging-store rows
@@ -954,7 +1107,7 @@ private:
    * assignment match @ref Algorithm::link_cell (cell self-pairs [i, j>i] then
    * red-neighbour pairs).
    */
-  template <class Kernel> void link_cell(Kernel kernel) {
+  void link_cell(auto kernel) {
     auto const maybe_box = decomposition().minimum_image_distance();
     if (maybe_box) {
       link_cell_rows(detail::MinimalImageDistance{decomposition().box()},
@@ -1010,7 +1163,8 @@ public:
   void set_kokkos_handle(std::shared_ptr<KokkosHandle> handle);
   void rebuild_local_properties(double pair_cutoff);
   void reset_local_properties();
-  void reset_local_force_and_torque();
+  /** @brief Zero the local force view and its scatter replicas. */
+  void reset_local_force_buffers();
 
   auto &get_id_to_index() { return *m_id_to_index; }
   auto &get_local_force() { return *m_local_force; }
@@ -1018,13 +1172,28 @@ public:
 #ifdef ESPRESSO_ROTATION
   auto &get_local_torque() { return *m_local_torque; }
   auto get_scatter_torque() { return *m_scatter_torque; }
+  /** @brief Declare that a kernel scattering into the torque view is about
+   *  to run. Must be called before the torque replicas are reduced via the
+   *  force loop dispatch.
+   */
+  void mark_torque_replicas_dirty() { m_torque_replicas_dirty = true; }
+  auto torque_replicas_dirty() const { return m_torque_replicas_dirty; }
+#endif
+#ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
+  auto &get_local_dip_fld() { return *m_local_dip_fld; }
+  auto get_scatter_dip_fld() { return *m_scatter_dip_fld; }
+  void mark_dip_fld_replicas_dirty() { m_dip_fld_replicas_dirty = true; }
+  auto dip_fld_replicas_dirty() const { return m_dip_fld_replicas_dirty; }
 #endif
 #ifdef ESPRESSO_NPT
   auto &get_local_virial() { return *m_local_virial; }
   auto get_scatter_virial() { return *m_scatter_virial; }
+  void mark_virial_replicas_dirty() { m_virial_replicas_dirty = true; }
+  auto virial_replicas_dirty() const { return m_virial_replicas_dirty; }
 #endif
 
   auto &get_aosoa() { return *m_aosoa; }
+  auto const &get_aosoa() const { return *m_aosoa; }
   auto const &get_unique_particles() const { return m_unique_particles; }
   auto const &get_verlet_list_cabana() const { return *m_verlet_list_cabana; }
   /** @brief Generation of the Cabana Verlet list (bumps on each rebuild). */
@@ -1186,6 +1355,15 @@ public:
   }
 
 private:
+  /** @brief Zero the torque buffers iff a kernel scattered into them since
+   *  the last reset (no-op otherwise, and without the ROTATION feature).
+   */
+  void reset_torque_replicas_if_dirty();
+  /** @brief Same contract for the dipolar fields buffers. */
+  void reset_dip_fld_replicas_if_dirty();
+  /** @brief Same contract for the virial buffers (NPT feature). */
+  void reset_virial_replicas_if_dirty();
+
   /** Non-bonded pair loop with verlet lists.
    *
    * @param pair_kernel Kernel to apply

@@ -28,10 +28,8 @@
 
 #include <span>
 
-template <typename Callable>
-inline void
-CellStructure::parallel_for_each_particle_impl(std::span<Cell *const> cells,
-                                               Callable &f) const {
+inline void CellStructure::parallel_for_each_particle_impl(
+    std::span<Cell *const> cells, ParticleCallback auto &&f) const {
   auto &store = const_cast<ParticleStore &>(m_particle_store);
   if (cells.size() > 1) {
     Kokkos::parallel_for( // loop over cells
