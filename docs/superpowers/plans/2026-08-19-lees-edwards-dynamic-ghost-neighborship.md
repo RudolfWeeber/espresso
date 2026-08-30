@@ -12,7 +12,8 @@
 
 ## Global Constraints
 
-- Build with the `maxset` feature config (`maintainer/configs/maxset.hpp`) which enables `DPD` and `LENNARD_JONES`. Build with **CUDA off** for this work.
+- Every shell that builds, runs `pypresso`, `ctest`, or `mpiexec` must first `source /tikhome/weeber/es-env/bin/activate` (cmake 4.3.1, Python 3.12, numpy 2.2.6). The build dir is `build/` in the worktree.
+- Build with the `maxset` feature config (`maintainer/configs/maxset.hpp`) which enables `DPD` and `LENNARD_JONES`. Build with **CUDA off** for this work. Select the config with `-D ESPRESSO_MYCONFIG_FILE=<abs path to maxset.hpp>`.
 - Use `make -j8` (never `-j$(nproc)`).
 - Use `git -C <path> ...`, never `cd <path> && git ...`.
 - Run `maintainer/format` (clang-format / autopep8) on changed files before every commit, or CI will not start.
@@ -30,25 +31,40 @@
 **Files:**
 - Create: `build/` (out-of-source build dir in the worktree)
 
+- [ ] **Step 0: Activate the build environment**
+
+All build/test/pypresso commands in this plan run inside the `es-env`
+virtualenv (cmake 4.3.1, Python 3.12, numpy 2.2.6). At the start of every
+shell:
+```bash
+source /tikhome/weeber/es-env/bin/activate
+```
+
 - [ ] **Step 1: Configure**
 
-Run:
+The myconfig header is selected by the `ESPRESSO_MYCONFIG_FILE` cmake
+variable (the cmake script also honors the `ESPRESSO_MYCONFIG` *environment*
+variable; a `-D ESPRESSO_MYCONFIG=` cache variable is NOT read — do not use
+it). Run:
 ```bash
+source /tikhome/weeber/es-env/bin/activate
 cmake -S /tikhome/weeber/es/.claude/worktrees/comm_le \
       -B /tikhome/weeber/es/.claude/worktrees/comm_le/build \
       -D ESPRESSO_BUILD_WITH_CUDA=OFF \
       -D ESPRESSO_BUILD_WITH_CALIPER=OFF \
       -D CMAKE_BUILD_TYPE=Release \
       -D ESPRESSO_TEST_NP=4 \
-      -D CMAKE_CXX_FLAGS="-DMYCONFIG_H" \
-      -D ESPRESSO_MYCONFIG=/tikhome/weeber/es/.claude/worktrees/comm_le/maintainer/configs/maxset.hpp
+      -D ESPRESSO_MYCONFIG_FILE=/tikhome/weeber/es/.claude/worktrees/comm_le/maintainer/configs/maxset.hpp
 ```
-Expected: configuration succeeds, `DPD` and `LENNARD_JONES` reported enabled. (If the exact `-D ESPRESSO_MYCONFIG` flag name differs in this tree, run `cmake -LAH build | grep -i myconfig` to find the correct variable and re-run.)
+Expected: configuration succeeds. Verify the chosen config:
+`grep -i "ESPRESSO_MYCONFIG_FILE" build/CMakeCache.txt` should point at
+`maxset.hpp`.
 
 - [ ] **Step 2: Build**
 
 Run: `make -j8 -C /tikhome/weeber/es/.claude/worktrees/comm_le/build`
 Expected: `build/pypresso` exists and the build completes without error.
+(A cold build takes 15-30 min; do not interrupt it.)
 
 - [ ] **Step 3: Smoke-check pypresso**
 
