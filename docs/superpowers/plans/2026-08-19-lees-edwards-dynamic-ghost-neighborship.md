@@ -18,7 +18,7 @@
 - Run `maintainer/format` (clang-format / autopep8) on changed files before every commit, or CI will not start.
 - The LE offset stays in `LeesEdwardsBC::distance()`. Ghost positions carry only periodic-image shifts (multiples of the box length), never the LE offset.
 - Bitwise identity vs the old code is only defined where `fully_connected` runs, i.e. `node_grid[shear_dir] == 1`. Across different decompositions only the pair set (trace) and the average shear stress are expected to match.
-- The dynamic path engages only when `m_box.type() == BoxType::LEES_EDWARDS` **and** `fully_connected_boundary()` is unset. When `fully_connected_boundary()` is set, keep the exact current behavior (it is the bitwise reference during Phases 1-4). Non-LE behavior is unchanged.
+- Through Phases 1-4 the dynamic path engages only when `m_box.type() == BoxType::LEES_EDWARDS` **and** `fully_connected_boundary()` is unset; when it is set, the exact current behavior is kept as the bitwise reference. Phase 5 then removes `fully_connected_boundary` entirely (user decision 2026-08-30): the setter throws, the C++ implementation is deleted, and the gate simplifies to "active iff the box is Lees-Edwards". Non-LE behavior is unchanged throughout.
 - Notation used throughout: `sn = shear_plane_normal`, `sd = shear_direction`, `cs = cell_size[sd]`, `O = pos_offset`, `s = lround(O / cs)` (integer column shift), `frac = O - s*cs` (residual in `[-cs/2, cs/2]`).
 
 ---
@@ -956,50 +956,197 @@ Expected: trace pair sets identical; shear stress within `--stress_tol`. (Split-
 
 ---
 
-## Phase 5: Retire `fully_connected_boundary`
+## Phase 5: Remove `fully_connected_boundary`
 
-### Task 5.1: Make the dynamic path the default and deprecate the attribute
+**User decision (2026-08-30):** hard-remove `fully_connected_boundary`. The
+Python/script-interface setter no longer accepts it — passing a non-`None`
+`fully_connected_boundary` raises a clear error. The C++ implementation
+(member, ctor parameter, stencil/halo branches, getter) is deleted, and the
+`le_shear()` gate simplifies to "active iff the box is Lees-Edwards".
+
+**Ordering:** this phase runs only after Phase 4 is complete and its bitwise
+proof is recorded, because Phase 4 uses `fully_connected` as the reference.
+
+### Task 5.1: Make the script-interface setter reject `fully_connected_boundary`
 
 **Files:**
-- Modify: `src/script_interface/cell_system/CellSystem.cpp` (lines ~310-322: `fully_connected_boundary` handling) — emit a deprecation warning; keep it functional as the reference until removal is approved.
-- Modify: `doc/` and `CHANGELOG.md` — document that LE no longer needs `fully_connected_boundary` and that splitting along the shear direction is now supported.
-- Modify: `testsuite/python/regular_decomposition.py` — update any test that assumes `fully_connected` is required for LE.
+- Modify: `src/script_interface/cell_system/CellSystem.cpp` — the setter block (lines 308-322) and the read-only accessor (lines 142-155).
+- Modify: `src/python/espressomd/cell_system.py` — remove the `fully_connected_boundary` docstring entry (line ~110) and any argument plumbing in `set_regular_decomposition`.
 
 **Interfaces:**
 - Consumes: nothing new.
-- Produces: user-visible deprecation of `fully_connected_boundary`; the dynamic path is automatic when LE is active.
+- Produces: `set_regular_decomposition(fully_connected_boundary=<not None>)` raises `RuntimeError` with a message pointing to the automatic dynamic behavior; `system.cell_system.fully_connected_boundary` is removed.
 
-- [ ] **Step 1: Decide removal vs deprecation** — this is a user gate. Present to the user: (a) hard-remove the `fully_connected_boundary` API now, or (b) keep it as a deprecated alias for one release. Do not proceed until answered.
+- [ ] **Step 1: Write the failing test**
 
-- [ ] **Step 2: Implement the chosen option**
+Append to `testsuite/python/lees_edwards.py`:
+```python
+    def test_fully_connected_removed(self):
+        system = self.system
+        with self.assertRaisesRegex(Exception, "no longer"):
+            system.cell_system.set_regular_decomposition(
+                fully_connected_boundary={"boundary": "y", "direction": "x"})
+```
 
-For (b): in `CellSystem.cpp`, when `fully_connected_boundary` is passed, log a deprecation notice via the standard warning mechanism (search `grep -rn "deprecat" src/script_interface` for the pattern in use) and keep current behavior.
+- [ ] **Step 2: Run it, expect fail** (the old setter silently accepts the dict).
 
-- [ ] **Step 3: Update docs and changelog** with the concrete sentences: LE shear now uses an offset-driven dynamic halo; `fully_connected_boundary` is no longer required; the MPI grid may split along the shear direction.
+Run: `cd build && ctest -R "lees_edwards$" --output-on-failure`
+Expected: FAIL (no exception raised).
 
-- [ ] **Step 4: Run the full affected test set**
+- [ ] **Step 3: Make the setter throw**
+
+Replace the setter block in `CellSystem.cpp` (lines 308-322) with:
+```cpp
+  } else if (cs_type == CellStructureType::REGULAR) {
+    if (params.contains("fully_connected_boundary") and
+        not is_none(params.at("fully_connected_boundary"))) {
+      throw std::runtime_error(
+          "fully_connected_boundary is no longer supported: Lees-Edwards "
+          "shear now updates the ghost neighborships dynamically, so it is "
+          "not needed. Remove this argument.");
+    }
+    context()->parallel_try_catch([this]() {
+      m_cell_structure->set_regular_decomposition(
+          get_system().get_interaction_range());
+    });
+  } else {
+```
+Remove the read-only `"fully_connected_boundary"` accessor (lines 142-155) from the parameter list. Remove the docstring entry in `cell_system.py`.
+
+- [ ] **Step 4: Run it, expect pass** (build first).
+
+Run: `cd build && make -j8 && ctest -R "lees_edwards$" --output-on-failure`
+Expected: `test_fully_connected_removed` PASSES. (Other LE tests still reference the old API at this point; they are fixed in Task 5.3. Run just the new test in isolation: append `-- --gtest_filter` is not applicable; instead run `build/pypresso testsuite/python/lees_edwards.py LeesEdwards.test_fully_connected_removed`.)
+
+- [ ] **Step 5: Format and commit**
+
+```bash
+maintainer/format/clang-format.sh src/script_interface/cell_system/CellSystem.cpp
+maintainer/format/autopep8.sh src/python/espressomd/cell_system.py testsuite/python/lees_edwards.py
+git -C ... add src/script_interface/cell_system/CellSystem.cpp src/python/espressomd/cell_system.py testsuite/python/lees_edwards.py
+git -C ... commit -m "Reject fully_connected_boundary at the script interface"
+```
+
+### Task 5.2: Delete the C++ `fully_connected` implementation
+
+**Files:**
+- Modify: `src/core/cell_system/RegularDecomposition.hpp` — remove `m_fully_connected_boundary` (line 84), the `fully_connected_boundary()` getter (line 121), and the ctor's `fully_connected` parameter (line ~97).
+- Modify: `src/core/cell_system/RegularDecomposition.cpp` — remove the ctor param and initializer (lines 818-823); delete the fully-connected sanity-check block (lines 544-559), the `fcb_is_inner_connection` lambda (lines 508-521), the fully-connected stencil branch (lines 579-587) and its filter use (lines 609-614) in `init_cell_interactions()`; simplify `le_shear()` (Task 3.1) to gate on `m_box.type() == BoxType::LEES_EDWARDS` only.
+- Modify: `src/core/cell_system/CellStructure.hpp` (lines 829-833) and `CellStructure.cpp` (lines 692-697) — remove the `fully_connected_boundary` parameter from `set_regular_decomposition`.
+- Modify: `src/core/system/System.cpp` (lines 182-194) — drop the fully-connected preservation; call `set_regular_decomposition(get_interaction_range())` in both branches.
+
+**Interfaces:**
+- Consumes: `le_shear()` now activates purely on box type.
+- Produces: `set_regular_decomposition(double range)` (no second parameter).
+
+- [ ] **Step 1: Remove the getter's only remaining consumer**
+
+Confirm `le_shear()` is the only place still calling `fully_connected_boundary()` after Task 5.1:
+Run: `grep -rn "fully_connected_boundary()" src/core`
+Expected: only `RegularDecomposition.cpp` (the `le_shear()` gate). Edit `le_shear()`:
+```cpp
+  if (m_box.type() != BoxType::LEES_EDWARDS)
+    return r;
+```
+
+- [ ] **Step 2: Delete the members, params, and branches** listed in Files. After edits:
+Run: `grep -rn "fully_connected\|m_fully_connected\|fcb_is_inner_connection" src/core`
+Expected: no matches.
+
+- [ ] **Step 3: Build**
+
+Run: `cd build && make -j8`
+Expected: compiles (all call sites updated).
+
+- [ ] **Step 4: Run the core-affected tests**
+
+Run: `ctest -R "lees_edwards$|regular_decomposition|random_pairs|hybrid_decomposition" --output-on-failure`
+Expected: `lees_edwards` may still fail on old-API references in the test files (fixed in 5.3); `random_pairs`/`hybrid_decomposition` PASS. `regular_decomposition` is fixed in 5.3.
+
+- [ ] **Step 5: Format and commit**
+
+```bash
+maintainer/format/clang-format.sh src/core/cell_system/RegularDecomposition.hpp src/core/cell_system/RegularDecomposition.cpp src/core/cell_system/CellStructure.hpp src/core/cell_system/CellStructure.cpp src/core/system/System.cpp
+git -C ... add src/core/cell_system/ src/core/system/System.cpp
+git -C ... commit -m "Delete the fully_connected_boundary implementation"
+```
+
+### Task 5.3: Clean up tests and scripts that used `fully_connected`
+
+**Files:**
+- Modify: `testsuite/python/regular_decomposition.py` — remove/convert the fully-connected tests (the `non_bonded_loop_trace` fully-connected cases around lines 130-331).
+- Modify: `testsuite/python/lees_edwards.py` — remove the fully-connected loop in `test_zz_lj_pair_visibility` (lines 998-1013; the positive dynamic check from Task 4.2 replaces it).
+- Modify: `maintainer/benchmarks/dpd.py` — remove the `--fully_connected` option and `configure_decomposition`'s fully-connected branch (now always dynamic).
+- Modify: `maintainer/benchmarks/dpd_le_verify.py` — remove the `--fully_connected` option and its branch.
+
+**Interfaces:**
+- Consumes: nothing new.
+- Produces: a test/benchmark suite with no `fully_connected` references.
+
+- [ ] **Step 1: Convert `regular_decomposition.py`**
+
+For each test that set `fully_connected_boundary` to verify cross-boundary visibility, either delete it (if it duplicates the LE dynamic coverage now in `lees_edwards.py`) or convert it to assert the setter now raises. Keep the non-LE regular-decomposition coverage intact. After editing:
+Run: `grep -n "fully_connected" testsuite/python/regular_decomposition.py`
+Expected: no matches (or only an assert-raises test).
+
+- [ ] **Step 2: Simplify the benchmark scripts**
+
+In `dpd.py`, delete the `--fully_connected` argument and collapse `configure_decomposition` to the dynamic branch only. In `dpd_le_verify.py`, delete the `--fully_connected` argument and the `fully_connected` parameter of `build_system` (always dynamic). After editing:
+Run: `grep -rn "fully_connected" maintainer/benchmarks/`
+Expected: no matches.
+
+- [ ] **Step 3: Full affected test run on 1, 2, 4 ranks**
 
 Run:
 ```bash
 cd build && make -j8
 ctest -R "lees_edwards$|regular_decomposition|random_pairs|hybrid_decomposition" --output-on-failure
+mpiexec -n 2 build/pypresso testsuite/python/lees_edwards.py
+mpiexec -n 4 build/pypresso testsuite/python/lees_edwards.py
 ```
 Expected: all PASS.
+
+- [ ] **Step 4: Confirm no references remain anywhere**
+
+Run: `grep -rln "fully_connected\|fully connected" src/ testsuite/ maintainer/ doc/`
+Expected: no matches (docs handled in 5.4).
 
 - [ ] **Step 5: Format and commit**
 
 ```bash
-maintainer/format/clang-format.sh <changed .cpp>
-maintainer/format/autopep8.sh <changed .py>
-git -C ... add -A
-git -C ... commit -m "Deprecate fully_connected_boundary; dynamic Lees-Edwards halo is default"
+maintainer/format/autopep8.sh testsuite/python/regular_decomposition.py testsuite/python/lees_edwards.py maintainer/benchmarks/dpd.py maintainer/benchmarks/dpd_le_verify.py
+git -C ... add testsuite/python/ maintainer/benchmarks/
+git -C ... commit -m "Remove fully_connected usage from tests and benchmarks"
+```
+
+### Task 5.4: Documentation and changelog
+
+**Files:**
+- Modify: `doc/sphinx/` (search for the Lees-Edwards and cell-system sections) and `CHANGELOG.md`.
+
+- [ ] **Step 1: Find the doc references**
+
+Run: `grep -rln "fully_connected\|Lees-Edwards\|lees_edwards" doc/`
+Expected: a Lees-Edwards user-guide section and a cell-system section.
+
+- [ ] **Step 2: Update the prose** to state: Lees-Edwards shear updates ghost neighborships dynamically as the offset evolves; `fully_connected_boundary` has been removed and is no longer needed; the MPI node grid may now be split along the shear direction. Add a `CHANGELOG.md` entry under the current development version noting the removal and the new split-along-shear capability.
+
+- [ ] **Step 3: Verify docs build** (if a docs target exists):
+Run: `grep -rn "sphinx\|doc" build/CMakeCache.txt | head` then `make -C build sphinx` if available; otherwise skip.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git -C ... add doc/ CHANGELOG.md
+git -C ... commit -m "Document dynamic Lees-Edwards halo and fully_connected removal"
 ```
 
 ---
 
 ## Self-review notes
 
-- **Spec coverage:** halo sourcing (Task 3.4), narrow stencil (3.2), rebuild-on-resort (3.3), skin-sized window (`le_reach` uses `max_range`, which includes skin), LE-driven activation (3.1 gate), dpd.py (1.1), verification of all three criteria (4.1 bitwise, 4.2 trace, 4.3 stress), split-along-shear (3.4, 4.2, 4.3), retirement of `fully_connected` (Phase 5). All spec sections map to tasks.
+- **Spec coverage:** halo sourcing (Task 3.4), narrow stencil (3.2), rebuild-on-resort (3.3), skin-sized window (`le_reach` uses `max_range`, which includes skin), LE-driven activation (3.1 gate), dpd.py (1.1), verification of all three criteria (4.1 bitwise, 4.2 trace, 4.3 stress), split-along-shear (3.4, 4.2, 4.3), removal of `fully_connected` (Phase 5: 5.1 setter throws, 5.2 C++ deleted, 5.3 tests/scripts cleaned, 5.4 docs). All spec sections map to tasks.
+- **Removal ordering:** Phase 5 deletes the `fully_connected` reference path, so it must run strictly after Phase 4 records the bitwise proof. The plan states this in the Phase 5 header and Global Constraints.
 - **Bitwise-only-where-valid:** Task 4.1 compares dynamic vs fully_connected only for `node_grid[sd]==1` grids (serial, y-split), matching the spec's constraint. Split-along-shear is proven by trace + stress only (4.2, 4.3).
 - **Coexistence:** the dynamic path is gated off when `fully_connected_boundary()` is set (Global Constraints + 3.1), so the reference and the new path coexist through Phase 4.
 - **Signature consistency:** `le_shear()`/`LeShear` (3.1) is consumed by 3.2, 3.3, 3.4; `rebuild_topology()`/`m_le_shift_at_last_build` (3.3) are used only within the class; `run_dpd_pair_visibility` (2.2) is consumed by 3.2, 3.4, 4.2; `dump`/`compare` (2.1) by 4.1, 4.3.
