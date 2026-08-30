@@ -1010,16 +1010,15 @@ class LeesEdwards(ut.TestCase):
 
     @utx.skipIfMissingFeatures(["LENNARD_JONES"])
     def test_zz_lj_pair_visibility(self):
-        # check that regular decomposition without fully connected doesn't
-        # catch the particle
+        # check that regular decomposition with the dynamic sheared stencil
+        # (fully_connected_boundary=None) now correctly catches the particle
         system = self.system
         system.box_l = [10, 10, 10]
-        with self.assertRaises(AssertionError):
-            system.cell_system.set_regular_decomposition(
-                fully_connected_boundary=None)
-            self.assertIsNone(system.cell_system.fully_connected_boundary)
-            system.cell_system.node_grid = [1, self.n_nodes, 1]
-            self.run_lj_pair_visibility("x", "y")
+        system.cell_system.set_regular_decomposition(
+            fully_connected_boundary=None)
+        self.assertIsNone(system.cell_system.fully_connected_boundary)
+        system.cell_system.node_grid = [1, self.n_nodes, 1]
+        self.run_lj_pair_visibility("x", "y")
 
         for verlet in (False, True):
             for shear_direction, shear_plane_normal in self.direction_permutations:
@@ -1043,6 +1042,35 @@ class LeesEdwards(ut.TestCase):
                                  fully_connected_boundary)
                 self.run_lj_pair_visibility(
                     shear_direction, shear_plane_normal)
+
+    @utx.skipIfMissingFeatures(["DPD"])
+    def test_dpd_dynamic_serial_static(self):
+        """Serial dynamic sheared halo at a fixed nonzero offset (no
+        integration): isolates the neighbor stencil + serial wrap shift."""
+        if self.n_nodes > 1:
+            self.skipTest("serial (node_grid [1,1,1]) test")
+        system = self.system
+        system.part.clear()
+        system.box_l = [10, 10, 10]
+        cutoff = 1.5
+        system.cell_system.skin = 0.2
+        protocol = espressomd.lees_edwards.LinearShear(
+            shear_velocity=0., initial_pos_offset=3.7)
+        system.lees_edwards.set_boundary_conditions(
+            shear_direction="x", shear_plane_normal="y", protocol=protocol)
+        system.cell_system.node_grid = [1, 1, 1]
+        system.cell_system.set_regular_decomposition(
+            use_verlet_lists=True, fully_connected_boundary=None)
+        system.non_bonded_inter[0, 0].dpd.set_params(
+            weight_function=1, gamma=4.5, r_cut=cutoff,
+            trans_weight_function=1, trans_gamma=4.5, trans_r_cut=cutoff)
+        rng = np.random.default_rng(7)
+        system.part.add(pos=rng.random((60, 3)) * system.box_l,
+                        v=(rng.random((60, 3)) - 0.5))
+        system.thermostat.set_dpd(kT=1., seed=7)
+        system.integrator.run(0)
+        tests_common.check_non_bonded_loop_trace(
+            self, system, cutoff=cutoff + system.cell_system.skin)
 
 
 if __name__ == "__main__":

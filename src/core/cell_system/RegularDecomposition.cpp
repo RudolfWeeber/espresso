@@ -497,6 +497,13 @@ void RegularDecomposition::init_cell_interactions() {
   // MD cell index of lower halo layer on this MPI rank
   auto const global_size = hadamard_product(node_grid, cell_grid);
 
+  auto const le = le_shear();
+  auto const le_reach =
+      le.active
+          ? static_cast<int>(std::ceil(max_range()[le.sd] / cell_size[le.sd])) +
+                1
+          : 0;
+
   // is a cell at the system boundary in the given coord
   auto const at_boundary = [&global_size](int coord, Utils::Vector3i cell_idx) {
     return (cell_idx[coord] == 0 or cell_idx[coord] == global_size[coord] - 1);
@@ -586,6 +593,16 @@ void RegularDecomposition::init_cell_interactions() {
           }
         }
 
+        /* In the Lees-Edwards case, widen the stencil along the shear
+         * direction (sd) to ±le_reach, but only for cells at the shear-plane-
+         * normal (sn) boundary. The stencil is geometric (centered on the
+         * cell's own column); the source shift is applied separately below. */
+        if (le.active and at_boundary(le.sn, {m, n, o})) {
+          auto const cur = Utils::Vector3i{m, n, o}[le.sd];
+          lower_index[le.sd] = cur - le_reach;
+          upper_index[le.sd] = cur + le_reach;
+        }
+
         /* In non-periodic directions, the halo needs not
          * be considered. */
         for (auto i = 0u; i < 3u; i++) {
@@ -627,12 +644,29 @@ void RegularDecomposition::init_cell_interactions() {
          * physical cell across the periodic boundary */
         for (auto &neighbor : neighbors) {
           if (one_mpi_rank) {
+            /* For Lees-Edwards: when a neighbor crosses the shear-plane-normal
+             * (sn) boundary, shift its shear-direction (sd) component by the
+             * integer offset before the periodic fold, so the boundary cell
+             * connects to the sheared physical column. */
+            if (le.active and (neighbor[le.sn] == -1 or
+                               neighbor[le.sn] == cell_grid[le.sn])) {
+              int const sgn = (neighbor[le.sn] == -1) ? -1 : +1;
+              neighbor[le.sd] -= sgn * le.shift;
+            }
             for (auto coord : {0u, 1u, 2u}) {
               if (neighbor[coord] == -1) {
                 neighbor[coord] += cell_grid[coord];
               } else if (neighbor[coord] == cell_grid[coord]) {
                 neighbor[coord] -= cell_grid[coord];
               }
+            }
+            /* The widened LE stencil (le_reach > 1) and the integer shift may
+             * leave le.sd far outside [0, cell_grid), which the ±1 fold above
+             * cannot handle.  Apply a full modulo fold for sd. */
+            if (le.active) {
+              neighbor[le.sd] =
+                  ((neighbor[le.sd] % cell_grid[le.sd]) + cell_grid[le.sd]) %
+                  cell_grid[le.sd];
             }
           }
           auto const ind2 = folded_linear_index(neighbor);
