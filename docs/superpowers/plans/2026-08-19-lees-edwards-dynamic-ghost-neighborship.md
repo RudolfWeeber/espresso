@@ -360,15 +360,18 @@ This phase builds the tooling for the three proofs and validates it against the 
 **Files:**
 - Create: `maintainer/benchmarks/dpd_le_verify.py`
 
+**Design note (why this shape):** The physically meaningful, decomposition-invariant object is the set of **within-cutoff** interacting pairs on a **given configuration** — NOT the raw `non_bonded_loop_trace` set (which also contains beyond-cutoff *candidate* pairs whose count varies with the ghost/cell structure: e.g. `fully_connected` reports ~472k raw candidates serial vs ~603k on 2 ranks, while the within-cutoff subset is 28247 on both and equals a Python brute-force enumeration exactly). Two independently-integrated runs on different decompositions also **diverge** (DPD trajectories are not bitwise-equal across decompositions), so their late-time pair sets are not comparable. Therefore: (1) compare within-cutoff pair sets only on the **identical step-0 configuration** (deterministic IC ⇒ same config on every decomposition ⇒ this is the cross-decomposition criterion-2 proof); (2) self-check each run's within-cutoff trace against Python brute force (proves that decomposition finds exactly the interacting pairs); (3) compare shear stress **statistically** (z-score over the two time series), never with an arbitrary absolute tolerance.
+
 **Interfaces:**
-- Produces: a script invoked as `pypresso dpd_le_verify.py --mode {dump,compare} --tag NAME [--fully_connected] --node_grid a b c --steps N --out DIR`. In `dump` mode it builds a deterministic DPD+LE system, integrates `--steps`, and writes `DIR/NAME.npz` containing `pos` (final folded positions sorted by particle id), `trace` (sorted pair-set array), and `stress` (time-averaged shear-stress scalar). In `compare` mode it loads two `.npz` files and asserts bitwise pos equality, exact trace set equality, and stress closeness.
+- Produces: a script invoked as `pypresso dpd_le_verify.py {dump,compare} ...`. `dump` builds a deterministic DPD+LE system with a NONZERO `--initial_pos_offset` (so the shear boundary is offset at step 0), self-checks the within-cutoff trace against Python brute force on the step-0 config (asserts missing=0, extra=0), integrates `--steps` accumulating the shear stress each step, self-checks the trace again on the final config, and writes `DIR/NAME.npz` with: `pos` (final folded positions sorted by id), `pairs0` (sorted within-cutoff pair set on the step-0 config), `stress_mean`, `stress_std`, `stress_n`, `trace_ok` (both self-checks passed). `compare` loads two `.npz`, asserts both `trace_ok`, asserts equal `pairs0` sets (same-config cross-decomposition proof), optionally (`--bitwise`) asserts bitwise-equal final positions (same-decomposition only), and compares shear stress by z-score (`--stress_z`, default 5).
 
 - [ ] **Step 1: Write the script**
 
-Create `maintainer/benchmarks/dpd_le_verify.py` with the GPL header, then:
+Create `maintainer/benchmarks/dpd_le_verify.py` with the GPL header (copy the 18-line header verbatim from `maintainer/benchmarks/lj.py`), then:
 
 ```python
 import argparse
+import itertools
 import numpy as np
 import espressomd
 import espressomd.lees_edwards
@@ -382,7 +385,8 @@ KT = 1.0
 SEED = 42
 
 
-def build_system(node_grid, fully_connected, density, box_l, shear_velocity):
+def build_system(node_grid, fully_connected, density, box_l, shear_velocity,
+                 initial_pos_offset):
     system = espressomd.System(box_l=3 * [box_l])
     system.time_step = 0.01
     system.cell_system.skin = 0.4
@@ -408,21 +412,30 @@ def build_system(node_grid, fully_connected, density, box_l, shear_velocity):
         system.cell_system.set_regular_decomposition(
             use_verlet_lists=True, fully_connected_boundary=None)
     protocol = espressomd.lees_edwards.LinearShear(
-        initial_pos_offset=0.0, shear_velocity=shear_velocity)
+        initial_pos_offset=initial_pos_offset, shear_velocity=shear_velocity)
     system.lees_edwards.set_boundary_conditions(
         shear_direction=SHEAR_DIRECTION,
         shear_plane_normal=SHEAR_PLANE_NORMAL, protocol=protocol)
     return system
 
 
-def collect_trace(system):
-    pairs = system.cell_system.non_bonded_loop_trace()
-    rows = []
-    for id1, id2, _p1, _p2, vec21, _node in pairs:
-        a, b = (id1, id2) if id1 < id2 else (id2, id1)
-        rows.append((a, b))
-    rows.sort()
-    return np.array(rows, dtype=int)
+def trace_selfcheck(system):
+    """Within-cutoff pairs the core reports vs Python brute force on the SAME
+    folded positions. Returns (ok, within_cut_pairs, n_missing, n_extra)."""
+    system.integrator.run(0)
+    folded = {p.id: p.pos_folded for p in system.part.all()}
+    core = set()
+    for id1, id2, _p1, _p2, vec21, _node in \
+            system.cell_system.non_bonded_loop_trace():
+        if np.linalg.norm(vec21) <= DPD_R_CUT:
+            core.add((id1, id2) if id1 < id2 else (id2, id1))
+    py = set()
+    for i, j in itertools.combinations(folded.keys(), 2):
+        if np.linalg.norm(system.distance_vec(folded[i], folded[j])) <= DPD_R_CUT:
+            py.add((i, j) if i < j else (j, i))
+    missing = py - core
+    extra = core - py
+    return (len(missing) == 0 and len(extra) == 0), core, len(missing), len(extra)
 
 
 def shear_stress(system):
@@ -432,34 +445,54 @@ def shear_stress(system):
 
 def dump(args):
     system = build_system(args.node_grid, args.fully_connected, args.density,
-                          args.box_l, args.shear_velocity)
+                          args.box_l, args.shear_velocity,
+                          args.initial_pos_offset)
+    # Step-0 within-cutoff self-check on the identical deterministic config:
+    # this pair set is the cross-decomposition criterion-2 proof.
+    ok0, pairs0, miss0, extra0 = trace_selfcheck(system)
+    assert ok0, f"step-0 trace mismatch: missing={miss0} extra={extra0}"
     stresses = []
     for _ in range(args.steps):
         system.integrator.run(1)
         stresses.append(shear_stress(system))
+    # Per-run correctness on the (now diverged) final config.
+    okN, _pairsN, missN, extraN = trace_selfcheck(system)
+    stresses = np.array(stresses)
     p = system.part.all()
     order = np.argsort(p.id)
     np.savez(f"{args.out}/{args.tag}.npz",
              pos=np.copy(p.pos_folded)[order],
-             trace=collect_trace(system),
-             stress=np.mean(stresses))
-    print(f"dumped {args.tag}")
+             pairs0=np.array(sorted(pairs0), dtype=int),
+             stress_mean=float(np.mean(stresses)),
+             stress_std=float(np.std(stresses)),
+             stress_n=int(len(stresses)),
+             trace_ok=bool(ok0 and okN))
+    print(f"dumped {args.tag}: step0_within_cut={len(pairs0)} "
+          f"trace_ok={ok0 and okN} finalcheck(missing={missN},extra={extraN})")
 
 
 def compare(args):
     a = np.load(args.a, allow_pickle=True)
     b = np.load(args.b, allow_pickle=True)
-    ta = {tuple(r) for r in a["trace"]}
-    tb = {tuple(r) for r in b["trace"]}
-    assert ta == tb, f"trace mismatch: {ta ^ tb}"
-    print("trace: identical pair sets")
+    assert bool(a["trace_ok"]) and bool(b["trace_ok"]), \
+        "a per-run within-cutoff trace self-check failed"
+    print("trace: both runs find exactly the within-cutoff pairs (vs Python)")
+    sa = {tuple(r) for r in a["pairs0"]}
+    sb = {tuple(r) for r in b["pairs0"]}
+    assert sa == sb, \
+        f"step-0 within-cutoff pair sets differ: {len(sa ^ sb)} symmetric-diff"
+    print(f"trace: identical step-0 within-cutoff pair sets ({len(sa)})")
     if args.bitwise:
         assert np.array_equal(a["pos"], b["pos"]), "positions not bitwise equal"
         print("pos: bitwise identical")
-    ds = abs(float(a["stress"]) - float(b["stress"]))
-    print(f"shear stress: |{float(a['stress']):.6e} - "
-          f"{float(b['stress']):.6e}| = {ds:.3e}")
-    assert ds < args.stress_tol, "shear stress mismatch"
+    ma, mb = float(a["stress_mean"]), float(b["stress_mean"])
+    sea = float(a["stress_std"]) / max(1, int(a["stress_n"]))**0.5
+    seb = float(b["stress_std"]) / max(1, int(b["stress_n"]))**0.5
+    denom = (sea**2 + seb**2)**0.5
+    z = abs(ma - mb) / denom if denom > 0 else 0.0
+    print(f"shear stress: {ma:.6e} vs {mb:.6e}  z={z:.2f} "
+          f"(se_a={sea:.2e}, se_b={seb:.2e})")
+    assert z < args.stress_z, f"shear stress differs beyond {args.stress_z} sigma"
 
 
 p = argparse.ArgumentParser()
@@ -473,18 +506,21 @@ d.add_argument("--steps", type=int, default=200)
 d.add_argument("--density", type=float, default=2.0)
 d.add_argument("--box_l", type=float, default=10.0)
 d.add_argument("--shear_velocity", type=float, default=1.0)
+d.add_argument("--initial_pos_offset", type=float, default=1.3)
 d.set_defaults(func=dump)
 c = sub.add_parser("compare")
 c.add_argument("--a", required=True)
 c.add_argument("--b", required=True)
 c.add_argument("--bitwise", action="store_true")
-c.add_argument("--stress_tol", type=float, default=5e-2)
+c.add_argument("--stress_z", type=float, default=5.0)
 c.set_defaults(func=compare)
 args = p.parse_args()
 args.func(args)
 ```
 
-- [ ] **Step 2: Format** — run autopep8 on the file.
+Note the step-0 self-check uses a nonzero `--initial_pos_offset` so the shear boundary is genuinely offset at step 0. On the pre-refactor dynamic path (`fully_connected=None`) this self-check is EXPECTED to fail (the dynamic halo does not exist yet); the Phase-2 self-consistency check below therefore uses `--fully_connected`, which works today. After Phase 3, dynamic dumps pass their self-check.
+
+- [ ] **Step 2: Format** — run the autopep8 wrapper in `maintainer/format/` on the file.
 
 - [ ] **Step 3: Self-consistency check against the reference (serial vs y-split fully_connected)**
 
@@ -496,7 +532,7 @@ $B $V dump --tag ref1 --fully_connected --node_grid 1 1 1 --out /tmp
 mpiexec -n 2 $B $V dump --tag ref2 --fully_connected --node_grid 1 2 1 --out /tmp
 $B $V compare --a /tmp/ref1.npz --b /tmp/ref2.npz
 ```
-Expected: "trace: identical pair sets" and a small shear-stress difference (no `--bitwise`, since the decompositions differ). This proves the harness works on known-good code.
+Expected: "both runs find exactly the within-cutoff pairs", "identical step-0 within-cutoff pair sets (…)", and a shear-stress z-score below 5. This proves the harness works on known-good code. (`node_grid 1 2 1` splits along the shear-plane normal `y`, which `fully_connected` supports; do NOT use a grid that splits along the shear direction `x` here — `fully_connected` throws on that.)
 
 - [ ] **Step 4: Commit**
 
@@ -878,7 +914,7 @@ git -C ... commit -m "Offset-driven Lees-Edwards halo sourcing across the shear 
 - Use: `maintainer/benchmarks/dpd_le_verify.py` (Task 2.1)
 
 **Interfaces:**
-- Consumes: `dump`/`compare` modes; the `--bitwise` flag.
+- Consumes: `dump`/`compare` modes; the `--bitwise` flag; `compare` asserts equal step-0 within-cutoff pair sets, both `trace_ok`, bitwise positions, and a shear-stress z-score.
 
 - [ ] **Step 1: Serial, dynamic vs fully_connected**
 
@@ -889,7 +925,7 @@ $B $V dump --tag dyn_1rank --node_grid 1 1 1 --steps 200 --out /tmp
 $B $V dump --tag fc_1rank  --fully_connected --node_grid 1 1 1 --steps 200 --out /tmp
 $B $V compare --a /tmp/dyn_1rank.npz --b /tmp/fc_1rank.npz --bitwise
 ```
-Expected: "pos: bitwise identical", "trace: identical pair sets".
+Expected: "identical step-0 within-cutoff pair sets", "pos: bitwise identical", stress z-score below 5.
 
 - [ ] **Step 2: y-split (node_grid[sd]==1), dynamic vs fully_connected, per rank count**
 
@@ -980,7 +1016,7 @@ mpiexec -n 2 $B $V dump --tag st_x2 --node_grid 2 1 1 --steps 2000 --out /tmp
 $B $V compare --a /tmp/st_1rank.npz --b /tmp/st_y2.npz
 $B $V compare --a /tmp/st_1rank.npz --b /tmp/st_x2.npz
 ```
-Expected: trace pair sets identical; shear stress within `--stress_tol`. (Split-along-shear `st_x2` is the new capability; it has no fully_connected counterpart, so stress + trace are its proof.)
+Expected: both `trace_ok`; identical step-0 within-cutoff pair sets; shear-stress z-score below `--stress_z` (default 5). (Split-along-shear `st_x2` is the new capability; it has no fully_connected counterpart, so its step-0 within-cutoff self-check + stress agreement are its proof. All three dumps use the dynamic path — no `--fully_connected` — so each must pass its own step-0 self-check, which only holds after Phase 3.)
 
 - [ ] **Step 2: Record results** in the task log.
 
