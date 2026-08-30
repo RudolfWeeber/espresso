@@ -79,6 +79,13 @@ def configure_dpd(system):
 def configure_decomposition(system, args):
     """Select the cell decomposition for LE shear."""
     if args.fully_connected:
+        # Force all ranks onto the shear-plane-normal axis so that
+        # fully_connected_boundary can bridge the LE boundary.  The default
+        # (non-fully_connected) path lets ESPResSo pick the grid freely and
+        # exercises the dynamic sheared-halo algorithm.  Note: run-mode
+        # restarts must be launched with the same MPI rank count that was used
+        # during tune; benchmarks.verify_topology enforces this in
+        # run_from_state.
         normal_axis = {"x": 0, "y": 1, "z": 2}[SHEAR_PLANE_NORMAL]
         n_nodes = system.cell_system.get_state()["n_nodes"]
         system.cell_system.node_grid = [
@@ -128,6 +135,8 @@ def build_and_tune(system, args):
     benchmarks.minimize(system, 1 / system.time_step)
     system.integrator.set_vv()
     system.thermostat.set_dpd(kT=KT, seed=SEED)
+    configure_decomposition(system, args)
+    configure_lees_edwards(system, args)
 
     print("Equilibration")
     system.time_step /= 10.
@@ -137,8 +146,6 @@ def build_and_tune(system, args):
     print("Tune skin: {:.3f}".format(benchmarks.tune_skin_unless_fixed(
         system, args, min_skin, max_skin, tol=0.025, int_steps=200)))
 
-    configure_decomposition(system, args)
-    configure_lees_edwards(system, args)
     print("Equilibration")
     system.integrator.run(min(10 * steps, 60000))
 
