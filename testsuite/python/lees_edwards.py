@@ -976,6 +976,38 @@ class LeesEdwards(ut.TestCase):
             tests_common.verify_lj_forces(system, 1E-7)
         assert have_interacted
 
+    def run_dpd_pair_visibility(self, shear_direction, shear_plane_normal):
+        """
+        DPD particles under linear shear: verify the short-range loop finds
+        every within-cutoff pair across the shear boundary for a range of
+        offsets, using the pair trace.
+        """
+        assert espressomd.has_features(["DPD"])
+        system = self.system
+        system.part.clear()
+        system.time = 0
+        system.time_step = 0.05
+        cutoff = 1.5
+        protocol = espressomd.lees_edwards.LinearShear(
+            shear_velocity=2., initial_pos_offset=0.)
+        system.lees_edwards.set_boundary_conditions(
+            shear_direction=shear_direction,
+            shear_plane_normal=shear_plane_normal, protocol=protocol)
+        system.cell_system.skin = 0.2
+        system.non_bonded_inter[0, 0].dpd.set_params(
+            weight_function=1, gamma=4.5, r_cut=cutoff,
+            trans_weight_function=1, trans_gamma=4.5, trans_r_cut=cutoff)
+        rng = np.random.default_rng(42)
+        system.part.add(pos=rng.random((50, 3)) * system.box_l,
+                        v=(rng.random((50, 3)) - 0.5))
+        system.thermostat.set_dpd(kT=1., seed=42)
+        tests_common.check_non_bonded_loop_trace(
+            self, system, cutoff=cutoff + system.cell_system.skin)
+        for _ in range(50):
+            system.integrator.run(3)
+            tests_common.check_non_bonded_loop_trace(
+                self, system, cutoff=cutoff + system.cell_system.skin)
+
     @utx.skipIfMissingFeatures(["LENNARD_JONES"])
     def test_zz_lj_pair_visibility(self):
         # check that regular decomposition without fully connected doesn't
