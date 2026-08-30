@@ -1125,8 +1125,13 @@ void charge_assign(elc_data const &elc, CoulombP3M &solver, auto const &cs) {
   auto const n_part = cs.count_local_particles();
 
   for (std::size_t p_index = 0; p_index < n_part; ++p_index) {
-    auto const p_q = aosoa.charge(p_index);
-    auto const p_pos = aosoa.get_span_at(aosoa.position, p_index);
+    // The pack-owned pair_charge column is pack-indexed (refreshed this step:
+    // a coulomb solver is active whenever ELC runs). Position aliases the
+    // ParticleStore column and is read by *store row*; the component-major
+    // layout rules out a contiguous 3-element span, so gather the vector
+    // through the strided accessor.
+    auto const p_q = aosoa.pair_charge(p_index);
+    auto const p_pos = aosoa.get_vector_at(aosoa.position, aosoa.row(p_index));
     if (include_neutral_particles or p_q != 0.) {
       // assign real charges
       if (protocol == ChargeProtocol::BOTH or
@@ -1159,9 +1164,9 @@ void modify_p3m_sums(elc_data const &elc, CoulombP3M &solver, auto const &cs) {
   auto local_q2 = 0.0;
   auto local_q = 0.0;
   for (std::size_t p_index = 0; p_index < n_part; ++p_index) {
-    auto const p_q = aosoa.charge(p_index);
+    auto const p_q = aosoa.pair_charge(p_index);
     if (p_q != 0.) {
-      auto const p_z = aosoa.position(p_index, 2ul);
+      auto const p_z = aosoa.position(aosoa.row(p_index), 2ul);
 
       if (protocol == ChargeProtocol::BOTH or
           protocol == ChargeProtocol::REAL) {

@@ -1218,6 +1218,21 @@ void CellStructure::resort_particles(bool global_flag, bool commit) {
   // there).
   clear_particle_index();
 
+  // Drop every ghost row. A resort invalidates the ghost layer wholesale, and
+  // the id -> store-row map is rebuilt below from ALL live rows, ghosts
+  // included (locals win, but an id owned by nobody local still resolves to its
+  // deduped ghost row -- that is the map's documented contract). Carrying stale
+  // ghosts into that rebuild would resurrect ids the resort just removed: a
+  // caller that treats "resolves" as "exists" (e.g. the ParticleHandle
+  // creation guard) would then refuse to re-create a freed id on the rank that
+  // still held its ghost. This mirrors invalidate_ghosts() in the AoS layout,
+  // which drops ghost entries from the index at the same point. The ghosts are
+  // re-established by the very next ghosts_count + ghost update.
+  for (auto *cell : m_decomposition->ghost_cells()) {
+    cell->set_store(m_particle_store);
+    CellParticleStorage::resize_ghost_storage(*cell, 0ul);
+  }
+
   std::vector<ParticleChange> diff;
 
   // Ensure every cell knows the store before the decomposition mutates cell

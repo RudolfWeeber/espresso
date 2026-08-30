@@ -855,7 +855,9 @@ BOOST_FIXTURE_TEST_CASE(id_to_row_resolution, ParticleFactory) {
   }
 
   // After remove: removing a particle leaves NO readable stale entry
-  // (remove_particle eagerly invalidates the id->store-row entry).
+  // (remove_particle eagerly invalidates the id->store-row entry, and the
+  // resort it triggers drops the ghost layer before rebuilding the map, so no
+  // stale ghost copy of the removed id can resurrect it either).
   {
     auto const owns_b_before = cs.get_local_particle(pid_b).has_value() and
                                not cs.get_local_particle(pid_b)->is_ghost();

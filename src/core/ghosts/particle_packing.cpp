@@ -326,9 +326,16 @@ std::size_t calc_transmit_size(std::span<Cell *const> cells,
   if (data_parts & GHOSTTRANS_PARTNUM)
     return sizeof(unsigned int) * cells.size();
 
-  auto const n_part = std::accumulate(
-      cells.begin(), cells.end(), std::size_t{0},
-      [](std::size_t sum, auto const *cell) { return sum + cell->size(); });
+  // Count the rows the pack/unpack loops actually visit: @ref Cell::particles
+  // hands out views over the COMMITTED rows only (skipping pending-removed
+  // ones), whereas @ref Cell::size also counts staged, not-yet-committed
+  // particles -- which is what the PARTNUM bootstrap above must report, but
+  // would oversize the data buffer here.
+  auto const n_part =
+      std::accumulate(cells.begin(), cells.end(), std::size_t{0},
+                      [](std::size_t sum, auto const *cell) {
+                        return sum + cell->rows().size();
+                      });
 
   return n_part * calc_transmit_size(box_geo, data_parts);
 }
@@ -466,7 +473,8 @@ void local_cell_copy(Cell &src, Cell &dst, Utils::Vector3d const &shift,
     return;
   }
 
-  assert(src.size() == dst.size());
+  // Committed rows only: the lockstep loop below walks Cell::particles.
+  assert(src.rows().size() == dst.rows().size());
 
   CommBuf buffer;
   buffer.resize(calc_transmit_size(box_geo, data_parts));

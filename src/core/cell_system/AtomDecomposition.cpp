@@ -143,6 +143,13 @@ void AtomDecomposition::resort(bool global_flag,
   auto const row_count = local().count();
   for (std::size_t index = 0u; index < row_count; ++index) {
     auto const live_row = static_cast<int>(row_offset + index);
+    // A pending-removed row is dead; never migrate it (see the same guard in
+    // RegularDecomposition::resort). Ownership here is id-based and a removal
+    // does not change the id, so this cannot currently fire -- it keeps the
+    // three decompositions' resort loops on the same rule.
+    if (store.is_pending_removal(live_row)) {
+      continue;
+    }
     auto const id = store.id(live_row);
     auto const target_node = id_to_rank(id);
     if (target_node != m_comm.rank()) {

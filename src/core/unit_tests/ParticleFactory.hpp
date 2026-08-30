@@ -88,6 +88,18 @@ struct ParticleFactory {
     }
   }
 
+  /** Overload for the integer-column proxy (image box). */
+  void set_particle_property(int p_id,
+                             IntegerVectorReference (Particle::*getter)(),
+                             Utils::Vector3i const &value) const {
+    auto &system = System::get_system();
+    system.cell_structure->ensure_particle_store_synchronized();
+    auto p = system.cell_structure->get_local_particle(p_id);
+    if (p) {
+      ((*p).*getter)() = value;
+    }
+  }
+
   template <typename T>
   auto get_particle_property(int p_id, T &(Particle::*getter)()) const {
     auto &system = System::get_system();

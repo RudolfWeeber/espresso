@@ -275,6 +275,17 @@ void RegularDecomposition::resort(bool global,
     auto const count = c->count();
     for (std::size_t index = 0u; index < count; ++index) {
       auto const live_row = static_cast<int>(offset + index);
+      // A row already marked pending-removed is DEAD: it must never be folded,
+      // staged or migrated. Skipping it here is load-bearing, not an
+      // optimization. A removal can now be followed by a resort while the row
+      // is still pending (remove_particle() ends with one), and if the particle
+      // had moved out of this rank's domain since the last resort,
+      // particle_to_cell() would return nullptr or another cell for it -- the
+      // migrate branches below would then ship the corpse to its "new" owner,
+      // which re-inserts it as a live particle and silently undoes the removal.
+      if (c->store().is_pending_removal(live_row)) {
+        continue;
+      }
       view.attach_to_store(c->store(), live_row);
       fold_and_reset(view, m_box);
 
@@ -282,12 +293,6 @@ void RegularDecomposition::resort(bool global,
 
       /* Particle is in place */
       if (target_cell == c) {
-        // A pending-removed row reaching here is safe ONLY because removal
-        // never moves a particle: fold_and_reset leaves it in the same cell,
-        // so particle_to_cell returns c, and we continue without re-staging.
-        // The rebuild then drops the pending row. If removal could ever move
-        // a particle (changing particle_to_cell), a pending row could enter
-        // the migrate/stage branch below and corrupt survivors.
         continue;
       }
 
