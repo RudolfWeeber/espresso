@@ -17,6 +17,7 @@
 - Use `make -j8` (never `-j$(nproc)`).
 - Use `git -C <path> ...`, never `cd <path> && git ...`.
 - Run `maintainer/format` (clang-format / autopep8) on changed files before every commit, or CI will not start.
+- Running python tests: two equivalent routes. (a) Fast iteration against the source tree — `mpiexec -n <N> build/pypresso testsuite/python/<file>.py` — always uses current sources and finds the helper modules (they sit next to the test in source). (b) CI-equivalent — after editing any registered test file or adding one, run `cmake` (auto re-runs on next `make`) and `make python_test_data`, then `ctest -R "<name>$"`. The build copies test files at configure time, so a plain edit-then-ctest can run a stale copy; prefer route (a) while iterating.
 - The LE offset stays in `LeesEdwardsBC::distance()`. Ghost positions carry only periodic-image shifts (multiples of the box length), never the LE offset.
 - Bitwise identity vs the old code is only defined where `fully_connected` runs, i.e. `node_grid[shear_dir] == 1`. Across different decompositions only the pair set (trace) and the average shear stress are expected to match.
 - Through Phases 1-4 the dynamic path engages only when `m_box.type() == BoxType::LEES_EDWARDS` **and** `fully_connected_boundary()` is unset; when it is set, the exact current behavior is kept as the bitwise reference. Phase 5 then removes `fully_connected_boundary` entirely (user decision 2026-08-30): the setter throws, the C++ implementation is deleted, and the gate simplifies to "active iff the box is Lees-Edwards". Non-LE behavior is unchanged throughout.
@@ -65,6 +66,19 @@ Expected: configuration succeeds. Verify the chosen config:
 Run: `make -j8 -C /tikhome/weeber/es/.claude/worktrees/comm_le/build`
 Expected: `build/pypresso` exists and the build completes without error.
 (A cold build takes 15-30 min; do not interrupt it.)
+
+- [ ] **Step 2b: Populate the python test tree**
+
+`make -j8` builds `pypresso` but does NOT copy the test-helper modules
+(`tests_common.py`, `unittest_decorators.py`, `thermostats_common.py`,
+`data/`) into `build/testsuite/python/`. Without them `ctest` fails with
+`ModuleNotFoundError: No module named 'unittest_decorators'`. Build the
+data target:
+```bash
+make -C /tikhome/weeber/es/.claude/worktrees/comm_le/build python_test_data
+```
+Expected: `build/testsuite/python/unittest_decorators.py` and
+`tests_common.py` now exist.
 
 - [ ] **Step 3: Smoke-check pypresso**
 
