@@ -940,3 +940,17 @@ RegularDecomposition::RegularDecomposition(
   // HaloExchange.cpp).
 #endif
 }
+
+RegularDecomposition::LeShear RegularDecomposition::le_shear() const {
+  LeShear r;
+  if (m_box.type() != BoxType::LEES_EDWARDS or fully_connected_boundary())
+    return r;
+  auto const &le = m_box.lees_edwards_bc();
+  r.active = true;
+  r.sn = le.shear_plane_normal;
+  r.sd = le.shear_direction;
+  auto const cs = cell_size[r.sd];
+  r.shift = static_cast<int>(std::lround(le.pos_offset / cs));
+  r.frac = le.pos_offset - static_cast<double>(r.shift) * cs;
+  return r;
+}

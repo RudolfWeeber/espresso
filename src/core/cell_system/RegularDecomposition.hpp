@@ -219,6 +219,23 @@ private:
    */
   GhostComm::HaloPlan make_halo_plan();
 
+  /** @brief Lees-Edwards shear geometry parameters for the current time step.
+   *
+   *  @c active is true iff the box is of type @c BoxType::LEES_EDWARDS and
+   *  @c fully_connected_boundary() is unset. @c sn and @c sd are the
+   *  shear-plane-normal and shear-direction coordinates. @c shift is the
+   *  integer column shift @c lround(pos_offset / cell_size[sd]). @c frac is
+   *  the fractional residual @c pos_offset - shift * cell_size[sd].
+   */
+  struct LeShear {
+    bool active = false;
+    unsigned sn = 0u;
+    unsigned sd = 0u;
+    int shift = 0;
+    double frac = 0.;
+  };
+  LeShear le_shear() const;
+
   /** Maximal number of cells per node. In order to avoid memory
    *  problems due to the cell grid, one has to specify the maximal
    *  number of cells. If the number of cells is larger
