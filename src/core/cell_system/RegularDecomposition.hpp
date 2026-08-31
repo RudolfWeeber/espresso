@@ -81,7 +81,6 @@ struct RegularDecomposition : public ParticleDecomposition {
   boost::mpi::communicator m_comm;
   BoxGeometry const &m_box;
   LocalBox m_local_box;
-  std::optional<std::pair<int, int>> m_fully_connected_boundary = {};
   std::vector<Cell> cells;
   std::vector<Cell *> m_local_cells;
   std::vector<Cell *> m_ghost_cells;
@@ -94,8 +93,7 @@ struct RegularDecomposition : public ParticleDecomposition {
 
 public:
   RegularDecomposition(boost::mpi::communicator comm, double range,
-                       BoxGeometry const &box_geo, LocalBox const &local_geo,
-                       std::optional<std::pair<int, int>> fully_connected);
+                       BoxGeometry const &box_geo, LocalBox const &local_geo);
 
   GhostComm::HaloPlan const *halo_plan() const override { return &m_halo_plan; }
 
@@ -117,8 +115,6 @@ public:
   void resort(bool global, std::vector<ParticleChange> &diff) override;
   Utils::Vector3d max_cutoff() const override;
   Utils::Vector3d max_range() const override;
-
-  auto fully_connected_boundary() const { return m_fully_connected_boundary; }
 
   std::optional<BoxGeometry> minimum_image_distance() const override {
     return {m_box};
@@ -221,11 +217,11 @@ private:
 
   /** @brief Lees-Edwards shear geometry parameters for the current time step.
    *
-   *  @c active is true iff the box is of type @c BoxType::LEES_EDWARDS and
-   *  @c fully_connected_boundary() is unset. @c sn and @c sd are the
-   *  shear-plane-normal and shear-direction coordinates. @c shift is the
-   *  integer column shift @c lround(pos_offset / cell_size[sd]). @c frac is
-   *  the fractional residual @c pos_offset - shift * cell_size[sd].
+   *  @c active is true iff the box is of type @c BoxType::LEES_EDWARDS.
+   *  @c sn and @c sd are the shear-plane-normal and shear-direction
+   *  coordinates. @c shift is the integer column shift
+   *  @c lround(pos_offset / cell_size[sd]). @c frac is the fractional
+   *  residual @c pos_offset - shift * cell_size[sd].
    */
   struct LeShear {
     bool active = false;

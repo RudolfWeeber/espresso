@@ -181,17 +181,7 @@ void System::set_min_global_cut(double value) {
 
 void System::set_cell_structure_topology(CellStructureType topology) {
   if (topology == CellStructureType::REGULAR) {
-    if (cell_structure->decomposition_type() == CellStructureType::REGULAR) {
-      // get fully connected info from existing regular decomposition
-      auto &old_regular_decomposition =
-          dynamic_cast<RegularDecomposition const &>(
-              std::as_const(*cell_structure).decomposition());
-      cell_structure->set_regular_decomposition(
-          get_interaction_range(),
-          old_regular_decomposition.fully_connected_boundary());
-    } else { // prev. decomposition is not a regular decomposition
-      cell_structure->set_regular_decomposition(get_interaction_range(), {});
-    }
+    cell_structure->set_regular_decomposition(get_interaction_range());
   } else if (topology == CellStructureType::NSQUARE) {
     cell_structure->set_atom_decomposition();
   } else {

@@ -301,7 +301,7 @@ void CellSystem::initialize(CellStructureType const &cs_type,
     }
     context()->parallel_try_catch([this]() {
       m_cell_structure->set_regular_decomposition(
-          get_system().get_interaction_range(), std::nullopt);
+          get_system().get_interaction_range());
     });
   } else {
     system.set_cell_structure_topology(cs_type);

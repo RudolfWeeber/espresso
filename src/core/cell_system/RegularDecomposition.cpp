@@ -514,24 +514,6 @@ void RegularDecomposition::init_cell_interactions() {
     return (cell_idx[coord] == 0 or cell_idx[coord] == global_size[coord] - 1);
   };
 
-  // For the fully connected feature (cells that don't share at least a corner)
-  // only apply if one cell is a ghost cell (i.e. connections across the
-  // periodic boundary.
-  auto const fcb_is_inner_connection = [&global_size, this](Utils::Vector3i a,
-                                                            Utils::Vector3i b) {
-    if (fully_connected_boundary()) {
-      auto const [fc_normal, fc_dir] = *fully_connected_boundary();
-      auto const involves_ghost_cell =
-          (a[fc_normal] == -1 or a[fc_normal] == global_size[fc_normal] or
-           b[fc_normal] == -1 or b[fc_normal] == global_size[fc_normal]);
-      if (not involves_ghost_cell) {
-        // check if cells do not share at least a corner
-        return std::abs((a - b)[fc_dir]) > 1;
-      }
-    }
-    return false;
-  };
-
   /* Translate a node local index (relative to the origin of the local grid)
    * to a global index. */
   auto global_index =
@@ -552,24 +534,6 @@ void RegularDecomposition::init_cell_interactions() {
     return (global_index - global_halo_offset);
   };
 
-  // sanity checks
-  if (fully_connected_boundary()) {
-    auto const [fc_normal, fc_dir] = *fully_connected_boundary();
-    if (fc_normal == fc_dir) {
-      throw std::domain_error("fully_connected_boundary normal and connection "
-                              "coordinates need to differ.");
-    }
-    if (node_grid[fc_dir] != 1) {
-      throw std::runtime_error(
-          "The MPI nodegrid must be 1 in the fully connected direction.");
-    }
-    if (not m_box.periodic(fc_normal)) {
-      throw std::runtime_error(
-          "The fully connected boundary requires periodicity in the "
-          "boundary normal direction.");
-    }
-  }
-
   /* We only consider local cells (e.g. not halo cells), which
    * span the range [(1,1,1), cell_grid) in local coordinates. */
   auto const start = global_index(Utils::Vector3i{1, 1, 1});
@@ -584,19 +548,6 @@ void RegularDecomposition::init_cell_interactions() {
         /* next-nearest neighbors in every direction */
         Utils::Vector3i lower_index = {m - 1, n - 1, o - 1};
         Utils::Vector3i upper_index = {m + 1, n + 1, o + 1};
-
-        /* In the fully connected case, we consider all cells
-        * in the direction as neighbors, not only the nearest ones.
-        //         */
-        if (fully_connected_boundary()) {
-          auto const [fc_boundary, fc_direction] = *fully_connected_boundary();
-
-          // Fully connected is only needed at the box surface
-          if (at_boundary(fc_boundary, {m, n, o})) {
-            lower_index[fc_direction] = -1;
-            upper_index[fc_direction] = global_size[fc_direction];
-          }
-        }
 
         /* In non-periodic directions, the halo needs not
          * be considered. */
@@ -618,12 +569,6 @@ void RegularDecomposition::init_cell_interactions() {
         for (int p = lower_index[2]; p <= upper_index[2]; p++)
           for (int q = lower_index[1]; q <= upper_index[1]; q++)
             for (int r = lower_index[0]; r <= upper_index[0]; r++) {
-              if (fully_connected_boundary()) {
-                // Avoid fully connecting the boundary layer and the
-                // next INNER layer
-                if (fcb_is_inner_connection({m, n, o}, {r, q, p}))
-                  continue;
-              }
               neighbors.insert(Utils::Vector3i{r, q, p});
             }
 
@@ -977,12 +922,11 @@ void RegularDecomposition::rebuild_topology() {
   m_le_shift_at_last_build = le_shear().shift;
 }
 
-RegularDecomposition::RegularDecomposition(
-    boost::mpi::communicator comm, double range, BoxGeometry const &box_geo,
-    LocalBox const &local_geo,
-    std::optional<std::pair<int, int>> fully_connected)
-    : m_comm(std::move(comm)), m_box(box_geo), m_local_box(local_geo),
-      m_fully_connected_boundary(std::move(fully_connected)) {
+RegularDecomposition::RegularDecomposition(boost::mpi::communicator comm,
+                                           double range,
+                                           BoxGeometry const &box_geo,
+                                           LocalBox const &local_geo)
+    : m_comm(std::move(comm)), m_box(box_geo), m_local_box(local_geo) {
 
   /* set up new regular decomposition cell structure */
   create_cell_grid(range);
@@ -992,7 +936,7 @@ RegularDecomposition::RegularDecomposition(
 
 RegularDecomposition::LeShear RegularDecomposition::le_shear() const {
   LeShear r;
-  if (m_box.type() != BoxType::LEES_EDWARDS or fully_connected_boundary())
+  if (m_box.type() != BoxType::LEES_EDWARDS)
     return r;
   auto const &le = m_box.lees_edwards_bc();
   r.sd = le.shear_direction;

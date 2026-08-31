@@ -826,11 +826,8 @@ public:
    * @brief Set the particle decomposition to @ref RegularDecomposition.
    *
    * @param range Interaction range.
-   * @param fully_connected_boundary neighbor cell directions for Lees-Edwards.
    */
-  void set_regular_decomposition(
-      double range,
-      std::optional<std::pair<int, int>> fully_connected_boundary);
+  void set_regular_decomposition(double range);
 
   /**
    * @brief Set the particle decomposition to @ref HybridDecomposition.
