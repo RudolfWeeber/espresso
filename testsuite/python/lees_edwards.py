@@ -1044,11 +1044,7 @@ class LeesEdwards(ut.TestCase):
                     shear_direction, shear_plane_normal)
 
     @utx.skipIfMissingFeatures(["DPD"])
-    def test_dpd_dynamic_serial_static(self):
-        """Serial dynamic sheared halo at a fixed nonzero offset (no
-        integration): isolates the neighbor stencil + serial wrap shift."""
-        if self.n_nodes > 1:
-            self.skipTest("serial (node_grid [1,1,1]) test")
+    def _dpd_static_visibility(self, node_grid):
         system = self.system
         system.part.clear()
         system.box_l = [10, 10, 10]
@@ -1058,7 +1054,7 @@ class LeesEdwards(ut.TestCase):
             shear_velocity=0., initial_pos_offset=3.7)
         system.lees_edwards.set_boundary_conditions(
             shear_direction="x", shear_plane_normal="y", protocol=protocol)
-        system.cell_system.node_grid = [1, 1, 1]
+        system.cell_system.node_grid = node_grid
         system.cell_system.set_regular_decomposition(
             use_verlet_lists=True, fully_connected_boundary=None)
         system.non_bonded_inter[0, 0].dpd.set_params(
@@ -1071,6 +1067,21 @@ class LeesEdwards(ut.TestCase):
         system.integrator.run(0)
         tests_common.check_non_bonded_loop_trace(
             self, system, cutoff=cutoff + system.cell_system.skin)
+
+    @utx.skipIfMissingFeatures(["DPD"])
+    def test_dpd_dynamic_serial_static(self):
+        """Serial dynamic sheared halo at a fixed nonzero offset."""
+        if self.n_nodes > 1:
+            self.skipTest("serial (node_grid [1,1,1]) test")
+        self._dpd_static_visibility([1, 1, 1])
+
+    @utx.skipIfMissingFeatures(["DPD"])
+    def test_dpd_dynamic_split_normal_static(self):
+        """Dynamic sheared halo split along the shear-plane normal, fixed
+        offset. node_grid[sd]==1 keeps the shear axis local."""
+        if self.n_nodes < 2:
+            self.skipTest("needs >= 2 MPI ranks")
+        self._dpd_static_visibility([1, self.n_nodes, 1])
 
 
 if __name__ == "__main__":

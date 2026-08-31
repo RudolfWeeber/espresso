@@ -593,14 +593,14 @@ void RegularDecomposition::init_cell_interactions() {
           }
         }
 
-        /* In the Lees-Edwards case, widen the stencil along the shear
-         * direction (sd) to ±le_reach, but only for cells at the shear-plane-
-         * normal (sn) boundary. The stencil is geometric (centered on the
-         * cell's own column); the source shift is applied separately below. */
+        /* In the Lees-Edwards case, shift the sd neighbor window to the sheared
+         * columns at the sn boundary.  node_grid[sd]==1 is enforced, so the
+         * entire shear direction is local on every rank and the shifted window
+         * is always within the global sd range after the modulo fold below. */
         if (le.active and at_boundary(le.sn, {m, n, o})) {
           auto const cur = Utils::Vector3i{m, n, o}[le.sd];
-          lower_index[le.sd] = cur - le_reach;
-          upper_index[le.sd] = cur + le_reach;
+          lower_index[le.sd] = cur + le.shift - le_reach;
+          upper_index[le.sd] = cur + le.shift + le_reach;
         }
 
         /* In non-periodic directions, the halo needs not
@@ -644,15 +644,6 @@ void RegularDecomposition::init_cell_interactions() {
          * physical cell across the periodic boundary */
         for (auto &neighbor : neighbors) {
           if (one_mpi_rank) {
-            /* For Lees-Edwards: when a neighbor crosses the shear-plane-normal
-             * (sn) boundary, shift its shear-direction (sd) component by the
-             * integer offset before the periodic fold, so the boundary cell
-             * connects to the sheared physical column. */
-            if (le.active and (neighbor[le.sn] == -1 or
-                               neighbor[le.sn] == cell_grid[le.sn])) {
-              int const sgn = (neighbor[le.sn] == -1) ? -1 : +1;
-              neighbor[le.sd] -= sgn * le.shift;
-            }
             for (auto coord : {0u, 1u, 2u}) {
               if (neighbor[coord] == -1) {
                 neighbor[coord] += cell_grid[coord];
@@ -660,14 +651,15 @@ void RegularDecomposition::init_cell_interactions() {
                 neighbor[coord] -= cell_grid[coord];
               }
             }
-            /* The widened LE stencil (le_reach > 1) and the integer shift may
-             * leave le.sd far outside [0, cell_grid), which the ±1 fold above
-             * cannot handle.  Apply a full modulo fold for sd. */
-            if (le.active) {
-              neighbor[le.sd] =
-                  ((neighbor[le.sd] % cell_grid[le.sd]) + cell_grid[le.sd]) %
-                  cell_grid[le.sd];
-            }
+          }
+          /* node_grid[sd]==1 is enforced, so the shear direction is fully
+           * local: fold the (shifted) sd neighbor into [0, cell_grid[sd]) and
+           * connect to that local/ghost cell directly.  No second ghost layer
+           * is needed. */
+          if (le.active) {
+            neighbor[le.sd] =
+                ((neighbor[le.sd] % cell_grid[le.sd]) + cell_grid[le.sd]) %
+                cell_grid[le.sd];
           }
           auto const ind2 = folded_linear_index(neighbor);
           /* Exclude cell itself */
@@ -980,9 +972,16 @@ RegularDecomposition::LeShear RegularDecomposition::le_shear() const {
   if (m_box.type() != BoxType::LEES_EDWARDS or fully_connected_boundary())
     return r;
   auto const &le = m_box.lees_edwards_bc();
+  r.sd = le.shear_direction;
+  /* The shifted stencil requires the shear direction to be fully local on
+   * every rank.  If node_grid[sd] > 1 the constraint is violated (this can
+   * happen transiently while node_grid is being reconfigured); fall back to
+   * the standard stencil so that init_cell_interactions() does not access
+   * out-of-range cells. */
+  if (::communicator.node_grid[r.sd] != 1)
+    return r;
   r.active = true;
   r.sn = le.shear_plane_normal;
-  r.sd = le.shear_direction;
   auto const cs = cell_size[r.sd];
   r.shift = static_cast<int>(std::lround(le.pos_offset / cs));
   r.frac = le.pos_offset - static_cast<double>(r.shift) * cs;
