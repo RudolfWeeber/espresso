@@ -1157,6 +1157,12 @@ class LeesEdwards(ut.TestCase):
         with self.assertRaises(Exception):
             system.integrator.run(0)  # run-time guard rejects the bad config
 
+    def test_fully_connected_removed(self):
+        system = self.system
+        with self.assertRaisesRegex(Exception, "no longer"):
+            system.cell_system.set_regular_decomposition(
+                fully_connected_boundary={"boundary": "y", "direction": "x"})
+
 
 if __name__ == "__main__":
     ut.main()
