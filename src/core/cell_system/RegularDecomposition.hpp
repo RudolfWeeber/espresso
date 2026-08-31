@@ -236,6 +236,20 @@ private:
   };
   LeShear le_shear() const;
 
+  /** @brief Rebuild the cell neighbor stencil, halo plan, and boundary
+   *  classification from the current cell grid and LE offset.
+   *
+   *  Called from the constructor after @c create_cell_grid(), and from
+   *  @c resort() whenever the integer LE column shift has changed since the
+   *  last build.  Updates @c m_le_shift_at_last_build on completion.
+   */
+  void rebuild_topology();
+
+  /** Integer LE column shift at the time of the last @c rebuild_topology()
+   *  call.  Used by @c resort() to detect when the stencil has gone stale.
+   */
+  int m_le_shift_at_last_build = 0;
+
   /** Maximal number of cells per node. In order to avoid memory
    *  problems due to the cell grid, one has to specify the maximal
    *  number of cells. If the number of cells is larger

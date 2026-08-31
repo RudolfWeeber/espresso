@@ -1083,6 +1083,32 @@ class LeesEdwards(ut.TestCase):
             self.skipTest("needs >= 2 MPI ranks")
         self._dpd_static_visibility([1, self.n_nodes, 1])
 
+    @utx.skipIfMissingFeatures(["DPD"])
+    def test_dpd_dynamic_serial(self):
+        """Serial dynamic sheared halo under integration (offset grows past
+        cell boundaries): exercises rebuild-on-resort."""
+        if self.n_nodes > 1:
+            self.skipTest("serial (node_grid [1,1,1]) test")
+        system = self.system
+        system.box_l = [10, 10, 10]
+        system.cell_system.node_grid = [1, 1, 1]
+        system.cell_system.set_regular_decomposition(
+            use_verlet_lists=True, fully_connected_boundary=None)
+        self.run_dpd_pair_visibility("x", "y")
+
+    @utx.skipIfMissingFeatures(["DPD"])
+    def test_dpd_dynamic_split_normal(self):
+        """Dynamic sheared halo split along the shear-plane normal, under
+        integration (offset grows): exercises rebuild-on-resort on >1 rank."""
+        if self.n_nodes < 2:
+            self.skipTest("needs >= 2 MPI ranks")
+        system = self.system
+        system.box_l = [10, 10, 10]
+        system.cell_system.node_grid = [1, self.n_nodes, 1]
+        system.cell_system.set_regular_decomposition(
+            use_verlet_lists=True, fully_connected_boundary=None)
+        self.run_dpd_pair_visibility("x", "y")
+
 
 if __name__ == "__main__":
     ut.main()

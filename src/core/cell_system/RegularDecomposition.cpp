@@ -341,6 +341,11 @@ void RegularDecomposition::resort(bool global,
       diff.emplace_back(ModifiedList{sort_cell->particles()});
     }
   }
+
+  auto const le = le_shear();
+  if (le.active and le.shift != m_le_shift_at_last_build) {
+    rebuild_topology();
+  }
 }
 
 void RegularDecomposition::mark_cells() {
@@ -841,16 +846,7 @@ GhostComm::HaloPlan RegularDecomposition::make_halo_plan() {
   return plan;
 }
 
-RegularDecomposition::RegularDecomposition(
-    boost::mpi::communicator comm, double range, BoxGeometry const &box_geo,
-    LocalBox const &local_geo,
-    std::optional<std::pair<int, int>> fully_connected)
-    : m_comm(std::move(comm)), m_box(box_geo), m_local_box(local_geo),
-      m_fully_connected_boundary(std::move(fully_connected)) {
-
-  /* set up new regular decomposition cell structure */
-  create_cell_grid(range);
-
+void RegularDecomposition::rebuild_topology() {
   /* setup cell neighbors */
   init_cell_interactions();
 
@@ -965,6 +961,21 @@ RegularDecomposition::RegularDecomposition(
   // halo_exchange_start (see GhostComm::halo_exchange_start in
   // HaloExchange.cpp).
 #endif
+
+  m_le_shift_at_last_build = le_shear().shift;
+}
+
+RegularDecomposition::RegularDecomposition(
+    boost::mpi::communicator comm, double range, BoxGeometry const &box_geo,
+    LocalBox const &local_geo,
+    std::optional<std::pair<int, int>> fully_connected)
+    : m_comm(std::move(comm)), m_box(box_geo), m_local_box(local_geo),
+      m_fully_connected_boundary(std::move(fully_connected)) {
+
+  /* set up new regular decomposition cell structure */
+  create_cell_grid(range);
+
+  rebuild_topology();
 }
 
 RegularDecomposition::LeShear RegularDecomposition::le_shear() const {
