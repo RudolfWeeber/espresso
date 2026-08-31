@@ -1109,6 +1109,37 @@ class LeesEdwards(ut.TestCase):
             use_verlet_lists=True, fully_connected_boundary=None)
         self.run_dpd_pair_visibility("x", "y")
 
+    @utx.skipIfMissingFeatures(["DPD"])
+    def test_dpd_dynamic_split_neutral(self):
+        """Dynamic sheared halo split along the neutral axis (z)."""
+        if self.n_nodes < 2:
+            self.skipTest("needs >= 2 MPI ranks")
+        system = self.system
+        system.box_l = [10, 10, 10]
+        system.cell_system.node_grid = [1, 1, self.n_nodes]  # split along z
+        system.cell_system.set_regular_decomposition(
+            use_verlet_lists=True, fully_connected_boundary=None)
+        self.run_dpd_pair_visibility("x", "y")
+
+    @utx.skipIfMissingFeatures(["DPD"])
+    def test_dpd_split_shear_rejected(self):
+        """Splitting along the shear direction is not supported by the
+        dynamic path and must raise a clear error."""
+        if self.n_nodes < 2:
+            self.skipTest("needs >= 2 MPI ranks")
+        system = self.system
+        system.box_l = [10, 10, 10]
+        system.cell_system.node_grid = [
+            self.n_nodes, 1, 1]  # split along x = sd
+        system.cell_system.set_regular_decomposition(
+            use_verlet_lists=True, fully_connected_boundary=None)
+        protocol = espressomd.lees_edwards.LinearShear(
+            shear_velocity=1., initial_pos_offset=0.)
+        system.lees_edwards.set_boundary_conditions(
+            shear_direction="x", shear_plane_normal="y", protocol=protocol)
+        with self.assertRaises(Exception):
+            system.integrator.run(0)  # run-time guard rejects the bad config
+
 
 if __name__ == "__main__":
     ut.main()

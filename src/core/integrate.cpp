@@ -625,6 +625,18 @@ int System::System::integrate(int n_steps, int reuse_forces) {
   update_used_propagations();
   on_integration_start();
 
+  if (box_geo->type() == BoxType::LEES_EDWARDS and
+      cell_structure->decomposition_type() == CellStructureType::REGULAR) {
+    auto const sd =
+        static_cast<unsigned>(box_geo->lees_edwards_bc().shear_direction);
+    if (sd < 3u and ::communicator.node_grid[sd] != 1) {
+      runtimeErrorMsg()
+          << "Lees-Edwards requires the MPI node grid to be 1 along the shear "
+             "direction; splitting the domain along the shear direction is not "
+             "supported.";
+    }
+  }
+
   // If any method vetoes (e.g. P3M not initialized), immediately bail out
   if (check_runtime_errors(comm_cart))
     return INTEG_ERROR_RUNTIME;
