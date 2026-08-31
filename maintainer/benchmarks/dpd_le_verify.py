@@ -133,8 +133,8 @@ def compare(args):
     z = abs(ma - mb) / denom if denom > 0 else 0.0
     print(f"shear stress: {ma:.6e} vs {mb:.6e}  z={z:.2f} "
           f"(se_a={sea:.2e}, se_b={seb:.2e})")
-    assert z < args.stress_z, f"shear stress differs beyond {
-        args.stress_z} sigma"
+    msg = f"shear stress differs beyond {args.stress_z} sigma"
+    assert z < args.stress_z, msg
 
 
 p = argparse.ArgumentParser()

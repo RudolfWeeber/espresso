@@ -1010,7 +1010,6 @@ class LeesEdwards(ut.TestCase):
                 self.run_lj_pair_visibility(
                     shear_direction, shear_plane_normal)
 
-    @utx.skipIfMissingFeatures(["DPD"])
     def _dpd_static_visibility(self, node_grid):
         system = self.system
         system.part.clear()

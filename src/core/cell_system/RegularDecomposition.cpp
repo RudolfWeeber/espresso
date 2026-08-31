@@ -503,6 +503,9 @@ void RegularDecomposition::init_cell_interactions() {
   auto const global_size = hadamard_product(node_grid, cell_grid);
 
   auto const le = le_shear();
+  // max_range()==cell_size, so this is 2: a +/-2 cell window covers the
+  // shift-centered reach plus the fractional offset and the skin/2 resort
+  // drift (cell_size >= cutoff+skin).
   auto const le_reach =
       le.active
           ? static_cast<int>(std::ceil(max_range()[le.sd] / cell_size[le.sd])) +
