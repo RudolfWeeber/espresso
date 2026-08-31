@@ -109,6 +109,12 @@ class CellSystem(ScriptInterfaceHelper):
             Defaults to ``True``.
 
         """
+        if kwargs.get("fully_connected_boundary", None) is not None:
+            raise RuntimeError(
+                "fully_connected_boundary is no longer supported: "
+                "Lees-Edwards shear now updates the ghost neighborships "
+                "dynamically, so it is not needed. Remove this argument.")
+        kwargs.pop("fully_connected_boundary", None)
         self.call_method("initialize", name="regular_decomposition", **kwargs)
 
     def set_n_square(self, **kwargs):

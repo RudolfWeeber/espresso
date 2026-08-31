@@ -32,7 +32,7 @@ KT = 1.0
 SEED = 42
 
 
-def build_system(node_grid, fully_connected, density, box_l, shear_velocity,
+def build_system(node_grid, density, box_l, shear_velocity,
                  initial_pos_offset):
     system = espressomd.System(box_l=3 * [box_l])
     system.time_step = 0.01
@@ -50,14 +50,7 @@ def build_system(node_grid, fully_connected, density, box_l, shear_velocity,
     system.thermostat.set_dpd(kT=KT, seed=SEED)
 
     system.cell_system.node_grid = list(node_grid)
-    if fully_connected:
-        system.cell_system.set_regular_decomposition(
-            use_verlet_lists=True,
-            fully_connected_boundary={"boundary": SHEAR_PLANE_NORMAL,
-                                      "direction": SHEAR_DIRECTION})
-    else:
-        system.cell_system.set_regular_decomposition(
-            use_verlet_lists=True, fully_connected_boundary=None)
+    system.cell_system.set_regular_decomposition(use_verlet_lists=True)
     protocol = espressomd.lees_edwards.LinearShear(
         initial_pos_offset=initial_pos_offset, shear_velocity=shear_velocity)
     system.lees_edwards.set_boundary_conditions(
@@ -91,7 +84,7 @@ def shear_stress(system):
 
 
 def dump(args):
-    system = build_system(args.node_grid, args.fully_connected, args.density,
+    system = build_system(args.node_grid, args.density,
                           args.box_l, args.shear_velocity,
                           args.initial_pos_offset)
     # Step-0 within-cutoff self-check on the identical deterministic config:
@@ -149,7 +142,6 @@ sub = p.add_subparsers(dest="cmd", required=True)
 d = sub.add_parser("dump")
 d.add_argument("--tag", required=True)
 d.add_argument("--out", default="/tmp")
-d.add_argument("--fully_connected", action="store_true")
 d.add_argument("--node_grid", type=int, nargs=3, default=[1, 1, 1])
 d.add_argument("--steps", type=int, default=200)
 d.add_argument("--density", type=float, default=2.0)

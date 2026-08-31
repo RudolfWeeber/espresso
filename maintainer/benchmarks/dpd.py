@@ -49,9 +49,6 @@ parser.add_argument("--density", metavar="RHO", action="store", type=float,
 parser.add_argument("--shear_velocity", metavar="V", action="store",
                     type=float, default=1.0, required=False,
                     help="Lees-Edwards shear velocity (default: 1.0)")
-parser.add_argument("--fully_connected", action="store_true",
-                    help="Use the legacy fully_connected_boundary decomposition "
-                         "(reference). Default: dynamic sheared halo.")
 parser.add_argument("--retune_skin_after", metavar="N", action="store",
                     type=int, default=None, required=False,
                     help="Retune skin every N timing iterations "
@@ -76,27 +73,9 @@ def configure_dpd(system):
         trans_weight_function=1, trans_gamma=DPD_GAMMA, trans_r_cut=DPD_R_CUT)
 
 
-def configure_decomposition(system, args):
+def configure_decomposition(system):
     """Select the cell decomposition for LE shear."""
-    if args.fully_connected:
-        # Force all ranks onto the shear-plane-normal axis so that
-        # fully_connected_boundary can bridge the LE boundary.  The default
-        # (non-fully_connected) path lets ESPResSo pick the grid freely and
-        # exercises the dynamic sheared-halo algorithm.  Note: run-mode
-        # restarts must be launched with the same MPI rank count that was used
-        # during tune; benchmarks.verify_topology enforces this in
-        # run_from_state.
-        normal_axis = {"x": 0, "y": 1, "z": 2}[SHEAR_PLANE_NORMAL]
-        n_nodes = system.cell_system.get_state()["n_nodes"]
-        system.cell_system.node_grid = [
-            n_nodes if i == normal_axis else 1 for i in range(3)]
-        system.cell_system.set_regular_decomposition(
-            use_verlet_lists=True,
-            fully_connected_boundary={"boundary": SHEAR_PLANE_NORMAL,
-                                      "direction": SHEAR_DIRECTION})
-    else:
-        system.cell_system.set_regular_decomposition(
-            use_verlet_lists=True, fully_connected_boundary=None)
+    system.cell_system.set_regular_decomposition(use_verlet_lists=True)
 
 
 def configure_lees_edwards(system, args):
@@ -135,7 +114,7 @@ def build_and_tune(system, args):
     benchmarks.minimize(system, 1 / system.time_step)
     system.integrator.set_vv()
     system.thermostat.set_dpd(kT=KT, seed=SEED)
-    configure_decomposition(system, args)
+    configure_decomposition(system)
     configure_lees_edwards(system, args)
 
     print("Equilibration")
@@ -164,7 +143,6 @@ def save_dpd_state(system, args, ctx):
         "n_iterations": n_iterations,
         "density": float(args.density),
         "shear_velocity": float(args.shear_velocity),
-        "fully_connected": bool(args.fully_connected),
         "retune_skin_after": 0 if resolved_retune is None else resolved_retune,
         "kT": KT, "gamma": DPD_GAMMA, "r_cut": DPD_R_CUT, "seed": SEED,
     }
@@ -185,9 +163,8 @@ def run_from_state(system, args):
     system.part.add(pos=handle["pos"], v=handle["vel"])
     system.integrator.set_vv()
     system.thermostat.set_dpd(kT=meta["kT"], seed=int(meta["seed"]))
-    args.fully_connected = bool(meta["fully_connected"])
     args.shear_velocity = float(meta["shear_velocity"])
-    configure_decomposition(system, args)
+    configure_decomposition(system)
     configure_lees_edwards(system, args)
     retune = resolve_retune(args, meta)
     return meta["measurement_steps"], meta["n_iterations"], retune

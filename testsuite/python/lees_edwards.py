@@ -231,21 +231,6 @@ class LeesEdwards(ut.TestCase):
                     shear_direction=valid, shear_plane_normal=valid,
                     protocol=lin_protocol)
 
-        with self.assertRaisesRegex(ValueError, "fully_connected_boundary normal and connection coordinates need to differ"):
-            system.cell_system.set_regular_decomposition(
-                fully_connected_boundary={"boundary": "z", "direction": "z"})
-        self.assertEqual(system.cell_system.decomposition_type, "n_square")
-        with self.assertRaisesRegex(ValueError, "Invalid Cartesian coordinate: 't'"):
-            system.cell_system.set_regular_decomposition(
-                fully_connected_boundary={"boundary": "z", "direction": "t"})
-        self.assertEqual(system.cell_system.decomposition_type, "n_square")
-        if self.n_nodes > 1:
-            with self.assertRaisesRegex(RuntimeError, "The MPI nodegrid must be 1 in the fully connected direction"):
-                system.cell_system.node_grid = [1, self.n_nodes, 1]
-                system.cell_system.set_regular_decomposition(
-                    fully_connected_boundary={"boundary": "z", "direction": "y"})
-            self.assertEqual(system.cell_system.decomposition_type, "n_square")
-
     def test_boundary_crossing_lin(self):
         """
         A particle crosses the upper and lower boundary with linear shear.
@@ -1012,35 +997,16 @@ class LeesEdwards(ut.TestCase):
     @utx.skipIfMissingFeatures(["LENNARD_JONES"])
     def test_zz_lj_pair_visibility(self):
         # check that regular decomposition with the dynamic sheared stencil
-        # (fully_connected_boundary=None) now correctly catches the particle
+        # correctly catches the particle
         system = self.system
         system.box_l = [10, 10, 10]
-        system.cell_system.set_regular_decomposition(
-            fully_connected_boundary=None)
-        self.assertIsNone(system.cell_system.fully_connected_boundary)
+        system.cell_system.set_regular_decomposition()
         system.cell_system.node_grid = [1, self.n_nodes, 1]
         self.run_lj_pair_visibility("x", "y")
 
         for verlet in (False, True):
             for shear_direction, shear_plane_normal in self.direction_permutations:
                 system.cell_system.set_n_square(use_verlet_lists=verlet)
-                self.run_lj_pair_visibility(
-                    shear_direction, shear_plane_normal)
-
-        for verlet in (False, True):
-            for shear_direction, shear_plane_normal in self.direction_permutations:
-                system.cell_system.set_regular_decomposition(
-                    fully_connected_boundary=None)
-                normal_axis = axis(shear_plane_normal)
-                system.cell_system.node_grid = [
-                    self.n_nodes if normal_axis[i] == 1 else 1 for i in range(3)]
-                fully_connected_boundary = {"boundary": shear_plane_normal,
-                                            "direction": shear_direction}
-                system.cell_system.set_regular_decomposition(
-                    use_verlet_lists=verlet,
-                    fully_connected_boundary=fully_connected_boundary)
-                self.assertEqual(system.cell_system.fully_connected_boundary,
-                                 fully_connected_boundary)
                 self.run_lj_pair_visibility(
                     shear_direction, shear_plane_normal)
 
@@ -1057,7 +1023,7 @@ class LeesEdwards(ut.TestCase):
             shear_direction="x", shear_plane_normal="y", protocol=protocol)
         system.cell_system.node_grid = node_grid
         system.cell_system.set_regular_decomposition(
-            use_verlet_lists=True, fully_connected_boundary=None)
+            use_verlet_lists=True)
         system.non_bonded_inter[0, 0].dpd.set_params(
             weight_function=1, gamma=4.5, r_cut=cutoff,
             trans_weight_function=1, trans_gamma=4.5, trans_r_cut=cutoff)
@@ -1094,7 +1060,7 @@ class LeesEdwards(ut.TestCase):
         system.box_l = [20, 20, 20]
         system.cell_system.node_grid = [1, 1, 1]
         system.cell_system.set_regular_decomposition(
-            use_verlet_lists=True, fully_connected_boundary=None)
+            use_verlet_lists=True)
         self.run_dpd_pair_visibility("x", "y")
 
     @utx.skipIfMissingFeatures(["DPD"])
@@ -1107,7 +1073,7 @@ class LeesEdwards(ut.TestCase):
         system.box_l = [20, 20, 20]
         system.cell_system.node_grid = [1, self.n_nodes, 1]
         system.cell_system.set_regular_decomposition(
-            use_verlet_lists=True, fully_connected_boundary=None)
+            use_verlet_lists=True)
         self.run_dpd_pair_visibility("x", "y")
 
     @utx.skipIfMissingFeatures(["DPD"])
@@ -1119,7 +1085,7 @@ class LeesEdwards(ut.TestCase):
         system.box_l = [10, 10, 10]
         system.cell_system.node_grid = [1, 1, self.n_nodes]  # split along z
         system.cell_system.set_regular_decomposition(
-            use_verlet_lists=True, fully_connected_boundary=None)
+            use_verlet_lists=True)
         self.run_dpd_pair_visibility("x", "y")
 
     @utx.skipIfMissingFeatures(["DPD"])
@@ -1135,7 +1101,7 @@ class LeesEdwards(ut.TestCase):
             for _split, grid in grids.items():
                 system.cell_system.node_grid = grid
                 system.cell_system.set_regular_decomposition(
-                    use_verlet_lists=verlet, fully_connected_boundary=None)
+                    use_verlet_lists=verlet)
                 self.run_dpd_pair_visibility("x", "y")
 
     @utx.skipIfMissingFeatures(["DPD"])
@@ -1149,7 +1115,7 @@ class LeesEdwards(ut.TestCase):
         system.cell_system.node_grid = [
             self.n_nodes, 1, 1]  # split along x = sd
         system.cell_system.set_regular_decomposition(
-            use_verlet_lists=True, fully_connected_boundary=None)
+            use_verlet_lists=True)
         protocol = espressomd.lees_edwards.LinearShear(
             shear_velocity=1., initial_pos_offset=0.)
         system.lees_edwards.set_boundary_conditions(
