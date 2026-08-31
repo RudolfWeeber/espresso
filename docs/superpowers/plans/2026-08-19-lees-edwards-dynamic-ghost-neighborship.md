@@ -955,13 +955,24 @@ unchanged. This task adds the safety guard that the dynamic path requires
 `node_grid[shear_dir] == 1`, and verifies the full allowed decomposition
 matrix.
 
+**Where the guard goes — read this first.** Task 3.2 made `le_shear()` return
+`active=false` when `node_grid[shear_dir] != 1` (to avoid an out-of-bounds
+crash during transient decomposition rebuilds, e.g. `test_zz` reconfigures
+`node_grid` while a previous iteration's LE still targets the now-split
+axis). Consequently a throw inside `init_cell_interactions()` gated on
+`le.active` would NEVER fire, and a throw NOT gated on `le.active` would fire
+on those harmless transient rebuilds. So the loud guard must live at
+**integration time**, not decomposition-build time: it catches the genuine
+"user runs with `node_grid[shear]>1` + LE" config while ignoring transient
+rebuilds that never integrate.
+
 **Files:**
-- Modify: `src/core/cell_system/RegularDecomposition.cpp` — `init_cell_interactions()`: add a guard that throws when `le_shear().active and node_grid[le.sd] != 1`.
+- Modify: `src/core/integrate.cpp` — `System::integrate()` prologue (near `on_integration_start()`, ~line 626): throw when the box is Lees-Edwards and `node_grid[shear_direction] != 1`.
 - Modify: `testsuite/python/lees_edwards.py` — add the guard test and the split-neutral test.
 
 **Interfaces:**
-- Consumes: `le_shear()` (3.1).
-- Produces: a clear `std::runtime_error` when the dynamic LE path is asked to split along the shear direction; a green full matrix (serial, split-normal, split-neutral) at 1/2/3/4 ranks.
+- Consumes: `box_geo->lees_edwards_bc().shear_direction`; `::communicator.node_grid`.
+- Produces: a clear `std::runtime_error` at the start of integration when a Lees-Edwards run has `node_grid[shear_dir] != 1`; a green full matrix (serial, split-normal, split-neutral) at 1/2/3/4 ranks.
 
 - [ ] **Step 1: Write the guard + split-neutral tests**
 
@@ -992,10 +1003,10 @@ Append to `testsuite/python/lees_edwards.py`:
             use_verlet_lists=True, fully_connected_boundary=None)
         protocol = espressomd.lees_edwards.LinearShear(
             shear_velocity=1., initial_pos_offset=0.)
+        system.lees_edwards.set_boundary_conditions(
+            shear_direction="x", shear_plane_normal="y", protocol=protocol)
         with self.assertRaises(Exception):
-            system.lees_edwards.set_boundary_conditions(
-                shear_direction="x", shear_plane_normal="y", protocol=protocol)
-            system.integrator.run(0)
+            system.integrator.run(0)  # run-time guard rejects the bad config
 ```
 
 - [ ] **Step 2: Run them, observe current state**
@@ -1006,21 +1017,33 @@ source /tikhome/weeber/es-env/bin/activate && cd build && make -j8
 mpiexec -n 2 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_split_neutral LeesEdwards.test_dpd_split_shear_rejected
 ```
 Expected: `split_neutral` PASSES already (z-split does not touch the shear
-axis). `split_shear_rejected` FAILS (no guard yet — it either crashes or
-silently produces wrong results instead of raising).
+axis). `split_shear_rejected` FAILS (no guard yet — `run(0)` completes
+silently instead of raising, because `le_shear()` fell back to the standard
+stencil).
 
-- [ ] **Step 3: Add the guard**
+- [ ] **Step 3: Add the run-time guard**
 
-In `init_cell_interactions()`, inside the existing LE-active setup, add:
+In `src/core/integrate.cpp`, in `System::integrate()` prologue (just after
+`on_integration_start();`, ~line 626), add:
 ```cpp
-  if (le.active and node_grid[le.sd] != 1) {
-    throw std::runtime_error(
-        "Lees-Edwards requires the MPI node grid to be 1 along the shear "
-        "direction. Splitting the domain along the shear direction is not "
-        "supported.");
+  if (box_geo->type() == BoxType::LEES_EDWARDS) {
+    auto const sd =
+        static_cast<unsigned>(box_geo->lees_edwards_bc().shear_direction);
+    if (sd < 3u and ::communicator.node_grid[sd] != 1) {
+      throw std::runtime_error(
+          "Lees-Edwards requires the MPI node grid to be 1 along the shear "
+          "direction; splitting the domain along the shear direction is not "
+          "supported.");
+    }
   }
 ```
-Place it near the top of `init_cell_interactions()` (after `le` is computed and `node_grid` is available), so it fires before any cell wiring. This mirrors the message the old `fully_connected` path used, adapted to the dynamic path.
+`node_grid` and the box type are identical on every rank, so all ranks
+evaluate the condition the same way and throw together — no collective
+deadlock. Add includes if needed (`communicator.hpp` for `::communicator`,
+`BoxGeometry.hpp` for `BoxType` — both are likely already visible). This
+guard is intentionally general (it also covers the retained `fully_connected`
+path, which already requires `node_grid[shear]==1`), so Phase 5 can delete
+`fully_connected`'s own build-time throw and rely on this one.
 
 - [ ] **Step 4: Run the full allowed matrix, expect pass**
 
@@ -1045,9 +1068,9 @@ Expected: all PASS.
 - [ ] **Step 6: Format and commit**
 
 ```bash
-maintainer/format/clang-format.sh src/core/cell_system/RegularDecomposition.cpp
-git -C ... add src/core/cell_system/RegularDecomposition.cpp testsuite/python/lees_edwards.py
-git -C ... commit -m "Guard Lees-Edwards dynamic path to node_grid[shear]==1; verify full matrix"
+maintainer/format/clang-format.sh src/core/integrate.cpp
+git -C ... add src/core/integrate.cpp testsuite/python/lees_edwards.py
+git -C ... commit -m "Guard Lees-Edwards to node_grid[shear]==1 at integration; verify full matrix"
 ```
 
 ---
