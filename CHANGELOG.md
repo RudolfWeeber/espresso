@@ -16,6 +16,22 @@ or [Savannah](https://savannah.nongnu.org/projects/espressomd) until release 3.3
 
 * The Lees-Edwards oscillatory shear protocol was extended to support exponential decay (#4966).
 
+### Changed functionality
+
+* Lees-Edwards boundary conditions now update the ghost-cell neighborships
+  dynamically as the shear offset evolves when using the regular decomposition.
+  The MPI node grid must have exactly one rank along the shear direction;
+  splitting along the shear-plane normal or the neutral axis is supported.
+  A runtime error is raised at the start of integration if this constraint is
+  violated.
+
+### Removed functionality
+
+* The `fully_connected_boundary` argument of
+  `CellSystem.set_regular_decomposition` has been removed.
+  It is no longer needed because Lees-Edwards boundary conditions update
+  ghost neighborships dynamically.
+
 ### Changed requirements
 
 * OpenMP support is now mandatory (#5276). The Kokkos and Cabana libraries have become

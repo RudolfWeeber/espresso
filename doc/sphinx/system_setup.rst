@@ -231,6 +231,13 @@ the shear direction and shear normal are left unchanged. The method
 :meth:`~espressomd.lees_edwards.LeesEdwards.set_boundary_conditions`
 is the only way to modify the shear direction and shear normal.
 
+With the regular decomposition cell system, LEbc update the ghost-cell
+neighborships dynamically as the shear offset evolves, so no special
+decomposition setting is required. The MPI node grid must have exactly
+one rank along the shear direction (``node_grid[shear_dir] == 1``);
+splitting along the shear-plane normal or the neutral axis is supported.
+Violating this constraint raises a runtime error at the start of integration.
+
 
 .. _Cell systems:
 
