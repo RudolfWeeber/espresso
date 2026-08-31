@@ -2,9 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make the physical-cell -> ghost-cell wiring for Lees-Edwards (LE) shear a function of the current position offset, rebuilt as the offset evolves, so the short-range loop sees every in-range pair across the shear boundary without `fully_connected_boundary` and even when the MPI grid splits along the shear direction.
+**Goal:** Make the physical-cell -> ghost-cell wiring for Lees-Edwards (LE) shear a function of the current position offset, rebuilt as the offset evolves, so the short-range loop sees every in-range pair across the shear boundary without `fully_connected_boundary`. The MPI grid keeps the existing restriction `node_grid[shear_dir] == 1` (see Scope revision).
 
-**Architecture:** Keep the LE offset in `LeesEdwardsBC::distance()` (ghost positions carry only periodic-image shifts). Change three things in `RegularDecomposition`: (1) `make_halo_plan()` sources each shear-crossing ghost from the offset-shifted source column and owning rank; (2) `init_cell_interactions()` wires a narrow offset-centered window instead of the full shear row; (3) `resort()` rebuilds neighborships and the halo plan when the integer offset shift changes. Correctness is proven by bitwise-identical trajectories (per fixed decomposition, vs the retained `fully_connected` reference), by `non_bonded_loop_trace` pair-set equality across decompositions, and by average shear stress.
+**Scope revision (user decision 2026-08-31):** Splitting the MPI domain along the shear direction is OUT of scope — `node_grid[shear_dir]` must stay 1, the same limit `fully_connected` already enforces. Rationale: the offset's fractional part forces a reach of up to ~1.5 cells across the shear boundary, which a single ghost layer cannot supply when the shear axis is split; keeping that axis unsplit makes the full shear-direction row local, so the single normal-ghost-layer already holds every column. This removes the `fully_connected` *attribute* (the real goal) while keeping its parallelization limit — no regression. Grids that split along the shear-plane normal (`[1,N,1]`) or the neutral axis (`[1,1,N]`), plus OpenMP threading, are all still in scope and proven.
+
+**Architecture:** Keep the LE offset in `LeesEdwardsBC::distance()` (ghost positions carry only periodic-image shifts). All dynamic behavior lives in `RegularDecomposition::init_cell_interactions()` plus a rebuild hook — `make_halo_plan()` is NOT changed. Two changes: (1) `init_cell_interactions()` shifts the shear-direction neighbor window to the sheared columns (`cur + shift ± reach`) at the shear-plane-normal boundary and folds the shear index into the full local row (valid because `node_grid[shear_dir] == 1`); the ghost fill stays geometric, so the single normal-ghost-layer already holds the needed columns. (2) `resort()` rebuilds neighborships when the integer offset shift changes. Correctness is proven by bitwise-identical trajectories (per fixed decomposition, vs the retained `fully_connected` reference), by `non_bonded_loop_trace` pair-set agreement, and by average shear stress — across serial, split-normal, split-neutral, and OpenMP thread counts.
 
 **Tech Stack:** C++20 (ESPResSo core, Kokkos, boost::mpi), Python 3 (espressomd, numpy), CMake, ctest, mpiexec.
 
@@ -19,7 +21,8 @@
 - Run `maintainer/format` (clang-format / autopep8) on changed files before every commit, or CI will not start.
 - Running python tests: two equivalent routes. (a) Fast iteration against the source tree — `mpiexec -n <N> build/pypresso testsuite/python/<file>.py` — always uses current sources and finds the helper modules (they sit next to the test in source). (b) CI-equivalent — after editing any registered test file or adding one, run `cmake` (auto re-runs on next `make`) and `make python_test_data`, then `ctest -R "<name>$"`. The build copies test files at configure time, so a plain edit-then-ctest can run a stale copy; prefer route (a) while iterating.
 - The LE offset stays in `LeesEdwardsBC::distance()`. Ghost positions carry only periodic-image shifts (multiples of the box length), never the LE offset.
-- Bitwise identity vs the old code is only defined where `fully_connected` runs, i.e. `node_grid[shear_dir] == 1`. Across different decompositions only the pair set (trace) and the average shear stress are expected to match.
+- The dynamic path requires `node_grid[shear_dir] == 1` (splitting along the shear direction is out of scope; keep and re-word the existing guard for the dynamic path). Allowed grids: serial `[1,1,1]`, split-normal `[1,N,1]`, split-neutral `[1,1,N]`, and any mix that keeps `node_grid[shear_dir]==1`.
+- Bitwise identity vs the old code is defined per fixed decomposition (dynamic vs `fully_connected`, same grid). Across different decompositions only the pair set (trace) and the average shear stress are expected to match.
 - Through Phases 1-4 the dynamic path engages only when `m_box.type() == BoxType::LEES_EDWARDS` **and** `fully_connected_boundary()` is unset; when it is set, the exact current behavior is kept as the bitwise reference. Phase 5 then removes `fully_connected_boundary` entirely (user decision 2026-08-30): the setter throws, the C++ implementation is deleted, and the gate simplifies to "active iff the box is Lees-Edwards". Non-LE behavior is unchanged throughout.
 - Notation used throughout: `sn = shear_plane_normal`, `sd = shear_direction`, `cs = cell_size[sd]`, `O = pos_offset`, `s = lround(O / cs)` (integer column shift), `frac = O - s*cs` (residual in `[-cs/2, cs/2]`).
 
@@ -688,44 +691,56 @@ git -C /tikhome/weeber/es/.claude/worktrees/comm_le add src/core/cell_system/Reg
 git -C /tikhome/weeber/es/.claude/worktrees/comm_le commit -m "Add Lees-Edwards shear geometry helper to RegularDecomposition"
 ```
 
-### Task 3.2: Geometric sheared stencil + serial cross-boundary source shift
+### Task 3.2: Shifted sheared stencil with shear-axis fold
 
-**Design (per preflight ruling — read before coding):** The integer offset
-shift `s = le_shear().shift` is applied to the SOURCE of each
-shear-plane-normal-crossing connection, NOT to the neighbor stencil window.
-The stencil stays a geometric window centered on the cell's OWN column,
-widened along `sd` to `±reach` ONLY at the `sn` boundary. Rationale: with a
-single ghost layer a boundary cell cannot reach a ghost slot `s` columns
-away, so a shift-in-stencil design is unimplementable for the multi-rank
-cases (Task 3.4); putting the shift in the source is the only unified form.
-For the serial (`one_mpi_rank`) case the "source" is the direct periodic
-wrap in `init_cell_interactions` (lines 628-637), so the `sd` shift is
-applied there. Multi-rank source shift is Task 3.4 (`make_halo_plan`).
+**Design (read before coding — this supersedes any earlier "shift-in-source /
+make_halo_plan" approach):** With `node_grid[shear_dir] == 1` enforced, the
+shear direction (`sd`) is fully local to every rank, so the single
+shear-plane-normal (`sn`) ghost layer already contains EVERY `sd` column
+(filled geometrically). Therefore all dynamic behavior lives in
+`init_cell_interactions()` and `make_halo_plan()` is NOT touched:
 
-**Sign:** the exact sign of the applied shift is determined empirically by
-the serial trace test below — there are only two choices. Start with the
-convention given; if the test reports missed pairs, flip the sign and
-rebuild. The test is the arbiter.
+1. At the `sn` boundary, SHIFT the `sd` neighbor window to the sheared
+   columns: `[cur + shift - reach, cur + shift + reach]` (this is the
+   `fully_connected` trick pruned to the sheared window). The ghost fill
+   stays geometric; `distance()` applies the offset as today.
+2. Fold the `sd` neighbor index into the local `sd` row `[0, cell_grid[sd])`
+   for every LE-active neighbor (both the `one_mpi_rank` path and the
+   multi-rank path). Because `node_grid[sd]==1`, the global `sd` range equals
+   the local range, so the fold maps the (possibly far, shifted) column to a
+   valid local/ghost cell — no second ghost layer, no out-of-bounds.
+
+This works uniformly for serial `[1,1,1]`, split-normal `[1,N,1]`, and
+split-neutral `[1,1,N]`. Bitwise identity vs `fully_connected` on a fixed
+grid is preserved: same minimal cells, same geometric fill, and the sheared
+in-range columns get the same `folded_linear_index` order (the columns
+`fully_connected` additionally wires hold no in-range partner).
+
+**Sign:** the sign of `shift` in the window is determined empirically by the
+trace tests below — two choices only. Start with `+ le.shift`; if a test
+reports missed pairs, flip to `- le.shift` and rebuild. The tests are the
+arbiter.
+
+**Note:** the current HEAD already contains an earlier geometric-stencil +
+serial-source-shift attempt (commit 7f328a8e44) that passes serial but
+crashes multi-rank. REPLACE that logic with the shifted-window + fold below;
+remove the `one_mpi_rank`-only source shift it added.
 
 **Files:**
-- Modify: `src/core/cell_system/RegularDecomposition.cpp` — `init_cell_interactions()` (lines 486-658): the neighbor window widening and the `one_mpi_rank` wrap.
+- Modify: `src/core/cell_system/RegularDecomposition.cpp` — `init_cell_interactions()` (the LE window branch and the neighbor-fold). Do NOT modify `make_halo_plan()`.
 
 **Interfaces:**
-- Consumes: `le_shear()` (Task 3.1); `max_range()` for the interaction reach; existing `at_boundary`, `folded_linear_index`, the `one_mpi_rank` wrap block, red/black machinery.
-- Produces: for the LE-active case, a geometric `±reach` window along `sd` at the `sn` boundary, and (serial only) a `sd`-shifted periodic wrap so a boundary cell connects to the sheared physical column. The fully-connected branch is left untouched (reference path).
+- Consumes: `le_shear()` (Task 3.1); `max_range()` for the reach; existing `at_boundary`, `folded_linear_index`, the neighbor loop, red/black machinery.
+- Produces: for the LE-active case, a shifted `±reach` `sd` window at the `sn` boundary and a `sd`-into-local-row fold. The fully-connected branch is left untouched (reference path).
 
-- [ ] **Step 1: Write the failing serial static trace test**
+- [ ] **Step 1: Write the failing static trace tests (serial + split-normal)**
 
-This isolates the stencil at a FIXED nonzero offset (shear_velocity=0, no
-integration, offset set BEFORE building the decomposition so the ctor's
-`init_cell_interactions` sees it). Append to `testsuite/python/lees_edwards.py`:
+Both fix the offset (shear_velocity=0), set it BEFORE building the
+decomposition, and do no integration — isolating the stencil. Append to
+`testsuite/python/lees_edwards.py`:
 ```python
     @utx.skipIfMissingFeatures(["DPD"])
-    def test_dpd_dynamic_serial_static(self):
-        """Serial dynamic sheared halo at a fixed nonzero offset (no
-        integration): isolates the neighbor stencil + serial wrap shift."""
-        if self.n_nodes > 1:
-            self.skipTest("serial (node_grid [1,1,1]) test")
+    def _dpd_static_visibility(self, node_grid):
         system = self.system
         system.part.clear()
         system.box_l = [10, 10, 10]
@@ -735,7 +750,7 @@ integration, offset set BEFORE building the decomposition so the ctor's
             shear_velocity=0., initial_pos_offset=3.7)
         system.lees_edwards.set_boundary_conditions(
             shear_direction="x", shear_plane_normal="y", protocol=protocol)
-        system.cell_system.node_grid = [1, 1, 1]
+        system.cell_system.node_grid = node_grid
         system.cell_system.set_regular_decomposition(
             use_verlet_lists=True, fully_connected_boundary=None)
         system.non_bonded_inter[0, 0].dpd.set_params(
@@ -748,61 +763,90 @@ integration, offset set BEFORE building the decomposition so the ctor's
         system.integrator.run(0)
         tests_common.check_non_bonded_loop_trace(
             self, system, cutoff=cutoff + system.cell_system.skin)
+
+    @utx.skipIfMissingFeatures(["DPD"])
+    def test_dpd_dynamic_serial_static(self):
+        """Serial dynamic sheared halo at a fixed nonzero offset."""
+        if self.n_nodes > 1:
+            self.skipTest("serial (node_grid [1,1,1]) test")
+        self._dpd_static_visibility([1, 1, 1])
+
+    @utx.skipIfMissingFeatures(["DPD"])
+    def test_dpd_dynamic_split_normal_static(self):
+        """Dynamic sheared halo split along the shear-plane normal, fixed
+        offset. node_grid[sd]==1 keeps the shear axis local."""
+        if self.n_nodes < 2:
+            self.skipTest("needs >= 2 MPI ranks")
+        self._dpd_static_visibility([1, self.n_nodes, 1])
 ```
 
-- [ ] **Step 2: Run it on 1 rank, expect fail**
+- [ ] **Step 2: Run them, expect fail**
 
-Run: `source /tikhome/weeber/es-env/bin/activate && cd build && make -j8 && mpiexec -n 1 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_serial_static`
-Expected: FAIL — the offset-3.7 config has cross-`sn`-boundary pairs the plain stencil misses ("Pair not found by the core").
+Run:
+```bash
+source /tikhome/weeber/es-env/bin/activate && cd build && make -j8
+mpiexec -n 1 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_serial_static
+mpiexec -n 2 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_split_normal_static
+```
+Expected: FAIL ("Pair not found by the core") or the current out-of-bounds crash on the multi-rank case — both are the pre-implementation state.
 
-- [ ] **Step 3: Implement the geometric window + serial wrap shift**
+- [ ] **Step 3: Implement the shifted window + shear-axis fold**
 
-In `init_cell_interactions()`, after `global_size`, add `auto const le = le_shear();` and the reach:
+In `init_cell_interactions()`, after `global_size`, add `auto const le = le_shear();` and:
 ```cpp
   auto const le_reach =
       le.active
           ? static_cast<int>(std::ceil(max_range()[le.sd] / cell_size[le.sd])) + 1
           : 0;
 ```
-In the per-cell loop, widen the `sd` window at the `sn` boundary (geometric — centered on the cell's own column, NO `±shift`), as a branch parallel to the untouched fully-connected branch:
+Replace any earlier LE window branch with the SHIFTED window at the `sn`
+boundary (keep the fully-connected branch untouched):
 ```cpp
         if (le.active and at_boundary(le.sn, {m, n, o})) {
           auto const cur = Utils::Vector3i{m, n, o}[le.sd];
-          lower_index[le.sd] = cur - le_reach;
-          upper_index[le.sd] = cur + le_reach;
+          lower_index[le.sd] = cur + le.shift - le_reach;  // flip sign if test fails
+          upper_index[le.sd] = cur + le.shift + le_reach;
         }
 ```
-In the `one_mpi_rank` neighbor-wrap block (lines 628-637), when a candidate
-neighbor crosses the `sn` boundary, shift its `sd` component by the integer
-offset before the existing periodic fold, so the boundary cell connects to
-the SHEARED physical column:
+Remove the `one_mpi_rank`-only source shift added by the prior attempt. In
+the neighbor loop, after the existing `one_mpi_rank` per-coordinate fold
+block, add an UNCONDITIONAL (for LE-active) fold of `sd` into the local row —
+it must run in BOTH the serial and multi-rank paths:
 ```cpp
-          if (le.active and (neighbor[le.sn] == -1 or
-                             neighbor[le.sn] == cell_grid[le.sn])) {
-            int const sgn = (neighbor[le.sn] == -1) ? -1 : +1;
-            neighbor[le.sd] -= sgn * le.shift;  // flip sign if the test fails
+          /* node_grid[sd]==1 is enforced, so the shear direction is fully
+           * local: fold the (shifted) sd neighbor into [0, cell_grid[sd]) and
+           * connect to that local/ghost cell directly.  No second ghost layer
+           * is needed. */
+          if (le.active) {
+            neighbor[le.sd] =
+                ((neighbor[le.sd] % cell_grid[le.sd]) + cell_grid[le.sd]) %
+                cell_grid[le.sd];
           }
 ```
-Keep the existing per-coordinate `-1 -> +cell_grid` / `cell_grid -> -cell_grid`
-fold; it already folds `sd` back into range after the shift (the
-`folded_linear_index`/`get_linear_index(local_index(...))` path folds modulo
-the grid). Do NOT apply `fcb_is_inner_connection` in the LE branch.
+Do NOT apply `fcb_is_inner_connection` in the LE branch. Do NOT modify
+`make_halo_plan()`.
 
-- [ ] **Step 4: Run the test, expect pass (flip the sign if needed)**
+- [ ] **Step 4: Run the tests, expect pass (flip the sign if needed)**
 
-Run: `cd build && make -j8 && mpiexec -n 1 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_serial_static`
-Expected: PASS. If it fails with missed pairs, flip the sign in the wrap
-shift (`+sgn * le.shift`) and rebuild; one of the two signs passes.
+Run:
+```bash
+cd build && make -j8
+mpiexec -n 1 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_serial_static
+mpiexec -n 2 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_split_normal_static
+mpiexec -n 3 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_split_normal_static
+```
+Expected: PASS on 1/2/3 ranks. If missed pairs, flip the window sign to
+`cur - le.shift ± le_reach` and rebuild; one sign passes all.
 
-- [ ] **Step 5: Format C++**
+- [ ] **Step 5: Regression + format**
 
-Run: the clang-format wrapper in `maintainer/format/` on `src/core/cell_system/RegularDecomposition.cpp`.
+Run `mpiexec -n 1 ./pypresso ../testsuite/python/lees_edwards.py` and confirm all tests pass (the fully_connected and non-LE tests are untouched). Then run the clang-format wrapper on `src/core/cell_system/RegularDecomposition.cpp`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git -C /tikhome/weeber/es/.claude/worktrees/comm_le add src/core/cell_system/RegularDecomposition.cpp testsuite/python/lees_edwards.py
-git -C /tikhome/weeber/es/.claude/worktrees/comm_le commit -m "Geometric sheared stencil + serial cross-boundary source shift for Lees-Edwards"
+git -C /tikhome/weeber/es/.claude/worktrees/comm_le commit -m "Shifted sheared stencil with shear-axis fold for Lees-Edwards"
 ```
 
 ### Task 3.3: Rebuild neighborships and halo plan on resort
@@ -833,9 +877,27 @@ topology rebuild. Append to `testsuite/python/lees_edwards.py`:
         system.cell_system.set_regular_decomposition(
             use_verlet_lists=True, fully_connected_boundary=None)
         self.run_dpd_pair_visibility("x", "y")
+
+    @utx.skipIfMissingFeatures(["DPD"])
+    def test_dpd_dynamic_split_normal(self):
+        """Dynamic sheared halo split along the shear-plane normal, under
+        integration (offset grows): exercises rebuild-on-resort on >1 rank."""
+        if self.n_nodes < 2:
+            self.skipTest("needs >= 2 MPI ranks")
+        system = self.system
+        system.box_l = [10, 10, 10]
+        system.cell_system.node_grid = [1, self.n_nodes, 1]
+        system.cell_system.set_regular_decomposition(
+            use_verlet_lists=True, fully_connected_boundary=None)
+        self.run_dpd_pair_visibility("x", "y")
 ```
 
-Run: `source /tikhome/weeber/es-env/bin/activate && cd build && make -j8 && mpiexec -n 1 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_serial`
+Run:
+```bash
+source /tikhome/weeber/es-env/bin/activate && cd build && make -j8
+mpiexec -n 1 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_serial
+mpiexec -n 2 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_split_normal
+```
 Expected: FAIL after several integrator runs — the stencil built at the
 current offset goes stale once the offset drifts past a cell boundary and a
 resort fires without a topology rebuild.
@@ -865,11 +927,17 @@ At the end of `RegularDecomposition::resort()` (after the particle-move sweep, b
 ```
 Note: `resort()` runs after particles are folded and moved to their target cells; `rebuild_topology()` depends only on the cell grid and the LE offset, not on particle positions, so the ordering is safe. `CellStructure::resort_particles` already sets `m_rebuild_verlet_list*` so the Verlet list is rebuilt from the new neighborships, and every `ghosts_update` re-reads `decomposition().halo_plan()`, so the fresh plan is picked up automatically.
 
-- [ ] **Step 4: Run the test, expect pass**
+- [ ] **Step 4: Run the tests, expect pass**
 
-Run: `cd build && make -j8 && mpiexec -n 1 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_serial`
-Also confirm no regression: `mpiexec -n 1 ./pypresso ../testsuite/python/lees_edwards.py`
-Expected: PASS across all 50 integrator runs (offset now triggers a topology rebuild whenever the integer column shift changes; between rebuilds the `cutoff+skin`-sized window and the resort trigger's `skin/2` drift bound keep every pair visible).
+Run:
+```bash
+cd build && make -j8
+mpiexec -n 1 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_serial
+mpiexec -n 2 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_split_normal
+mpiexec -n 3 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_split_normal
+mpiexec -n 1 ./pypresso ../testsuite/python/lees_edwards.py   # full regression
+```
+Expected: PASS across all 50 integrator runs at 1/2/3 ranks (offset now triggers a topology rebuild whenever the integer column shift changes; between rebuilds the `cutoff+skin`-sized window and the resort trigger's `skin/2` drift bound keep every pair visible).
 
 - [ ] **Step 5: Format and commit**
 
@@ -879,39 +947,42 @@ git -C ... add src/core/cell_system/RegularDecomposition.hpp src/core/cell_syste
 git -C ... commit -m "Rebuild Lees-Edwards topology on integer-offset crossing"
 ```
 
-### Task 3.4: Offset-driven halo sourcing for the split-along-shear case
+### Task 3.4: Enforce the shear-axis node-grid guard + full verification
+
+The dynamic behavior is complete after Tasks 3.2-3.3 (shifted stencil +
+shear-axis fold + rebuild-on-resort); `make_halo_plan` is deliberately
+unchanged. This task adds the safety guard that the dynamic path requires
+`node_grid[shear_dir] == 1`, and verifies the full allowed decomposition
+matrix.
 
 **Files:**
-- Modify: `src/core/cell_system/RegularDecomposition.cpp` — `make_halo_plan()` (lines 660-816), the ghost-enumeration loop (lines 737-787) and `SendRegion` construction (line 803)
-- Modify: `src/core/cell_system/RegularDecomposition.cpp` — remove the `node_grid[fc_dir] != 1` throw's applicability to the LE-dynamic path (the throw at lines 550-553 is guarded by `fully_connected_boundary()`, so it already does not fire for the dynamic path — verify and add a comment).
+- Modify: `src/core/cell_system/RegularDecomposition.cpp` — `init_cell_interactions()`: add a guard that throws when `le_shear().active and node_grid[le.sd] != 1`.
+- Modify: `testsuite/python/lees_edwards.py` — add the guard test and the split-neutral test.
 
 **Interfaces:**
-- Consumes: `le_shear()` (3.1); the rebuild-on-resort hook (3.3) so the sheared plan is rebuilt as the offset grows; existing `owner_of`, `global_key`, `side`, `mc`, `SendRegion`, and `m_box.length()` for the periodic image shift.
-- Produces: for shear-plane-normal-crossing ghosts, a `ghost_global[sd]` shifted so the geometric ghost slot is filled from the sheared source column on its owning rank; any `sd` wrap past the box becomes a periodic image shift stored in `SendRegion.shift`. The shift SIGN must be consistent with the serial wrap shift chosen in Task 3.2 (same physical convention); confirm via the multi-rank trace tests.
+- Consumes: `le_shear()` (3.1).
+- Produces: a clear `std::runtime_error` when the dynamic LE path is asked to split along the shear direction; a green full matrix (serial, split-normal, split-neutral) at 1/2/3/4 ranks.
 
-- [ ] **Step 1: Write the failing multi-rank trace tests**
+- [ ] **Step 1: Write the guard + split-neutral tests**
 
-Append BOTH to `testsuite/python/lees_edwards.py`. The first splits along the
-shear-plane normal (`fully_connected` supports this layout, but here we run
-the dynamic path); the second splits along the shear direction (impossible
-with `fully_connected` — the new capability):
+Append to `testsuite/python/lees_edwards.py`:
 ```python
     @utx.skipIfMissingFeatures(["DPD"])
-    def test_dpd_dynamic_split_normal(self):
-        """Dynamic sheared halo, MPI grid split along the shear-plane normal."""
+    def test_dpd_dynamic_split_neutral(self):
+        """Dynamic sheared halo split along the neutral axis (z)."""
         if self.n_nodes < 2:
             self.skipTest("needs >= 2 MPI ranks")
         system = self.system
         system.box_l = [10, 10, 10]
-        system.cell_system.node_grid = [1, self.n_nodes, 1]  # split along y = sn
+        system.cell_system.node_grid = [1, 1, self.n_nodes]  # split along z
         system.cell_system.set_regular_decomposition(
             use_verlet_lists=True, fully_connected_boundary=None)
         self.run_dpd_pair_visibility("x", "y")
 
     @utx.skipIfMissingFeatures(["DPD"])
-    def test_dpd_dynamic_split_shear(self):
-        """Dynamic sheared halo, MPI grid split ALONG the shear direction
-        (impossible with fully_connected)."""
+    def test_dpd_split_shear_rejected(self):
+        """Splitting along the shear direction is not supported by the
+        dynamic path and must raise a clear error."""
         if self.n_nodes < 2:
             self.skipTest("needs >= 2 MPI ranks")
         system = self.system
@@ -919,57 +990,49 @@ with `fully_connected` — the new capability):
         system.cell_system.node_grid = [self.n_nodes, 1, 1]  # split along x = sd
         system.cell_system.set_regular_decomposition(
             use_verlet_lists=True, fully_connected_boundary=None)
-        self.run_dpd_pair_visibility("x", "y")
+        protocol = espressomd.lees_edwards.LinearShear(
+            shear_velocity=1., initial_pos_offset=0.)
+        with self.assertRaises(Exception):
+            system.lees_edwards.set_boundary_conditions(
+                shear_direction="x", shear_plane_normal="y", protocol=protocol)
+            system.integrator.run(0)
 ```
 
-- [ ] **Step 2: Run them, expect fail**
-
-Run: `source /tikhome/weeber/es-env/bin/activate && cd build && make -j8 && mpiexec -n 2 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_split_normal LeesEdwards.test_dpd_dynamic_split_shear`
-Expected: FAIL — `make_halo_plan` still fills each `sn`-crossing ghost from the geometrically-adjacent column, not the sheared one, so cross-boundary pairs are missed on split ranks.
-
-- [ ] **Step 3: Implement the sheared sourcing**
-
-The sign below (`-side[le.sn] * le.shift`) must express the SAME physical
-convention as the serial wrap shift chosen in Task 3.2. If the multi-rank
-trace tests report missed pairs, flip the sign here (and only here) and
-rebuild; the trace tests are the arbiter. If Task 3.2 flipped its default
-sign, mirror that flip in this step so serial and multi-rank agree.
-
-In `make_halo_plan()`, compute `auto const le = le_shear();` after `global_origin`. In the ghost loop, after computing `side` and before `ghost_global`, apply the shear shift to the mirrored global index when this ghost crosses the shear-plane-normal boundary:
-```cpp
-        auto ghost_global = global_origin + (nc - one);
-        Utils::Vector3d region_shift{};
-        if (le.active and side[le.sn] != 0) {
-          ghost_global[le.sd] += -side[le.sn] * le.shift;
-          // A shifted column that leaves [0, global_size[sd]) wraps the
-          // x-periodic boundary; record the corresponding image shift so the
-          // packed ghost positions land in the right periodic image. This is
-          // a multiple of the box length, NOT the LE offset.
-          auto const gs = global_size[le.sd];
-          auto const wraps = static_cast<int>(
-              std::floor(static_cast<double>(ghost_global[le.sd]) / gs));
-          region_shift[le.sd] = static_cast<double>(wraps) * m_box.length()[le.sd];
-        }
-        auto const peer = owner_of(ghost_global);
-        auto const recv_key = global_key(ghost_global);
-```
-Mirror the same shift when building the dual send cell so `recv[k]` still aligns with the peer's `send[k]`: apply `-side[le.sn] * le.shift` to `send_global[le.sd]` (via `mc`) as well. Then construct the send region with the image shift:
-```cpp
-        peers[peer].send.emplace_back(global_key(send_global),
-                                      SendRegionInfo{list_at(mc), region_shift});
-```
-Adjust the `PeerBucket::send` element type to carry the shift alongside the key (a small local struct `SendRegionInfo{ParticleList*, Utils::Vector3d}`), and in the emission loop (lines 793-804) push `SendRegion{info.cell, info.shift}` instead of `SendRegion{cell, {}}`.
-
-Heed the `HaloExchange.cpp` note: if shifts differ within one `NeighborComm`, `pack_regions` must still write all bonds into one shared archive. For DPD there are no bonds; but keep regions with distinct shifts grouped so the existing per-neighbor common-shift assumption holds — if a single peer receives columns with different image shifts, split them into separate `NeighborComm`s keyed by (peer, shift). Implement the split: key `peers` by `std::pair<int, Utils::Vector3d-as-ivec>` when `le.active`, else by `peer` as today.
-
-- [ ] **Step 4: Run the tests, expect pass**
+- [ ] **Step 2: Run them, observe current state**
 
 Run:
 ```bash
-source /tikhome/weeber/es-env/bin/activate && cd build && make -j8 && make python_test_data
-for n in 2 3 4; do mpiexec --oversubscribe -n $n ./pypresso ../testsuite/python/lees_edwards.py; done
+source /tikhome/weeber/es-env/bin/activate && cd build && make -j8
+mpiexec -n 2 ./pypresso ../testsuite/python/lees_edwards.py LeesEdwards.test_dpd_dynamic_split_neutral LeesEdwards.test_dpd_split_shear_rejected
 ```
-Expected: PASS at 2/3/4 ranks — both `test_dpd_dynamic_split_normal` and `test_dpd_dynamic_split_shear` find every within-cutoff pair. Include 3 ranks: an odd split along the shear direction is the case most likely to expose a wrong wrap/image shift.
+Expected: `split_neutral` PASSES already (z-split does not touch the shear
+axis). `split_shear_rejected` FAILS (no guard yet — it either crashes or
+silently produces wrong results instead of raising).
+
+- [ ] **Step 3: Add the guard**
+
+In `init_cell_interactions()`, inside the existing LE-active setup, add:
+```cpp
+  if (le.active and node_grid[le.sd] != 1) {
+    throw std::runtime_error(
+        "Lees-Edwards requires the MPI node grid to be 1 along the shear "
+        "direction. Splitting the domain along the shear direction is not "
+        "supported.");
+  }
+```
+Place it near the top of `init_cell_interactions()` (after `le` is computed and `node_grid` is available), so it fires before any cell wiring. This mirrors the message the old `fully_connected` path used, adapted to the dynamic path.
+
+- [ ] **Step 4: Run the full allowed matrix, expect pass**
+
+Run:
+```bash
+cd build && make -j8 && make python_test_data
+for n in 1 2 3 4; do
+  echo "=== $n ranks ==="
+  mpiexec --oversubscribe -n $n ./pypresso ../testsuite/python/lees_edwards.py
+done
+```
+Expected: PASS at 1/2/3/4 ranks. `split_shear_rejected` now raises and passes; serial, split-normal, split-neutral all find every pair.
 
 - [ ] **Step 5: Verify no regression in the non-LE and fully_connected paths**
 
@@ -984,7 +1047,7 @@ Expected: all PASS.
 ```bash
 maintainer/format/clang-format.sh src/core/cell_system/RegularDecomposition.cpp
 git -C ... add src/core/cell_system/RegularDecomposition.cpp testsuite/python/lees_edwards.py
-git -C ... commit -m "Offset-driven Lees-Edwards halo sourcing across the shear boundary"
+git -C ... commit -m "Guard Lees-Edwards dynamic path to node_grid[shear]==1; verify full matrix"
 ```
 
 ---
@@ -1031,19 +1094,19 @@ Run each `dump` twice — once with `OMP_NUM_THREADS=1`, once with `=4` — pair
 **Files:**
 - Modify: `testsuite/python/lees_edwards.py` — replace the obsolete `test_zz_lj_pair_visibility` expectation (lines 979-1013) and add the permanent DPD matrix.
 
-- [ ] **Step 1: Invert the obsolete negative assertion**
+- [ ] **Step 1: Confirm the inverted negative assertion (likely already done in 3.2)**
 
-The current `test_zz_lj_pair_visibility` asserts (lines 985-990) that a regular decomposition *without* `fully_connected` FAILS to find the pair. After the refactor that must succeed. Replace that `assertRaises` block with a positive check that the dynamic decomposition finds all pairs:
+The old `test_zz_lj_pair_visibility` used `assertRaises(AssertionError)` to document that a regular decomposition *without* `fully_connected` FAILS to find the pair. Task 3.2 already had to invert this (the dynamic serial path now succeeds), changing it to a positive check on `node_grid = [1, self.n_nodes, 1]` (split-normal). Verify that inversion is present and uses **split-normal** (`[1, self.n_nodes, 1]`), NOT split-shear. If for any reason it still references `assertRaises` or `[self.n_nodes, 1, 1]`, fix it to:
 ```python
-        # Dynamic sheared halo (no fully_connected) must now find the pair,
-        # including when the grid splits along the shear direction.
+        # Dynamic sheared halo (no fully_connected) now finds the pair on the
+        # allowed grids (shear axis unsplit).
         system.cell_system.set_regular_decomposition(
             fully_connected_boundary=None)
-        system.cell_system.node_grid = [self.n_nodes, 1, 1]  # split along shear
+        system.cell_system.node_grid = [1, self.n_nodes, 1]  # split along normal
         self.run_lj_pair_visibility("x", "y")
 ```
 
-- [ ] **Step 2: Add the permanent DPD matrix test**
+- [ ] **Step 2: Add the permanent DPD matrix test (allowed grids only)**
 
 ```python
     @utx.skipIfMissingFeatures(["DPD"])
@@ -1051,7 +1114,6 @@ The current `test_zz_lj_pair_visibility` asserts (lines 985-990) that a regular 
         system = self.system
         system.box_l = [10, 10, 10]
         grids = {"y": [1, self.n_nodes, 1],   # split along normal
-                 "x": [self.n_nodes, 1, 1],   # split along shear
                  "z": [1, 1, self.n_nodes]}   # split along neutral
         for verlet in (False, True):
             for split, grid in grids.items():
@@ -1060,19 +1122,19 @@ The current `test_zz_lj_pair_visibility` asserts (lines 985-990) that a regular 
                     use_verlet_lists=verlet, fully_connected_boundary=None)
                 self.run_dpd_pair_visibility("x", "y")
 ```
+Splitting along the shear direction is out of scope and covered by the
+`test_dpd_split_shear_rejected` guard test (Task 3.4).
 
 - [ ] **Step 3: Run on 1, 2, 4 ranks**
 
 Run:
 ```bash
-cd build && make -j8
+cd build && make -j8 && make python_test_data
 ctest -R "lees_edwards$" --output-on-failure           # default rank count
 ```
 Also run the file directly under specific rank counts:
 ```bash
-mpiexec -n 1 build/pypresso testsuite/python/lees_edwards.py
-mpiexec -n 2 build/pypresso testsuite/python/lees_edwards.py
-mpiexec -n 4 build/pypresso testsuite/python/lees_edwards.py
+for n in 1 2 4; do mpiexec --oversubscribe -n $n build/pypresso testsuite/python/lees_edwards.py; done
 ```
 Expected: all PASS.
 
@@ -1095,11 +1157,11 @@ Run (all with the same seed/box, longer run for statistics, e.g. `--steps 2000`)
 ```bash
 $B $V dump --tag st_1rank --node_grid 1 1 1 --steps 2000 --out /tmp
 mpiexec -n 2 $B $V dump --tag st_y2 --node_grid 1 2 1 --steps 2000 --out /tmp
-mpiexec -n 2 $B $V dump --tag st_x2 --node_grid 2 1 1 --steps 2000 --out /tmp
+mpiexec -n 2 $B $V dump --tag st_z2 --node_grid 1 1 2 --steps 2000 --out /tmp
 $B $V compare --a /tmp/st_1rank.npz --b /tmp/st_y2.npz
-$B $V compare --a /tmp/st_1rank.npz --b /tmp/st_x2.npz
+$B $V compare --a /tmp/st_1rank.npz --b /tmp/st_z2.npz
 ```
-Expected: both `trace_ok`; identical step-0 within-cutoff pair sets; shear-stress z-score below `--stress_z` (default 5). (Split-along-shear `st_x2` is the new capability; it has no fully_connected counterpart, so its step-0 within-cutoff self-check + stress agreement are its proof. All three dumps use the dynamic path — no `--fully_connected` — so each must pass its own step-0 self-check, which only holds after Phase 3.)
+Expected: both `trace_ok`; identical step-0 within-cutoff pair sets; shear-stress z-score below `--stress_z` (default 5). Grids are the allowed ones (shear axis `x` unsplit): serial, split-normal `[1,2,1]`, split-neutral `[1,1,2]`. All dumps use the dynamic path — no `--fully_connected` — so each must pass its own step-0 self-check, which only holds after Phase 3.
 
 - [ ] **Step 2: Record results** in the task log.
 
@@ -1180,7 +1242,7 @@ git -C ... commit -m "Reject fully_connected_boundary at the script interface"
 
 **Files:**
 - Modify: `src/core/cell_system/RegularDecomposition.hpp` — remove `m_fully_connected_boundary` (line 84), the `fully_connected_boundary()` getter (line 121), and the ctor's `fully_connected` parameter (line ~97).
-- Modify: `src/core/cell_system/RegularDecomposition.cpp` — remove the ctor param and initializer (lines 818-823); delete the fully-connected sanity-check block (lines 544-559), the `fcb_is_inner_connection` lambda (lines 508-521), the fully-connected stencil branch (lines 579-587) and its filter use (lines 609-614) in `init_cell_interactions()`; simplify `le_shear()` (Task 3.1) to gate on `m_box.type() == BoxType::LEES_EDWARDS` only.
+- Modify: `src/core/cell_system/RegularDecomposition.cpp` — remove the ctor param and initializer (lines 818-823); delete the fully-connected sanity-check block (lines 544-559), the `fcb_is_inner_connection` lambda (lines 508-521), the fully-connected stencil branch (lines 579-587) and its filter use (lines 609-614) in `init_cell_interactions()`; simplify `le_shear()` (Task 3.1) to gate on `m_box.type() == BoxType::LEES_EDWARDS` only. **KEEP** the dynamic-path `node_grid[shear_dir] != 1` guard added in Task 3.4 — it is a separate, still-required check (do not delete it along with the fully-connected sanity block).
 - Modify: `src/core/cell_system/CellStructure.hpp` (lines 829-833) and `CellStructure.cpp` (lines 692-697) — remove the `fully_connected_boundary` parameter from `set_regular_decomposition`.
 - Modify: `src/core/system/System.cpp` (lines 182-194) — drop the fully-connected preservation; call `set_regular_decomposition(get_interaction_range())` in both branches.
 
@@ -1294,7 +1356,8 @@ git -C ... commit -m "Document dynamic Lees-Edwards halo and fully_connected rem
 
 ## Self-review notes
 
-- **Spec coverage:** halo sourcing (Task 3.4), narrow stencil (3.2), rebuild-on-resort (3.3), skin-sized window (`le_reach` uses `max_range`, which includes skin), LE-driven activation (3.1 gate), dpd.py (1.1), verification of all three criteria (4.1 bitwise, 4.2 trace, 4.3 stress), split-along-shear (3.4, 4.2, 4.3), removal of `fully_connected` (Phase 5: 5.1 setter throws, 5.2 C++ deleted, 5.3 tests/scripts cleaned, 5.4 docs). All spec sections map to tasks.
+- **Spec coverage (revised scope):** shifted sheared stencil + shear-axis fold (Task 3.2), rebuild-on-resort (3.3), shear-axis node-grid guard + full verification (3.4), skin-sized reach (`le_reach` uses `max_range`, which includes skin), LE-driven activation (3.1 gate), dpd.py (1.1), verification of all three criteria (4.1 bitwise, 4.2 trace, 4.3 stress) across serial/split-normal/split-neutral + OpenMP, removal of `fully_connected` (Phase 5: 5.1 setter throws, 5.2 C++ deleted but the 3.4 shear-axis guard kept, 5.3 tests/scripts cleaned, 5.4 docs). `make_halo_plan` is intentionally NOT modified.
+- **Scope:** splitting along the shear direction is out of scope (user decision 2026-08-31); `node_grid[shear_dir]==1` is enforced by the 3.4 guard. This matches `fully_connected`'s existing limit, so removing the attribute is not a regression.
 - **Removal ordering:** Phase 5 deletes the `fully_connected` reference path, so it must run strictly after Phase 4 records the bitwise proof. The plan states this in the Phase 5 header and Global Constraints.
 - **Bitwise-only-where-valid:** Task 4.1 compares dynamic vs fully_connected only for `node_grid[sd]==1` grids (serial, y-split), matching the spec's constraint. Split-along-shear is proven by trace + stress only (4.2, 4.3).
 - **Coexistence:** the dynamic path is gated off when `fully_connected_boundary()` is set (Global Constraints + 3.1), so the reference and the new path coexist through Phase 4.
