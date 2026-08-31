@@ -998,12 +998,12 @@ class LeesEdwards(ut.TestCase):
             weight_function=1, gamma=4.5, r_cut=cutoff,
             trans_weight_function=1, trans_gamma=4.5, trans_r_cut=cutoff)
         rng = np.random.default_rng(42)
-        system.part.add(pos=rng.random((50, 3)) * system.box_l,
-                        v=(rng.random((50, 3)) - 0.5))
+        system.part.add(pos=rng.random((300, 3)) * system.box_l,
+                        v=(rng.random((300, 3)) - 0.5))
         system.thermostat.set_dpd(kT=1., seed=42)
         tests_common.check_non_bonded_loop_trace(
             self, system, cutoff=cutoff + system.cell_system.skin)
-        for _ in range(50):
+        for _ in range(20):
             system.integrator.run(3)
             tests_common.check_non_bonded_loop_trace(
                 self, system, cutoff=cutoff + system.cell_system.skin)
@@ -1047,7 +1047,7 @@ class LeesEdwards(ut.TestCase):
     def _dpd_static_visibility(self, node_grid):
         system = self.system
         system.part.clear()
-        system.box_l = [10, 10, 10]
+        system.box_l = [20, 20, 20]
         cutoff = 1.5
         system.cell_system.skin = 0.2
         protocol = espressomd.lees_edwards.LinearShear(
@@ -1061,8 +1061,8 @@ class LeesEdwards(ut.TestCase):
             weight_function=1, gamma=4.5, r_cut=cutoff,
             trans_weight_function=1, trans_gamma=4.5, trans_r_cut=cutoff)
         rng = np.random.default_rng(7)
-        system.part.add(pos=rng.random((60, 3)) * system.box_l,
-                        v=(rng.random((60, 3)) - 0.5))
+        system.part.add(pos=rng.random((300, 3)) * system.box_l,
+                        v=(rng.random((300, 3)) - 0.5))
         system.thermostat.set_dpd(kT=1., seed=7)
         system.integrator.run(0)
         tests_common.check_non_bonded_loop_trace(
@@ -1090,7 +1090,7 @@ class LeesEdwards(ut.TestCase):
         if self.n_nodes > 1:
             self.skipTest("serial (node_grid [1,1,1]) test")
         system = self.system
-        system.box_l = [10, 10, 10]
+        system.box_l = [20, 20, 20]
         system.cell_system.node_grid = [1, 1, 1]
         system.cell_system.set_regular_decomposition(
             use_verlet_lists=True, fully_connected_boundary=None)
@@ -1103,7 +1103,7 @@ class LeesEdwards(ut.TestCase):
         if self.n_nodes < 2:
             self.skipTest("needs >= 2 MPI ranks")
         system = self.system
-        system.box_l = [10, 10, 10]
+        system.box_l = [20, 20, 20]
         system.cell_system.node_grid = [1, self.n_nodes, 1]
         system.cell_system.set_regular_decomposition(
             use_verlet_lists=True, fully_connected_boundary=None)

@@ -598,16 +598,6 @@ void RegularDecomposition::init_cell_interactions() {
           }
         }
 
-        /* In the Lees-Edwards case, shift the sd neighbor window to the sheared
-         * columns at the sn boundary.  node_grid[sd]==1 is enforced, so the
-         * entire shear direction is local on every rank and the shifted window
-         * is always within the global sd range after the modulo fold below. */
-        if (le.active and at_boundary(le.sn, {m, n, o})) {
-          auto const cur = Utils::Vector3i{m, n, o}[le.sd];
-          lower_index[le.sd] = cur + le.shift - le_reach;
-          upper_index[le.sd] = cur + le.shift + le_reach;
-        }
-
         /* In non-periodic directions, the halo needs not
          * be considered. */
         for (auto i = 0u; i < 3u; i++) {
@@ -636,6 +626,28 @@ void RegularDecomposition::init_cell_interactions() {
               }
               neighbors.insert(Utils::Vector3i{r, q, p});
             }
+
+        /* Lees-Edwards: add the sheared shear-direction window on the CROSSING
+         * shear-plane-normal ghost layer only, for ALL neutral-axis offsets
+         * (so diagonal crossings are included).  In-plane neighbors keep the
+         * standard +/-1 window.  Folded into the local sd row below
+         * (node_grid[sd]==1 is enforced). */
+        if (le.active and at_boundary(le.sn, {m, n, o})) {
+          auto const neutral = 3u - le.sn - le.sd;
+          auto const cur_sn = Utils::Vector3i{m, n, o}[le.sn];
+          auto const cur_sd = Utils::Vector3i{m, n, o}[le.sd];
+          auto const cur_nt = Utils::Vector3i{m, n, o}[neutral];
+          int const sn_cross = (cur_sn == 0) ? cur_sn - 1 : cur_sn + 1;
+          int const sgn = (cur_sn == 0) ? +1 : -1;
+          for (int dn = -1; dn <= 1; ++dn)
+            for (int k = -le_reach; k <= le_reach; ++k) {
+              Utils::Vector3i nb{m, n, o};
+              nb[le.sn] = sn_cross;
+              nb[le.sd] = cur_sd + sgn * le.shift + k;
+              nb[neutral] = cur_nt + dn;
+              neighbors.insert(nb);
+            }
+        }
 
         /* Red-black partition by global index. */
         auto const ind1 = folded_linear_index({m, n, o});
