@@ -1122,6 +1122,22 @@ class LeesEdwards(ut.TestCase):
         self.run_dpd_pair_visibility("x", "y")
 
     @utx.skipIfMissingFeatures(["DPD"])
+    def test_dpd_pair_visibility_matrix(self):
+        """Pair visibility for all allowed decompositions × both Verlet
+        settings.  Splitting along the shear direction is out of scope
+        (guarded by test_dpd_split_shear_rejected)."""
+        system = self.system
+        system.box_l = [10, 10, 10]
+        grids = {"y": [1, self.n_nodes, 1],   # split along normal
+                 "z": [1, 1, self.n_nodes]}   # split along neutral
+        for verlet in (False, True):
+            for _split, grid in grids.items():
+                system.cell_system.node_grid = grid
+                system.cell_system.set_regular_decomposition(
+                    use_verlet_lists=verlet, fully_connected_boundary=None)
+                self.run_dpd_pair_visibility("x", "y")
+
+    @utx.skipIfMissingFeatures(["DPD"])
     def test_dpd_split_shear_rejected(self):
         """Splitting along the shear direction is not supported by the
         dynamic path and must raise a clear error."""
