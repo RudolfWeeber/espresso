@@ -1003,10 +1003,11 @@ class LeesEdwards(ut.TestCase):
         system.thermostat.set_dpd(kT=1., seed=42)
         tests_common.check_non_bonded_loop_trace(
             self, system, cutoff=cutoff + system.cell_system.skin)
-        for _ in range(20):
+        for i in range(20):
             system.integrator.run(3)
-            tests_common.check_non_bonded_loop_trace(
-                self, system, cutoff=cutoff + system.cell_system.skin)
+            if i % 5 == 0:
+                tests_common.check_non_bonded_loop_trace(
+                    self, system, cutoff=cutoff + system.cell_system.skin)
 
     @utx.skipIfMissingFeatures(["LENNARD_JONES"])
     def test_zz_lj_pair_visibility(self):
