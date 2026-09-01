@@ -210,6 +210,16 @@ void BondBreakage::process_queue_impl(System::System &system) {
   // Execute actions
   for (auto const &a : actions) {
     std::visit(execute(cell_structure), a);
+  }
+
+  // global_queue is gathered and broadcast above, so it is identical on all
+  // ranks, unlike `actions`, which is built from locally-held particles and
+  // can differ in size (or be empty) per rank. Calling on_particle_change()
+  // here, once, guarded on the rank-symmetric queue rather than on the
+  // per-rank action set, keeps Propagation::recalc_active_features
+  // rank-symmetric: on_particle_change() only sets dirty flags and clears
+  // caches, so a single call covers what used to be one call per action.
+  if (not global_queue.empty()) {
     system.on_particle_change();
   }
 }
