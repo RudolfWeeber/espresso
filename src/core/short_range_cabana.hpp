@@ -68,16 +68,8 @@ commit_particle(Particle const &p, auto const index,
 #endif
   }
 
-  // Always update exclusion flags (they can change during simulation)
 #ifdef ESPRESSO_EXCLUSIONS
-  bool const has_exclusion = not p.exclusions().empty();
-  aosoa.set_has_exclusion(index, has_exclusion);
-  // Record the any-exclusion aggregate on the host. This is intentionally NOT
-  // done inside the device-qualified set_has_exclusion: this commit sweep runs
-  // on the host execution space, and the aggregate is a host std::atomic.
-  if (has_exclusion) {
-    aosoa.mark_any_exclusion();
-  }
+  aosoa.set_has_exclusion(index, not p.exclusions().empty());
 #else
   aosoa.flags(index) = 0;
 #endif
@@ -195,11 +187,6 @@ update_cabana_state(CellStructure &cell_structure,
     int pair_count = 0;
     int angle_count = 0;
     int dihedral_count = 0;
-#ifdef ESPRESSO_EXCLUSIONS
-    // commit_particle accumulates the any-exclusion aggregate below; clear it
-    // before the sweep repopulates it (read O(1) at the dispatch gate).
-    aosoa.reset_any_exclusion();
-#endif
     kokkos_parallel_range_for<execution_space>(
         "AoSoA write", std::size_t{0}, n_part,
         [&unique_particles, &aosoa, &id_to_index, &cell_structure, &pair_count,
@@ -297,11 +284,6 @@ update_cabana_state(CellStructure &cell_structure,
     // ===================================================
 #ifdef ESPRESSO_CALIPER
     ESPRESSO_CALI_MARK_BEGIN("AoSoA commit partial");
-#endif
-#ifdef ESPRESSO_EXCLUSIONS
-    // commit_particle accumulates the any-exclusion aggregate below; clear it
-    // before the sweep repopulates it (read O(1) at the dispatch gate).
-    aosoa.reset_any_exclusion();
 #endif
     kokkos_parallel_range_for<execution_space>(
         "AoSoA write", std::size_t{0}, n_part,
