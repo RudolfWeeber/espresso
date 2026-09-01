@@ -47,6 +47,7 @@
 #include "short_range_cabana.hpp"
 #include "short_range_loop.hpp"
 #include "short_range_verlet.hpp"
+#include "system/ActiveFeatures.hpp"
 #include "system/GpuParticleData.hpp"
 #include "system/System.hpp"
 #include "thermostat.hpp"
@@ -522,11 +523,13 @@ void System::System::calculate_forces() {
 #ifdef ESPRESSO_ROTATION
   // Within the generic kernel, only orientation-dependent pair potentials
   // (Gay-Berne) and the dipolar pair kernel scatter into the torque view.
-  auto const gay_berne_active =
-      nonbonded_ias->pair_potential_active(PairPotential::GayBerne);
+  auto const gay_berne_active = active_features->has_gay_berne();
+  // Mirrors the dipole arm of ActiveFeatures::orientation_ghosts_needed():
+  // both must tighten together or the GHOSTTRANS_TORQUE assert below fires.
   auto const dipolar_pair_kernel_active =
 #ifdef ESPRESSO_DIPOLES
-      get_ptr(dipoles_kernel) != nullptr;
+      get_ptr(dipoles_kernel) != nullptr and
+      active_features->particles_have_dipole_moment();
 #else
       false;
 #endif

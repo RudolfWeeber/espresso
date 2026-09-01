@@ -55,6 +55,18 @@ public:
    *  Collective call: all ranks must enter together. */
   void update();
 
+  /** @brief True when any type pair has the Gay-Berne potential configured.
+   *  Live system-derived query; no cached copy. */
+  bool has_gay_berne() const;
+
+#ifdef ESPRESSO_ROTATION
+  /** @brief True when any active physics requires orientation of ghost
+   *  particles. Used by both @c System::get_global_ghost_flags (QUAT push)
+   *  and @c System::get_force_reduce_ghost_flags (TORQUE reduce).
+   *  Live system-derived query combined with cached particle bits. */
+  bool orientation_ghosts_needed() const;
+#endif
+
   bool particles_are_virtual() const {
     return (m_particle_features & IS_VIRTUAL) != 0u;
   }

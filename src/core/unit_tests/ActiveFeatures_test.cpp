@@ -26,7 +26,9 @@
 #include "PropagationMode.hpp"
 #include "cell_system/CellStructure.hpp"
 #include "exclusions.hpp"
+#include "ghosts.hpp"
 #include "integrators/Propagation.hpp"
+#include "nonbonded_interactions/nonbonded_interaction_data.hpp"
 #include "particle_node.hpp"
 #include "system/ActiveFeatures.hpp"
 #include "system/System.hpp"
@@ -230,5 +232,83 @@ BOOST_FIXTURE_TEST_CASE(particle_creation_invalidates, ParticleCleanup) {
   ::make_new_particle(0, Utils::Vector3d{1., 1., 1.});
   BOOST_CHECK(system.propagation->recalc_active_features);
 }
+
+#ifdef ESPRESSO_ROTATION
+BOOST_FIXTURE_TEST_CASE(orientation_ghosts_off_for_default_particles,
+                        ParticleCleanup) {
+  auto &system = System::get_system();
+  auto &active_features = *system.active_features;
+  // A default particle cannot rotate, so the ROT_* bits in the SYSTEM_DEFAULT
+  // expansion must not trigger orientation ghost exchange.
+  ::make_new_particle(0, Utils::Vector3d{1., 1., 1.});
+  system.propagation->recalc_active_features = true;
+  active_features.update_if_needed();
+  BOOST_CHECK(not active_features.orientation_ghosts_needed());
+  BOOST_CHECK((system.get_global_ghost_flags() & Cells::DATA_PART_QUAT) == 0u);
+  BOOST_CHECK_EQUAL(system.get_force_reduce_ghost_flags(), GHOSTTRANS_FORCE);
+}
+
+BOOST_FIXTURE_TEST_CASE(orientation_ghosts_on_for_rotating_particles,
+                        ParticleCleanup) {
+  auto &system = System::get_system();
+  auto &active_features = *system.active_features;
+  ::make_new_particle(0, Utils::Vector3d{1., 1., 1.});
+  mutate_particle(0, [](Particle &p) { p.set_can_rotate_all_axes(); });
+  active_features.update_if_needed();
+  BOOST_CHECK(active_features.orientation_ghosts_needed());
+  BOOST_CHECK((system.get_global_ghost_flags() & Cells::DATA_PART_QUAT) != 0u);
+  BOOST_CHECK((system.get_force_reduce_ghost_flags() & GHOSTTRANS_TORQUE) !=
+              0u);
+}
+
+#ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
+BOOST_FIXTURE_TEST_CASE(orientation_ghosts_on_for_stoner_wohlfarth,
+                        ParticleCleanup) {
+  auto &system = System::get_system();
+  auto &active_features = *system.active_features;
+  // The Stoner-Wohlfarth arm must fire from the particle bit alone,
+  // without any rotating particle and without the Langevin thermostat.
+  ::make_new_particle(0, Utils::Vector3d{1., 1., 1.});
+  mutate_particle(0,
+                  [](Particle &p) { p.stoner_wohlfarth_is_enabled() = true; });
+  active_features.update_if_needed();
+  BOOST_CHECK(active_features.orientation_ghosts_needed());
+}
+#endif
+
+#ifdef ESPRESSO_DIPOLES
+BOOST_FIXTURE_TEST_CASE(dipole_moment_alone_needs_no_orientation_ghosts,
+                        ParticleCleanup) {
+  auto &system = System::get_system();
+  auto &active_features = *system.active_features;
+  // The dipole arm requires a dipolar solver AND a nonzero moment;
+  // a moment without a solver must not fire it.
+  ::make_new_particle(0, Utils::Vector3d{1., 1., 1.});
+  mutate_particle(0, [](Particle &p) { p.dipm() = 1.; });
+  active_features.update_if_needed();
+  BOOST_CHECK(not active_features.orientation_ghosts_needed());
+}
+#endif
+
+#ifdef ESPRESSO_GAY_BERNE
+BOOST_FIXTURE_TEST_CASE(gay_berne_aggregate, ParticleCleanup) {
+  auto &system = System::get_system();
+  auto &active_features = *system.active_features;
+  ::make_new_particle(0, Utils::Vector3d{1., 1., 1.});
+  system.propagation->recalc_active_features = true;
+  active_features.update_if_needed();
+  BOOST_CHECK(not active_features.has_gay_berne());
+  system.nonbonded_ias->make_particle_type_exist(0);
+  auto &ia_params = system.nonbonded_ias->get_ia_param(0, 0);
+  ia_params.gay_berne = GayBerne_Parameters(1., 1., 2., 1., 1., 1., 1.);
+  system.on_non_bonded_ia_change();
+  BOOST_CHECK(active_features.has_gay_berne());
+  BOOST_CHECK(active_features.orientation_ghosts_needed());
+  // Reset so later test cases see a clean interaction table.
+  ia_params.gay_berne = GayBerne_Parameters();
+  system.on_non_bonded_ia_change();
+}
+#endif
+#endif // ESPRESSO_ROTATION
 
 BOOST_AUTO_TEST_SUITE_END()
