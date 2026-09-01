@@ -47,6 +47,7 @@ add_library(
   tuning.cpp
   virtual_sites.cpp
   exclusions.cpp
+  system/ActiveFeatures.cpp
   system/GpuParticleData.cpp
   system/System.cpp
   PartCfg.cpp

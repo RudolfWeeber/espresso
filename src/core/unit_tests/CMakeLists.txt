@@ -108,6 +108,16 @@ foreach(TEST_NUM_PROC 1 2)
       HaloExchange_test NUM_PROC ${TEST_NUM_PROC})
   endif()
 endforeach()
+espresso_unit_test_executable(
+  NAME ActiveFeatures_test SRC ActiveFeatures_test.cpp DEPENDS espresso::core
+  Kokkos::kokkos Boost::mpi MPI::MPI_CXX)
+foreach(TEST_NUM_PROC 1 4)
+  if(${TEST_NUM_PROC} LESS_EQUAL ${ESPRESSO_TEST_NP})
+    espresso_unit_test_register(
+      NAME ActiveFeatures_test_${TEST_NUM_PROC}_mpi_ranks TARGET
+      ActiveFeatures_test NUM_PROC ${TEST_NUM_PROC})
+  endif()
+endforeach()
 # Register the validator test on both 4 ranks (exercises face/edge/corner peers
 # on a non-trivial node grid) and 1 rank (where make_halo_plan is intentionally
 # empty and the halo-layer cells are unreferenced ghosts).

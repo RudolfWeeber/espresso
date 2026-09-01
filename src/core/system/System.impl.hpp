@@ -25,6 +25,7 @@
 #include "ek/Implementation.hpp"
 #include "lb/Implementation.hpp"
 
+#include "ActiveFeatures.hpp"
 #include "GpuParticleData.hpp"
 #include "Observable_stat.hpp"
 #include "accumulators/AutoUpdateAccumulators.hpp"

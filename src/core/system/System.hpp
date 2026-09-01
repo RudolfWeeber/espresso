@@ -78,6 +78,8 @@ struct PressureObservable;
 
 namespace System {
 
+class ActiveFeatures;
+
 /**
  * @brief Main system class.
  *
@@ -326,6 +328,7 @@ public:
   std::shared_ptr<LocalBox> local_geo;
   std::shared_ptr<CellStructure> cell_structure;
   std::shared_ptr<Propagation> propagation;
+  std::shared_ptr<ActiveFeatures> active_features;
   std::shared_ptr<BondedInteractionsMap> bonded_ias;
   std::shared_ptr<InteractionsNonBonded> nonbonded_ias;
   std::shared_ptr<Thermostat::Thermostat> thermostat;

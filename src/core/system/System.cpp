@@ -22,6 +22,7 @@
 #include "System.hpp"
 #include "System.impl.hpp"
 
+#include "ActiveFeatures.hpp"
 #include "BoxGeometry.hpp"
 #include "GpuParticleData.hpp"
 #include "LocalBox.hpp"
@@ -81,6 +82,7 @@ System::System(Private) {
   gpu = std::make_shared<GpuParticleData>();
 #endif
   propagation = std::make_shared<Propagation>();
+  active_features = std::make_shared<ActiveFeatures>();
   bonded_ias = std::make_shared<BondedInteractionsMap>();
   thermostat = std::make_shared<Thermostat::Thermostat>();
   nonbonded_ias = std::make_shared<InteractionsNonBonded>();
@@ -115,6 +117,7 @@ System::System(Private) {
 void System::initialize() {
   auto handle = shared_from_this();
   cell_structure->bind_system(handle);
+  active_features->bind_system(handle);
   lees_edwards->bind_system(handle);
   bonded_ias->bind_system(handle);
   thermostat->bind_system(handle);
