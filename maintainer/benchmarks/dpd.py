@@ -46,6 +46,9 @@ benchmarks.add_common_args(parser, DEFAULT_PARTICLES_PER_CORE)
 parser.add_argument("--density", metavar="RHO", action="store", type=float,
                     default=0.5, required=False,
                     help="Number density of DPD particles (default: 0.5)")
+parser.add_argument("--r_cut", metavar="RC", action="store", type=float,
+                    default=DPD_R_CUT, required=False,
+                    help=f"DPD interaction cutoff (default: {DPD_R_CUT})")
 parser.add_argument("--shear_velocity", metavar="V", action="store",
                     type=float, default=1.0, required=False,
                     help="Lees-Edwards shear velocity (default: 1.0)")
@@ -67,10 +70,10 @@ system = espressomd.System(box_l=[1, 1, 1])
 system.time_step = 0.01
 
 
-def configure_dpd(system):
+def configure_dpd(system, args):
     system.non_bonded_inter[0, 0].dpd.set_params(
-        weight_function=1, gamma=DPD_GAMMA, r_cut=DPD_R_CUT,
-        trans_weight_function=1, trans_gamma=DPD_GAMMA, trans_r_cut=DPD_R_CUT)
+        weight_function=1, gamma=DPD_GAMMA, r_cut=args.r_cut,
+        trans_weight_function=1, trans_gamma=DPD_GAMMA, trans_r_cut=args.r_cut)
 
 
 def configure_decomposition(system):
@@ -108,7 +111,7 @@ def build_and_tune(system, args):
     box_l = (n_part / args.density)**(1. / 3.)
     system.box_l = 3 * (box_l,)
     system.cell_system.skin = INITIAL_SKIN if args.skin is None else args.skin
-    configure_dpd(system)
+    configure_dpd(system, args)
     system.part.add(pos=np.random.random((n_part, 3)) * system.box_l)
 
     benchmarks.minimize(system, 1 / system.time_step)
@@ -144,7 +147,7 @@ def save_dpd_state(system, args, ctx):
         "density": float(args.density),
         "shear_velocity": float(args.shear_velocity),
         "retune_skin_after": 0 if resolved_retune is None else resolved_retune,
-        "kT": KT, "gamma": DPD_GAMMA, "r_cut": DPD_R_CUT, "seed": SEED,
+        "kT": KT, "gamma": DPD_GAMMA, "r_cut": float(args.r_cut), "seed": SEED,
     }
     meta.update(benchmarks.topology_meta(system))
     benchmarks.save_state(
@@ -159,7 +162,8 @@ def run_from_state(system, args):
     system.box_l = meta["box_l"]
     system.time_step = meta["time_step"]
     system.cell_system.skin = args.skin if args.skin is not None else meta["skin"]
-    configure_dpd(system)
+    args.r_cut = float(meta["r_cut"])
+    configure_dpd(system, args)
     system.part.add(pos=handle["pos"], v=handle["vel"])
     system.integrator.set_vv()
     system.thermostat.set_dpd(kT=meta["kT"], seed=int(meta["seed"]))
