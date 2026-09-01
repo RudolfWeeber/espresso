@@ -288,7 +288,10 @@ void System::on_cell_structure_change() {
 #endif
 }
 
-void System::on_thermostat_param_change() { reinit_thermo = true; }
+void System::on_thermostat_param_change() {
+  reinit_thermo = true;
+  propagation->recalc_active_features = true;
+}
 
 void System::on_verlet_skin_change() {
   rebuild_cell_structure();
@@ -347,7 +350,7 @@ void System::on_lb_boundary_conditions_change() {
 void System::on_particle_local_change() {
   cell_structure->update_ghosts_and_resort_particle(get_global_ghost_flags());
   propagation->recalc_forces = true;
-  propagation->recalc_used_propagations = true;
+  propagation->recalc_active_features = true;
 }
 
 void System::on_particle_change() {
@@ -363,7 +366,7 @@ void System::on_particle_change() {
   dipoles.on_particle_change();
 #endif
   propagation->recalc_forces = true;
-  propagation->recalc_used_propagations = true;
+  propagation->recalc_active_features = true;
 
   /* the particle information is no longer valid */
   invalidate_fetch_cache();
@@ -377,10 +380,8 @@ void System::on_particle_charge_change() {
 }
 
 void System::update_dependent_particles() {
+  active_features->update_if_needed();
 #ifdef ESPRESSO_VIRTUAL_SITES
-  if (propagation->recalc_used_propagations) {
-    update_used_propagations();
-  }
 #ifdef ESPRESSO_VIRTUAL_SITES_RELATIVE
   if (propagation->used_propagations &
       (PropagationMode::ROT_VS_RELATIVE | PropagationMode::ROT_VS_INDEPENDENT |
@@ -411,6 +412,7 @@ void System::update_dependent_particles() {
 }
 
 void System::on_observable_calc() {
+  active_features->update_if_needed();
   /* Prepare particle structure: Communication step: number of ghosts and ghost
    * information */
   cell_structure->update_ghosts_and_resort_particle(get_global_ghost_flags());

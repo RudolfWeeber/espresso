@@ -39,6 +39,12 @@ namespace System {
  * Queries return the state as of the last update. They never trigger the
  * reduction lazily: the reduction is collective, and query sites are not
  * guaranteed to be collective.
+ *
+ * The cached state is invalidated via Propagation::recalc_active_features
+ * (set on particle changes, integrator changes, and thermostat changes)
+ * and refreshed at collective update points: the start of integrate(),
+ * on_observable_calc(), update_dependent_particles(), and after
+ * collision-detection topology changes.
  */
 class ActiveFeatures : public Leaf<ActiveFeatures> {
 public:
@@ -48,9 +54,6 @@ public:
   /** @brief Recompute the particle-derived state unconditionally.
    *  Collective call: all ranks must enter together. */
   void update();
-  /** @brief Mark the particle-derived state as stale. */
-  void invalidate() { m_recalc = true; }
-  bool needs_update() const { return m_recalc; }
 
   bool particles_are_virtual() const {
     return (m_particle_features & IS_VIRTUAL) != 0u;
@@ -125,7 +128,6 @@ private:
 
   /** Bitwise OR of @ref ParticleFeature over all particles on all ranks. */
   unsigned m_particle_features = 0u;
-  bool m_recalc = true;
 };
 
 } // namespace System

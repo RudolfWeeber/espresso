@@ -55,6 +55,7 @@
 #include "rotation.hpp"
 #include "signalhandling.hpp"
 #include "stokesian_dynamics/sd_interface.hpp"
+#include "system/ActiveFeatures.hpp"
 #include "system/System.hpp"
 #include "system/System.impl.hpp"
 #include "thermostat.hpp"
@@ -184,20 +185,6 @@ void Propagation::update_default_propagation(int thermo_switch) {
   default:
     throw std::runtime_error("Unknown value for integ_switch");
   }
-}
-
-void System::System::update_used_propagations() {
-  int used_propagations = PropagationMode::NONE;
-  for (auto &p : cell_structure->local_particles()) {
-    used_propagations |= p.propagation();
-  }
-  if (used_propagations & PropagationMode::SYSTEM_DEFAULT) {
-    used_propagations |= propagation->default_propagation;
-  }
-  used_propagations = boost::mpi::all_reduce(::comm_cart, used_propagations,
-                                             std::bit_or<int>());
-  propagation->used_propagations = used_propagations;
-  propagation->recalc_used_propagations = false;
 }
 
 void System::System::integrator_sanity_checks() const {
@@ -630,8 +617,7 @@ int System::System::integrate(int n_steps, int reuse_forces) {
 #endif
 
   // Prepare particle structure and run sanity checks of all active algorithms
-  propagation.update_default_propagation(thermostat->thermo_switch);
-  update_used_propagations();
+  active_features->update_if_needed();
   on_integration_start();
 
   // If any method vetoes (e.g. P3M not initialized), immediately bail out

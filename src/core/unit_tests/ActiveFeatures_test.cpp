@@ -23,11 +23,14 @@
 
 #include "EspressoCoreGlobalConfig.hpp"
 #include "Particle.hpp"
+#include "PropagationMode.hpp"
 #include "cell_system/CellStructure.hpp"
 #include "exclusions.hpp"
+#include "integrators/Propagation.hpp"
 #include "particle_node.hpp"
 #include "system/ActiveFeatures.hpp"
 #include "system/System.hpp"
+#include "thermostat.hpp"
 
 #include <utils/Vector.hpp>
 
@@ -53,7 +56,7 @@ static void mutate_particle(int p_id, auto &&mutation) {
   if (p != nullptr and not p->is_ghost()) {
     mutation(*p);
   }
-  system.active_features->invalidate();
+  system.propagation->recalc_active_features = true;
 }
 
 /** Remove all particles between test cases. */
@@ -67,9 +70,9 @@ BOOST_FIXTURE_TEST_CASE(default_particle_sets_no_bits, ParticleCleanup) {
   auto &system = System::get_system();
   auto &active_features = *system.active_features;
   ::make_new_particle(0, Utils::Vector3d{1., 1., 1.});
-  active_features.invalidate();
+  system.propagation->recalc_active_features = true;
   active_features.update_if_needed();
-  BOOST_CHECK(not active_features.needs_update());
+  BOOST_CHECK(not system.propagation->recalc_active_features);
   BOOST_CHECK(not active_features.particles_are_virtual());
   BOOST_CHECK(not active_features.particles_can_rotate());
   BOOST_CHECK(not active_features.particles_are_fixed());
@@ -123,7 +126,7 @@ BOOST_FIXTURE_TEST_CASE(update_if_needed_honors_dirty_flag, ParticleCleanup) {
   active_features.update_if_needed();
   BOOST_CHECK(not active_features.particles_can_rotate());
   // After invalidation the update must pick the change up.
-  active_features.invalidate();
+  system.propagation->recalc_active_features = true;
   active_features.update_if_needed();
   BOOST_CHECK(active_features.particles_can_rotate());
 }
@@ -160,7 +163,7 @@ BOOST_FIXTURE_TEST_CASE(property_bits_follow_particle_state, ParticleCleanup) {
 #endif
   // Removing the carrier particle clears every bit.
   ::remove_particle(0);
-  active_features.invalidate();
+  system.propagation->recalc_active_features = true;
   active_features.update_if_needed();
 #ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
   BOOST_CHECK(not active_features.particles_have_stoner_wohlfarth());
@@ -169,6 +172,63 @@ BOOST_FIXTURE_TEST_CASE(property_bits_follow_particle_state, ParticleCleanup) {
   BOOST_CHECK(not active_features.particles_have_dipole_moment());
 #endif
   BOOST_CHECK(not active_features.particles_are_fixed());
+}
+
+BOOST_FIXTURE_TEST_CASE(used_propagations_from_same_sweep, ParticleCleanup) {
+  auto &system = System::get_system();
+  auto &active_features = *system.active_features;
+  auto &propagation = *system.propagation;
+  ::make_new_particle(0, Utils::Vector3d{1., 1., 1.});
+  mutate_particle(0, [](Particle &p) {
+    p.propagation() = PropagationMode::TRANS_LANGEVIN;
+  });
+  active_features.update_if_needed();
+  BOOST_CHECK(propagation.used_propagations & PropagationMode::TRANS_LANGEVIN);
+  BOOST_CHECK(
+      (propagation.used_propagations & PropagationMode::SYSTEM_DEFAULT) == 0);
+}
+
+BOOST_FIXTURE_TEST_CASE(system_default_expansion_and_thermostat_invalidation,
+                        ParticleCleanup) {
+  auto &system = System::get_system();
+  auto &active_features = *system.active_features;
+  auto &propagation = *system.propagation;
+  // A default particle carries SYSTEM_DEFAULT, which expands to
+  // default_propagation, which depends on the thermostat switch.
+  ::make_new_particle(0, Utils::Vector3d{1., 1., 1.});
+  system.propagation->recalc_active_features = true;
+  active_features.update_if_needed();
+  BOOST_CHECK(propagation.used_propagations & PropagationMode::TRANS_NEWTON);
+  BOOST_CHECK(not propagation.recalc_active_features);
+  // Changing the thermostat must invalidate and change the expansion.
+  system.thermostat->thermo_switch = THERMO_LANGEVIN;
+  system.on_thermostat_param_change();
+  BOOST_CHECK(propagation.recalc_active_features);
+  active_features.update_if_needed();
+  BOOST_CHECK(propagation.used_propagations & PropagationMode::TRANS_LANGEVIN);
+#ifdef ESPRESSO_ROTATION
+  BOOST_CHECK(propagation.used_propagations & PropagationMode::ROT_LANGEVIN);
+#endif
+  // Restore for other test cases.
+  system.thermostat->thermo_switch = THERMO_OFF;
+  system.on_thermostat_param_change();
+}
+
+BOOST_FIXTURE_TEST_CASE(set_integ_switch_invalidates, ParticleCleanup) {
+  auto &system = System::get_system();
+  system.active_features->update();
+  BOOST_CHECK(not system.propagation->recalc_active_features);
+  system.propagation->set_integ_switch(INTEG_METHOD_NVT);
+  BOOST_CHECK(system.propagation->recalc_active_features);
+}
+
+BOOST_FIXTURE_TEST_CASE(particle_creation_invalidates, ParticleCleanup) {
+  auto &system = System::get_system();
+  system.active_features->update();
+  BOOST_CHECK(not system.propagation->recalc_active_features);
+  // make_new_particle fires on_particle_change, which must set the flag.
+  ::make_new_particle(0, Utils::Vector3d{1., 1., 1.});
+  BOOST_CHECK(system.propagation->recalc_active_features);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

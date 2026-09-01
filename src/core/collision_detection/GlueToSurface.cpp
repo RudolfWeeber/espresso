@@ -33,6 +33,7 @@
 #include "cell_system/CellStructure.hpp"
 #include "communication.hpp"
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
+#include "system/ActiveFeatures.hpp"
 #include "system/System.hpp"
 #include "virtual_sites.hpp"
 
@@ -204,7 +205,7 @@ void GlueToSurface::handle_collisions(
     cell_structure.set_resort_particles(Cells::RESORT_GLOBAL);
     cell_structure.update_ghosts_and_resort_particle(
         Cells::DATA_PART_PROPERTIES | Cells::DATA_PART_BONDS);
-    system.update_used_propagations();
+    system.active_features->update();
   }
 }
 

@@ -22,10 +22,13 @@
 #include "ActiveFeatures.hpp"
 
 #include "Particle.hpp"
+#include "PropagationMode.hpp"
 #include "cell_system/CellStructure.hpp"
 #include "communication.hpp"
+#include "integrators/Propagation.hpp"
 #include "particle_reduction.hpp"
 #include "system/System.hpp"
+#include "thermostat.hpp"
 
 #include <utils/Vector.hpp>
 
@@ -83,18 +86,39 @@ unsigned ActiveFeatures::particle_bits(Particle const &p) {
 }
 
 void ActiveFeatures::update() {
-  auto const &system = get_system();
-  auto const local_features = reduce_over_local_particles<unsigned>(
+  auto &system = get_system();
+  auto &propagation = *system.propagation;
+  propagation.update_default_propagation(system.thermostat->thermo_switch);
+  struct SweepResult {
+    int propagations = PropagationMode::NONE;
+    unsigned features = 0u;
+  };
+  auto const local = reduce_over_local_particles<SweepResult>(
       *system.cell_structure,
-      [](unsigned &acc, Particle const &p) { acc |= particle_bits(p); },
-      [](unsigned &acc, unsigned const &other) { acc |= other; });
-  m_particle_features = boost::mpi::all_reduce(::comm_cart, local_features,
-                                               std::bit_or<unsigned>());
-  m_recalc = false;
+      [](SweepResult &acc, Particle const &p) {
+        acc.propagations |= p.propagation();
+        acc.features |= particle_bits(p);
+      },
+      [](SweepResult &acc, SweepResult const &other) {
+        acc.propagations |= other.propagations;
+        acc.features |= other.features;
+      });
+  int const local_masks[2] = {local.propagations,
+                              static_cast<int>(local.features)};
+  int global_masks[2];
+  boost::mpi::all_reduce(::comm_cart, local_masks, 2, global_masks,
+                         std::bit_or<int>());
+  auto used_propagations = global_masks[0];
+  if (used_propagations & PropagationMode::SYSTEM_DEFAULT) {
+    used_propagations |= propagation.default_propagation;
+  }
+  propagation.used_propagations = used_propagations;
+  m_particle_features = static_cast<unsigned>(global_masks[1]);
+  propagation.recalc_active_features = false;
 }
 
 void ActiveFeatures::update_if_needed() {
-  if (m_recalc) {
+  if (get_system().propagation->recalc_active_features) {
     update();
   }
 }

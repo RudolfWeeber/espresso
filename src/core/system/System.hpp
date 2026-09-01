@@ -312,10 +312,6 @@ public:
    */
   void update_dependent_particles();
   /**
-   * @brief Update the global propagation bitmask.
-   */
-  void update_used_propagations();
-  /**
    * @brief Veto temperature change.
    */
   void check_kT(double value) const;

@@ -32,7 +32,10 @@ public:
   int ek_skipped_md_steps = 0;
   /** If true, forces will be recalculated before the next integration. */
   bool recalc_forces = true;
-  bool recalc_used_propagations = true;
+  /** If true, the particle-derived active-feature state, including
+   *  @ref used_propagations, will be recomputed at the next collective
+   *  update point. Cleared only by System::ActiveFeatures::update(). */
+  bool recalc_active_features = true;
 
   void update_default_propagation(int thermo_switch);
 
@@ -46,7 +49,7 @@ public:
   void set_integ_switch(int value) {
     integ_switch = value;
     recalc_forces = true;
-    recalc_used_propagations = true;
+    recalc_active_features = true;
   }
 
   /** True for all integrators that use inertial dynamics (VV, SE, NPT).
