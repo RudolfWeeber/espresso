@@ -126,6 +126,21 @@ class Test(ut.TestCase):
         test_flags = self._check_zero_field_flips(p2, np.pi)
         self.assertEqual(all(test_flags), True)
 
+    def test_runtime_activation(self):
+        # Exercise the active-features cache: integrate first with no
+        # Stoner-Wohlfarth particle in the system, then add the first one
+        # mid-run. The ghost-flag and magnetodynamics guards must pick the
+        # change up (issue #5410).
+        self.system.part.clear()
+        self.system.part.add(pos=[1, 1, 1])
+        self.system.integrator.run(10)
+        p1, p2 = self._init_virtual_site_pair()
+        self.system.integrator.run(1)
+        np.testing.assert_allclose(
+            np.copy(p1.director), np.copy(p2.director), atol=1e-06)
+        test_flags = self._check_zero_field_flips(p2, 0.)
+        self.assertEqual(all(test_flags), True)
+
     def test_minimal_field(self):
         _, p2 = self._init_virtual_site_pair()
         self.system.integrator.run(1)

@@ -30,6 +30,7 @@
 #include "errorhandling.hpp"
 #include "random.hpp"
 #include "rotation.hpp"
+#include "system/ActiveFeatures.hpp"
 #include "system/System.hpp"
 #include "thermostat.hpp"
 #include "virtual_sites/relative.hpp"
@@ -256,6 +257,9 @@ static void stoner_wohlfarth_main(Particle &p, Utils::Vector3d const &e_k,
  * simplified no-field update or the full thermal Stoner-Wohlfarth update.
  */
 void System::System::integrate_magnetodynamics() {
+  if (not active_features->particles_have_stoner_wohlfarth()) {
+    return;
+  }
   // collect HomogeneousMagneticFields if active
   auto const ext_fld = get_external_field(*constraints);
   auto const kT = thermostat->kT;

@@ -309,14 +309,10 @@ void System::System::integrator_sanity_checks() const {
 #endif // ESPRESSO_VIRTUAL_SITES_CENTER_OF_MASS
 
 #ifdef ESPRESSO_THERMAL_STONER_WOHLFARTH
-  if ((thermo_switch & THERMO_LANGEVIN) == 0) {
-    for (auto const &p : cell_structure->local_particles()) {
-      if (p.stoner_wohlfarth_is_enabled()) {
-        runtimeErrorMsg() << "The thermal Stoner-Wohlfarth model requires the "
-                             "Langevin thermostat";
-        break;
-      }
-    }
+  if (active_features->particles_have_stoner_wohlfarth() and
+      (thermo_switch & THERMO_LANGEVIN) == 0) {
+    runtimeErrorMsg() << "The thermal Stoner-Wohlfarth model requires the "
+                         "Langevin thermostat";
   }
 #endif // ESPRESSO_THERMAL_STONER_WOHLFARTH
 }
