@@ -539,7 +539,7 @@ void System::System::calculate_forces() {
 #endif
     // Pair-kernel torques also land on ghost particles and only get home via
     // the TORQUE ghost reduce. Each torque-scattering kernel therefore needs
-    // a matching arm in orientation_ghosts_needed() (System.cpp).
+    // a matching arm in orientation_ghosts_needed() (ActiveFeatures.cpp).
     assert(get_force_reduce_ghost_flags() & GHOSTTRANS_TORQUE);
   }
 #endif // ESPRESSO_ROTATION

@@ -255,6 +255,9 @@ static void stoner_wohlfarth_main(Particle &p, Utils::Vector3d const &e_k,
  * Collect active homogeneous external magnetic fields from constraints and
  * add the per-particle dipolar contribution before performing either the
  * simplified no-field update or the full thermal Stoner-Wohlfarth update.
+ * Returns immediately when no particle has the thermal Stoner-Wohlfarth
+ * model enabled, per the cached
+ * @ref System::ActiveFeatures::particles_have_stoner_wohlfarth() bit.
  */
 void System::System::integrate_magnetodynamics() {
   if (not active_features->particles_have_stoner_wohlfarth()) {

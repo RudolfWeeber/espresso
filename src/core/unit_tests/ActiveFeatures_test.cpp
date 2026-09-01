@@ -24,7 +24,11 @@
 #include "EspressoCoreGlobalConfig.hpp"
 #include "Particle.hpp"
 #include "PropagationMode.hpp"
+#include "bonded_interactions/bonded_interaction_data.hpp"
+#include "bonded_interactions/harmonic.hpp"
 #include "cell_system/CellStructure.hpp"
+#include "collision_detection/ActiveProtocol.hpp"
+#include "collision_detection/CollisionDetection.hpp"
 #include "exclusions.hpp"
 #include "ghosts.hpp"
 #include "integrators/Propagation.hpp"
@@ -37,6 +41,8 @@
 #include <utils/Vector.hpp>
 
 #include <boost/mpi.hpp>
+
+#include <memory>
 
 struct GlobalConfig : public EspressoCoreGlobalConfig {
   GlobalConfig() {
@@ -307,6 +313,32 @@ BOOST_FIXTURE_TEST_CASE(gay_berne_aggregate, ParticleCleanup) {
   // Reset so later test cases see a clean interaction table.
   ia_params.gay_berne = GayBerne_Parameters();
   system.on_non_bonded_ia_change();
+}
+#endif
+
+#if defined(ESPRESSO_COLLISION_DETECTION) &&                                   \
+    defined(ESPRESSO_VIRTUAL_SITES_RELATIVE)
+BOOST_FIXTURE_TEST_CASE(collision_detection_active_needs_orientation_ghosts,
+                        ParticleCleanup) {
+  auto &system = System::get_system();
+  auto &active_features = *system.active_features;
+  ::make_new_particle(0, Utils::Vector3d{1., 1., 1.});
+  system.propagation->recalc_active_features = true;
+  active_features.update_if_needed();
+  BOOST_CHECK(not active_features.orientation_ghosts_needed());
+  // BindCenters::initialize requires the bond type to exist and be a pair
+  // bond.
+  auto const bond_centers_id = 0;
+  auto const bond = HarmonicBond(200.0, 0.3, 1.0);
+  system.bonded_ias->insert(bond_centers_id,
+                            std::make_shared<Bonded_IA_Parameters>(bond));
+  system.collision_detection->set_protocol(
+      std::make_shared<CollisionDetection::ActiveProtocol>(
+          CollisionDetection::BindCenters(1., bond_centers_id)));
+  BOOST_CHECK(active_features.orientation_ghosts_needed());
+  // Reset so later test cases see collision detection off.
+  system.collision_detection->unset_protocol();
+  BOOST_CHECK(not active_features.orientation_ghosts_needed());
 }
 #endif
 #endif // ESPRESSO_ROTATION

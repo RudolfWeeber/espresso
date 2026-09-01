@@ -24,6 +24,7 @@
 #include "Particle.hpp"
 #include "PropagationMode.hpp"
 #include "cell_system/CellStructure.hpp"
+#include "collision_detection/CollisionDetection.hpp"
 #include "communication.hpp"
 #include "integrators/Propagation.hpp"
 #include "magnetostatics/dipoles.hpp"
@@ -132,7 +133,7 @@ bool ActiveFeatures::has_gay_berne() const {
 
 #ifdef ESPRESSO_ROTATION
 /**
- * @brief Return true when any active physics requires orientation of ghost
+ * Return true when any active physics requires orientation of ghost
  * particles.  Used by both @c System::get_global_ghost_flags (QUAT push) and
  * @c System::get_force_reduce_ghost_flags (TORQUE reduce).
  *
@@ -165,6 +166,11 @@ bool ActiveFeatures::has_gay_berne() const {
  * - ICC blocking reduce: resets force_and_torque on local particles and may
  *   carry a zero-valued TORQUE payload on the wire when orientation physics is
  *   concurrently active — harmless (bytes only, value is zero)
+ * - calculate_vs_relate_to_params (virtual_sites.cpp, reached from
+ *   collision_detection/utils.hpp place_vs_and_relate_to_particle): reads
+ *   p_relate_to.quat() where p_relate_to can be a ghost when collision
+ *   detection creates a virtual site mid-step; covered by the
+ *   collision-detection-active condition below, not by a particle bit
  */
 bool ActiveFeatures::orientation_ghosts_needed() const {
   auto const &system = get_system();
@@ -204,6 +210,16 @@ bool ActiveFeatures::orientation_ghosts_needed() const {
   // Gay-Berne anisotropic nonbonded interaction configured: short_range_cabana
   // commits ghost quat -> director for the Cabana pair kernel.
   if (has_gay_berne()) {
+    return true;
+  }
+#endif
+
+#if defined(ESPRESSO_COLLISION_DETECTION) and                                  \
+    defined(ESPRESSO_VIRTUAL_SITES_RELATIVE)
+  // Collision detection can create virtual sites mid-step;
+  // calculate_vs_relate_to_params reads the quaternion of the reference
+  // particle, which can be a ghost (collision_detection/utils.hpp).
+  if (not system.collision_detection->is_off()) {
     return true;
   }
 #endif
