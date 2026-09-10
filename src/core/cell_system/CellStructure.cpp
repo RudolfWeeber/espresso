@@ -775,8 +775,15 @@ bool CellStructure::check_resort_required(
     Utils::Vector3d const &additional_offset) const {
   auto const lim = Utils::sqr(m_verlet_skin / 2.) - additional_offset.norm2();
 
-  auto add_partial = [lim](bool &result, Particle const &p) {
-    if ((p.pos() - p.pos_at_last_verlet_update()).norm2() > lim) {
+  // Measure displacement with the (Lees-Edwards-aware) minimum image so that a
+  // particle repositioned across a periodic/shear boundary by the LE Push (or
+  // a plain periodic wrap) is not mistaken for a box-length jump.  The shear
+  // offset drift is still accounted for via `additional_offset`.  For cuboid
+  // boxes this reduces to the plain periodic minimum image (a no-op for the
+  // small inter-resort displacements seen there).
+  auto const &box_geo = *get_system().box_geo;
+  auto add_partial = [lim, &box_geo](bool &result, Particle const &p) {
+    if (box_geo.get_mi_dist2(p.pos(), p.pos_at_last_verlet_update()) > lim) {
       result = true;
     }
   };
