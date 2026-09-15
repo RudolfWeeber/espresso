@@ -773,7 +773,20 @@ void CellStructure::update_ghosts_and_resort_particle(unsigned data_parts) {
 
 bool CellStructure::check_resort_required(
     Utils::Vector3d const &additional_offset) const {
-  auto const lim = Utils::sqr(m_verlet_skin / 2.) - additional_offset.norm2();
+  // The Verlet list stays valid as long as no pair separation changes by more
+  // than the skin.  Both partners contribute their own displacement d, and a
+  // pair straddling the Lees-Edwards shear plane drifts in addition by the
+  // change of the shear offset since the last resort.  The budget is therefore
+  //   2 * d + drift <= skin,   i.e.   d <= (skin - drift) / 2,
+  // which is what `lim` below encodes.  Note that the drift enters linearly
+  // (it is collinear with the shear direction), not as an orthogonal
+  // component.
+  auto const drift = additional_offset.norm();
+  if (drift >= m_verlet_skin) {
+    // The shear drift alone exhausts the skin: no displacement is admissible.
+    return true;
+  }
+  auto const lim = Utils::sqr((m_verlet_skin - drift) / 2.);
 
   // Measure displacement with the (Lees-Edwards-aware) minimum image so that a
   // particle repositioned across a periodic/shear boundary by the LE Push (or

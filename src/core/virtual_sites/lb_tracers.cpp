@@ -28,6 +28,8 @@
 #include "lb/Solver.hpp"
 #include "lb/particle_coupling.hpp"
 
+#include <utils/math/sqr.hpp>
+
 static bool lb_sanity_checks(LB::Solver const &lb) {
   if (not lb.is_solver_set()) {
     runtimeErrorMsg() << "LB needs to be active for inertialess tracers.";
@@ -71,13 +73,18 @@ void lb_tracers_add_particle_force_to_fluid(CellStructure &cell_structure,
   cell_structure.ghosts_reset_forces();
 }
 
-void lb_tracers_propagate(CellStructure &cell_structure, LB::Solver const &lb,
+void lb_tracers_propagate(CellStructure &cell_structure,
+                          BoxGeometry const &box_geo, LB::Solver const &lb,
                           double time_step) {
   if (lb_sanity_checks(lb)) {
     return;
   }
-  auto const verlet_skin = cell_structure.get_verlet_skin();
-  auto const verlet_skin_sq = verlet_skin * verlet_skin;
+  /* Same budget as @ref CellStructure::check_resort_required: both partners of
+   * a pair move, so each may travel at most half the skin before the Verlet
+   * list can go stale.  The displacement is measured with the (Lees-Edwards
+   * aware) minimum image so that a tracer repositioned across a periodic or
+   * shear boundary is not mistaken for a box-length jump. */
+  auto const lim = Utils::sqr(cell_structure.get_verlet_skin() / 2.);
 
   // Advect particles
   for (auto &p : cell_structure.local_particles()) {
@@ -90,7 +97,7 @@ void lb_tracers_propagate(CellStructure &cell_structure, LB::Solver const &lb,
       }
     }
     // Verlet list update check
-    if ((p.pos() - p.pos_at_last_verlet_update()).norm2() > verlet_skin_sq) {
+    if (box_geo.get_mi_dist2(p.pos(), p.pos_at_last_verlet_update()) > lim) {
       cell_structure.set_resort_particles(Cells::RESORT_LOCAL);
     }
   }

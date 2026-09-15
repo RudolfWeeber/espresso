@@ -921,7 +921,7 @@ int System::System::integrate(int n_steps, int reuse_forces) {
         if (lb_active) {
           lb.ghost_communication_vel();
         }
-        lb_tracers_propagate(*cell_structure, lb, time_step);
+        lb_tracers_propagate(*cell_structure, *box_geo, lb, time_step);
 #ifdef ESPRESSO_CALIPER
         ESPRESSO_CALI_MARK_END("lb_tracers_propagation");
 #endif

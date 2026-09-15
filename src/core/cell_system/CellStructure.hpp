@@ -615,11 +615,20 @@ public:
   void clear_resort_particles() { m_resort_particles = Cells::RESORT_NONE; }
 
   /**
-   * @brief Check whether a particle has moved further than half the skin
-   * since the last Verlet list update, thus requiring a resort.
-   * @param additional_offset   Offset which is added to the distance the
-   *                            particle has travelled when comparing to half
-   *                            the Verlet skin (e.g., for Lees-Edwards BC).
+   * @brief Check whether a particle has moved far enough since the last
+   * Verlet list update to require a resort.
+   *
+   * Displacements are measured with the minimum image of the current box, so
+   * that a particle repositioned across a periodic or shear boundary is not
+   * mistaken for a box-length jump.  The admissible displacement is
+   * <tt>(skin - |additional_offset|) / 2</tt>: both partners of a pair move,
+   * and @p additional_offset is a relative drift on top of that.
+   *
+   * @param additional_offset   Relative drift that pairs experience on top of
+   *                            their own displacement since the last resort,
+   *                            e.g. the change of the Lees-Edwards position
+   *                            offset (see @ref
+   * LeesEdwards::verlet_list_offset).
    * @return Whether a resort is needed.
    */
   bool
