@@ -288,6 +288,7 @@ python_test(FILE writevtf.py MAX_NUM_PROC 4)
 python_test(FILE lb_pressure_tensor.py MAX_NUM_PROC 1 GPU_SLOTS 1 LABELS long)
 python_test(FILE exclusions.py MAX_NUM_PROC 2)
 python_test(FILE lees_edwards.py MAX_NUM_PROC 4)
+python_test(FILE particle_locality.py MAX_NUM_PROC 2)
 python_test(FILE lb_lees_edwards.py MAX_NUM_PROC 1)
 python_test(FILE lb_lees_edwards_particle_coupling.py MAX_NUM_PROC 1
             NUM_THREADS 2)

@@ -150,9 +150,13 @@ void vs_relative_update_particles(CellStructure &cell_structure,
       if (box_geo.type() == BoxType::LEES_EDWARDS) {
         auto push = LeesEdwards::Push(box_geo);
         push(p, 1); // includes a position fold
-      } else {
-        box_geo.fold_position(p.pos(), p.image_box());
       }
+      /* No fold in a cuboid box: `pos` was just built from the reference
+       * particle and `image_box` copied from it, so the pair is already
+       * consistent and the position is at most the virtual-site distance away
+       * from a particle that is itself close to this rank.  Folding here would
+       * move the virtual site a whole box away from its owner between resorts,
+       * which real particles are never subjected to. */
     }
 
     // Orientation update

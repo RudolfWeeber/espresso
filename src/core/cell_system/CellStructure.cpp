@@ -794,9 +794,32 @@ bool CellStructure::check_resort_required(
   // offset drift is still accounted for via `additional_offset`.  For cuboid
   // boxes this reduces to the plain periodic minimum image (a no-op for the
   // small inter-resort displacements seen there).
-  auto const &box_geo = *get_system().box_geo;
-  auto add_partial = [lim, &box_geo](bool &result, Particle const &p) {
+  auto const &system = get_system();
+  auto const &box_geo = *system.box_geo;
+
+  /* Second arm: a local particle's stored position must remain the periodic
+   * image closest to the rank that owns it.  Folding outside a resort (the
+   * Lees-Edwards Push, see BoxGeometry::fold_coordinate) moves a particle a
+   * whole box without changing the minimum-image displacement above, so the
+   * first arm cannot see it.  Consumers that index rank-local storage by
+   * absolute position -- the P3M charge-assignment mesh above all -- would
+   * then read and write outside their allocation.
+   *
+   * The margin is the ghost-layer width, which also bounds the virtual-site
+   * distance (min_global_cut feeds System::maximal_cutoff).  Where a rank
+   * spans the whole box along an axis the test cannot fire, so single-rank
+   * runs and unsplit axes pay only the comparison. */
+  auto const &local_geo = *system.local_geo;
+  auto const range = system.get_interaction_range();
+  auto const margin = (range > 0.) ? range : m_verlet_skin;
+  auto const lower = local_geo.my_left() - Utils::Vector3d::broadcast(margin);
+  auto const upper = local_geo.my_right() + Utils::Vector3d::broadcast(margin);
+
+  auto add_partial = [lim, &box_geo, &lower, &upper](bool &result,
+                                                     Particle const &p) {
     if (box_geo.get_mi_dist2(p.pos(), p.pos_at_last_verlet_update()) > lim) {
+      result = true;
+    } else if (not(p.pos() >= lower and p.pos() < upper)) {
       result = true;
     }
   };

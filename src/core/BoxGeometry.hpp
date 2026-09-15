@@ -412,19 +412,42 @@ public:
    */
   void fold_position(Utils::Vector3d &pos, Utils::Vector3i &image_box) const {
     for (auto i = 0u; i < 3u; i++) {
-      if (m_periodic[i]) {
-        auto const result =
-            Algorithm::periodic_fold(pos[i], image_box[i], m_length[i]);
-        if (result.second == std::numeric_limits<int>::min() or
-            result.second == std::numeric_limits<int>::max()) {
-          throw std::runtime_error(
-              "Overflow in the image box count while folding a particle "
-              "coordinate into the primary simulation box. Maybe a particle "
-              "experienced a huge force.");
-        }
-        std::tie(pos[i], image_box[i]) = result;
-      }
+      fold_coordinate(pos, image_box, i);
     }
+  }
+
+  /** @brief Fold a single coordinate to the primary simulation box in-place.
+   *
+   *  The only place that folds a particle coordinate together with its image
+   *  box; @ref fold_position is a loop over it.  Fold through this function
+   *  rather than adjusting a coordinate and an image box by hand, so that the
+   *  overflow guard below cannot be forgotten.
+   *
+   *  Beware: folding a local particle outside a resort can move it a whole box
+   *  away from the rank that owns it, which breaks consumers that index
+   *  rank-local storage by absolute position (the P3M charge-assignment mesh).
+   *  @ref CellStructure::check_resort_required detects that and schedules the
+   *  re-homing; do not bypass it.
+   *
+   *  @param[in,out] pos        coordinates to fold
+   *  @param[in,out] image_box  image box offset
+   *  @param[in]     i          coordinate to fold
+   */
+  void fold_coordinate(Utils::Vector3d &pos, Utils::Vector3i &image_box,
+                       unsigned int i) const {
+    if (not m_periodic[i]) {
+      return;
+    }
+    auto const result =
+        Algorithm::periodic_fold(pos[i], image_box[i], m_length[i]);
+    if (result.second == std::numeric_limits<int>::min() or
+        result.second == std::numeric_limits<int>::max()) {
+      throw std::runtime_error(
+          "Overflow in the image box count while folding a particle "
+          "coordinate into the primary simulation box. Maybe a particle "
+          "experienced a huge force.");
+    }
+    std::tie(pos[i], image_box[i]) = result;
   }
 
   /**
