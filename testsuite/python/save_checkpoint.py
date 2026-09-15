@@ -66,8 +66,11 @@ checkpoint = espressomd.checkpointing.Checkpoint(
     **config.get_checkpoint_params())
 
 # Lees-Edwards boundary conditions
+# P3M and DP3M index a rank-local charge-assignment mesh by absolute position,
+# which sheared boundaries do not provide; both solvers reject the combination.
+p3m_active = any(mode in modes for mode in ('P3M', 'P3M.GPU', 'ELC', 'DP3M'))
 le_active = False
-if 'INT.NPT' not in modes and 'LB.GPU' not in modes and (
+if 'INT.NPT' not in modes and 'LB.GPU' not in modes and not p3m_active and (
         'LB' not in modes or n_nodes in (1, 2, 3)):
     le_active = True
     protocol = espressomd.lees_edwards.LinearShear(

@@ -79,6 +79,7 @@ public:
     sanity_checks_boxl();
     sanity_checks_node_grid();
     sanity_checks_periodicity();
+    sanity_checks_box_type();
     sanity_checks_cell_structure();
   }
 
@@ -257,6 +258,11 @@ protected:
   void sanity_checks_boxl() const;
   void sanity_checks_node_grid() const;
   void sanity_checks_periodicity() const;
+  /** Rejects box types whose particle positions are not guaranteed to be the
+   *  image closest to the owning rank's local mesh (see
+   *  @ref P3MLocalMesh::calc_local_ca_mesh).
+   */
+  void sanity_checks_box_type() const;
   void sanity_checks_cell_structure() const;
 
   virtual void scaleby_box_l() = 0;

@@ -51,6 +51,9 @@ modes = config.get_modes()
 has_lb_mode = ('LB.WALBERLA' in modes and espressomd.has_features('WALBERLA')
                and ('LB.CPU' in modes or 'LB.GPU' in modes and is_gpu_available))
 has_p3m_mode = 'P3M.CPU' in modes or 'P3M.GPU' in modes and is_gpu_available
+# P3M and DP3M reject sheared boundaries, so save_checkpoint.py does not
+# enable Lees-Edwards in those modes; mirror that here.
+p3m_active = any(mode in modes for mode in ('P3M', 'P3M.GPU', 'ELC', 'DP3M'))
 has_thermalized_bonds = 'THERM.LB' in modes or 'THERM.LANGEVIN' in modes
 has_drude = (espressomd.has_features(['ELECTROSTATICS', 'MASS', 'ROTATION'])
              and has_thermalized_bonds)
@@ -139,6 +142,7 @@ class CheckpointTest(ut.TestCase):
         state = lbf.lattice.get_params()
         ref_ghost_layers = 2
         if 'INT.NPT' not in modes and 'LB.GPU' not in modes and (
+                not p3m_active) and (
                 'LB' not in modes or self.n_nodes in (1, 2, 3)):
             ref_ghost_layers = 1
         reference = {"agrid": 2.0, "n_ghost_layers": ref_ghost_layers,
@@ -512,6 +516,7 @@ class CheckpointTest(ut.TestCase):
 
     @ut.skipIf('LB.GPU' in modes, 'Lees-Edwards not implemented for LB GPU')
     @ut.skipIf('INT.NPT' in modes, 'Lees-Edwards not compatible with NPT')
+    @ut.skipIf(p3m_active, 'Lees-Edwards not compatible with P3M')
     @ut.skipIf('LB' in modes and n_nodes not in (1, 2, 3),
                'Lees-Edwards not implemented for certain decompositions')
     def test_lees_edwards(self):
