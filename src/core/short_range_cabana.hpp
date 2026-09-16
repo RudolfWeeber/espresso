@@ -44,8 +44,12 @@
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 commit_particle(Particle const &p, auto const index,
                 CellStructure::AoSoA_pack &aosoa, bool const rebuild) {
-  // Always commit: positions, velocities, charges, directors, dipm
+  // Always commit: positions, velocities, charges, directors, dipm.
+  // The image box pairs with the position -- anything unfolding one through
+  // the other (calc_bonded_four_body_force) needs both from the same step.
+  // Lees-Edwards and the resort both change it without a Verlet rebuild.
   aosoa.set_vector_at(aosoa.position, index, p.pos());
+  aosoa.set_vector_at(aosoa.image, index, p.image_box());
 #ifdef ESPRESSO_ELECTROSTATICS
   aosoa.charge(index) = p.q();
 #endif
@@ -62,7 +66,6 @@ commit_particle(Particle const &p, auto const index,
   if (rebuild) {
     aosoa.id(index) = p.id();
     aosoa.type(index) = p.type();
-    aosoa.set_vector_at(aosoa.image, index, p.image_box());
 #ifdef ESPRESSO_MASS
     aosoa.mass(index) = p.mass();
 #endif
