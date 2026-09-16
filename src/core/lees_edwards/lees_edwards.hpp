@@ -66,7 +66,23 @@ public:
     p.v()[m_le.shear_direction] += dir * m_le.shear_velocity;
     p.pos()[m_le.shear_direction] += pos_prefactor * dir * m_le.pos_offset;
     p.lees_edwards_offset() -= pos_prefactor * dir * m_le.pos_offset;
-    m_box.fold_position(p.pos(), p.image_box());
+    /* Fold only the two axes that must not be left outside the box:
+     *
+     *  - the shear-plane normal, because the crossing test above is
+     *    level-triggered: a particle left beyond the boundary would be shifted
+     *    again on the next step;
+     *  - the shear direction, because `pos_offset` grows without bound under
+     *    linear shear, so the jump just applied can be arbitrarily large.
+     *
+     * The remaining axis is deliberately left alone and folded at the resort,
+     * exactly like in a cuboid box.  Folding it here would move a particle a
+     * whole box away from the rank that owns it, which
+     * @ref CellStructure::check_resort_required has to undo with a resort --
+     * the cost that made every axis of a distributed run re-sort every step.
+     * Lees-Edwards already requires the shear direction to be unsplit, so
+     * after this only a node grid that splits the shear-plane normal pays. */
+    m_box.fold_coordinate(p.pos(), p.image_box(), m_le.shear_plane_normal);
+    m_box.fold_coordinate(p.pos(), p.image_box(), m_le.shear_direction);
     //    UpdateOffset::operator()(p,pos_prefactor);
   }
 };

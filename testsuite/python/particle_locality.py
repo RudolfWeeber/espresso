@@ -28,7 +28,10 @@ system = espressomd.System(box_l=[10., 10., 10.])
 n_nodes = system.cell_system.get_state()["n_nodes"]
 
 
-@ut.skipIf(n_nodes == 1, "Requires more than one MPI rank to split the box")
+@ut.skipIf(n_nodes not in (2, 3),
+           "Requires 2 or 3 MPI ranks: the box has to be split for the "
+           "invariant to be testable, while each local box must stay "
+           "wider than the interaction range")
 @utx.skipIfMissingFeatures(["P3M", "VIRTUAL_SITES_RELATIVE"])
 class ParticleLocality(ut.TestCase):
 
