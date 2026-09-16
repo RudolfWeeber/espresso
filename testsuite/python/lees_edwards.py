@@ -976,6 +976,66 @@ class LeesEdwards(ut.TestCase):
             tests_common.verify_lj_forces(system, 1E-7)
         assert have_interacted
 
+    def run_verlet_reuse(self, skin, n_steps):
+        """Integrate a slowly sheared LJ liquid, leave the system in its final
+        state and report how many steps the Verlet list survived on average."""
+        system = self.system
+        system.part.clear()
+        system.box_l = [20., 20., 20.]
+        system.time = 0.
+        system.time_step = 0.005
+        system.cell_system.skin = skin
+        system.cell_system.node_grid = [1, self.n_nodes, 1]
+        system.cell_system.set_regular_decomposition(
+            fully_connected_boundary={"direction": "x", "boundary": "y"})
+        # shear slowly: the offset has to drift far less than the skin between
+        # resorts, which is the regime the resort criterion profits from
+        system.lees_edwards.set_boundary_conditions(
+            shear_direction="x", shear_plane_normal="y",
+            protocol=espressomd.lees_edwards.LinearShear(
+                shear_velocity=0.01, initial_pos_offset=0., time_0=0.))
+        rng = np.random.default_rng(42)
+        system.part.add(pos=rng.random((2000, 3)) * 20.)
+        system.non_bonded_inter[0, 0].lennard_jones.set_params(
+            epsilon=1., sigma=1., cutoff=1.12246, shift="auto")
+        # other tests in this file leave a thermostat behind, which steepest
+        # descent refuses to run with
+        system.thermostat.turn_off()
+        system.integrator.set_steepest_descent(
+            f_max=10., gamma=10., max_displacement=0.01)
+        system.integrator.run(300)
+        system.integrator.set_vv()
+        system.thermostat.set_langevin(kT=0.3, gamma=1., seed=7)
+        system.integrator.run(800)
+        system.thermostat.turn_off()
+        system.integrator.run(n_steps)
+        return system.cell_system.get_state()["verlet_reuse"]
+
+    @utx.skipIfMissingFeatures(["LENNARD_JONES"])
+    def test_zy_verlet_reuse_under_slow_shear(self):
+        """Under slow shear the Verlet list has to survive many steps. Folding
+        a position used to look like a box-length jump, which pinned
+        verlet_reuse at 1 whatever the skin. The forces a reused list produces
+        must equal the ones a freshly built list produces for the very same
+        configuration."""
+        system = self.system
+        reuse = self.run_verlet_reuse(skin=0.4, n_steps=60)
+        self.assertGreater(
+            reuse, 8., "the Verlet list has to survive several steps under "
+            "slow shear; the fold used to pin this at 1")
+
+        # Same positions, same everything -- only the neighbour list differs.
+        # Comparing two trajectories instead would only measure Lyapunov
+        # divergence.
+        f_reused = np.copy(system.part.all().f)
+        # rewind the clock, so the recomputation sees the same Lees-Edwards
+        # offset that was in force when the reused list produced f_reused
+        system.time = system.time - system.time_step
+        system.cell_system.resort()
+        system.integrator.run(0, recalc_forces=True)
+        f_fresh = np.copy(system.part.all().f)
+        np.testing.assert_allclose(f_reused, f_fresh, rtol=1e-9, atol=1e-10)
+
     @utx.skipIfMissingFeatures(["LENNARD_JONES"])
     def test_zz_lj_pair_visibility(self):
         # check that regular decomposition without fully connected doesn't
