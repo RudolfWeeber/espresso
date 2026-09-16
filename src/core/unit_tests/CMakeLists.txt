@@ -96,8 +96,16 @@ espresso_unit_test(SRC Cell_boundary_test.cpp DEPENDS espresso::core
                    Kokkos::kokkos)
 espresso_unit_test(SRC HaloPlan_test.cpp DEPENDS espresso::core Kokkos::kokkos
                    Boost::mpi MPI::MPI_CXX)
-espresso_unit_test(SRC RegularHaloPlan_test.cpp DEPENDS espresso::core
-                   Kokkos::kokkos Boost::mpi MPI::MPI_CXX NUM_PROC 4)
+# Every case in this file is gated on a 4-rank communicator, so a build with
+# ESPRESSO_TEST_NP < 4 must skip it rather than let espresso_unit_test_register
+# clamp the rank count and report a pass having asserted nothing.
+espresso_unit_test_executable(
+  NAME RegularHaloPlan_test SRC RegularHaloPlan_test.cpp DEPENDS espresso::core
+  Kokkos::kokkos Boost::mpi MPI::MPI_CXX)
+if(${ESPRESSO_TEST_NP} GREATER_EQUAL 4)
+  espresso_unit_test_register(NAME RegularHaloPlan_test TARGET
+                              RegularHaloPlan_test NUM_PROC 4)
+endif()
 espresso_unit_test_executable(
   NAME HaloExchange_test SRC HaloExchange_test.cpp DEPENDS espresso::core
   Kokkos::kokkos Boost::mpi MPI::MPI_CXX)
