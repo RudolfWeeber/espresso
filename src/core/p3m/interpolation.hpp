@@ -225,6 +225,15 @@ p3m_calculate_interpolation_weights(std::span<const double, 3> position,
     /* particle position in mesh coordinates */
     auto const pos = ((position[d] - local_mesh.ld_pos[d]) * ai[d]) - pos_shift;
 
+    /* The charge-assignment mesh is rank-local: `position` must be the
+     * periodic image closest to this rank's domain, not an arbitrary image of
+     * it.  A particle whose stored position was folded across the box while
+     * its resort was suppressed violates that and indexes outside the mesh.
+     * Check the coordinate, not the truncated index: for -1 < pos < 0 the cast
+     * below yields 0 and the B-spline is evaluated outside its domain. */
+    assert(pos >= 0. &&
+           "P3M: particle is below the local charge-assignment mesh; its "
+           "position is not the image closest to this rank's domain");
     nmp[d] = static_cast<int>(pos);
 
     /* distance to nearest mesh point */
@@ -236,15 +245,6 @@ p3m_calculate_interpolation_weights(std::span<const double, 3> position,
   /* 3d-array index of nearest mesh point */
   ret.ind = Utils::get_linear_index<memory_order>(nmp, local_mesh.dim);
 
-  /* The charge-assignment mesh is rank-local: `position` must be the periodic
-   * image closest to this rank's domain, not an arbitrary image of it.  A
-   * particle whose stored position was folded across the box while its resort
-   * was suppressed violates that and indexes outside the mesh.  Check both
-   * ends -- an upper-bound-only check misses exactly that case, which is a
-   * silent out-of-range write rather than a wrong-but-bounded result. */
-  assert(nmp >= Utils::Vector3i{} &&
-         "P3M: particle is below the local charge-assignment mesh; its "
-         "position is not the image closest to this rank's domain");
   assert((nmp + Utils::Vector3i::broadcast(cao)) <= local_mesh.dim &&
          "P3M: particle is above the local charge-assignment mesh");
   for (int i = 0; i < cao; i++) {
