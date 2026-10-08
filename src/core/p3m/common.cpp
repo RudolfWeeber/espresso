@@ -26,10 +26,15 @@
 #include "common.hpp"
 
 #include "LocalBox.hpp"
+#include "lees_edwards/lees_edwards.hpp"
+#include "system/System.hpp"
 
 #include <utils/Vector.hpp>
 
 #include <cmath>
+#include <stdexcept>
+#include <string>
+#include <string_view>
 
 void P3MLocalMesh::calc_local_ca_mesh(P3MParameters const &params,
                                       LocalBox const &local_geo, double skin,
@@ -109,6 +114,16 @@ void P3MLocalMesh::calc_local_ca_mesh(P3MParameters const &params,
   ld_no_halo = ld_ind + n_halo_ld;
   ur_no_halo = ld_no_halo + dim - n_halo_ld - n_halo_ur;
   dim_no_halo = ur_no_halo - ld_no_halo;
+}
+
+void p3m_sanity_checks_lees_edwards(System::System const &system,
+                                    std::string_view solver_name) {
+  if (system.lees_edwards->is_shearing()) {
+    throw std::runtime_error(
+        std::string(solver_name) +
+        ": Lees-Edwards boundary conditions are not supported; set the "
+        "protocol to Off or None");
+  }
 }
 
 #endif // defined(ESPRESSO_P3M) or defined(ESPRESSO_DP3M)

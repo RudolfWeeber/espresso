@@ -1081,13 +1081,8 @@ void CoulombP3M::sanity_checks_periodicity() const {
   }
 }
 
-void CoulombP3M::sanity_checks_box_type() const {
-  auto const &box_geo = *get_system().box_geo;
-  if (box_geo.type() != BoxType::CUBOID) {
-    throw std::runtime_error(
-        "CoulombP3M: requires a cuboid box; Lees-Edwards boundary conditions "
-        "are not supported");
-  }
+void CoulombP3M::sanity_checks_lees_edwards() const {
+  p3m_sanity_checks_lees_edwards(get_system(), "CoulombP3M");
 }
 
 void CoulombP3M::sanity_checks_cell_structure() const {

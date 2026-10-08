@@ -53,7 +53,7 @@ has_lb_mode = ('LB.WALBERLA' in modes and espressomd.has_features('WALBERLA')
 has_p3m_mode = 'P3M.CPU' in modes or 'P3M.GPU' in modes and is_gpu_available
 # P3M and DP3M reject sheared boundaries, so save_checkpoint.py does not
 # enable Lees-Edwards in those modes; mirror that here.
-p3m_active = any(mode in modes for mode in ('P3M', 'P3M.GPU', 'ELC', 'DP3M'))
+p3m_active = any(mode in modes for mode in ('P3M', 'ELC', 'DP3M'))
 has_thermalized_bonds = 'THERM.LB' in modes or 'THERM.LANGEVIN' in modes
 has_drude = (espressomd.has_features(['ELECTROSTATICS', 'MASS', 'ROTATION'])
              and has_thermalized_bonds)

@@ -26,6 +26,7 @@
 
 #include <cmath>
 #include <memory>
+#include <variant>
 
 namespace LeesEdwards {
 class UpdateOffset {
@@ -119,6 +120,14 @@ public:
 
   /** @brief Delete the currently active Lees-Edwards protocol. */
   void unset_protocol();
+
+  /** @brief Whether the periodic images are sheared, i.e. a protocol other
+   *  than @ref Off is set.  With @ref Off the box is a plain cuboid even
+   *  though its type reads @ref BoxType::LEES_EDWARDS.
+   */
+  bool is_shearing() const {
+    return m_protocol and not std::holds_alternative<Off>(*m_protocol);
+  }
 
   void update_box_params(BoxGeometry &box_geo, double sim_time);
 };

@@ -188,6 +188,10 @@ To temporarily disable LEbc, use :class:`~espressomd.lees_edwards.Off`.
 To completely disable LEbc and reinitialize the box geometry, do
 ``system.lees_edwards.protocol = None``.
 
+The P3M and DP3M solvers require unsheared periodic images. They raise an
+error at integration time while a protocol other than
+:class:`~espressomd.lees_edwards.Off` is set.
+
 Example::
 
     import espressomd

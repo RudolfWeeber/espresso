@@ -56,6 +56,7 @@ inline auto constexpr P3M_EPSILON_METALLIC = 0.0;
 #include <optional>
 #include <span>
 #include <stdexcept>
+#include <string_view>
 
 /** @brief P3M kernel architecture. */
 enum class Arch { CPU, CUDA };
@@ -348,4 +349,25 @@ struct P3MFFTConfig {
   /** @brief Direction of the reduced dimension (if @c use_r2c is true). */
   static auto constexpr r2c_dir = R2CDir;
 };
+
+namespace System {
+class System;
+}
+
+/**
+ * @brief Reject Lees-Edwards shear.
+ *
+ * The charge-assignment mesh is rank-local and indexed by absolute position
+ * (see @ref P3MLocalMesh::calc_local_ca_mesh), which assumes the stored
+ * position is the periodic image closest to the owning rank's domain.  Sheared
+ * periodic images do not provide that, and the k-space sum assumes an
+ * unsheared lattice anyway.  A @ref LeesEdwards::Off protocol leaves the box a
+ * plain cuboid and is accepted.
+ *
+ * @param system       System whose Lees-Edwards state is inspected.
+ * @param solver_name  Prefix for the error message, e.g. "CoulombP3M".
+ * @throw std::runtime_error  when a shear protocol is set.
+ */
+void p3m_sanity_checks_lees_edwards(System::System const &system,
+                                    std::string_view solver_name);
 #endif // defined(ESPRESSO_P3M) or defined(ESPRESSO_DP3M)
