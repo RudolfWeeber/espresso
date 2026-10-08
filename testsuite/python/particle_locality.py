@@ -104,5 +104,64 @@ class ParticleLocality(ut.TestCase):
             np.testing.assert_allclose(np.linalg.norm(d), 0.3, atol=1e-9)
 
 
+@ut.skipIf(n_nodes < 2,
+           "Requires at least 2 MPI ranks: on one rank every decomposition "
+           "owns the whole box")
+@utx.skipIfMissingFeatures(["LENNARD_JONES"])
+class IdOwnedParticles(ut.TestCase):
+
+    """
+    The n-square decomposition, and the n-square part of the hybrid one,
+    distribute particles by id, so a local particle may sit anywhere in the
+    box.  The resort criterion must not mistake that for a particle that left
+    its owner's domain, or the Verlet list is rebuilt on every step.
+    """
+
+    system = system
+
+    def tearDown(self):
+        self.system.part.clear()
+        self.system.non_bonded_inter.reset()
+        self.system.thermostat.turn_off()
+        self.system.cell_system.set_regular_decomposition()
+
+    def verlet_reuse(self, set_decomposition, **kwargs):
+        system = self.system
+        system.time_step = 0.01
+        system.cell_system.skin = 0.4
+        set_decomposition(**kwargs)
+        rng = np.random.default_rng(1)
+        n = 200
+        system.part.add(pos=rng.random((n, 3)) * 10.,
+                        type=[0] * (n // 2) + [1] * (n // 2))
+        for types in [(0, 0), (0, 1), (1, 1)]:
+            system.non_bonded_inter[types].lennard_jones.set_params(
+                epsilon=1., sigma=1., cutoff=1.12246, shift="auto")
+        system.integrator.set_steepest_descent(
+            f_max=0., gamma=1., max_displacement=0.01)
+        system.integrator.run(50)
+        system.integrator.set_vv()
+        system.thermostat.set_langevin(kT=0.1, gamma=1., seed=2)
+        system.integrator.run(100)
+        return system.cell_system.get_state()["verlet_reuse"]
+
+    def check_verlet_reuse(self, reuse):
+        # verlet_reuse is 0 when the list was never rebuilt during the last
+        # run, which is the best possible outcome, not a failure
+        self.assertTrue(
+            reuse == 0. or reuse > 5.,
+            f"a locality check that only holds for positional ownership "
+            f"rebuilds the Verlet list on every step, got {reuse}")
+
+    def test_n_square(self):
+        self.check_verlet_reuse(
+            self.verlet_reuse(self.system.cell_system.set_n_square))
+
+    def test_hybrid(self):
+        self.check_verlet_reuse(self.verlet_reuse(
+            self.system.cell_system.set_hybrid_decomposition,
+            n_square_types={1}, cutoff_regular=1.2))
+
+
 if __name__ == "__main__":
     ut.main()

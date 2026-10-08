@@ -624,6 +624,11 @@ public:
    * <tt>(skin - |additional_offset|) / 2</tt>: both partners of a pair move,
    * and @p additional_offset is a relative drift on top of that.
    *
+   * In the regular decomposition a resort is also required once a local
+   * particle's stored position leaves its owner's domain by more than the
+   * interaction range, because consumers that index rank-local storage by
+   * absolute position rely on it being the closest periodic image.
+   *
    * @param additional_offset   Relative drift that pairs experience on top of
    *                            their own displacement since the last resort,
    *                            e.g. the change of the Lees-Edwards position

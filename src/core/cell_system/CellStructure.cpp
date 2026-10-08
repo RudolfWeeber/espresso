@@ -808,18 +808,25 @@ bool CellStructure::check_resort_required(
    * The margin is the ghost-layer width, which also bounds the virtual-site
    * distance (min_global_cut feeds System::maximal_cutoff).  Where a rank
    * spans the whole box along an axis the test cannot fire, so single-rank
-   * runs and unsplit axes pay only the comparison. */
+   * runs and unsplit axes pay only the comparison.
+   *
+   * Only the regular decomposition owns particles by position.  The n-square
+   * decomposition, and the n-square part of the hybrid one, distribute them
+   * by id, so a local particle may legitimately sit anywhere in the box and
+   * the local box says nothing about it; there the arm would fire on every
+   * step and rebuild the Verlet list every step. */
+  auto const check_locality = (m_type == CellStructureType::REGULAR);
   auto const &local_geo = *system.local_geo;
   auto const range = system.get_interaction_range();
   auto const margin = (range > 0.) ? range : m_verlet_skin;
   auto const lower = local_geo.my_left() - Utils::Vector3d::broadcast(margin);
   auto const upper = local_geo.my_right() + Utils::Vector3d::broadcast(margin);
 
-  auto add_partial = [lim, &box_geo, &lower, &upper](bool &result,
-                                                     Particle const &p) {
+  auto add_partial = [lim, check_locality, &box_geo, &lower,
+                      &upper](bool &result, Particle const &p) {
     if (box_geo.get_mi_dist2(p.pos(), p.pos_at_last_verlet_update()) > lim) {
       result = true;
-    } else if (not(p.pos() >= lower and p.pos() < upper)) {
+    } else if (check_locality and not(p.pos() >= lower and p.pos() < upper)) {
       result = true;
     }
   };
