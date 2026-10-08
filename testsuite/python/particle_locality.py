@@ -88,18 +88,28 @@ class ParticleLocality(ut.TestCase):
         np.testing.assert_allclose(pos_large, pos_small, rtol=0., atol=1e-9)
         np.testing.assert_allclose(f_large, f_small, rtol=1e-6, atol=1e-9)
 
-    def test_virtual_site_stays_near_its_owner(self):
-        """The virtual site must not be left a box length from its owner."""
+    def test_virtual_site_stays_with_its_owner(self):
+        """A virtual site that crosses the box boundary together with its
+        reference must keep its stored position next to its owner instead of
+        being folded.  The stored position is not visible from Python (``pos``
+        is unfolded and ``image_box`` is derived from it), but a fold is: it
+        puts the site a box length outside its owner's domain, which the
+        resort criterion answers by handing the site to another rank."""
         system = self.system
         system.part.clear()
         system.cell_system.skin = 0.8
         ref = system.part.add(pos=[9.68, 5., 5.], v=[1., 0., 0.], q=0.)
         vs = system.part.add(pos=[9.98, 5., 5.], q=0.)
         vs.vs_auto_relate_to(ref)
+        # neither particle travels more than half the skin in total, so the
+        # cell system has no reason to re-sort and both stay where they are
+        owner = ref.node
+        self.assertEqual(vs.node, owner)
         for _ in range(12):
             system.integrator.run(4)
-            # unfolded separation is fixed by construction; a fold that was not
-            # followed by a re-sort shows up as a box-length discrepancy
+            self.assertEqual(
+                vs.node, owner, "the virtual site was folded away from its "
+                "owner and had to be re-sorted")
             d = np.copy(vs.pos) - np.copy(ref.pos)
             np.testing.assert_allclose(np.linalg.norm(d), 0.3, atol=1e-9)
 

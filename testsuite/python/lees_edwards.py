@@ -1020,9 +1020,12 @@ class LeesEdwards(ut.TestCase):
         configuration."""
         system = self.system
         reuse = self.run_verlet_reuse(skin=0.4, n_steps=60)
-        self.assertGreater(
-            reuse, 8., "the Verlet list has to survive several steps under "
-            "slow shear; the fold used to pin this at 1")
+        # verlet_reuse is 0 when the list was never rebuilt during the last
+        # run, which is the best possible outcome, not a failure
+        self.assertTrue(
+            reuse == 0. or reuse > 8.,
+            f"the Verlet list has to survive several steps under slow shear; "
+            f"the fold used to pin this at 1, got {reuse}")
 
         # Same positions, same everything -- only the neighbour list differs.
         # Comparing two trajectories instead would only measure Lyapunov
