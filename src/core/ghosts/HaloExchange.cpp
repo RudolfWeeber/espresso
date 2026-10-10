@@ -160,7 +160,7 @@ void run_collective(HaloPlan const &plan, BoxGeometry const &box,
   // derived from the (already-sized) cells; a size mismatch across ranks would
   // be undefined behavior.
 
-  if (!plan.collective || plan.collective->pattern == CollectivePattern::None) {
+  if (!plan.collective or plan.collective->pattern == CollectivePattern::None) {
     return;
   }
 
@@ -602,6 +602,7 @@ void halo_exchange_finish(GhostExchange &st) {
 #endif
     }
 
+#ifdef ESPRESSO_CALIPER
     // Wait for sends [n..2n) so buffers are safe to reuse next step.
     // Caliper balance: when n==0 the outer CALI_MARK_BEGIN("ghost/wait") posted
     // before the loop is still open (the loop body never ran, so nothing closed
@@ -610,7 +611,6 @@ void halo_exchange_finish(GhostExchange &st) {
     // the region is closed.  The guard `if (n > 0)` therefore re-opens for
     // n>0 and is deliberately absent for n==0 (the outer region serves).
     // Invariant: exactly one "ghost/wait" region is open entering wait_all.
-#ifdef ESPRESSO_CALIPER
     if (espresso_cali_active() && n > 0)
       CALI_MARK_BEGIN("ghost/wait");
 #endif

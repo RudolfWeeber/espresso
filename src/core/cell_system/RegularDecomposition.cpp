@@ -230,6 +230,7 @@ void RegularDecomposition::resort(bool global,
       }
     }
   } else {
+    using exec_space = Kokkos::DefaultHostExecutionSpace;
     /* Phase 1 (parallel): fold every particle position and classify it
      * against its target cell. Only particle-local state and this cell's own
      * move list are written, so cells can be swept concurrently.
@@ -237,19 +238,18 @@ void RegularDecomposition::resort(bool global,
      * escape the parallel region, so the first error is captured and
      * rethrown afterwards. */
     struct Move {
-      int index;
+      unsigned index;
       Cell *target;
     };
     std::vector<std::vector<Move>> moves(n_cells);
     std::mutex fold_error_mutex;
     std::string fold_error_msg;
+    Kokkos::RangePolicy<exec_space> policy(std::size_t{0}, n_cells);
     Kokkos::parallel_for(
-        "RegularDecomposition::resort::classify",
-        Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(std::size_t{0},
-                                                               n_cells),
+        "RegularDecomposition::resort::classify", policy,
         [&](std::size_t const ci) {
           auto *cell = cells_span[ci];
-          int index = 0;
+          unsigned index = 0u;
           for (auto &p : cell->particles()) {
             try {
               fold_and_reset(p, m_box);
@@ -261,7 +261,7 @@ void RegularDecomposition::resort(bool global,
               return;
             }
             if (auto *const target = particle_to_cell(p); target != cell) {
-              moves[ci].push_back({index, target});
+              moves[ci].emplace_back(index, target);
             }
             ++index;
           }
@@ -791,8 +791,8 @@ GhostComm::HaloPlan RegularDecomposition::make_halo_plan() {
     return a.first < b.first;
   };
   for (auto &[peer, bucket] : peers) {
-    std::sort(bucket.recv.begin(), bucket.recv.end(), by_key);
-    std::sort(bucket.send.begin(), bucket.send.end(), by_key);
+    std::ranges::sort(bucket.recv, by_key);
+    std::ranges::sort(bucket.send, by_key);
     NeighborComm nc;
     nc.peer = peer;
     nc.recv.reserve(bucket.recv.size());
@@ -806,8 +806,8 @@ GhostComm::HaloPlan RegularDecomposition::make_halo_plan() {
 
   // Sort the self-copies deterministically too (not required, but keeps the
   // plan reproducible run to run).
-  std::sort(local.begin(), local.end(),
-            [](auto const &a, auto const &b) { return a.first < b.first; });
+  std::ranges::sort(
+      local, [](auto const &a, auto const &b) { return a.first < b.first; });
   plan.local.reserve(local.size());
   for (auto &[key, lc] : local)
     plan.local.push_back(lc);

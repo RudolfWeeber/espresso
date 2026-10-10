@@ -31,6 +31,7 @@
 #include "cell_system/HybridDecomposition.hpp"
 #include "cell_system/RegularDecomposition.hpp"
 #include "communication.hpp"
+#include "errorhandling.hpp"
 #include "ghosts/HaloPlan.hpp"
 #include "ghosts/HaloPlanValidator.hpp"
 #include "ghosts/mark_boundary_cells.hpp"
@@ -116,31 +117,31 @@ BOOST_AUTO_TEST_CASE(detects_defects) {
 
   // uncovered ghost (neighborship-match + coverage failure)
   HaloPlan uncovered; // empty plan, ghost never filled
-  BOOST_CHECK(!validate_halo_plan(uncovered, locals, ghosts).empty());
+  BOOST_CHECK(not validate_halo_plan(uncovered, locals, ghosts).empty());
 
   // duplicate peer
   HaloPlan duppeer = good;
   duppeer.neighbors.push_back(NeighborComm{
       1, {SendRegion{&local.particles(), {}}}, {&ghost.particles()}});
-  BOOST_CHECK(!validate_halo_plan(duppeer, locals, ghosts).empty());
+  BOOST_CHECK(not validate_halo_plan(duppeer, locals, ghosts).empty());
 
   // double-filled ghost
   HaloPlan dbl = good;
   dbl.neighbors.push_back(NeighborComm{
       2, {SendRegion{&local.particles(), {}}}, {&ghost.particles()}});
-  BOOST_CHECK(!validate_halo_plan(dbl, locals, ghosts).empty());
+  BOOST_CHECK(not validate_halo_plan(dbl, locals, ghosts).empty());
 
   // send/recv size mismatch
   HaloPlan badshape = good;
   badshape.neighbors[0].recv.clear();
-  BOOST_CHECK(!validate_halo_plan(badshape, locals, ghosts).empty());
+  BOOST_CHECK(not validate_halo_plan(badshape, locals, ghosts).empty());
 
   // recv target outside ghost set
   Cell alien;
   HaloPlan alien_recv = good;
   alien_recv.neighbors[0].recv[0] = &alien.particles();
   auto violations = validate_halo_plan(alien_recv, locals, ghosts);
-  BOOST_CHECK_MESSAGE(!violations.empty(),
+  BOOST_CHECK_MESSAGE(not violations.empty(),
                       "Expected recv-outside-ghost violation");
 
   // isolated shape mismatch (send.size() != recv.size())
@@ -148,7 +149,7 @@ BOOST_AUTO_TEST_CASE(detects_defects) {
   shape_only.neighbors[0].send.push_back(SendRegion{&local.particles(), {}});
   // send.size()==2, recv.size()==1 -> shape violation; ghost still covered once
   auto shape_violations = validate_halo_plan(shape_only, locals, ghosts);
-  BOOST_CHECK_MESSAGE(!shape_violations.empty(),
+  BOOST_CHECK_MESSAGE(not shape_violations.empty(),
                       "Expected shape-mismatch violation");
 }
 
@@ -271,7 +272,7 @@ BOOST_AUTO_TEST_CASE(single_rank_wrap_axis_cells_are_boundary,
   // Use a box large enough for cell_grid >= 3 along every axis so that
   // genuinely interior cells exist (they would be missed by the wrap rule).
   // range=1.0 with box_l=6.0 gives cell_grid={6,6,6}.
-  auto const dd = make_dd({1, 1, 1}, 6., 1.0);
+  auto const dd = make_dd({1, 1, 1}, 6., 1.);
 
   // Every cell in the first or last local layer along any axis must be
   // boundary due to the periodic wrap.
@@ -290,13 +291,13 @@ BOOST_AUTO_TEST_CASE(single_rank_wrap_axis_cells_are_boundary,
     bool const in_wrap_layer = (gx == 1 || gx == cg[0] || gy == 1 ||
                                 gy == cg[1] || gz == 1 || gz == cg[2]);
 
-    if (in_wrap_layer && !c->is_boundary()) {
+    if (in_wrap_layer and not c->is_boundary()) {
       any_wrap_layer_interior = true;
     }
   }
 
   BOOST_CHECK_MESSAGE(
-      !any_wrap_layer_interior,
+      not any_wrap_layer_interior,
       "single-rank: all cells in first/last local layer must be boundary "
       "(periodic-wrap rule)");
 
@@ -312,7 +313,7 @@ BOOST_AUTO_TEST_CASE(single_rank_wrap_axis_cells_are_boundary,
           (gx >= 2 && gx <= cg[0] - 1 && gy >= 2 && gy <= cg[1] - 1 &&
            gz >= 2 && gz <= cg[2] - 1);
       if (strictly_interior) {
-        BOOST_CHECK_MESSAGE(!c->is_boundary(),
+        BOOST_CHECK_MESSAGE(not c->is_boundary(),
                             "strictly interior cell must not be boundary");
         found_interior = true;
       }
@@ -340,7 +341,7 @@ BOOST_AUTO_TEST_CASE(single_rank_cell_grid_one_all_cells_are_boundary,
                      })) {
   using namespace GhostComm;
   // range > box_l -> cell_grid clamps to {1,1,1}
-  auto const dd = make_dd({1, 1, 1}, 1.0, 2.0);
+  auto const dd = make_dd({1, 1, 1}, 1., 2.);
   // Verify the precondition: cell_grid should be {1,1,1}.
   BOOST_REQUIRE_EQUAL(dd.cell_grid[0], 1);
   BOOST_REQUIRE_EQUAL(dd.cell_grid[1], 1);
@@ -352,6 +353,7 @@ BOOST_AUTO_TEST_CASE(single_rank_cell_grid_one_all_cells_are_boundary,
                         "cell_grid==1 wrap axis: every local cell must be "
                         "boundary (self-interaction across periodic boundary)");
   }
+  flush_runtime_errors_local(); // clear interaction range error messages
 }
 
 // ==========================
@@ -400,6 +402,6 @@ BOOST_AUTO_TEST_CASE(symmetry_detects_mismatch,
                    {}});                                 // recv.size() == 0
 
   auto violations = validate_halo_plan_symmetry(asym);
-  BOOST_CHECK_MESSAGE(!violations.empty(),
+  BOOST_CHECK_MESSAGE(not violations.empty(),
                       "Expected symmetry violation: recv=0 but peer sends 1");
 }
