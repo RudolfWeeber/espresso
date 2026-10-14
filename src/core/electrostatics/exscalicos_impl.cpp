@@ -197,12 +197,12 @@ void CoulombExscalicosImpl::tune_impl() {
   get_system().on_coulomb_change();
 }
 
-bool CoulombExscalicosImpl::run_library() {
+bool CoulombExscalicosImpl::run_library(bool with_potentials) {
   update_particle_data();
   if (not m_library_is_tuned and not tune_library()) {
     return false;
   }
-  m_bridge.run(charges, positions, fields, potentials);
+  m_bridge.run(charges, positions, fields, potentials, with_potentials);
   return true;
 }
 

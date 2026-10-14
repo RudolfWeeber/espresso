@@ -79,9 +79,14 @@ public:
   /** @brief Tune the parameters which were not set by the user. */
   void tune(std::vector<double> &charges, std::vector<double> &positions);
 
-  /** @brief Calculate the fields and potentials for charges. */
+  /**
+   * @brief Calculate the fields and potentials for charges.
+   * @param with_potentials  Calculate the potentials, otherwise only the
+   *                         fields are valid.
+   */
   void run(std::vector<double> &charges, std::vector<double> &positions,
-           std::vector<double> &fields, std::vector<double> &potentials);
+           std::vector<double> &fields, std::vector<double> &potentials,
+           bool with_potentials);
 
   /**
    * @brief Delegate the short-range calculation.

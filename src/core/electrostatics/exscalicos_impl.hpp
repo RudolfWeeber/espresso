@@ -46,14 +46,14 @@ struct CoulombExscalicosImpl : public CoulombExscalicos {
   void update_system_params() override;
 
   double long_range_energy() override {
-    if (not run_library()) {
+    if (not run_library(true)) {
       return 0.;
     }
     return 0.5 * prefactor * boost::inner_product(charges, potentials, 0.);
   }
 
   void add_long_range_forces() override {
-    if (run_library()) {
+    if (run_library(false)) {
       update_particle_forces();
     }
   }
@@ -104,9 +104,10 @@ private:
   bool tune_library();
   /**
    * @brief Calculate the fields and potentials of the charged particles.
+   * @param with_potentials  Calculate the potentials (only needed for energies)
    * @return false if there are no charged particles, true otherwise
    */
-  bool run_library();
+  bool run_library(bool with_potentials);
   void tune_impl() override;
 };
 

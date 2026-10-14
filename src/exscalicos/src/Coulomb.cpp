@@ -153,13 +153,14 @@ void Coulomb::tune(std::vector<double> &charges,
 }
 
 void Coulomb::run(std::vector<double> &charges, std::vector<double> &positions,
-                  std::vector<double> &fields,
-                  std::vector<double> &potentials) {
+                  std::vector<double> &fields, std::vector<double> &potentials,
+                  bool with_potentials) {
   auto &solver = m_impl->solver;
   auto const n_part = charges.size();
   fields.resize(3ul * n_part);
   potentials.resize(n_part);
   handle_error(solver.setNearFieldFlag(not m_delegate_near_field));
+  handle_error(solver.setComputePotential(with_potentials));
   handle_error(
       solver.run(m_impl->data, positions, charges, potentials, fields));
   update_cached_parameters();

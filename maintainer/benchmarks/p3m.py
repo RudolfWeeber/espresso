@@ -71,6 +71,11 @@ parser.add_argument("--exscalicos_params", choices=["library", "p3m"],
                     help="Parameters of the ExScaLiCoS solver: tuned by the "
                     "library, or tuned by the internal P3M solver "
                     "(default: library)")
+parser.add_argument("--exscalicos_near_field",
+                    action=argparse.BooleanOptionalAction, default=False,
+                    required=False,
+                    help="Let ExScaLiCoS calculate the short-range part "
+                    "instead of ESPResSo (default: no)")
 mesh_group = parser.add_mutually_exclusive_group()
 mesh_group.add_argument("--mesh", metavar="M", action="store", type=int,
                         default=None, required=False,
@@ -143,9 +148,11 @@ def make_p3m(args, mesh_min):
 
 
 def make_exscalicos(args, method_params):
-    return espressomd.electrostatics.Exscalicos(
+    solver = espressomd.electrostatics.Exscalicos(
         prefactor=args.prefactor, method_name="p3m",
         method_params=method_params)
+    solver.set_near_field_delegation(delegate=not args.exscalicos_near_field)
+    return solver
 
 
 def make_solver(system, args, mesh_min):
@@ -186,7 +193,9 @@ def get_solver_params(solver):
 
 def solver_label(args):
     if args.solver == "exscalicos":
-        return f"exscalicos ({args.exscalicos_params} parameters)"
+        near_field = "exscalicos" if args.exscalicos_near_field else "espresso"
+        return (f"exscalicos ({args.exscalicos_params} parameters, "
+                f"near field: {near_field})")
     return "p3m"
 
 
@@ -282,6 +291,7 @@ def save_p3m_state(system, args, ctx):
         "gpu": bool(args.gpu),
         "solver": args.solver,
         "exscalicos_params": args.exscalicos_params,
+        "exscalicos_near_field": bool(args.exscalicos_near_field),
         "kT": KT, "gamma": GAMMA, "seed": SEED,
     }
     meta.update(benchmarks.topology_meta(system))
@@ -311,10 +321,10 @@ def run_from_state(system, args):
     # the solver type is a property of the state file
     args.solver = str(meta.get("solver", "p3m"))
     args.exscalicos_params = str(meta.get("exscalicos_params", "library"))
+    args.exscalicos_near_field = bool(meta.get("exscalicos_near_field", False))
+    args.prefactor = meta["prefactor"]
     if args.solver == "exscalicos":
-        solver = espressomd.electrostatics.Exscalicos(
-            prefactor=meta["prefactor"], method_name="p3m",
-            method_params=solver_params)
+        solver = make_exscalicos(args, solver_params)
     else:
         solver = espressomd.electrostatics.P3M(
             prefactor=meta["prefactor"], tune=False, gpu=bool(meta["gpu"]),
