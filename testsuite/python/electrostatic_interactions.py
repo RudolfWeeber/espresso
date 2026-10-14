@@ -124,6 +124,37 @@ class ElectrostaticInteractionsTests(ut.TestCase):
             np.testing.assert_allclose(p3m_forces, ref_forces, atol=tol)
             self.system.electrostatics.clear()
 
+    @utx.skipIfMissingFeatures(["EXSCALICOS"])
+    def test_exscalicos_p3m(self):
+        prefactor = 1.1
+        method_params = {'accuracy': 1e-7,
+                         'mesh': [22, 22, 22],
+                         'cao': 7,
+                         'r_cut': 8.90625,
+                         'alpha': 0.387611049779351}
+
+        # reference values for energy and force calculated for prefactor = 1
+        ref_energy = -0.501062398379 * prefactor
+        ref_force1 = [0.248921612 * prefactor, 0, 0]
+        ref_force2 = [-ref_force1[0], 0, 0]
+
+        for delegate in [True, False]:
+            with self.subTest(delegate=delegate):
+                actor = espressomd.electrostatics.Exscalicos(
+                    prefactor=prefactor, method_name="p3m",
+                    method_params=method_params)
+                actor.set_near_field_delegation(delegate=delegate)
+                self.system.electrostatics.solver = actor
+                self.system.integrator.run(0, recalc_forces=True)
+                energy = self.system.analysis.energy()['coulomb']
+                tol = 1e-5
+                np.testing.assert_allclose(energy, ref_energy, atol=tol)
+                np.testing.assert_allclose(
+                    np.copy(self.p0.f), ref_force1, atol=tol)
+                np.testing.assert_allclose(
+                    np.copy(self.p1.f), ref_force2, atol=tol)
+                self.system.electrostatics.clear()
+
     def test_dh(self):
         dh_params = dict(prefactor=1.2, kappa=0.8, r_cut=2.0)
         dh = espressomd.electrostatics.DH(

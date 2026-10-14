@@ -149,6 +149,11 @@ struct ShortRangeCutoff {
     return actor->get_r_cut();
   }
 #endif // ESPRESSO_SCAFACOS
+#ifdef ESPRESSO_EXSCALICOS
+  auto operator()(std::shared_ptr<CoulombExscalicos> const &actor) const {
+    return actor->get_r_cut();
+  }
+#endif // ESPRESSO_EXSCALICOS
   auto operator()(std::shared_ptr<ReactionField> const &actor) const {
     return actor->r_cut;
   }

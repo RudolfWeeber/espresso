@@ -26,6 +26,7 @@
 #include "Actor.impl.hpp"
 
 #include "Container.hpp"
+#include "CoulombExscalicos.hpp"
 #include "CoulombMMM1D.hpp"
 #include "CoulombP3M.hpp"
 #include "CoulombScafacos.hpp"
@@ -59,6 +60,9 @@ void initialize(Utils::Factory<ObjectHandle> *om) {
 #endif
 #ifdef ESPRESSO_SCAFACOS
   om->register_new<CoulombScafacos>("Coulomb::CoulombScafacos");
+#endif
+#ifdef ESPRESSO_EXSCALICOS
+  om->register_new<CoulombExscalicos>("Coulomb::CoulombExscalicos");
 #endif
   om->register_new<ReactionField>("Coulomb::ReactionField");
   om->register_new<Container>("Coulomb::Container");

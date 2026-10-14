@@ -29,8 +29,8 @@ import tests_common
 @utx.skipIfMissingFeatures("ELECTROSTATICS")
 class CoulombCloudWall(ut.TestCase):
 
-    """This compares p3m, p3m_gpu electrostatic forces and energy against
-    stored data."""
+    """This compares p3m, p3m_gpu and ExScaLiCoS P3M electrostatic forces
+    and energy against stored data."""
     system = espressomd.System(box_l=[10., 10., 20.])
     system.time_step = 0.01
     system.cell_system.skin = 0.4
@@ -89,6 +89,21 @@ class CoulombCloudWall(ut.TestCase):
         self.system.electrostatics.solver = p3m
         self.system.integrator.run(0)
         self.compare("p3m_gpu", energy=False)
+
+    @utx.skipIfMissingFeatures("EXSCALICOS")
+    def test_exscalicos_p3m(self):
+        method_params = {"accuracy": 1e-3, "r_cut": 1.001,
+                         "mesh": [64, 64, 128], "cao": 7, "alpha": 2.70746}
+        for delegate in [True, False]:
+            with self.subTest(delegate=delegate):
+                actor = espressomd.electrostatics.Exscalicos(
+                    prefactor=1., method_name="p3m",
+                    method_params=method_params)
+                actor.set_near_field_delegation(delegate=delegate)
+                self.system.electrostatics.solver = actor
+                self.system.integrator.run(0)
+                self.compare("exscalicos_p3m", energy=True)
+                self.system.electrostatics.clear()
 
     def test_zz_deactivation(self):
         # The energy is 0 if no method is active

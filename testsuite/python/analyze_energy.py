@@ -200,22 +200,16 @@ class AnalyzeEnergy(ut.TestCase):
         p0_energy_new = self.system.analysis.particle_non_bonded_energy(p0)
         self.assertAlmostEqual(p0_energy_new, p0_energy_old, delta=1e-7)
 
-    def check_electrostatics(self, gpu):
+    p3m_params = {"accuracy": 1e-7, "mesh": [22, 22, 22], "cao": 7,
+                  "r_cut": 8.90625, "alpha": 0.38761105}
+
+    def check_electrostatics(self, actor):
         p0, p1 = self.system.part.all()
         p0.pos = [1, 2, 2]
         p1.pos = [3, 2, 2]
         p0.q = 1
         p1.q = -1
-        p3m = espressomd.electrostatics.P3M(
-            prefactor=1.0,
-            accuracy=1e-7,
-            mesh=[22, 22, 22],
-            cao=7,
-            gpu=gpu,
-            r_cut=8.90625,
-            alpha=0.38761105,
-            tune=False)
-        self.system.electrostatics.solver = p3m
+        self.system.electrostatics.solver = actor
 
         # did not verify if this is correct, but looks pretty good (close to
         # 1/2)
@@ -229,12 +223,19 @@ class AnalyzeEnergy(ut.TestCase):
 
     @utx.skipIfMissingFeatures(["P3M"])
     def test_electrostatics_cpu(self):
-        self.check_electrostatics(False)
+        self.check_electrostatics(espressomd.electrostatics.P3M(
+            prefactor=1., gpu=False, tune=False, **self.p3m_params))
 
     @utx.skipIfMissingGPU()
     @utx.skipIfMissingFeatures(["P3M"])
     def test_electrostatics_gpu(self):
-        self.check_electrostatics(True)
+        self.check_electrostatics(espressomd.electrostatics.P3M(
+            prefactor=1., gpu=True, tune=False, **self.p3m_params))
+
+    @utx.skipIfMissingFeatures(["EXSCALICOS"])
+    def test_electrostatics_exscalicos(self):
+        self.check_electrostatics(espressomd.electrostatics.Exscalicos(
+            prefactor=1., method_name="p3m", method_params=self.p3m_params))
 
     @utx.skipIfMissingFeatures(["ELECTROSTATICS"])
     def test_particle_energy(self):

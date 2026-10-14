@@ -45,6 +45,10 @@ if(ESPRESSO_BUILD_WITH_SCAFACOS)
   add_subdirectory(scafacos)
 endif()
 
+if(ESPRESSO_BUILD_WITH_EXSCALICOS)
+  add_subdirectory(exscalicos)
+endif()
+
 if(ESPRESSO_BUILD_WITH_WALBERLA)
   add_subdirectory(walberla_bridge)
 endif()

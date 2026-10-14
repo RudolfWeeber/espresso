@@ -1,244 +1,815 @@
+diff --git a/include/Exscalicos.hpp b/include/Exscalicos.hpp
+index 64748a2..8bf000e 100644
 --- a/include/Exscalicos.hpp
 +++ b/include/Exscalicos.hpp
-@@ -25,3 +25,3 @@
+@@ -23,7 +23,7 @@
+  *       Since Kokkos 4.0 alternatively Kokkos::SharedSpace can be used as an unified MemorySpace, internally pointing the required former
+  *       MemorySpace, depending on activated ExecutionSpace() types. (ref: https://kokkos.org/kokkos-core-wiki/API/core/memory_spaces.html#kokkos-sharedspace)
   */
 -template <ExscalicosSolver S, std::floating_point FPT = double, Kokkos::ExecutionSpace ExecutionSpace = Kokkos::OpenMP, Kokkos::MemorySpace MemorySpace = Kokkos::HostSpace, int VectorLength = 8>
 +template <ExscalicosSolver S, std::floating_point FPT = double, class ExecutionSpace = Kokkos::OpenMP, class MemorySpace = Kokkos::HostSpace, int VectorLength = 8>
  class Exscalicos
-@@ -136,3 +136,3 @@
+ {
+   public:
+@@ -31,7 +31,7 @@ class Exscalicos
+                    _callDomain("ExScaLiCoS: calling domain size"),
+                    _callSystem("ExScaLiCoS: calling system size"),
+                    _nearFieldFlag(true) {}
+-    Exscalicos(MPI_Comm globalComm) : _globalComm(globalComm) { Exscalicos(); }
++    Exscalicos(MPI_Comm globalComm) : Exscalicos() { _globalComm = globalComm; }
+ 
+     /// function to create solver infrastructure
+     ExscalicosReturn create(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data);
+@@ -134,147 +134,135 @@ class Exscalicos
+     ExscalicosP3M<FPT, ExecutionSpace, MemorySpace> p3mObject;
+ };
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::create(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data)
-@@ -157,3 +157,3 @@
+ {
+     switch (S)
+     {
+     case ExscalicosSolver::Ewald:
++#if defined(EXSCALICOS_P3M_VERBOSE) || defined(EXSCALICOS_EWALD_VERBOSE)
+         if (data.globalRank() == 0)
+             std::cout << "Creating ExScaLiCoS object, using Ewald solver" << std::endl;
+-        ewaldObject.create(data);
+-        break;
++#endif
++        return ewaldObject.create(data);
+     case ExscalicosSolver::P3M:
++#if defined(EXSCALICOS_P3M_VERBOSE) || defined(EXSCALICOS_EWALD_VERBOSE)
+         if (data.globalRank() == 0)
+             std::cout << "Creating ExScaLiCoS object, using P3M solver" << std::endl;
+-        p3mObject.create(data);
+-        break;
++#endif
++        return p3mObject.create(data);
+     default:
+         return ExscalicosReturn(false, "Exscalicos::create: no valid ExscalicosSolver provided");
+     }
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::tune(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data, ExscalicosParticleList<FPT, MemorySpace, VectorLength> &pl)
-@@ -174,3 +174,3 @@
+ {
+     switch (S)
+     {
+     case ExscalicosSolver::Ewald:
+-        ewaldObject.tune(data, pl);
+-        break;
++        return ewaldObject.tune(data, pl);
+     case ExscalicosSolver::P3M:
+-        p3mObject.tune(data, pl);
+-        break;
++        return p3mObject.tune(data, pl);
+     default:
+         return ExscalicosReturn(false, "Exscalicos::create: no valid ExscalicosSolver provided");
+     }
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::tune(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data, std::vector<FPT> &positions, std::vector<FPT> &charges)
-@@ -191,3 +191,3 @@
+ {
+     switch (S)
+     {
+     case ExscalicosSolver::Ewald:
+-        ewaldObject.tune(data, positions, charges);
+-        break;
++        return ewaldObject.tune(data, positions, charges);
+     case ExscalicosSolver::P3M:
+-        p3mObject.tune(data, positions, charges);
+-        break;
++        return p3mObject.tune(data, positions, charges);
+     default:
+         return ExscalicosReturn(false, "Exscalicos::create: no valid ExscalicosSolver provided");
+     }
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::tune(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data, FPT *x, FPT *y, FPT *z, FPT *q, long n)
-@@ -208,3 +208,3 @@
+ {
+     switch (S)
+     {
+     case ExscalicosSolver::Ewald:
+-        ewaldObject.run(data, x, y, z, q, n);
+-        break;
++        return ewaldObject.tune(data, x, y, z, q, n);
+     case ExscalicosSolver::P3M:
+-        p3mObject.run(data, x, y, z, q, n);
+-        break;
++        return p3mObject.tune(data, x, y, z, q, n);
+     default:
+         return ExscalicosReturn(false, "Exscalicos::create: no valid ExscalicosSolver provided");
+     }
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::run(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data, std::vector<FPT> &positions, std::vector<FPT> &charges, std::vector<FPT> &potentials, std::vector<FPT> &fields)
-@@ -225,3 +225,3 @@
+ {
+     switch (S)
+     {
+     case ExscalicosSolver::Ewald:
+-        ewaldObject.run(data, positions, charges, potentials, fields, _nearFieldFlag);
+-        break;
++        return ewaldObject.run(data, positions, charges, potentials, fields, _nearFieldFlag);
+     case ExscalicosSolver::P3M:
+-        p3mObject.run(data, positions, charges, potentials, fields, _nearFieldFlag);
+-        break;
++        return p3mObject.run(data, positions, charges, potentials, fields, _nearFieldFlag);
+     default:
+         return ExscalicosReturn(false, "Exscalicos::create: no valid ExscalicosSolver provided");
+     }
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::run(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data, FPT *x, FPT *y, FPT *z, FPT *fx, FPT *fy, FPT *fz, FPT *q, FPT *E, long n)
-@@ -242,3 +242,3 @@
+ {
+     switch (S)
+     {
+     case ExscalicosSolver::Ewald:
+-        ewaldObject.run(data, x, y, z, fx, fy, fz, q, E, n, _nearFieldFlag);
+-        break;
++        return ewaldObject.run(data, x, y, z, fx, fy, fz, q, E, n, _nearFieldFlag);
+     case ExscalicosSolver::P3M:
+-        p3mObject.run(data, x, y, z, fx, fy, fz, q, E, n, _nearFieldFlag);
+-        break;
++        return p3mObject.run(data, x, y, z, fx, fy, fz, q, E, n, _nearFieldFlag);
+     default:
+         return ExscalicosReturn(false, "Exscalicos::create: no valid ExscalicosSolver provided");
+     }
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::run(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data, ExscalicosParticleList<FPT, MemorySpace, VectorLength> &pl)
-@@ -259,3 +259,3 @@
+ {
+     switch (S)
+     {
+     case ExscalicosSolver::Ewald:
+-        ewaldObject.run(data, pl, _nearFieldFlag);
+-        break;
++        return ewaldObject.run(data, pl, _nearFieldFlag);
+     case ExscalicosSolver::P3M:
+-        p3mObject.run(data, pl, _nearFieldFlag);
+-        break;
++        return p3mObject.run(data, pl, _nearFieldFlag);
+     default:
+         return ExscalicosReturn(false, "Exscalicos::create: no valid ExscalicosSolver provided");
+     }
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::destroy(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data)
-@@ -276,3 +276,3 @@
+ {
+     switch (S)
+     {
+     case ExscalicosSolver::Ewald:
+-        ewaldObject.destroy(data);
+-        break;
++        return ewaldObject.destroy(data);
+     case ExscalicosSolver::P3M:
+-        p3mObject.destroy(data);
+-        break;
++        return p3mObject.destroy(data);
+     default:
+         return ExscalicosReturn(false, "Exscalicos::create: no valid ExscalicosSolver provided");
+     }
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setRMax(FPT &rMax)
-@@ -291,3 +291,3 @@
+ {
+     switch (S)
+@@ -289,7 +277,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  const FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getRMax() const
-@@ -306,3 +306,3 @@
+ {
+     switch (S)
+@@ -304,7 +292,7 @@ const FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getRMax
+     return FPT{-1.0};
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setAlpha(FPT &alpha)
-@@ -321,3 +321,3 @@
+ {
+     switch (S)
+@@ -319,7 +307,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  const FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getAlpha() const
-@@ -336,3 +336,3 @@
+ {
+     switch (S)
+@@ -334,7 +322,7 @@ const FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getAlph
+     return FPT{-1.0};
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setCAO(int &cao)
-@@ -351,3 +351,3 @@
+ {
+     switch (S)
+@@ -349,7 +337,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  int Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getCAO() const
-@@ -366,3 +366,3 @@
+ {
+     switch (S)
+@@ -364,7 +352,7 @@ int Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getCAO() cons
+     return -1;
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setKMax(FPT &kMax)
-@@ -381,3 +381,3 @@
+ {
+     switch (S)
+@@ -379,7 +367,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  const FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getKMax() const
-@@ -396,3 +396,3 @@
+ {
+     switch (S)
+@@ -394,7 +382,7 @@ const FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getKMax
+     return FPT{-1.0};
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setNGrid(std::span<int, 3> nGrid)
-@@ -411,3 +411,3 @@
+ {
+     switch (S)
+@@ -409,7 +397,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  const std::array<int, 3> Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getNGrid() const
-@@ -426,3 +426,3 @@
+ {
+     switch (S)
+@@ -424,7 +412,7 @@ const std::array<int, 3> Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorL
+     return std::array<int, 3>({-1, -1, -1});
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setNearFieldFlag(bool flag)
-@@ -434,3 +434,3 @@
+ {
+     _nearFieldFlag = flag;
+@@ -434,13 +422,13 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  bool Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getNearFieldFlag() const
-@@ -440,3 +440,3 @@
+ {
+     return _nearFieldFlag;
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setDomainAnchor(FPT x, FPT y, FPT z)
-@@ -449,3 +449,3 @@
+ {
+     _callAnchor(0) = x;
+@@ -449,7 +437,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setDomainSize(FPT x, FPT y, FPT z)
-@@ -458,3 +458,3 @@
+ {
+     _callDomain(0) = x;
+@@ -458,7 +446,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setSystemSize(FPT x, FPT y, FPT z)
-@@ -467,3 +467,3 @@
+ {
+     _callSystem(0) = x;
+@@ -467,7 +455,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  KOKKOS_INLINE_FUNCTION FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::shortRangePotential(FPT dist) const
-@@ -481,3 +481,3 @@
+ {
+     switch (S)
+@@ -481,7 +469,7 @@ KOKKOS_INLINE_FUNCTION FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, Vecto
+     }
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  KOKKOS_INLINE_FUNCTION FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::shortRangeField(FPT dist) const
-@@ -495,3 +495,3 @@
+ {
+     switch (S)
+@@ -495,37 +483,37 @@ KOKKOS_INLINE_FUNCTION FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, Vecto
+     }
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setParameter(ExscalicosEwaldLongRangeProcess p, ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data, int first, int last)
-@@ -501,3 +501,3 @@
+ {
+     return ewaldObject.isLongRange(data, first, last);
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setParameter(ExscalicosEwaldShortRangeProcess p, ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data, int first, int last)
-@@ -507,3 +507,3 @@
+ {
+     return ewaldObject.isShortRange(data, first, last);
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setParameter(ExscalicosP3MLongRangeProcess p, ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data, int first, int last)
-@@ -513,3 +513,3 @@
+ {
+     return p3mObject.isLongRange(data, first, last);
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setParameter(ExscalicosP3MShortRangeProcess p, ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data, int first, int last)
-@@ -519,3 +519,3 @@
+ {
+     return p3mObject.isShortRange(data, first, last);
+ }
  #ifdef EXSCALICOS_ADJUST_PARTITIONS
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::autoAdjustPartitions(ExscalicosEwaldObject p, ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data)
-@@ -525,3 +525,3 @@
+ {
+     return ewaldObject.autoAdjustPartitions(data);
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT, Kokkos::ExecutionSpace ExecutionSpace, Kokkos::MemorySpace MemorySpace, int VectorLength>
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::autoAdjustPartitions(ExscalicosP3MObject p, ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data)
+ {
+     return p3mObject.autoAdjustPartitions(data);
+diff --git a/include/common/ExscalicosData.hpp b/include/common/ExscalicosData.hpp
+index 2307b72..bf931eb 100644
 --- a/include/common/ExscalicosData.hpp
 +++ b/include/common/ExscalicosData.hpp
-@@ -14,3 +14,3 @@
+@@ -12,7 +12,7 @@
+ // - finish getters and setters for content
+ // - either update or remove parameter array for checking of changed parameters
  
 -template <std::floating_point FPT = double, Kokkos::ExecutionSpace ExecutionSpace = Kokkos::OpenMP, Kokkos::MemorySpace MemorySpace = Kokkos::HostSpace>
 +template <std::floating_point FPT = double, class ExecutionSpace = Kokkos::OpenMP, class MemorySpace = Kokkos::HostSpace>
  class ExscalicosData
+ {
+   public:
 diff --git a/include/solvers/ExscalicosEwald.hpp b/include/solvers/ExscalicosEwald.hpp
 index adc98a4..f7b6ed1 100644
 --- a/include/solvers/ExscalicosEwald.hpp
 +++ b/include/solvers/ExscalicosEwald.hpp
-@@ -9,3 +9,3 @@
+@@ -7,28 +7,28 @@
+ #include "ewald/Ewald.hpp"
+ #include <concepts>
  
 -template <ExscalicosSolver S, std::floating_point FPT = double, Kokkos::ExecutionSpace ExecutionSpace = Kokkos::OpenMP, Kokkos::MemorySpace MemorySpace = Kokkos::HostSpace>
 +template <ExscalicosSolver S, std::floating_point FPT = double, class ExecutionSpace = Kokkos::OpenMP, class MemorySpace = Kokkos::HostSpace>
      requires IsExscalicosEwald<S>
-@@ -16,3 +16,3 @@
+ ExscalicosReturn ExscalicosInterfaceCreate()
+ {
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT = double, Kokkos::ExecutionSpace ExecutionSpace = Kokkos::OpenMP, Kokkos::MemorySpace MemorySpace = Kokkos::HostSpace>
 +template <ExscalicosSolver S, std::floating_point FPT = double, class ExecutionSpace = Kokkos::OpenMP, class MemorySpace = Kokkos::HostSpace>
      requires IsExscalicosEwald<S>
-@@ -23,3 +23,3 @@
+ ExscalicosReturn ExscalicosInterfaceTune()
+ {
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT = double, Kokkos::ExecutionSpace ExecutionSpace = Kokkos::OpenMP, Kokkos::MemorySpace MemorySpace = Kokkos::HostSpace>
 +template <ExscalicosSolver S, std::floating_point FPT = double, class ExecutionSpace = Kokkos::OpenMP, class MemorySpace = Kokkos::HostSpace>
      requires IsExscalicosEwald<S>
-@@ -30,3 +30,3 @@
+ ExscalicosReturn ExscalicosInterfaceRun()
+ {
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT = double, Kokkos::ExecutionSpace ExecutionSpace = Kokkos::OpenMP, Kokkos::MemorySpace MemorySpace = Kokkos::HostSpace>
 +template <ExscalicosSolver S, std::floating_point FPT = double, class ExecutionSpace = Kokkos::OpenMP, class MemorySpace = Kokkos::HostSpace>
      requires IsExscalicosEwald<S>
+ ExscalicosReturn ExscalicosInterfaceDestroy()
+ {
+diff --git a/include/solvers/ExscalicosP3M.hpp b/include/solvers/ExscalicosP3M.hpp
+index 4efb820..bfddca4 100644
 --- a/include/solvers/ExscalicosP3M.hpp
 +++ b/include/solvers/ExscalicosP3M.hpp
-@@ -9,3 +9,3 @@
+@@ -7,28 +7,28 @@
+ #include "p3m/P3M.hpp"
+ #include <concepts>
  
 -template <ExscalicosSolver S, std::floating_point FPT = double, Kokkos::ExecutionSpace ExecutionSpace = Kokkos::OpenMP, Kokkos::MemorySpace MemorySpace = Kokkos::HostSpace>
 +template <ExscalicosSolver S, std::floating_point FPT = double, class ExecutionSpace = Kokkos::OpenMP, class MemorySpace = Kokkos::HostSpace>
      requires IsExscalicosP3M<S>
-@@ -16,3 +16,3 @@
+ ExscalicosReturn ExscalicosInterfaceCreate()
+ {
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT = double, Kokkos::ExecutionSpace ExecutionSpace = Kokkos::OpenMP, Kokkos::MemorySpace MemorySpace = Kokkos::HostSpace>
 +template <ExscalicosSolver S, std::floating_point FPT = double, class ExecutionSpace = Kokkos::OpenMP, class MemorySpace = Kokkos::HostSpace>
      requires IsExscalicosP3M<S>
-@@ -23,3 +23,3 @@
+ ExscalicosReturn ExscalicosInterfaceTune()
+ {
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT = double, Kokkos::ExecutionSpace ExecutionSpace = Kokkos::OpenMP, Kokkos::MemorySpace MemorySpace = Kokkos::HostSpace>
 +template <ExscalicosSolver S, std::floating_point FPT = double, class ExecutionSpace = Kokkos::OpenMP, class MemorySpace = Kokkos::HostSpace>
      requires IsExscalicosP3M<S>
-@@ -30,3 +30,3 @@
+ ExscalicosReturn ExscalicosInterfaceRun()
+ {
+     return ExscalicosReturn(true, "");
+ }
  
 -template <ExscalicosSolver S, std::floating_point FPT = double, Kokkos::ExecutionSpace ExecutionSpace = Kokkos::OpenMP, Kokkos::MemorySpace MemorySpace = Kokkos::HostSpace>
 +template <ExscalicosSolver S, std::floating_point FPT = double, class ExecutionSpace = Kokkos::OpenMP, class MemorySpace = Kokkos::HostSpace>
      requires IsExscalicosP3M<S>
+ ExscalicosReturn ExscalicosInterfaceDestroy()
+ {
+diff --git a/include/solvers/ewald/Ewald.hpp b/include/solvers/ewald/Ewald.hpp
+index 91cdeb3..d2e4405 100644
 --- a/include/solvers/ewald/Ewald.hpp
 +++ b/include/solvers/ewald/Ewald.hpp
-@@ -21,3 +21,3 @@
+@@ -19,7 +19,7 @@
+ using timestamp = std::chrono::time_point<std::chrono::_V2::system_clock, std::chrono::duration<signed long, std::nano>>;
+ #endif
  
 -template <std::floating_point FPT = double, Kokkos::ExecutionSpace ExecutionSpace = Kokkos::OpenMP, Kokkos::MemorySpace MemorySpace = Kokkos::HostSpace, int VectorLength = 8>
 +template <std::floating_point FPT = double, class ExecutionSpace = Kokkos::OpenMP, class MemorySpace = Kokkos::HostSpace, int VectorLength = 8>
  class ExscalicosEwald
+ {
+   public:
+diff --git a/include/solvers/p3m/P3M.hpp b/include/solvers/p3m/P3M.hpp
+index e4d4b1e..778337a 100644
 --- a/include/solvers/p3m/P3M.hpp
 +++ b/include/solvers/p3m/P3M.hpp
-@@ -24,3 +24,3 @@
+@@ -22,7 +22,7 @@
+ using timestamp = std::chrono::time_point<std::chrono::_V2::system_clock, std::chrono::duration<signed long, std::nano>>;
+ #endif
  
 -template <std::floating_point FPT = double, Kokkos::ExecutionSpace ExecutionSpace = Kokkos::OpenMP, Kokkos::MemorySpace MemorySpace = Kokkos::HostSpace, int VectorLength = 8>
 +template <std::floating_point FPT = double, class ExecutionSpace = Kokkos::OpenMP, class MemorySpace = Kokkos::HostSpace, int VectorLength = 8>
  class ExscalicosP3M
-@@ -1870,3 +1870,3 @@
+ {
+   public:
+@@ -219,7 +219,7 @@ class ExscalicosP3M
+         }
+ 
+         auto runReturn = this->tune(data, pl_tmp);
+-        if (!runReturn.check())
++        if (!runReturn.check(false))
+             return runReturn;
+ 
+         // finish function call
+@@ -259,7 +259,7 @@ class ExscalicosP3M
+         }
+ 
+         auto runReturn = this->tune(data, pl_tmp);
+-        if (!runReturn.check())
++        if (!runReturn.check(false))
+             return runReturn;
+ 
+         // finish function call
+@@ -275,10 +275,12 @@ class ExscalicosP3M
+ 
+         auto ret = ExscalicosReturn(true, "");
+         ret      = createLongRangeMap(data);
+-        if (!ret.check())
++        if (!ret.check(false))
+             return ret;
++#ifdef EXSCALICOS_P3M_VERBOSE
+         if (_longRank == 0)
+             std::cout << "MPI Proc decomposition for long-range interactions: " << _longDims(0) << " x " << _longDims(1) << " x " << _longDims(2) << std::endl;
++#endif
+         auto LInv     = this->_LInv;
+         FPT accuracy  = data.accuracy();
+         FPT p         = -log(accuracy);
+@@ -450,7 +452,9 @@ class ExscalicosP3M
+             inhomoAcc        = Kokkos::max(inhomoAcc, Kokkos::sqrt(realErrorEst * realErrorEst));
+             if (oldAcc < inhomoAcc)
+                 inhomoAcc += oldAcc;
++#ifdef EXSCALICOS_P3M_VERBOSE
+             std::cout << "Changed target accuracy in fields due to custom set parameters: " << oldAcc << " -> " << inhomoAcc << std::endl;
++#endif
+         }
+         else if (_customCAO && _customNGrid && _customAlpha && !_customRMax)
+         {
+@@ -459,7 +463,9 @@ class ExscalicosP3M
+             inhomoAcc     = Kokkos::max(inhomoAcc, Kokkos::sqrt(kErrorEst * kErrorEst));
+             if (oldAcc < inhomoAcc)
+                 inhomoAcc += oldAcc;
++#ifdef EXSCALICOS_P3M_VERBOSE
+             std::cout << "Changed target accuracy in fields due to custom set parameters: " << oldAcc << " -> " << inhomoAcc << std::endl;
++#endif
+         }
+ 
+ #ifdef EXSCALICOS_P3M_DEBUG
+@@ -557,8 +563,10 @@ class ExscalicosP3M
+                         continue;
+ 
+                     estimatedAcc = errorEstimation(N, q2sum, V, lMin, _rMax, _cao, lGrid, _alpha);
++#ifdef EXSCALICOS_P3M_VERBOSE
+                     if (_globalRank == 0)
+                         printf("DEBUG: %d: %20.15lf of %20.15lf\n", _nGrid[minLDim], estimatedAcc, inhomoAcc);
++#endif
+ 
+                     // if (estimatedAcc <= inhomoAcc && _cao != 8)
+                     //     break;
+@@ -675,14 +683,14 @@ class ExscalicosP3M
+                 ret = ExscalicosReturn(false, "Could not find a suitable process combination, where the short range cut-off is always smaller than the smallest domain sizes");
+             }
+         }
+-        if (!ret.check())
++        if (!ret.check(false))
+             return ret;
+ 
+         ret = createLongRangeMap(data);
+-        if (!ret.check())
++        if (!ret.check(false))
+             return ret;
+         ret = createShortRangeMap(data);
+-        if (!ret.check())
++        if (!ret.check(false))
+             return ret;
+ 
+         
+@@ -719,8 +727,10 @@ class ExscalicosP3M
+             lGrid[d] = _nGrid[d];
+         estimatedAcc = errorEstimation(N, q2sum, V, lMin, _rMax, _cao, lGrid, _alpha);
+ 
++#ifdef EXSCALICOS_P3M_VERBOSE
+         if (_globalRank == 0)
+             std::cout << "tuned P3M values: \n\t" << "r_max:\t" << _rMax << "\n\tFFT grid size (3D):\t" << lGrid[0] << " " << lGrid[1] << " " << lGrid[2] << "\n\tcharge assignment order:\t" << _cao << "\n\talpha:\t" << _alpha << "\n\th * alpha:\t" << _alpha * lMin / lGrid[minLDim] << "\n\testimated RMS error in forces: " << estimatedAcc << std::endl;
++#endif
+ 
+         if (_isLongRange)
+         {
+@@ -795,7 +805,7 @@ class ExscalicosP3M
+         }
+ 
+         auto runReturn = this->run(data, pl_tmp, nearFieldFlag);
+-        if (!runReturn.check())
++        if (!runReturn.check(false))
+             return runReturn;
+ 
+         for (int i = 0; i < n; ++i)
+@@ -846,7 +856,7 @@ class ExscalicosP3M
+         }
+ 
+         auto runReturn = this->run(data, pl_tmp, nearFieldFlag);
+-        if (!runReturn.check())
++        if (!runReturn.check(false))
+             return runReturn;
+ 
+         for (int i = 0; i < n; ++i)
+@@ -864,11 +874,13 @@ class ExscalicosP3M
+     ExscalicosReturn run(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data, ExscalicosParticleList<FPT, MemorySpace, VectorLength> &particles, bool nearFieldFlag)
+     {
+ 
++#ifdef EXSCALICOS_P3M_VERBOSE
+         if (_globalRank == 0)
+         {
+             std::cout << "ExScaLiCoS-P3M: Using " << _shortSize << " processes for short-range computations and "
+                       << _longSize << " processes for long-range computations." << std::endl;
+         }
++#endif
+ 
+         auto pl_f =
+             Cabana::slice<ExscalicosParameterIndex(ExscalicosParticleParameters::Field)>(particles);
+@@ -901,8 +913,10 @@ class ExscalicosP3M
+         {
+             if ((_tLong > _tShort && _rMax < _upperLimRMax) || (_tLong < _tShort && _rMax > _lowerLimRMax))
+             {
++#ifdef EXSCALICOS_P3M_VERBOSE
+                 if (_globalRank == 0)
+                     std::cout << "Needs retuning. _tLong / _tShort = " << _tLong / _tShort << std::endl;
++#endif
+                 _retune = true;
+                 tune(data, particles);
+             }
+@@ -910,7 +924,7 @@ class ExscalicosP3M
+ #endif
+ 
+         // timers
+-        double t[9], tavg[9], tmin[9], tmax[9];
++        double t[9] = {}, tavg[9], tmin[9], tmax[9];
+ 
+         auto tTotalStart = std::chrono::system_clock::now();
+ 
+@@ -927,7 +941,7 @@ class ExscalicosP3M
+             auto tFSRstart = std::chrono::system_clock::now();
+             // distribute particles to short range partition
+             auto forwardShortReturn = forwardShortRange(data, particles);
+-            if (!forwardShortReturn.check())
++            if (!forwardShortReturn.check(false))
+                 return forwardShortReturn;
+             auto tFSRend = std::chrono::system_clock::now();
+             t[0]         = std::chrono::duration_cast<std::chrono::microseconds>(tFSRend - tFSRstart).count();
+@@ -944,7 +958,7 @@ class ExscalicosP3M
+         auto tFLRstart = std::chrono::system_clock::now();
+         // distribute particles to long range partition
+         auto forwardLongReturn = forwardLongRange(data, particles);
+-        if (!forwardLongReturn.check())
++        if (!forwardLongReturn.check(false))
+             return forwardLongReturn;
+         auto tFLRend = std::chrono::system_clock::now();
+         t[1]         = std::chrono::duration_cast<std::chrono::microseconds>(tFLRend - tFLRstart).count();
+@@ -965,8 +979,9 @@ class ExscalicosP3M
+             {
+                 // short range contribution computation
+                 auto shortReturn = shortRangeComputation(data);
+-                if (!shortReturn.check())
++                if (!shortReturn.check(false))
+                     return shortReturn;
++#ifdef EXSCALICOS_P3M_VERBOSE
+                 if (_shortRank == 0)
+                 {
+                     if (_shortRank == 0)
+@@ -976,6 +991,7 @@ class ExscalicosP3M
+                         std::cout << "short range contribution:     " << std::setprecision(15) << (_Ur - _Uself) << std::endl;
+                     }
+                 }
++#endif
+             }
+ 
+             auto tCSRend = std::chrono::system_clock::now();
+@@ -999,12 +1015,14 @@ class ExscalicosP3M
+         {
+             // long range contribution computation
+             auto longReturn = longRangeComputation(data);
+-            if (!longReturn.check())
++            if (!longReturn.check(false))
+                 return longReturn;
++#ifdef EXSCALICOS_P3M_VERBOSE
+             if (_longRank == 0)
+             {
+                 std::cout << "k-space contribution:         " << std::setprecision(15) << _Uk << std::endl;
+             }
++#endif
+         }
+         auto tCLRend = std::chrono::system_clock::now();
+         t[3]         = std::chrono::duration_cast<std::chrono::microseconds>(tCLRend - tCLRstart).count();
+@@ -1022,7 +1040,7 @@ class ExscalicosP3M
+             auto tBSRstart = std::chrono::system_clock::now();
+             // distribute particles to short range partition
+             auto backwardShortReturn = backwardShortRange(data, particles);
+-            if (!backwardShortReturn.check())
++            if (!backwardShortReturn.check(false))
+                 return backwardShortReturn;
+             auto tBSRend = std::chrono::system_clock::now();
+             t[4]         = std::chrono::duration_cast<std::chrono::microseconds>(tBSRend - tBSRstart).count();
+@@ -1040,7 +1058,7 @@ class ExscalicosP3M
+         // distribute particles to long range partition
+ 
+         auto backwardLongReturn = backwardLongRange(data, particles);
+-        if (!backwardLongReturn.check())
++        if (!backwardLongReturn.check(false))
+             return backwardLongReturn;
+ 
+         auto tBLRend = std::chrono::system_clock::now();
+@@ -1058,16 +1076,16 @@ class ExscalicosP3M
+         _tShort = t[2];
+         _tLong  = t[3];
+ 
+-        MPI_Reduce(t, tavg, 9, MPI_DOUBLE, MPI_SUM, 0, _globalComm);
+-        MPI_Reduce(t, tmin, 9, MPI_DOUBLE, MPI_MIN, 0, _globalComm);
+-        MPI_Reduce(t, tmax, 9, MPI_DOUBLE, MPI_MAX, 0, _globalComm);
+-
+         // get longest runtime for computational parts of the solver parts
+         MPI_Allreduce(MPI_IN_PLACE, &_tLongRun, 1, MPI_DOUBLE, MPI_MAX, _globalComm);
+         MPI_Allreduce(MPI_IN_PLACE, &_tShortRun, 1, MPI_DOUBLE, MPI_MAX, _globalComm);
+ 
+         MPI_Allreduce(MPI_IN_PLACE, &_tLong, 1, MPI_DOUBLE, MPI_MAX, _globalComm);
+         MPI_Allreduce(MPI_IN_PLACE, &_tShort, 1, MPI_DOUBLE, MPI_MAX, _globalComm);
++#ifdef EXSCALICOS_P3M_VERBOSE
++        MPI_Reduce(t, tavg, 9, MPI_DOUBLE, MPI_SUM, 0, _globalComm);
++        MPI_Reduce(t, tmin, 9, MPI_DOUBLE, MPI_MIN, 0, _globalComm);
++        MPI_Reduce(t, tmax, 9, MPI_DOUBLE, MPI_MAX, 0, _globalComm);
+         if (_globalRank == 0)
+         {
+             std::cout << "Time spent in forward real-space (avg, min, max):             " << (tavg[0] / _globalSize / 1000000.0) << " s " << (tmin[0] / 1000000.0) << " s " << (tmax[0] / 1000000.0) << " s " << std::endl;
+@@ -1082,14 +1100,13 @@ class ExscalicosP3M
+ 
+             std::cout << "Time spent in run():                                          " << (tavg[6] / _globalSize / 1000000.0) << " s " << (tmin[6] / 1000000.0) << " s " << (tmax[6] / 1000000.0) << " s " << std::endl;
+         }
+-
+         MPI_Barrier(_globalComm);
+         if (_globalRank == 0)
+             std::cout << "after backward transfer (k-space)" << std::endl;
++#endif
+ 
+         Kokkos::fence();
+ 
+-        // tally the potentials / forces
+         pl_f =
+             Cabana::slice<ExscalicosParameterIndex(ExscalicosParticleParameters::Field)>(particles);
+         pl_p =
+@@ -1097,6 +1114,18 @@ class ExscalicosP3M
+         pl_q =
+             Cabana::slice<ExscalicosParameterIndex(ExscalicosParticleParameters::Charge)>(particles);
+ 
++        // the self-interaction correction of the potentials is applied in the
++        // short-range computation, which is skipped when the calling program
++        // computes the near-field contributions
++        if (!nearFieldFlag)
++        {
++            FPT const selfFactor = (FPT)2.0 * _alpha / Kokkos::sqrt(_piValue);
++            Kokkos::parallel_for("selfPotentialCorrection", Kokkos::RangePolicy<ExecutionSpace>(ExecutionSpace(), 0, pl_q.size()), KOKKOS_LAMBDA(const int i) { pl_p(i) -= selfFactor * pl_q(i); });
++            Kokkos::fence();
++        }
++
++#ifdef EXSCALICOS_P3M_VERBOSE
++        // tally the potentials / forces
+         FPT fieldLoc[3] = {(FPT)0.0, (FPT)0.0, (FPT)0.0};
+         FPT forceLoc[3] = {(FPT)0.0, (FPT)0.0, (FPT)0.0};
+         FPT potLoc      = (FPT)0.0;
+@@ -1146,6 +1175,7 @@ class ExscalicosP3M
+             printf("total field:     %25.15lf %25.15lf %25.15lf\n", ft[0], ft[1], ft[2]);
+             printf("total force:     %25.15lf %25.15lf %25.15lf\n", Ft[0], Ft[1], Ft[2]);
+         }
++#endif
+ 
+         // finish function call
+         return ExscalicosReturn(true, "");
+@@ -1871,7 +1901,7 @@ class ExscalicosP3M
+         Kokkos::fence();
+ 
          return ExscalicosReturn(true, "");
 -    };
 +    }
  
-@@ -1897,3 +1897,3 @@
+     template <int splineOrder>
+     ExscalicosReturn longRangeTune(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data)
+@@ -1898,7 +1928,7 @@ class ExscalicosP3M
+         longRangeInfluenceFunction<splineOrder>(data);
+ 
          return ExscalicosReturn(true, "");
 -    };
 +    }
  
-@@ -1974,3 +1974,3 @@
+     template <int splineOrder>
+     ExscalicosReturn createGrid(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data)
+@@ -1975,7 +2005,7 @@ class ExscalicosP3M
+         fieldFFTZ = Cabana::Grid::ArrayOp::cloneCopy(*chargeArrayFFT, Cabana::Grid::Own());
+ 
          return ExscalicosReturn(true, "");
 -    };
 +    }
  
+     template <int splineOrder>
+     ExscalicosReturn longRangeInfluenceFunction(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data)
+@@ -2304,8 +2334,10 @@ class ExscalicosP3M
+         auto tLongEnd = std::chrono::system_clock::now();
+         auto runTime  = std::chrono::duration_cast<std::chrono::microseconds>(tLongEnd - tLongStart).count();
+ 
++#ifdef EXSCALICOS_P3M_VERBOSE
+         if (_longRank == 0)
+             std::cout << "runtime longRangeCompute function:       " << runTime / 1000000.0 << std::endl;
++#endif
+         runTime = runTime / 1e6;
+ 
+ #ifdef EXSCALICOS_DETAILED_TIMERS

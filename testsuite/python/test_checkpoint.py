@@ -1091,6 +1091,23 @@ class CheckpointTest(ut.TestCase):
         for key in reference:
             self.assertEqual(state[key], reference[key], msg=f'for {key}')
 
+    @utx.skipIfMissingFeatures(["EXSCALICOS"])
+    @ut.skipIf('EXSCALICOS' not in modes, "Missing combination.")
+    def test_exscalicos_coulomb(self):
+        actor = system.electrostatics.solver
+        self.assertIsInstance(actor, espressomd.electrostatics.Exscalicos)
+        state = actor.get_params()
+        self.assertEqual(state['prefactor'], 0.5)
+        self.assertEqual(state['method_name'], 'p3m')
+        reference = {'accuracy': 1e-3, 'r_cut': 1.0, 'mesh': [48, 32, 64],
+                     'cao': 7, 'alpha': 2.084652}
+        self.assertEqual(set(state['method_params'].keys()),
+                         set(reference.keys()))
+        for key, value in reference.items():
+            np.testing.assert_allclose(
+                np.copy(state['method_params'][key]), value,
+                err_msg=f'for parameter {key}')
+
     @utx.skipIfMissingFeatures(["SCAFACOS_DIPOLES"])
     @utx.skipIfMissingScafacosMethod("p2nfft")
     @ut.skipIf('SCAFACOS' not in modes, "Missing combination.")

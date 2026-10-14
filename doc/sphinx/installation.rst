@@ -785,6 +785,9 @@ using a CMake flag (see :ref:`Options and Variables`).
 - ``SCAFACOS``: enables features from the ScaFaCoS library (see
   :ref:`ScaFaCoS electrostatics`, :ref:`ScaFaCoS magnetostatics`).
 
+- ``EXSCALICOS``: enables features from the ExScaLiCoS library (see
+  :ref:`ExScaLiCoS electrostatics`).
+
 - ``GSL``: enables features relying on the GNU Scientific Library, e.g.
   :meth:`espressomd.cluster_analysis.Cluster.fractal_dimension` and
   :class:`espressomd.electrostatics.MMM1D`.
@@ -956,6 +959,7 @@ The following options control features from external libraries:
 * ``ESPRESSO_BUILD_WITH_HDF5``: Build with HDF5 support.
 * ``ESPRESSO_BUILD_WITH_FFTW``: Build with FFTW support.
 * ``ESPRESSO_BUILD_WITH_SCAFACOS``: Build with ScaFaCoS support.
+* ``ESPRESSO_BUILD_WITH_EXSCALICOS``: Build with ExScaLiCoS support.
 * ``ESPRESSO_BUILD_WITH_GSL``: Build with GSL support.
 * ``ESPRESSO_BUILD_WITH_STOKESIAN_DYNAMICS`` Build with Stokesian Dynamics support.
 * ``ESPRESSO_BUILD_WITH_WALBERLA``: Build with waLBerla support.

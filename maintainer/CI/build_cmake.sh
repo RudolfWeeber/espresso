@@ -126,6 +126,7 @@ set_default_value with_hdf5 true
 set_default_value with_fftw true
 set_default_value with_gsl true
 set_default_value with_scafacos false
+set_default_value with_exscalicos false
 set_default_value with_nlopt false
 set_default_value with_walberla false
 set_default_value with_walberla_avx false
@@ -163,6 +164,7 @@ cmake_param_list+=(
   -D ESPRESSO_BUILD_WITH_FFTW:BOOL=${with_fftw}
   -D ESPRESSO_BUILD_WITH_GSL:BOOL=${with_gsl}
   -D ESPRESSO_BUILD_WITH_SCAFACOS:BOOL=${with_scafacos}
+  -D ESPRESSO_BUILD_WITH_EXSCALICOS:BOOL=${with_exscalicos}
   -D ESPRESSO_BUILD_WITH_NLOPT:BOOL=${with_nlopt}
   -D ESPRESSO_BUILD_WITH_STOKESIAN_DYNAMICS:BOOL=${with_stokesian_dynamics}
   -D ESPRESSO_BUILD_WITH_WALBERLA:BOOL=${with_walberla}

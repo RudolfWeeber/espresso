@@ -86,6 +86,9 @@ SCAFACOS_DIPOLES                implies DIPOLES
 SCAFACOS                        requires ELECTROSTATICS
 SCAFACOS                        requires not FPE
 
+/* ExScaLiCoS */
+EXSCALICOS                      requires ELECTROSTATICS
+
 /* Debugging */
 ADDITIONAL_CHECKS
 
@@ -96,6 +99,7 @@ CUDA external
 FFTW external
 HDF5 external
 SCAFACOS external
+EXSCALICOS external
 GSL external
 STOKESIAN_DYNAMICS external
 NLOPT external

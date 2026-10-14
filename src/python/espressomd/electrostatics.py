@@ -414,3 +414,83 @@ class Scafacos(ElectrostaticInteraction):
 
     def required_keys(self):
         return {"method_name", "method_params", "prefactor"}
+
+
+@script_interface_register
+class Exscalicos(ElectrostaticInteraction):
+
+    """
+    Calculate the Coulomb interaction using the ExScaLiCoS library.
+    See :ref:`ExScaLiCoS electrostatics` for more details.
+
+    Parameters
+    ----------
+    prefactor : :obj:`float`
+        Coulomb prefactor as defined in :eq:`coulomb_prefactor`.
+    method_name : :obj:`str`
+        Name of the ExScaLiCoS method to use. Currently, only ``"p3m"``
+        is available.
+    method_params : :obj:`dict`
+        Dictionary containing the method-specific parameters. For P3M:
+
+        * ``accuracy`` (:obj:`float`, required): target RMS force error
+        * ``r_cut`` (:obj:`float`, optional): real-space cutoff
+        * ``alpha`` (:obj:`float`, optional): Ewald splitting parameter
+        * ``cao`` (:obj:`int`, optional): charge assignment order
+        * ``mesh`` (:obj:`int` or (3,) array_like of :obj:`int`, optional):
+          number of mesh points
+
+        Parameters which are not provided are tuned by the library.
+        After tuning, the property ``method_params`` contains the
+        tuned values.
+    check_neutrality : :obj:`bool`, optional
+        Raise a warning if the system is not electrically neutral when
+        set to ``True`` (default).
+
+    Methods
+    -------
+    get_available_methods()
+        List long-range methods available in the ExScaLiCoS library.
+
+    set_near_field_delegation()
+        Choose whether to delegate short-range calculation to ESPResSo
+        (this is the default) or ExScaLiCoS.
+
+        Parameters
+        ----------
+        delegate : :obj:`bool`
+            Delegate to ESPResSo if ``True``.
+
+    get_near_field_delegation()
+        Find whether the short-range calculation is delegated to ESPResSo
+        (this is the default) or ExScaLiCoS.
+
+        Returns
+        -------
+        delegate : :obj:`bool`
+            Delegate to ESPResSo if ``True``, ``False`` if delegated
+            to ExScaLiCoS.
+
+    """
+    _so_name = "Coulomb::CoulombExscalicos"
+    _so_creation_policy = "GLOBAL"
+    _so_features = ("ELECTROSTATICS", "EXSCALICOS")
+    _so_bind_methods = ElectrostaticInteraction._so_bind_methods + \
+        ("get_available_methods",
+         "get_near_field_delegation",
+         "set_near_field_delegation")
+
+    def validate_params(self, params):
+        super().validate_params(params)
+        method_params = params["method_params"]
+        if isinstance(method_params, dict) and utils.is_valid_type(
+                method_params.get("mesh"), int):
+            method_params = dict(method_params)
+            method_params["mesh"] = 3 * [method_params["mesh"]]
+            params["method_params"] = method_params
+
+    def default_params(self):
+        return {"check_neutrality": True}
+
+    def required_keys(self):
+        return {"method_name", "method_params", "prefactor"}

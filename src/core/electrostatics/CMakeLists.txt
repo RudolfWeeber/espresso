@@ -20,10 +20,15 @@ target_sources(
   espresso_core
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/coulomb.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/elc.cpp
+          ${CMAKE_CURRENT_SOURCE_DIR}/exscalicos_impl.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/icc.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/mmm1d.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/mmm-modpsi.cpp
           ${CMAKE_CURRENT_SOURCE_DIR}/scafacos_impl.cpp)
+
+if(ESPRESSO_BUILD_WITH_EXSCALICOS)
+  target_link_libraries(espresso_core PRIVATE espresso::exscalicos)
+endif()
 
 if(ESPRESSO_BUILD_WITH_FFTW)
   target_sources(espresso_p3m PRIVATE p3m.cpp)

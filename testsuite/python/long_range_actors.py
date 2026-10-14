@@ -129,6 +129,27 @@ class Test(ut.TestCase):
         self.system.integrator.run(0)
         self.assertIsNone(self.system.electrostatics.call_method("unknown"))
 
+    @utx.skipIfMissingFeatures(["EXSCALICOS"])
+    def test_exscalicos_registration(self):
+        icc, _ = self.setup_icc_particles_and_solver()
+        p3m_params = self.valid_p3m_parameters()
+        method_params = {key: p3m_params[key]
+                         for key in ("mesh", "cao", "accuracy", "r_cut", "alpha")}
+        actor = espressomd.electrostatics.Exscalicos(
+            prefactor=1., method_name="p3m", method_params=method_params,
+            check_neutrality=False)
+        actor_new = espressomd.electrostatics.Exscalicos(
+            prefactor=1., method_name="p3m", method_params=method_params,
+            check_neutrality=False)
+        self.assertIsNone(actor.call_method("unknown"))
+        self.system.electrostatics.solver = actor
+        self.system.electrostatics.extension = icc
+        with self.assertRaisesRegex(RuntimeError, "Cannot change solver when an extension is active"):
+            self.system.electrostatics.solver = actor_new
+        self.system.electrostatics.clear()
+        self.system.electrostatics.solver = actor_new
+        self.system.integrator.run(0)
+
     @utx.skipIfMissingFeatures(["DP3M"])
     def test_magnetostatics_registration(self):
         import espressomd.highlander

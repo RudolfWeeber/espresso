@@ -843,29 +843,27 @@ if(ESPRESSO_BUILD_WITH_SCAFACOS)
 endif()
 
 if(ESPRESSO_BUILD_WITH_EXSCALICOS)
+  if(NOT ESPRESSO_BUILD_WITH_FFTW)
+    message(FATAL_ERROR "ExScaLiCoS requires ESPRESSO_BUILD_WITH_FFTW=ON")
+  endif()
+  if(NOT EXISTS ${FETCHCONTENT_BASE_DIR}/exscalicos-src)
+    find_package(Exscalicos QUIET)
+  endif()
   if(NOT DEFINED Exscalicos_FOUND OR NOT ${Exscalicos_FOUND})
-    if(NOT EXISTS ${FETCHCONTENT_BASE_DIR}/exscalicos-src)
-      find_package(Exscalicos QUIET)
-    endif()
-    if(NOT DEFINED Exscalicos_FOUND OR NOT ${Exscalicos_FOUND})
-      # cmake-format: off
-      FetchContent_Declare(
-        exscalicos
-        GIT_REPOSITORY https://gitlab.jsc.fz-juelich.de/SLMS/kokkos/exscalicos.git
-        GIT_TAG        bcd2c238 # P3M version
-        PATCH_COMMAND  patch -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/exscalicos.patch
-        SYSTEM
-      )
-      # cmake-format: on
-      set(EXSCALICOS_BUILD_TESTS off CACHE BOOL "")
-      set(EXSCALICOS_CUDA off CACHE BOOL "")
-      set(EXSCALICOS_HIP off CACHE BOOL "")
-      set(BUILD_SHARED_LIBS OFF)
-      FetchContent_MakeAvailable(exscalicos)
-      set(BUILD_SHARED_LIBS ${ESPRESSO_BUILD_SHARED_LIBS_DEFAULT})
-      set(CMAKE_SHARED_LIBRARY_PREFIX "${ESPRESSO_SHARED_LIBRARY_PREFIX}")
-      add_library(Exscalicos::Exscalicos ALIAS Exscalicos)
-    endif()
+    # cmake-format: off
+    FetchContent_Declare(
+      exscalicos
+      GIT_REPOSITORY https://gitlab.jsc.fz-juelich.de/SLMS/kokkos/exscalicos.git
+      GIT_TAG        288599bc6663a7e13a4ddc9416f91ce2c2b4dd9f # p3m branch
+      PATCH_COMMAND  patch -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/exscalicos.patch
+      SYSTEM
+    )
+    # cmake-format: on
+    set(EXSCALICOS_BUILD_TESTS OFF CACHE BOOL "")
+    set(EXSCALICOS_CUDA OFF CACHE BOOL "")
+    set(EXSCALICOS_HIP OFF CACHE BOOL "")
+    FetchContent_MakeAvailable(exscalicos)
+    add_library(Exscalicos::Exscalicos ALIAS Exscalicos)
   endif()
 endif()
 

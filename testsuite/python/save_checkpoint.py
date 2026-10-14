@@ -397,6 +397,17 @@ if espressomd.has_features('SCAFACOS') and 'SCAFACOS' in modes \
             "p3m_cao": 7,
             "p3m_alpha": 2.084652})
 
+if espressomd.has_features('EXSCALICOS') and 'EXSCALICOS' in modes:
+    system.electrostatics.solver = espressomd.electrostatics.Exscalicos(
+        prefactor=0.5,
+        method_name="p3m",
+        method_params={
+            "accuracy": 1e-3,
+            "r_cut": 1.0,
+            "mesh": [48, 32, 64],
+            "cao": 7,
+            "alpha": 2.084652})
+
 if espressomd.has_features('SCAFACOS_DIPOLES') and 'SCAFACOS' in modes \
         and 'p2nfft' in espressomd.code_info.scafacos_methods():
     system.magnetostatics.solver = espressomd.magnetostatics.Scafacos(

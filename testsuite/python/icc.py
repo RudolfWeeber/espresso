@@ -67,8 +67,7 @@ class TestICC(ut.TestCase):
         return self.system.part.add(
             pos=positions, q=charges, fix=fix), normals, areas
 
-    @utx.skipIfMissingFeatures(["P3M"])
-    def test_dipole_system(self):
+    def setup_dipole_system(self):
         N_ICC_SIDE_LENGTH = 10
         DIPOLE_DISTANCE = 5.0
         DIPOLE_CHARGE = 10.0
@@ -107,21 +106,41 @@ class TestICC(ut.TestCase):
         self.system.part.add(pos=[BOX_L_HALF, BOX_L_HALF, BOX_L_HALF + DIPOLE_DISTANCE / 2],
                              q=-DIPOLE_CHARGE, fix=[True, True, True])
 
-        p3m = espressomd.electrostatics.P3M(
-            prefactor=1., mesh=[24, 24, 26], cao=6, accuracy=1e-5)
-        p3m.charge_neutrality_tolerance = 2e-9
+        testcharge_dipole = DIPOLE_CHARGE * DIPOLE_DISTANCE
+        return icc, part_slice_lower, part_slice_upper, testcharge_dipole
 
-        self.system.electrostatics.solver = p3m
+    def check_induced_dipole(self, solver):
+        icc, part_slice_lower, part_slice_upper, testcharge_dipole = \
+            self.setup_dipole_system()
+        solver.charge_neutrality_tolerance = 2e-9
+
+        self.system.electrostatics.solver = solver
         self.system.electrostatics.extension = icc
         self.system.integrator.run(0)
 
         charge_lower = sum(part_slice_lower.q)
         charge_upper = sum(part_slice_upper.q)
 
-        testcharge_dipole = DIPOLE_CHARGE * DIPOLE_DISTANCE
         induced_dipole = 0.5 * (abs(charge_lower) + abs(charge_upper)) * BOX_L
 
         self.assertAlmostEqual(1, induced_dipole / testcharge_dipole, places=4)
+        return icc, part_slice_lower, part_slice_upper
+
+    @utx.skipIfMissingFeatures(["EXSCALICOS"])
+    def test_dipole_system_exscalicos(self):
+        exscalicos = espressomd.electrostatics.Exscalicos(
+            prefactor=1., method_name="p3m",
+            method_params={"accuracy": 1e-5, "mesh": [24, 24, 26], "cao": 6})
+        self.check_induced_dipole(exscalicos)
+
+    @utx.skipIfMissingFeatures(["P3M"])
+    def test_dipole_system(self):
+        p3m = espressomd.electrostatics.P3M(
+            prefactor=1., mesh=[24, 24, 26], cao=6, accuracy=1e-5)
+        icc, part_slice_lower, part_slice_upper = self.check_induced_dipole(
+            p3m)
+        charge_lower = sum(part_slice_lower.q)
+        charge_upper = sum(part_slice_upper.q)
 
         with self.subTest(msg="smoke test, see `icc_electrodes.py` for a statistical test"):
             # remove periodic images in the direction of the dipole

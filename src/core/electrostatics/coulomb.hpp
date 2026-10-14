@@ -29,6 +29,7 @@
 
 #include "electrostatics/debye_hueckel.hpp"
 #include "electrostatics/elc.hpp"
+#include "electrostatics/exscalicos.hpp"
 #include "electrostatics/icc.hpp"
 #include "electrostatics/mmm1d.hpp"
 #include "electrostatics/p3m.hpp"
@@ -58,6 +59,9 @@ using ElectrostaticsActor =
 #ifdef ESPRESSO_SCAFACOS
                  std::shared_ptr<CoulombScafacos>,
 #endif // ESPRESSO_SCAFACOS
+#ifdef ESPRESSO_EXSCALICOS
+                 std::shared_ptr<CoulombExscalicos>,
+#endif // ESPRESSO_EXSCALICOS
                  std::shared_ptr<ReactionField>>;
 
 using ElectrostaticsExtension = std::variant<std::shared_ptr<ICCStar>>;
@@ -81,6 +85,9 @@ struct has_pressure<ElectrostaticLayerCorrection> : std::false_type {};
 #ifdef ESPRESSO_SCAFACOS
 template <> struct has_pressure<CoulombScafacos> : std::false_type {};
 #endif // ESPRESSO_SCAFACOS
+#ifdef ESPRESSO_EXSCALICOS
+template <> struct has_pressure<CoulombExscalicos> : std::false_type {};
+#endif // ESPRESSO_EXSCALICOS
 #ifdef ESPRESSO_MMM1D
 template <> struct has_pressure<CoulombMMM1D> : std::false_type {};
 #endif // ESPRESSO_MMM1D

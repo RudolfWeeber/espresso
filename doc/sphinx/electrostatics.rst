@@ -441,3 +441,48 @@ the ScaFaCoS manual. Methods include, but are not limited to, P2NFFT,
 MMM2D (see :ref:`MMM2D theory` for details), fast multipole method (FMM),
 Ewald, and Maxwell Equations Molecular Dynamics (MEMD).
 To use this feature, ScaFaCoS has to be built as a shared library.
+
+.. _ExScaLiCoS electrostatics:
+
+ExScaLiCoS electrostatics
+-------------------------
+
+:class:`espressomd.electrostatics.Exscalicos`
+
+.. note::
+
+    Requires feature ``ELECTROSTATICS`` and
+    external feature ``EXSCALICOS``, enabled with
+    ``-D ESPRESSO_BUILD_WITH_EXSCALICOS=ON``.
+    Also requires ``-D ESPRESSO_BUILD_WITH_FFTW=ON``.
+
+|es| can use the methods from the ExScaLiCoS *Exascale scalable library
+for Coulomb solvers*, the successor of ScaFaCoS. The library relies on
+Kokkos, Cabana and heFFTe. It is fetched and built together with |es|.
+To build with a local copy of the library instead, pass its source directory
+with ``-D FETCHCONTENT_SOURCE_DIR_EXSCALICOS=/path/to/exscalicos``.
+In this case, the patch in :file:`cmake/exscalicos.patch` is not applied.
+The ExScaLiCoS and ScaFaCoS interfaces can be enabled at the same time.
+Currently, the P3M method is available. It requires a system with
+periodic boundaries in all three directions.
+
+To use ExScaLiCoS, create an instance of
+:class:`~espressomd.electrostatics.Exscalicos` and attach it to the system.
+Three parameters have to be specified: ``prefactor``
+(as defined in :eq:`coulomb_prefactor`), ``method_name`` and
+``method_params``. For P3M, the parameter ``accuracy`` sets the target
+root mean square error of the forces and is required. The real-space
+cutoff ``r_cut``, the Ewald splitting parameter ``alpha``, the charge
+assignment order ``cao`` and the number of mesh points ``mesh`` are tuned
+by the library, unless they are provided by the user::
+
+    import espressomd.electrostatics
+    exscalicos = espressomd.electrostatics.Exscalicos(
+       prefactor=1, method_name="p3m",
+       method_params={"accuracy": 1e-4, "r_cut": 2.5})
+    system.electrostatics.solver = exscalicos
+
+By default, |es| calculates the short-range part of the interaction.
+This can be delegated to ExScaLiCoS with
+:meth:`~espressomd.electrostatics.Exscalicos.set_near_field_delegation`.
+Pressure calculations are not supported.

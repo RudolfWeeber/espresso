@@ -62,6 +62,22 @@ class Test(ut.TestCase):
         ref_pressure = madelung * base_tensor / np.trace(base_tensor)
         return ref_energy, ref_pressure
 
+    def check_exscalicos_energy(self, p3m_params, ref_energy, rtol):
+        if not espressomd.has_features("EXSCALICOS"):
+            return
+        keys = ("accuracy", "mesh", "r_cut", "cao", "alpha")
+        method_params = {key: p3m_params[key] for key in keys}
+        for delegate in [True, False]:
+            with self.subTest(msg=f"ExScaLiCoS P3M {delegate=}"):
+                actor = espressomd.electrostatics.Exscalicos(
+                    prefactor=p3m_params["prefactor"], method_name="p3m",
+                    method_params=method_params)
+                actor.set_near_field_delegation(delegate=delegate)
+                self.system.electrostatics.solver = actor
+                energy, _, _ = self.get_normalized_obs_per_ion(pressure=False)
+                np.testing.assert_allclose(energy, ref_energy, atol=0.,
+                                           rtol=rtol)
+
     def get_normalized_obs_per_dipole(self, dipm, spacing, pressure):
         energy = self.system.analysis.energy()["dipolar"]
         if pressure:
@@ -286,6 +302,7 @@ class Test(ut.TestCase):
                 p3m = espressomd.electrostatics.P3M(gpu=True, **p3m_params)
                 self.system.electrostatics.solver = p3m
                 check()
+        self.check_exscalicos_energy(p3m_params, ref_energy, rtol=7e-7)
 
     @utx.skipIfMissingFeatures(["P3M"])
     def test_infinite_ionic_sheet(self):
@@ -329,6 +346,7 @@ class Test(ut.TestCase):
                 elc = espressomd.electrostatics.ELC(actor=p3m, **elc_params)
                 self.system.electrostatics.solver = elc
                 check(pressure=False)
+        self.check_exscalicos_energy(p3m_params, ref_energy, rtol=1e-7)
 
     @utx.skipIfMissingFeatures(["P3M"])
     def test_infinite_ionic_cube(self):
@@ -357,6 +375,7 @@ class Test(ut.TestCase):
                     single_precision=single_precision, **p3m_params)
                 self.system.electrostatics.solver = p3m
                 check()
+        self.check_exscalicos_energy(p3m_params, ref_energy, rtol=2e-6)
         if espressomd.has_features("CUDA") and espressomd.gpu_available():
             with self.subTest(msg=f"P3M GPU single_precision=True"):
                 p3m_params = dict(prefactor=1., accuracy=3e-7, mesh=42,

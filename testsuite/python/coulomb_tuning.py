@@ -25,10 +25,10 @@ import espressomd.electrostatics
 import tests_common
 
 
-@utx.skipIfMissingFeatures(["P3M"])
+@utx.skipIfMissingFeatures(["ELECTROSTATICS"])
 class CoulombCloudWallTune(ut.TestCase):
 
-    """This compares P3M electrostatic forces against reference values."""
+    """This compares tuned P3M electrostatic forces against reference values."""
     system = espressomd.System(box_l=[10.0, 10.0, 10.0])
     system.time_step = 0.01
     system.cell_system.skin = 0.4
@@ -48,15 +48,23 @@ class CoulombCloudWallTune(ut.TestCase):
         np.testing.assert_allclose(
             np.copy(self.system.part.all().f), self.ref_forces, atol=2e-3)
 
+    @utx.skipIfMissingFeatures(["P3M"])
     def test_p3m_cpu(self):
         actor = espressomd.electrostatics.P3M(
             prefactor=1., accuracy=5e-4, tune=True)
         self.compare(actor)
 
     @utx.skipIfMissingGPU()
+    @utx.skipIfMissingFeatures(["P3M"])
     def test_p3m_gpu(self):
         actor = espressomd.electrostatics.P3M(
             prefactor=1., accuracy=5e-4, tune=True, gpu=True)
+        self.compare(actor)
+
+    @utx.skipIfMissingFeatures(["EXSCALICOS"])
+    def test_exscalicos_p3m(self):
+        actor = espressomd.electrostatics.Exscalicos(
+            prefactor=1., method_name="p3m", method_params={"accuracy": 5e-4})
         self.compare(actor)
 
 
