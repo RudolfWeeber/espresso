@@ -25,7 +25,11 @@ import numpy as np
 np.random.seed(42)
 
 gpu = "gpu" in "@TEST_LABELS@".split(";")
+exscalicos = "@TEST_SUFFIX@" == "exscalicos"
 cmd_arguments = ["--particles_per_core", "400", "--gpu" if gpu else "--no-gpu"]
+if exscalicos:
+    # use the pre-tuned P3M parameters below for the ExScaLiCoS solver
+    cmd_arguments += ["--solver=exscalicos", "--exscalicos_params=p3m"]
 benchmark, skipIfMissingFeatures = importlib_wrapper.configure_and_import(
     "@BENCHMARKS_DIR@/p3m.py", gpu=gpu, measurement_steps=100, n_iterations=2,
     cmd_arguments=cmd_arguments, script_suffix="@TEST_SUFFIX@",

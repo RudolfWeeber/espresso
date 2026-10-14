@@ -62,6 +62,15 @@ parser.add_argument("--prefactor", metavar="PREFACTOR", action="store",
                     help="P3M prefactor (default: 1)")
 parser.add_argument("--gpu", action=argparse.BooleanOptionalAction,
                     default=False, required=False, help="Use GPU implementation")
+parser.add_argument("--solver", choices=["p3m", "exscalicos"], default="p3m",
+                    required=False,
+                    help="Use the internal P3M or the P3M solver of the "
+                    "ExScaLiCoS library (default: p3m)")
+parser.add_argument("--exscalicos_params", choices=["library", "p3m"],
+                    default="library", required=False,
+                    help="Parameters of the ExScaLiCoS solver: tuned by the "
+                    "library, or tuned by the internal P3M solver "
+                    "(default: library)")
 mesh_group = parser.add_mutually_exclusive_group()
 mesh_group.add_argument("--mesh", metavar="M", action="store", type=int,
                         default=None, required=False,
@@ -83,10 +92,14 @@ args = parser.parse_args()
 benchmarks.validate_mode(args)
 if args.mesh is not None and args.highest_mesh is not None:
     parser.error("--mesh cannot be combined with --highest_mesh")
+if args.solver == "exscalicos" and args.gpu:
+    parser.error("--solver=exscalicos cannot be combined with --gpu")
 
 required_features = ["P3M", "LENNARD_JONES"]
 if args.gpu:
     required_features.append("CUDA")
+if args.solver == "exscalicos":
+    required_features.append("EXSCALICOS")
 espressomd.assert_features(required_features)
 np.random.seed(SEED)
 
@@ -127,6 +140,54 @@ def make_p3m(args, mesh_min):
     if p3m_params is not None:
         return espressomd.electrostatics.P3M(**p3m_params)
     return espressomd.electrostatics.P3M(**p3m_tune_kwargs(args, mesh_min))
+
+
+def make_exscalicos(args, method_params):
+    return espressomd.electrostatics.Exscalicos(
+        prefactor=args.prefactor, method_name="p3m",
+        method_params=method_params)
+
+
+def make_solver(system, args, mesh_min):
+    """
+    Build and activate the electrostatics solver. With ``--solver=exscalicos``
+    and ``--exscalicos_params=p3m``, the parameters are first tuned with the
+    internal P3M solver and then passed to ExScaLiCoS.
+    """
+    if args.solver == "p3m":
+        solver = make_p3m(args, mesh_min)
+    elif args.exscalicos_params == "p3m":
+        system.electrostatics.solver = make_p3m(args, mesh_min)
+        tuned = system.electrostatics.solver.get_params()
+        system.electrostatics.clear()
+        solver = make_exscalicos(args, {
+            "accuracy": ACCURACY, "r_cut": tuned["r_cut"],
+            "alpha": tuned["alpha"], "cao": tuned["cao"],
+            "mesh": [int(x) for x in tuned["mesh"]]})
+    else:
+        method_params = {"accuracy": ACCURACY}
+        if args.mesh is not None:
+            method_params["mesh"] = args.mesh
+        solver = make_exscalicos(args, method_params)
+    system.electrostatics.solver = solver
+    print(f"Solver parameters: {get_solver_params(solver)}")
+    return solver
+
+
+def get_solver_params(solver):
+    """Tuned parameters of the active solver."""
+    params = solver.get_params()
+    if "method_params" in params:
+        params = params["method_params"]
+    return {"mesh": [int(x) for x in params["mesh"]],
+            "cao": int(params["cao"]), "alpha": float(params["alpha"]),
+            "r_cut": float(params["r_cut"])}
+
+
+def solver_label(args):
+    if args.solver == "exscalicos":
+        return f"exscalicos ({args.exscalicos_params} parameters)"
+    return "p3m"
 
 
 def build_and_tune(system, args):
@@ -175,7 +236,6 @@ def build_and_tune(system, args):
     system.integrator.set_vv()
     system.thermostat.set_langevin(kT=KT, gamma=GAMMA, seed=SEED)
 
-    p3m = make_p3m(args, mesh_min)
     print("Quick equilibration")
     system.time_step /= 10.
     system.integrator.run(100)
@@ -187,15 +247,14 @@ def build_and_tune(system, args):
     print("Equilibration")
     system.integrator.run(min(3 * steps, 3000))
     print("Tune p3m")
-    system.electrostatics.solver = p3m
+    make_solver(system, args, mesh_min)
     print("Equilibration")
     system.integrator.run(min(3 * steps, 3000))
     print("Tune skin: {:.3f}".format(benchmarks.tune_skin_unless_fixed(
         system, args, min_skin, max_skin, tol=0.05, int_steps=100,
         adjust_max_skin=True)))
     print("Re-tune p3m")
-    p3m = make_p3m(args, mesh_min)
-    system.electrostatics.solver = p3m
+    p3m = make_solver(system, args, mesh_min)
     print("Tune skin: {:.3f}".format(benchmarks.tune_skin_unless_fixed(
         system, args, min_skin, max_skin, tol=0.05, int_steps=100,
         adjust_max_skin=True)))
@@ -205,7 +264,7 @@ def build_and_tune(system, args):
 
 def save_p3m_state(system, args, ctx):
     p = system.part.all()
-    tuned = ctx["p3m"].get_params()
+    tuned = get_solver_params(ctx["p3m"])
     meta = {
         "skin": float(system.cell_system.skin),
         "box_l": [float(x) for x in system.box_l],
@@ -221,6 +280,8 @@ def save_p3m_state(system, args, ctx):
         "alpha": float(tuned["alpha"]),
         "r_cut": float(tuned["r_cut"]),
         "gpu": bool(args.gpu),
+        "solver": args.solver,
+        "exscalicos_params": args.exscalicos_params,
         "kT": KT, "gamma": GAMMA, "seed": SEED,
     }
     meta.update(benchmarks.topology_meta(system))
@@ -243,12 +304,22 @@ def run_from_state(system, args):
     system.integrator.set_vv()
     system.thermostat.set_langevin(
         kT=meta["kT"], gamma=meta["gamma"], seed=int(meta["seed"]))
-    p3m = espressomd.electrostatics.P3M(
-        prefactor=meta["prefactor"], accuracy=meta["accuracy"],
-        mesh=[int(x) for x in meta["mesh"]], cao=int(meta["cao"]),
-        alpha=float(meta["alpha"]), r_cut=float(meta["r_cut"]),
-        tune=False, gpu=bool(meta["gpu"]), timings=15)
-    system.electrostatics.solver = p3m
+    solver_params = {
+        "accuracy": meta["accuracy"], "mesh": [int(x) for x in meta["mesh"]],
+        "cao": int(meta["cao"]), "alpha": float(meta["alpha"]),
+        "r_cut": float(meta["r_cut"])}
+    # the solver type is a property of the state file
+    args.solver = str(meta.get("solver", "p3m"))
+    args.exscalicos_params = str(meta.get("exscalicos_params", "library"))
+    if args.solver == "exscalicos":
+        solver = espressomd.electrostatics.Exscalicos(
+            prefactor=meta["prefactor"], method_name="p3m",
+            method_params=solver_params)
+    else:
+        solver = espressomd.electrostatics.P3M(
+            prefactor=meta["prefactor"], tune=False, gpu=bool(meta["gpu"]),
+            timings=15, **solver_params)
+    system.electrostatics.solver = solver
     return meta["measurement_steps"], meta["n_iterations"]
 
 
@@ -258,6 +329,7 @@ def time_and_report(system, args, measurement_steps, n_iterations):
     print(f"average: {avg:.3e} +/- {ci:.3e} (95% C.I.)")
     n_proc = system.cell_system.get_state()["n_nodes"]
     benchmarks.write_report(args.output, n_proc, timings, measurement_steps,
+                            label=solver_label(args),
                             n_threads=benchmarks.get_omp_num_threads(system))
 
 
