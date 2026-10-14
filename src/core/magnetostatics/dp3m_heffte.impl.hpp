@@ -274,6 +274,7 @@ template <int cao> struct AssignTorques {
 
     auto const n_part = dp3m.inter_weights.size();
     auto const &unique_particles = cell_structure.get_unique_particles();
+    cell_structure.mark_torque_replicas_dirty();
     auto scatter_torque = cell_structure.get_scatter_torque();
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
     auto scatter_dip_fld = cell_structure.get_scatter_dip_fld();
@@ -493,11 +494,6 @@ double DipolarP3MHeffte<FloatType, Architecture, FFTConfig>::long_range_kernel(
   auto const &system = get_system();
   auto const &box_geo = *system.box_geo;
   auto const dipole_prefac = prefactor / Utils::product(dp3m.params.mesh);
-#ifdef ESPRESSO_NPT
-  auto const npt_flag = force_flag and system.has_npt_enabled();
-#else
-  auto constexpr npt_flag = false;
-#endif
 
   auto constexpr mesh_start = Utils::Vector3i::broadcast(0);
   auto local_index = Utils::Vector3i::broadcast(0);
@@ -981,7 +977,7 @@ double DipolarP3MHeffte<FloatType, Architecture, FFTConfig>::long_range_kernel(
     }
   }
 #ifdef ESPRESSO_NPT
-  if (npt_flag) {
+  if (force_flag and system.has_npt_enabled()) {
     // reuse the validated reciprocal-space pressure tensor (same one used by
     // the pressure observable) instead of an energy-proxy: unlike Coulomb,
     // the dipolar structure factor is not simply homogeneous in k, so energy

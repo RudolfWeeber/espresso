@@ -35,7 +35,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 # project info
 project(
   ESPResSo
-  VERSION "5.0.1"
+  VERSION "5.1.0"
   LANGUAGES C CXX
   HOMEPAGE_URL "https://espressomd.org"
   DESCRIPTION
@@ -701,6 +701,15 @@ endif()
 
 if(NOT EXISTS ${FETCHCONTENT_BASE_DIR}/kokkos-src)
   find_package(Kokkos 5.0.2 QUIET)
+  if(DEFINED Kokkos_FOUND AND Kokkos_FOUND AND ESPRESSO_BUILD_WITH_CUDA
+     AND DEFINED Kokkos_ENABLE_COMPILE_AS_CMAKE_LANGUAGE
+     AND NOT Kokkos_ENABLE_COMPILE_AS_CMAKE_LANGUAGE)
+    message(
+      AUTHOR_WARNING
+        "The Kokkos dependency wasn't compiled with -DKokkos_ENABLE_COMPILE_AS_CMAKE_LANGUAGE=ON \
+         therefore CMake will build ESPResSo source files with a compiler launcher wrapper"
+    )
+  endif()
 endif()
 if(NOT DEFINED Kokkos_FOUND OR NOT ${Kokkos_FOUND})
   # cmake-format: off
@@ -758,24 +767,21 @@ if(NOT DEFINED Kokkos_FOUND OR NOT ${Kokkos_FOUND})
   )
 endif()
 
-# kokkos-fft: a local (single-process) FFT on top of the Kokkos target already
-# fetched above. Used as the single-rank P3M reciprocal-space backend. It is
-# only consumed by the P3M target, which is itself gated behind FFTW (and its
-# CPU backend is FFTW), so there is nothing to fetch when FFTW is disabled.
 if(ESPRESSO_BUILD_WITH_KOKKOS_FFT AND ESPRESSO_BUILD_WITH_FFTW)
   if(NOT EXISTS ${FETCHCONTENT_BASE_DIR}/kokkos_fft-src)
-    find_package(KokkosFFT 1.1 QUIET)
+    find_package(KokkosFFT 2.0 QUIET)
   endif()
   if(NOT DEFINED KokkosFFT_FOUND OR NOT ${KokkosFFT_FOUND})
     # cmake-format: off
     FetchContent_Declare(
       kokkos_fft
       GIT_REPOSITORY https://github.com/kokkos/kokkos-fft.git
-      GIT_TAG        v1.1.0
+      GIT_TAG        v2.0.0
       OVERRIDE_FIND_PACKAGE
     )
     # cmake-format: on
     set(KokkosFFT_ENABLE_FFTW ON CACHE BOOL "")
+    set(KokkosFFT_ENABLE_CUFFT ${ESPRESSO_BUILD_WITH_CUDA} CACHE BOOL "")
     FetchContent_MakeAvailable(kokkos_fft)
   endif()
 endif()
@@ -1044,6 +1050,11 @@ if(ESPRESSO_BUILD_TESTS)
   target_compile_options(
     espresso_tests_compiler_flags
     INTERFACE $<$<NOT:$<CXX_COMPILER_ID:NVHPC>>:-Wno-unused-macros>)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_VERSION
+                                                VERSION_GREATER_EQUAL "19.1.0")
+    target_compile_options(espresso_tests_compiler_flags
+                           INTERFACE -Wno-c2y-extensions)
+  endif()
   if(ESPRESSO_BUILD_WITH_COVERAGE)
     target_compile_options(
       espresso_tests_compiler_flags
@@ -1123,9 +1134,16 @@ if(ESPRESSO_BUILD_WITH_WALBERLA)
       sqlite3
       PRIVATE
         $<$<COMPILE_LANG_AND_ID:C,GNU>:-Wno-discarded-qualifiers>
+        $<$<COMPILE_LANG_AND_ID:C,Clang>:-Wno-incompatible-pointer-types-discards-qualifiers>
         $<$<COMPILE_LANG_AND_ID:C,NVHPC>:--diag_suppress=code_is_unreachable>
         $<$<COMPILE_LANG_AND_ID:C,NVHPC>:--diag_suppress=cast_to_qualified_type>
         $<$<COMPILE_LANG_AND_ID:C,NVHPC>:--diag_suppress=set_but_not_used>)
+    if(CMAKE_BUILD_TYPE MATCHES "^Release$|^RelWith|^MinSizeRel$")
+      # reduce build time and RAM usage of one source file with 50k lines
+      set_source_files_properties(
+        ${walberla_SOURCE_DIR}/src/core/math/Parser.cpp TARGET_DIRECTORY
+        walberla_core PROPERTIES COMPILE_OPTIONS "-O2")
+    endif()
   endif()
   add_library(espresso_walberla_deps INTERFACE)
   add_library(espresso::walberla_deps ALIAS espresso_walberla_deps)
