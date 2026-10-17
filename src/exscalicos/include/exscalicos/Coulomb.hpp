@@ -24,15 +24,16 @@
  * Bridge to the ExScaLiCoS library. The library is header-only and
  * relies on Kokkos, Cabana and heFFTe; this bridge hides these
  * dependencies from the ESPResSo core with the pointer-to-implementation
- * idiom.
+ * idiom. Only the short-range kernels are exposed, since they are
+ * evaluated in the ESPResSo near-field loop.
  */
+
+#include <common/ExscalicosShortRange.hpp>
 
 #include <mpi.h>
 
 #include <array>
-#include <cmath>
 #include <memory>
-#include <numbers>
 #include <string>
 #include <vector>
 
@@ -109,21 +110,29 @@ public:
   void set_r_cut(double r_cut);
 
   /**
+   * @brief Provide the time per step of the near-field calculation
+   * done by ESPResSo, for balancing the real-space cutoff.
+   * @param seconds  Time in seconds
+   */
+  void set_near_field_time(double seconds);
+
+  /**
+   * @brief Balance the near-field time and the library time of the
+   * last run by adjusting the real-space cutoff, and re-tune the
+   * remaining parameters.
+   * @return true if the parameters changed, false if already balanced
+   */
+  bool balance_r_cut(std::vector<double> &charges,
+                     std::vector<double> &positions);
+
+  /**
    * @brief Calculate the short-range pair field magnitude
    * of a unit charge, divided by the distance.
    */
-  double pair_force(double dist) const {
-    auto const alpha_dist = m_alpha * dist;
-    return (2. * m_alpha * std::numbers::inv_sqrtpi *
-                std::exp(-alpha_dist * alpha_dist) +
-            std::erfc(alpha_dist) / dist) /
-           (dist * dist);
-  }
+  double pair_force(double dist) const { return m_kernel.field(dist); }
 
   /** @brief Calculate the short-range pair potential of a unit charge. */
-  double pair_energy(double dist) const {
-    return std::erfc(m_alpha * dist) / dist;
-  }
+  double pair_energy(double dist) const { return m_kernel.potential(dist); }
 
 private:
   struct Implementation;
@@ -132,8 +141,8 @@ private:
   bool m_delegate_near_field;
   /** Cached real-space cutoff, used in the short-range kernels. */
   double m_r_cut;
-  /** Cached splitting parameter, used in the short-range kernels. */
-  double m_alpha;
+  /** Short-range kernels with the cached splitting parameter. */
+  ExscalicosEwaldShortRange<double> m_kernel;
 
   void update_cached_parameters();
 };

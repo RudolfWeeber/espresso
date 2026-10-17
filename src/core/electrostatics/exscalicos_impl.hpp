@@ -90,6 +90,10 @@ private:
   bool m_fixed_r_cut;
   /** Whether the library parameters were tuned. */
   bool m_library_is_tuned = false;
+  /** Accumulated wall time of the library runs, in seconds. */
+  double m_library_time = 0.;
+  /** Number of library runs in @ref m_library_time. */
+  int m_library_runs = 0;
   /** Inputs of the charged particles */
   std::vector<double> positions, charges;
   /** Outputs of the charged particles */
@@ -102,6 +106,14 @@ private:
    * @return false if there are no charged particles, true otherwise
    */
   bool tune_library();
+  /**
+   * @brief Balance the real-space cutoff between the ESPResSo near field
+   * and the library.
+   * The near-field time is the time of a force calculation minus the time
+   * of the library run. It thus contains all short-range interactions,
+   * as in a production run.
+   */
+  void balance_r_cut();
   /**
    * @brief Calculate the fields and potentials of the charged particles.
    * @param with_potentials  Calculate the potentials (only needed for energies)

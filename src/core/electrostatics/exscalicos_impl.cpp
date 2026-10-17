@@ -29,12 +29,16 @@
 #include "cell_system/CellStructure.hpp"
 #include "communication.hpp"
 #include "system/System.hpp"
+#include "tuning.hpp"
 
 #include <exscalicos/Coulomb.hpp>
 
 #include <utils/Vector.hpp>
 
 #include <boost/mpi/collectives/all_reduce.hpp>
+#include <boost/mpi/operations.hpp>
+
+#include <mpi.h>
 
 #include <algorithm>
 #include <cassert>
@@ -186,11 +190,44 @@ bool CoulombExscalicosImpl::tune_library() {
   return true;
 }
 
+void CoulombExscalicosImpl::balance_r_cut() {
+  auto &system = get_system();
+  auto constexpr max_iterations = 10;
+  auto constexpr timings = 10;
+  for (int iteration = 0; iteration < max_iterations; ++iteration) {
+    system.on_coulomb_change();
+    m_library_time = 0.;
+    m_library_runs = 0;
+    auto const force_time = benchmark_integration_step(system, timings) / 1e3;
+    auto const library_time = boost::mpi::all_reduce(
+        comm_cart, m_library_time / std::max(m_library_runs, 1),
+        boost::mpi::maximum<double>());
+    auto const near_field_time = force_time - library_time;
+    if (near_field_time <= 0.) {
+      break;
+    }
+    m_bridge.set_near_field_time(near_field_time);
+    if (not m_bridge.balance_r_cut(charges, positions)) {
+      break;
+    }
+    auto const r_cut_max = max_r_cut();
+    if (m_bridge.r_cut() > r_cut_max) {
+      m_bridge.set_r_cut(r_cut_max);
+      m_bridge.tune(charges, positions);
+      break;
+    }
+  }
+}
+
 void CoulombExscalicosImpl::tune_impl() {
   update_particle_data();
   if (not tune_library() and not m_fixed_r_cut) {
     throw std::runtime_error(
         "CoulombExscalicos: no charged particles in the system");
+  }
+  if (m_library_is_tuned and m_bridge.get_near_field_delegation() and
+      not m_fixed_r_cut) {
+    balance_r_cut();
   }
   // with a fixed cutoff, tuning can be deferred until charges are present,
   // e.g. when the solver is restored from a checkpoint before the particles
@@ -202,7 +239,10 @@ bool CoulombExscalicosImpl::run_library(bool with_potentials) {
   if (not m_library_is_tuned and not tune_library()) {
     return false;
   }
+  auto const tick = MPI_Wtime();
   m_bridge.run(charges, positions, fields, potentials, with_potentials);
+  m_library_time += MPI_Wtime() - tick;
+  ++m_library_runs;
   return true;
 }
 

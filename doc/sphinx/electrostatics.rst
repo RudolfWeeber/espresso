@@ -482,7 +482,14 @@ by the library, unless they are provided by the user::
        method_params={"accuracy": 1e-4, "r_cut": 2.5})
     system.electrostatics.solver = exscalicos
 
-By default, |es| calculates the short-range part of the interaction.
+By default, |es| calculates the short-range part of the interaction
+with the kernels of the library.
 This can be delegated to ExScaLiCoS with
 :meth:`~espressomd.electrostatics.Exscalicos.set_near_field_delegation`.
+When |es| calculates the short-range part and ``r_cut`` is not provided,
+the real-space cutoff is balanced after the initial tuning: |es| times
+force calculations, and the library adjusts the cutoff such that the
+time of the force calculation without the library matches the time of the
+library's k-space calculation. The measured time contains all short-range
+interactions, as in the production run.
 Pressure calculations are not supported.

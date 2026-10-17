@@ -1,8 +1,16 @@
 diff --git a/include/Exscalicos.hpp b/include/Exscalicos.hpp
-index 64748a2..00d8f89 100644
+index 64748a2..9aaede7 100644
 --- a/include/Exscalicos.hpp
 +++ b/include/Exscalicos.hpp
-@@ -23,7 +23,7 @@
+@@ -4,6 +4,7 @@
+ #include "common/ExscalicosData.hpp"
+ #include "common/ExscalicosDefinitions.hpp"
+ #include "common/ExscalicosReturn.hpp"
++#include "common/ExscalicosShortRange.hpp"
+ #include "solvers/ExscalicosSolvers.hpp"
+ #include <array>
+ #include <concepts>
+@@ -23,7 +24,7 @@
   *       Since Kokkos 4.0 alternatively Kokkos::SharedSpace can be used as an unified MemorySpace, internally pointing the required former
   *       MemorySpace, depending on activated ExecutionSpace() types. (ref: https://kokkos.org/kokkos-core-wiki/API/core/memory_spaces.html#kokkos-sharedspace)
   */
@@ -11,7 +19,7 @@ index 64748a2..00d8f89 100644
  class Exscalicos
  {
    public:
-@@ -31,7 +31,7 @@ class Exscalicos
+@@ -31,7 +32,7 @@ class Exscalicos
                     _callDomain("ExScaLiCoS: calling domain size"),
                     _callSystem("ExScaLiCoS: calling system size"),
                     _nearFieldFlag(true) {}
@@ -20,7 +28,7 @@ index 64748a2..00d8f89 100644
  
      /// function to create solver infrastructure
      ExscalicosReturn create(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data);
-@@ -87,6 +87,10 @@ class Exscalicos
+@@ -87,6 +88,22 @@ class Exscalicos
      /// is near field computation enabled?
      bool getNearFieldFlag() const;
  
@@ -28,10 +36,22 @@ index 64748a2..00d8f89 100644
 +    /// supported by: P3M
 +    ExscalicosReturn setComputePotential(bool flag);
 +
++    /// function to provide the near-field time per step (in seconds) of a calling code that computes the near field itself
++    /// supported by: P3M
++    ExscalicosReturn setShortRangeTime(FPT seconds);
++
++    /// are the near-field and k-space times of the last run unbalanced?
++    /// supported by: P3M
++    bool needsRMaxBalancing() const;
++
++    /// function to balance the near-field and k-space times of the last run by adjusting the short range cutoff
++    /// and re-tuning the remaining parameters; supported by: P3M
++    ExscalicosReturn balanceRMax(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data, std::vector<FPT> &positions, std::vector<FPT> &charges);
++
      ExscalicosReturn setDomainSize(FPT x, FPT y, FPT z);
      ExscalicosReturn setDomainAnchor(FPT x, FPT y, FPT z);
      ExscalicosReturn setSystemSize(FPT x, FPT y, FPT z);
-@@ -134,147 +138,135 @@ class Exscalicos
+@@ -134,147 +151,135 @@ class Exscalicos
      ExscalicosP3M<FPT, ExecutionSpace, MemorySpace> p3mObject;
  };
  
@@ -208,7 +228,7 @@ index 64748a2..00d8f89 100644
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setRMax(FPT &rMax)
  {
      switch (S)
-@@ -289,7 +281,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+@@ -289,7 +294,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
      return ExscalicosReturn(true, "");
  }
  
@@ -217,7 +237,7 @@ index 64748a2..00d8f89 100644
  const FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getRMax() const
  {
      switch (S)
-@@ -304,7 +296,7 @@ const FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getRMax
+@@ -304,7 +309,7 @@ const FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getRMax
      return FPT{-1.0};
  }
  
@@ -226,7 +246,7 @@ index 64748a2..00d8f89 100644
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setAlpha(FPT &alpha)
  {
      switch (S)
-@@ -319,7 +311,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+@@ -319,7 +324,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
      return ExscalicosReturn(true, "");
  }
  
@@ -235,7 +255,7 @@ index 64748a2..00d8f89 100644
  const FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getAlpha() const
  {
      switch (S)
-@@ -334,7 +326,7 @@ const FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getAlph
+@@ -334,7 +339,7 @@ const FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getAlph
      return FPT{-1.0};
  }
  
@@ -244,7 +264,7 @@ index 64748a2..00d8f89 100644
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setCAO(int &cao)
  {
      switch (S)
-@@ -349,7 +341,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+@@ -349,7 +354,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
      return ExscalicosReturn(true, "");
  }
  
@@ -253,7 +273,7 @@ index 64748a2..00d8f89 100644
  int Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getCAO() const
  {
      switch (S)
-@@ -364,7 +356,7 @@ int Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getCAO() cons
+@@ -364,7 +369,7 @@ int Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getCAO() cons
      return -1;
  }
  
@@ -262,7 +282,7 @@ index 64748a2..00d8f89 100644
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setKMax(FPT &kMax)
  {
      switch (S)
-@@ -379,7 +371,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+@@ -379,7 +384,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
      return ExscalicosReturn(true, "");
  }
  
@@ -271,7 +291,7 @@ index 64748a2..00d8f89 100644
  const FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getKMax() const
  {
      switch (S)
-@@ -394,7 +386,7 @@ const FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getKMax
+@@ -394,7 +399,7 @@ const FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getKMax
      return FPT{-1.0};
  }
  
@@ -280,7 +300,7 @@ index 64748a2..00d8f89 100644
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setNGrid(std::span<int, 3> nGrid)
  {
      switch (S)
-@@ -409,7 +401,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+@@ -409,7 +414,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
      return ExscalicosReturn(true, "");
  }
  
@@ -289,7 +309,7 @@ index 64748a2..00d8f89 100644
  const std::array<int, 3> Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::getNGrid() const
  {
      switch (S)
-@@ -424,7 +416,7 @@ const std::array<int, 3> Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorL
+@@ -424,7 +429,7 @@ const std::array<int, 3> Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorL
      return std::array<int, 3>({-1, -1, -1});
  }
  
@@ -298,7 +318,7 @@ index 64748a2..00d8f89 100644
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setNearFieldFlag(bool flag)
  {
      _nearFieldFlag = flag;
-@@ -434,13 +426,25 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+@@ -434,13 +439,61 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
      return ExscalicosReturn(true, "");
  }
  
@@ -323,10 +343,46 @@ index 64748a2..00d8f89 100644
 +}
 +
 +template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
++ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setShortRangeTime(FPT seconds)
++{
++    switch (S)
++    {
++    case ExscalicosSolver::P3M:
++        return p3mObject.setShortRangeTime(seconds);
++    default:
++        return ExscalicosReturn(false, "Exscalicos::setShortRangeTime: not supported by this solver");
++    }
++}
++
++template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
++bool Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::needsRMaxBalancing() const
++{
++    switch (S)
++    {
++    case ExscalicosSolver::P3M:
++        return p3mObject.needsRMaxBalancing();
++    default:
++        return false;
++    }
++}
++
++template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
++ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::balanceRMax(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data, std::vector<FPT> &positions, std::vector<FPT> &charges)
++{
++    switch (S)
++    {
++    case ExscalicosSolver::P3M:
++        return p3mObject.balanceRMax(data, positions, charges);
++    default:
++        return ExscalicosReturn(false, "Exscalicos::balanceRMax: not supported by this solver");
++    }
++}
++
++template <ExscalicosSolver S, std::floating_point FPT, class ExecutionSpace, class MemorySpace, int VectorLength>
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setDomainAnchor(FPT x, FPT y, FPT z)
  {
      _callAnchor(0) = x;
-@@ -449,7 +453,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+@@ -449,7 +502,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
      return ExscalicosReturn(true, "");
  }
  
@@ -335,7 +391,7 @@ index 64748a2..00d8f89 100644
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setDomainSize(FPT x, FPT y, FPT z)
  {
      _callDomain(0) = x;
-@@ -458,7 +462,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+@@ -458,7 +511,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
      return ExscalicosReturn(true, "");
  }
  
@@ -344,7 +400,7 @@ index 64748a2..00d8f89 100644
  ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::setSystemSize(FPT x, FPT y, FPT z)
  {
      _callSystem(0) = x;
-@@ -467,7 +471,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
+@@ -467,7 +520,7 @@ ExscalicosReturn Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::
      return ExscalicosReturn(true, "");
  }
  
@@ -353,7 +409,7 @@ index 64748a2..00d8f89 100644
  KOKKOS_INLINE_FUNCTION FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::shortRangePotential(FPT dist) const
  {
      switch (S)
-@@ -481,7 +485,7 @@ KOKKOS_INLINE_FUNCTION FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, Vecto
+@@ -481,7 +534,7 @@ KOKKOS_INLINE_FUNCTION FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, Vecto
      }
  }
  
@@ -362,7 +418,7 @@ index 64748a2..00d8f89 100644
  KOKKOS_INLINE_FUNCTION FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, VectorLength>::shortRangeField(FPT dist) const
  {
      switch (S)
-@@ -495,37 +499,37 @@ KOKKOS_INLINE_FUNCTION FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, Vecto
+@@ -495,37 +548,37 @@ KOKKOS_INLINE_FUNCTION FPT Exscalicos<S, FPT, ExecutionSpace, MemorySpace, Vecto
      }
  }
  
@@ -419,6 +475,63 @@ index 2307b72..bf931eb 100644
  class ExscalicosData
  {
    public:
+diff --git a/include/common/ExscalicosShortRange.hpp b/include/common/ExscalicosShortRange.hpp
+new file mode 100644
+index 0000000..3bc4dd4
+--- /dev/null
++++ b/include/common/ExscalicosShortRange.hpp
+@@ -0,0 +1,51 @@
++#ifndef EXSCALICOS_EXSCALICOSSHORTRANGE_HPP_INCLUDED
++#define EXSCALICOS_EXSCALICOSSHORTRANGE_HPP_INCLUDED
++
++#include <Kokkos_Macros.hpp>
++#include <Kokkos_MathematicalFunctions.hpp>
++
++#include <concepts>
++#include <numbers>
++
++/**
++ * short-range (real-space) kernels of the Ewald splitting, for use in the near-field
++ * computation of a calling code; the kernels contain no charges and no prefactors
++ *
++ * erfc is evaluated with the approximation of Abramowitz and Stegun (Eq. 7.1.26),
++ * with an absolute error below 1.5e-7, which shares the exponential with the
++ * Gaussian term of the field
++ */
++template <std::floating_point FPT>
++struct ExscalicosEwaldShortRange
++{
++    /// @brief Ewald splitting parameter
++    FPT alpha;
++
++    /// @brief erfc(x) * exp(x^2) for x >= 0 (Abramowitz and Stegun, Eq. 7.1.26)
++    KOKKOS_INLINE_FUNCTION static FPT scaledErfc(FPT x)
++    {
++        const FPT t = (FPT)1.0 / ((FPT)1.0 + (FPT)0.3275911 * x);
++        return t * ((FPT)0.254829592 +
++                    t * ((FPT)-0.284496736 +
++                         t * ((FPT)1.421413741 +
++                              t * ((FPT)-1.453152027 + t * (FPT)1.061405429))));
++    }
++
++    /// @brief field magnitude of a unit charge at distance dist, divided by dist
++    KOKKOS_INLINE_FUNCTION FPT field(FPT dist) const
++    {
++        const FPT x        = alpha * dist;
++        const FPT gaussian = Kokkos::exp(-x * x);
++        return gaussian * ((FPT)2.0 * alpha * std::numbers::inv_sqrtpi_v<FPT> + scaledErfc(x) / dist) /
++               (dist * dist);
++    }
++
++    /// @brief potential of a unit charge at distance dist
++    KOKKOS_INLINE_FUNCTION FPT potential(FPT dist) const
++    {
++        const FPT x = alpha * dist;
++        return Kokkos::exp(-x * x) * scaledErfc(x) / dist;
++    }
++};
++
++#endif
 diff --git a/include/solvers/ExscalicosEwald.hpp b/include/solvers/ExscalicosEwald.hpp
 index adc98a4..f7b6ed1 100644
 --- a/include/solvers/ExscalicosEwald.hpp
@@ -507,10 +620,18 @@ index 91cdeb3..d2e4405 100644
  {
    public:
 diff --git a/include/solvers/p3m/P3M.hpp b/include/solvers/p3m/P3M.hpp
-index e4d4b1e..fc002e8 100644
+index e4d4b1e..707d9be 100644
 --- a/include/solvers/p3m/P3M.hpp
 +++ b/include/solvers/p3m/P3M.hpp
-@@ -22,7 +22,7 @@
+@@ -3,6 +3,7 @@
+ 
+ #include "../../common/ExscalicosData.hpp"
+ #include "../../common/ExscalicosReturn.hpp"
++#include "../../common/ExscalicosShortRange.hpp"
+ #include <Cabana_Grid.hpp>
+ #include <Kokkos_Core.hpp>
+ 
+@@ -22,7 +23,7 @@
  using timestamp = std::chrono::time_point<std::chrono::_V2::system_clock, std::chrono::duration<signed long, std::nano>>;
  #endif
  
@@ -519,7 +640,7 @@ index e4d4b1e..fc002e8 100644
  class ExscalicosP3M
  {
    public:
-@@ -39,16 +39,14 @@ class ExscalicosP3M
+@@ -39,16 +40,14 @@ class ExscalicosP3M
                        _gridSizeView("gridSize"), _gridSizeHalfView("nGridsizeView"),
                        _LInv(Kokkos::ViewAllocateWithoutInitializing("reciprocal system size")),
                        _lowerLimRMax(0.0), _upperLimRMax(0.0),
@@ -538,7 +659,7 @@ index e4d4b1e..fc002e8 100644
      {
          auto &neighborBox = _neighborBox;
  
-@@ -219,7 +217,7 @@ class ExscalicosP3M
+@@ -219,7 +218,7 @@ class ExscalicosP3M
          }
  
          auto runReturn = this->tune(data, pl_tmp);
@@ -547,7 +668,7 @@ index e4d4b1e..fc002e8 100644
              return runReturn;
  
          // finish function call
-@@ -259,7 +257,7 @@ class ExscalicosP3M
+@@ -259,7 +258,7 @@ class ExscalicosP3M
          }
  
          auto runReturn = this->tune(data, pl_tmp);
@@ -556,7 +677,7 @@ index e4d4b1e..fc002e8 100644
              return runReturn;
  
          // finish function call
-@@ -275,10 +273,12 @@ class ExscalicosP3M
+@@ -275,10 +274,12 @@ class ExscalicosP3M
  
          auto ret = ExscalicosReturn(true, "");
          ret      = createLongRangeMap(data);
@@ -570,7 +691,7 @@ index e4d4b1e..fc002e8 100644
          auto LInv     = this->_LInv;
          FPT accuracy  = data.accuracy();
          FPT p         = -log(accuracy);
-@@ -450,7 +450,9 @@ class ExscalicosP3M
+@@ -450,7 +451,9 @@ class ExscalicosP3M
              inhomoAcc        = Kokkos::max(inhomoAcc, Kokkos::sqrt(realErrorEst * realErrorEst));
              if (oldAcc < inhomoAcc)
                  inhomoAcc += oldAcc;
@@ -580,7 +701,7 @@ index e4d4b1e..fc002e8 100644
          }
          else if (_customCAO && _customNGrid && _customAlpha && !_customRMax)
          {
-@@ -459,7 +461,9 @@ class ExscalicosP3M
+@@ -459,7 +462,9 @@ class ExscalicosP3M
              inhomoAcc     = Kokkos::max(inhomoAcc, Kokkos::sqrt(kErrorEst * kErrorEst));
              if (oldAcc < inhomoAcc)
                  inhomoAcc += oldAcc;
@@ -590,7 +711,7 @@ index e4d4b1e..fc002e8 100644
          }
  
  #ifdef EXSCALICOS_P3M_DEBUG
-@@ -557,8 +561,10 @@ class ExscalicosP3M
+@@ -557,8 +562,10 @@ class ExscalicosP3M
                          continue;
  
                      estimatedAcc = errorEstimation(N, q2sum, V, lMin, _rMax, _cao, lGrid, _alpha);
@@ -601,7 +722,7 @@ index e4d4b1e..fc002e8 100644
  
                      // if (estimatedAcc <= inhomoAcc && _cao != 8)
                      //     break;
-@@ -675,14 +681,14 @@ class ExscalicosP3M
+@@ -675,14 +682,14 @@ class ExscalicosP3M
                  ret = ExscalicosReturn(false, "Could not find a suitable process combination, where the short range cut-off is always smaller than the smallest domain sizes");
              }
          }
@@ -619,7 +740,7 @@ index e4d4b1e..fc002e8 100644
              return ret;
  
          
-@@ -719,8 +725,10 @@ class ExscalicosP3M
+@@ -719,8 +726,10 @@ class ExscalicosP3M
              lGrid[d] = _nGrid[d];
          estimatedAcc = errorEstimation(N, q2sum, V, lMin, _rMax, _cao, lGrid, _alpha);
  
@@ -630,7 +751,7 @@ index e4d4b1e..fc002e8 100644
  
          if (_isLongRange)
          {
-@@ -795,7 +803,7 @@ class ExscalicosP3M
+@@ -795,7 +804,7 @@ class ExscalicosP3M
          }
  
          auto runReturn = this->run(data, pl_tmp, nearFieldFlag);
@@ -639,7 +760,7 @@ index e4d4b1e..fc002e8 100644
              return runReturn;
  
          for (int i = 0; i < n; ++i)
-@@ -846,7 +854,7 @@ class ExscalicosP3M
+@@ -846,7 +855,7 @@ class ExscalicosP3M
          }
  
          auto runReturn = this->run(data, pl_tmp, nearFieldFlag);
@@ -648,7 +769,7 @@ index e4d4b1e..fc002e8 100644
              return runReturn;
  
          for (int i = 0; i < n; ++i)
-@@ -864,11 +872,13 @@ class ExscalicosP3M
+@@ -864,11 +873,13 @@ class ExscalicosP3M
      ExscalicosReturn run(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data, ExscalicosParticleList<FPT, MemorySpace, VectorLength> &particles, bool nearFieldFlag)
      {
  
@@ -662,7 +783,7 @@ index e4d4b1e..fc002e8 100644
  
          auto pl_f =
              Cabana::slice<ExscalicosParameterIndex(ExscalicosParticleParameters::Field)>(particles);
-@@ -901,8 +911,10 @@ class ExscalicosP3M
+@@ -901,8 +912,10 @@ class ExscalicosP3M
          {
              if ((_tLong > _tShort && _rMax < _upperLimRMax) || (_tLong < _tShort && _rMax > _lowerLimRMax))
              {
@@ -673,7 +794,7 @@ index e4d4b1e..fc002e8 100644
                  _retune = true;
                  tune(data, particles);
              }
-@@ -910,7 +922,7 @@ class ExscalicosP3M
+@@ -910,7 +923,7 @@ class ExscalicosP3M
  #endif
  
          // timers
@@ -682,7 +803,7 @@ index e4d4b1e..fc002e8 100644
  
          auto tTotalStart = std::chrono::system_clock::now();
  
-@@ -927,7 +939,7 @@ class ExscalicosP3M
+@@ -927,7 +940,7 @@ class ExscalicosP3M
              auto tFSRstart = std::chrono::system_clock::now();
              // distribute particles to short range partition
              auto forwardShortReturn = forwardShortRange(data, particles);
@@ -691,7 +812,7 @@ index e4d4b1e..fc002e8 100644
                  return forwardShortReturn;
              auto tFSRend = std::chrono::system_clock::now();
              t[0]         = std::chrono::duration_cast<std::chrono::microseconds>(tFSRend - tFSRstart).count();
-@@ -944,7 +956,7 @@ class ExscalicosP3M
+@@ -944,7 +957,7 @@ class ExscalicosP3M
          auto tFLRstart = std::chrono::system_clock::now();
          // distribute particles to long range partition
          auto forwardLongReturn = forwardLongRange(data, particles);
@@ -700,7 +821,7 @@ index e4d4b1e..fc002e8 100644
              return forwardLongReturn;
          auto tFLRend = std::chrono::system_clock::now();
          t[1]         = std::chrono::duration_cast<std::chrono::microseconds>(tFLRend - tFLRstart).count();
-@@ -965,8 +977,9 @@ class ExscalicosP3M
+@@ -965,8 +978,9 @@ class ExscalicosP3M
              {
                  // short range contribution computation
                  auto shortReturn = shortRangeComputation(data);
@@ -711,7 +832,7 @@ index e4d4b1e..fc002e8 100644
                  if (_shortRank == 0)
                  {
                      if (_shortRank == 0)
-@@ -976,6 +989,7 @@ class ExscalicosP3M
+@@ -976,6 +990,7 @@ class ExscalicosP3M
                          std::cout << "short range contribution:     " << std::setprecision(15) << (_Ur - _Uself) << std::endl;
                      }
                  }
@@ -719,7 +840,7 @@ index e4d4b1e..fc002e8 100644
              }
  
              auto tCSRend = std::chrono::system_clock::now();
-@@ -999,12 +1013,14 @@ class ExscalicosP3M
+@@ -999,12 +1014,14 @@ class ExscalicosP3M
          {
              // long range contribution computation
              auto longReturn = longRangeComputation(data);
@@ -735,7 +856,7 @@ index e4d4b1e..fc002e8 100644
          }
          auto tCLRend = std::chrono::system_clock::now();
          t[3]         = std::chrono::duration_cast<std::chrono::microseconds>(tCLRend - tCLRstart).count();
-@@ -1022,7 +1038,7 @@ class ExscalicosP3M
+@@ -1022,7 +1039,7 @@ class ExscalicosP3M
              auto tBSRstart = std::chrono::system_clock::now();
              // distribute particles to short range partition
              auto backwardShortReturn = backwardShortRange(data, particles);
@@ -744,7 +865,7 @@ index e4d4b1e..fc002e8 100644
                  return backwardShortReturn;
              auto tBSRend = std::chrono::system_clock::now();
              t[4]         = std::chrono::duration_cast<std::chrono::microseconds>(tBSRend - tBSRstart).count();
-@@ -1040,7 +1056,7 @@ class ExscalicosP3M
+@@ -1040,7 +1057,7 @@ class ExscalicosP3M
          // distribute particles to long range partition
  
          auto backwardLongReturn = backwardLongRange(data, particles);
@@ -753,8 +874,13 @@ index e4d4b1e..fc002e8 100644
              return backwardLongReturn;
  
          auto tBLRend = std::chrono::system_clock::now();
-@@ -1058,16 +1074,16 @@ class ExscalicosP3M
-         _tShort = t[2];
+@@ -1055,19 +1072,20 @@ class ExscalicosP3M
+ 
+         _tShortRun += t[2];
+         _tLongRun += t[3];
+-        _tShort = t[2];
++        // without the library's near-field computation, use the time provided by the calling code
++        _tShort = (!nearFieldFlag && _tShortExternal > 0.0) ? _tShortExternal : t[2];
          _tLong  = t[3];
  
 -        MPI_Reduce(t, tavg, 9, MPI_DOUBLE, MPI_SUM, 0, _globalComm);
@@ -774,7 +900,7 @@ index e4d4b1e..fc002e8 100644
          if (_globalRank == 0)
          {
              std::cout << "Time spent in forward real-space (avg, min, max):             " << (tavg[0] / _globalSize / 1000000.0) << " s " << (tmin[0] / 1000000.0) << " s " << (tmax[0] / 1000000.0) << " s " << std::endl;
-@@ -1082,14 +1098,13 @@ class ExscalicosP3M
+@@ -1082,14 +1100,13 @@ class ExscalicosP3M
  
              std::cout << "Time spent in run():                                          " << (tavg[6] / _globalSize / 1000000.0) << " s " << (tmin[6] / 1000000.0) << " s " << (tmax[6] / 1000000.0) << " s " << std::endl;
          }
@@ -790,7 +916,7 @@ index e4d4b1e..fc002e8 100644
          pl_f =
              Cabana::slice<ExscalicosParameterIndex(ExscalicosParticleParameters::Field)>(particles);
          pl_p =
-@@ -1097,6 +1112,18 @@ class ExscalicosP3M
+@@ -1097,6 +1114,18 @@ class ExscalicosP3M
          pl_q =
              Cabana::slice<ExscalicosParameterIndex(ExscalicosParticleParameters::Charge)>(particles);
  
@@ -809,7 +935,7 @@ index e4d4b1e..fc002e8 100644
          FPT fieldLoc[3] = {(FPT)0.0, (FPT)0.0, (FPT)0.0};
          FPT forceLoc[3] = {(FPT)0.0, (FPT)0.0, (FPT)0.0};
          FPT potLoc      = (FPT)0.0;
-@@ -1146,6 +1173,7 @@ class ExscalicosP3M
+@@ -1146,6 +1175,7 @@ class ExscalicosP3M
              printf("total field:     %25.15lf %25.15lf %25.15lf\n", ft[0], ft[1], ft[2]);
              printf("total force:     %25.15lf %25.15lf %25.15lf\n", Ft[0], Ft[1], Ft[2]);
          }
@@ -817,7 +943,7 @@ index e4d4b1e..fc002e8 100644
  
          // finish function call
          return ExscalicosReturn(true, "");
-@@ -1682,6 +1710,43 @@ class ExscalicosP3M
+@@ -1682,6 +1712,43 @@ class ExscalicosP3M
          return ExscalicosReturn(true, "");
      }
  
@@ -861,14 +987,16 @@ index e4d4b1e..fc002e8 100644
      template <int splineOrder>
      ExscalicosReturn assignFields(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data)
      {
-@@ -1692,32 +1757,22 @@ class ExscalicosP3M
+@@ -1692,32 +1759,22 @@ class ExscalicosP3M
          auto lpl_f =
              Cabana::slice<ExscalicosParameterIndex(ExscalicosParticleParameters::Field)>(_longParticles);
  
 -        auto &piValue = this->_piValue;
 -        auto &twoPI   = this->_twoPI;
 -        auto &V       = this->_V;
--
++        auto &V                     = this->_V;
++        auto const computePotential = _computePotential;
+ 
 -        auto chargeArrayView = _chargeArray->view();
 -        auto &fieldX         = _fieldX;
 -        auto &fieldY         = _fieldY;
@@ -883,9 +1011,7 @@ index e4d4b1e..fc002e8 100644
 -        auto scalarFieldXG2P = Cabana::Grid::createScalarValueG2P(fieldX, -1.0 / (2.0 * V));
 -        auto scalarFieldYG2P = Cabana::Grid::createScalarValueG2P(fieldY, -1.0 / (2.0 * V));
 -        auto scalarFieldZG2P = Cabana::Grid::createScalarValueG2P(fieldZ, -1.0 / (2.0 * V));
-+        auto &V                     = this->_V;
-+        auto const computePotential = _computePotential;
- 
+-
 -        Kokkos::fence();
 +        auto &fieldArray    = computePotential ? _fieldArray : _fieldOnlyArray;
 +        auto &fieldGridHalo = computePotential ? _fieldGridHalo : _fieldOnlyGridHalo;
@@ -906,7 +1032,7 @@ index e4d4b1e..fc002e8 100644
                  {_ownedSpace.min(Cabana::Grid::Dim::I),
                   _ownedSpace.min(Cabana::Grid::Dim::J),
                   _ownedSpace.min(Cabana::Grid::Dim::K)},
-@@ -1725,86 +1780,36 @@ class ExscalicosP3M
+@@ -1725,86 +1782,36 @@ class ExscalicosP3M
                   _ownedSpace.max(Cabana::Grid::Dim::J),
                   _ownedSpace.max(Cabana::Grid::Dim::K)}),
              KOKKOS_LAMBDA(const int i, const int j, const int k) {
@@ -1016,7 +1142,7 @@ index e4d4b1e..fc002e8 100644
          return ExscalicosReturn(true, "");
      }
  
-@@ -1871,7 +1876,7 @@ class ExscalicosP3M
+@@ -1871,7 +1878,7 @@ class ExscalicosP3M
          Kokkos::fence();
  
          return ExscalicosReturn(true, "");
@@ -1025,7 +1151,7 @@ index e4d4b1e..fc002e8 100644
  
      template <int splineOrder>
      ExscalicosReturn longRangeTune(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data)
-@@ -1898,7 +1903,7 @@ class ExscalicosP3M
+@@ -1898,7 +1905,7 @@ class ExscalicosP3M
          longRangeInfluenceFunction<splineOrder>(data);
  
          return ExscalicosReturn(true, "");
@@ -1034,7 +1160,7 @@ index e4d4b1e..fc002e8 100644
  
      template <int splineOrder>
      ExscalicosReturn createGrid(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data)
-@@ -1937,6 +1942,17 @@ class ExscalicosP3M
+@@ -1937,6 +1944,17 @@ class ExscalicosP3M
          _chargeArray      = Cabana::Grid::createArray<FPT, MemorySpace>("_chargeArray", _chargeGridLayout);
          _chargeGridHalo   = Cabana::Grid::createHalo(Cabana::Grid::NodeHaloPattern<3>(), haloWidth, *_chargeArray);
  
@@ -1052,7 +1178,7 @@ index e4d4b1e..fc002e8 100644
          Cabana::Grid::Experimental::FastFourierTransformParams params;
  
          // using 2D array for the FFT, requiring data copies due to the issues with Cabana and the
-@@ -1975,7 +1991,7 @@ class ExscalicosP3M
+@@ -1975,7 +1993,7 @@ class ExscalicosP3M
          fieldFFTZ = Cabana::Grid::ArrayOp::cloneCopy(*chargeArrayFFT, Cabana::Grid::Own());
  
          return ExscalicosReturn(true, "");
@@ -1061,7 +1187,7 @@ index e4d4b1e..fc002e8 100644
  
      template <int splineOrder>
      ExscalicosReturn longRangeInfluenceFunction(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data)
-@@ -2205,21 +2221,6 @@ class ExscalicosP3M
+@@ -2205,21 +2223,6 @@ class ExscalicosP3M
              lpl_f(idx, 2) = (FPT)0.0; });
          Kokkos::fence();
  
@@ -1083,7 +1209,7 @@ index e4d4b1e..fc002e8 100644
          Cabana::Grid::ArrayOp::assign(*_chargeArray, 0.0, Cabana::Grid::Ghost());
          Kokkos::fence();
  
-@@ -2287,7 +2288,8 @@ class ExscalicosP3M
+@@ -2287,7 +2290,8 @@ class ExscalicosP3M
          tstart[5] = std::chrono::system_clock::now();
  #endif
          // FFT reverse transform
@@ -1093,7 +1219,7 @@ index e4d4b1e..fc002e8 100644
          fft->reverse(*fieldFFTX, Cabana::Grid::Experimental::FFTScaleNone());
          fft->reverse(*fieldFFTY, Cabana::Grid::Experimental::FFTScaleNone());
          fft->reverse(*fieldFFTZ, Cabana::Grid::Experimental::FFTScaleNone());
-@@ -2304,8 +2306,10 @@ class ExscalicosP3M
+@@ -2304,8 +2308,10 @@ class ExscalicosP3M
          auto tLongEnd = std::chrono::system_clock::now();
          auto runTime  = std::chrono::duration_cast<std::chrono::microseconds>(tLongEnd - tLongStart).count();
  
@@ -1104,7 +1230,35 @@ index e4d4b1e..fc002e8 100644
          runTime = runTime / 1e6;
  
  #ifdef EXSCALICOS_DETAILED_TIMERS
-@@ -3550,6 +3554,18 @@ class ExscalicosP3M
+@@ -2383,6 +2389,7 @@ class ExscalicosP3M
+         auto piValue     = _piValue;
+         auto rMax        = _rMax;
+         const auto alpha = _alpha;
++        const ExscalicosEwaldShortRange<FPT> shortRangeKernel{_alpha};
+ 
+         auto shortDims       = _shortDims;
+         auto shortMapCorners = _shortMapCorners;
+@@ -2901,7 +2908,7 @@ class ExscalicosP3M
+                             FPT rij = sqrt(rijsq);
+ 
+                             // potential computation
+-                            FPT contrib = erfc(alpha * rij) / (rij);
++                            FPT contrib = shortRangeKernel.potential(rij);
+ 
+ #ifdef EXSCALICOS_P3M_DEBUG
+ //                            Kokkos::atomic_inc(&debugInteractions(spl_idx(i) - 1));
+@@ -2929,9 +2936,7 @@ class ExscalicosP3M
+                             Kokkos::atomic_add(&spl_p(j), qi * contrib);
+ 
+                             // field computation
+-                            FPT f_fact = ((FPT)2.0 * alpha / sqrt(piValue) * exp(-alpha * alpha * rijsq) +
+-                                          erfc(alpha * rij) / rij) /
+-                                         rijsq;
++                            FPT f_fact = shortRangeKernel.field(rij);
+ 
+                             Kokkos::atomic_add(&spl_f(i, 0), qj * f_fact * dd[0]);
+                             Kokkos::atomic_add(&spl_f(i, 1), qj * f_fact * dd[1]);
+@@ -3550,6 +3555,60 @@ class ExscalicosP3M
          return _cao;
      }
  
@@ -1120,10 +1274,79 @@ index e4d4b1e..fc002e8 100644
 +        return _computePotential;
 +    }
 +
++    /**
++     * @brief set the time per step of a near-field computation done by the calling code
++     * @param seconds  time in seconds; used instead of the library's own near-field time
++     *                 for balancing rMax in this and later runs without the library's
++     *                 near-field computation
++     */
++    ExscalicosReturn setShortRangeTime(FPT seconds)
++    {
++        if (seconds <= FPT{0})
++            return ExscalicosReturn(false, "ExScaLiCoS::P3M::setShortRangeTime: invalid value, must be positive");
++        _tShortExternal = (double)seconds * 1e6;
++        // replaces the time of the last run, which lacks the near field of the calling code
++        _tShort = _tShortExternal;
++        return ExscalicosReturn(true, "");
++    }
++
++    /// @brief check if the measured near-field and k-space times of the last run are unbalanced
++    bool needsRMaxBalancing() const
++    {
++        if (_tShort <= 0.0 || _tLong <= 0.0)
++            return false;
++        const auto ratio = _tLong / _tShort;
++        return (ratio > 1.3 && _rMax < _upperLimRMax) || (ratio < 0.7 && _rMax > _lowerLimRMax);
++    }
++
++    /**
++     * @brief scale rMax with (t_long / t_short)^(1/6) to balance the times of the last run and
++     * re-tune the remaining parameters; also applies to an rMax set via setRMax
++     */
++    ExscalicosReturn balanceRMax(ExscalicosData<FPT, ExecutionSpace, MemorySpace> &data, std::vector<FPT> &positions, std::vector<FPT> &charges)
++    {
++        if (_tShort <= 0.0 || _tLong <= 0.0)
++            return ExscalicosReturn(false, "ExScaLiCoS::P3M::balanceRMax: no timings available, run the solver first");
++        const auto customRMax = _customRMax;
++        _customRMax           = false;
++        _retune               = true;
++        auto ret              = tune(data, positions, charges);
++        _retune               = false;
++        _customRMax           = customRMax;
++        return ret;
++    }
++
      ExscalicosReturn setNGrid(std::span<int, 3> nGrid)
      {
          if (nGrid[0] <= 0 || nGrid[1] <= 0 || nGrid[2] <= 0)
-@@ -3744,6 +3760,19 @@ class ExscalicosP3M
+@@ -3574,7 +3633,7 @@ class ExscalicosP3M
+     /// @return short-range potential contribution for the particles, without multiplication with charges (not multiplied by q_i*q_j)
+     KOKKOS_INLINE_FUNCTION FPT shortRangePotential(FPT dist) const
+     {
+-        return (FPT)0.5 * erfc(_alpha * dist) / (dist);
++        return (FPT)0.5 * ExscalicosEwaldShortRange<FPT>{_alpha}.potential(dist);
+     }
+ 
+     /// @brief  inline function to compute the short range field contribution for a given distance between two particles
+@@ -3582,16 +3641,7 @@ class ExscalicosP3M
+     /// @return short-range field contribution for the particles, without multiplication with charges
+     KOKKOS_INLINE_FUNCTION FPT shortRangeField(FPT dist) const
+     {
+-#if __cplusplus >= 202002L
+-        // C++20 (and later) code
+-        const FPT piValue = std::numbers::pi_v<FPT>;
+-#else
+-        const FPT piValue = 3.141529265359;
+-#endif
+-
+-        return ((FPT)2.0 * _alpha / sqrt(piValue) * exp(-_alpha * _alpha * square(dist)) +
+-                erfc(_alpha * dist) / dist) /
+-               square(dist);
++        return ExscalicosEwaldShortRange<FPT>{_alpha}.field(dist);
+     }
+ 
+   private:
+@@ -3744,6 +3794,22 @@ class ExscalicosP3M
      /// @brief halo size for pricle data (depends on SplineOrder)
      std::shared_ptr<Cabana::Grid::Halo<MemorySpace>> _chargeGridHalo;
  
@@ -1140,10 +1363,13 @@ index e4d4b1e..fc002e8 100644
 +    /// @brief flag if the potentials are computed in the long-range part
 +    bool _computePotential;
 +
++    /// @brief near-field time per step of the calling code (in microseconds, non-positive if not set)
++    double _tShortExternal = -1.0;
++
      /// @brief Grid Layouy, using Cabana Cell representation
      std::shared_ptr<Cabana::Grid::ArrayLayout<Cabana::Grid::Cell, Cabana::Grid::UniformMesh<FPT, 3>>> _chargeGridLayout;
  
-@@ -3759,10 +3788,6 @@ class ExscalicosP3M
+@@ -3759,10 +3825,6 @@ class ExscalicosP3M
      std::shared_ptr<Cabana::Grid::Array<FPT, Cabana::Grid::Cell, Cabana::Grid::UniformMesh<FPT, 3>, MemorySpace>> fieldFFTY;
      std::shared_ptr<Cabana::Grid::Array<FPT, Cabana::Grid::Cell, Cabana::Grid::UniformMesh<FPT, 3>, MemorySpace>> fieldFFTZ;
  

@@ -30,6 +30,10 @@ target_link_libraries(
           Heffte::Heffte espresso::compiler_flags)
 espresso_set_kokkos_properties_on_source_files(espresso_exscalicos)
 
+# The bridge header uses the short-range kernels of the library, which only
+# depend on Kokkos and are evaluated in the ESPResSo near-field loop
 target_include_directories(
   espresso_exscalicos
-  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+         $<TARGET_PROPERTY:Exscalicos::Exscalicos,INTERFACE_INCLUDE_DIRECTORIES>
+)

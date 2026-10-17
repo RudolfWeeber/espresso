@@ -65,7 +65,7 @@ Coulomb::Coulomb(MPI_Comm comm, std::string method,
                  Parameters const &parameters)
     : m_impl{std::make_unique<Implementation>()}, m_method{std::move(method)},
       m_delegate_near_field{true}, m_r_cut{parameters.r_cut},
-      m_alpha{parameters.alpha} {
+      m_kernel{parameters.alpha} {
   auto const methods = available_methods();
   if (std::ranges::find(methods, m_method) == methods.end()) {
     throw std::invalid_argument("Method '" + m_method +
@@ -138,7 +138,24 @@ void Coulomb::set_r_cut(double r_cut) {
 
 void Coulomb::update_cached_parameters() {
   m_r_cut = m_impl->solver.getRMax();
-  m_alpha = m_impl->solver.getAlpha();
+  m_kernel.alpha = m_impl->solver.getAlpha();
+}
+
+void Coulomb::set_near_field_time(double seconds) {
+  handle_error(m_impl->solver.setShortRangeTime(seconds));
+}
+
+bool Coulomb::balance_r_cut(std::vector<double> &charges,
+                            std::vector<double> &positions) {
+  auto &solver = m_impl->solver;
+  if (not solver.needsRMaxBalancing()) {
+    return false;
+  }
+  handle_error(solver.balanceRMax(m_impl->data, positions, charges));
+  update_cached_parameters();
+  // keep the cutoff fixed, as after tuning
+  handle_error(solver.setRMax(m_r_cut));
+  return true;
 }
 
 void Coulomb::tune(std::vector<double> &charges,
