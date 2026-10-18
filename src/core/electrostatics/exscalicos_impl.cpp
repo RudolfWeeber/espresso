@@ -203,10 +203,10 @@ void CoulombExscalicosImpl::balance_r_cut() {
         comm_cart, m_library_time / std::max(m_library_runs, 1),
         boost::mpi::maximum<double>());
     auto const near_field_time = force_time - library_time;
-    if (near_field_time <= 0.) {
+    if (near_field_time <= 0. or library_time <= 0.) {
       break;
     }
-    m_bridge.set_near_field_time(near_field_time);
+    m_bridge.set_step_times(near_field_time, library_time);
     if (not m_bridge.balance_r_cut(charges, positions)) {
       break;
     }

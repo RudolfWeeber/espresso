@@ -141,8 +141,10 @@ void Coulomb::update_cached_parameters() {
   m_kernel.alpha = m_impl->solver.getAlpha();
 }
 
-void Coulomb::set_near_field_time(double seconds) {
-  handle_error(m_impl->solver.setShortRangeTime(seconds));
+void Coulomb::set_step_times(double near_field_seconds,
+                             double library_seconds) {
+  handle_error(m_impl->solver.setShortRangeTime(near_field_seconds));
+  handle_error(m_impl->solver.setLongRangeTime(library_seconds));
 }
 
 bool Coulomb::balance_r_cut(std::vector<double> &charges,

@@ -795,6 +795,7 @@ if(NOT DEFINED Cabana_FOUND OR NOT ${Cabana_FOUND})
     cabana
     GIT_REPOSITORY https://github.com/ECP-copa/Cabana.git
     GIT_TAG        0.8.0
+    PATCH_COMMAND  patch -p0 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cabana.patch
     OVERRIDE_FIND_PACKAGE
     SYSTEM
   )

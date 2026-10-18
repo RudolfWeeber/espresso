@@ -110,11 +110,13 @@ public:
   void set_r_cut(double r_cut);
 
   /**
-   * @brief Provide the time per step of the near-field calculation
-   * done by ESPResSo, for balancing the real-space cutoff.
-   * @param seconds  Time in seconds
+   * @brief Provide the times per step of the near-field calculation
+   * done by ESPResSo and of the library run, for balancing the
+   * real-space cutoff. The library time includes all communication.
+   * @param near_field_seconds  Near-field time in seconds
+   * @param library_seconds     Library time in seconds
    */
-  void set_near_field_time(double seconds);
+  void set_step_times(double near_field_seconds, double library_seconds);
 
   /**
    * @brief Balance the near-field time and the library time of the

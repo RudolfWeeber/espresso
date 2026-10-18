@@ -490,6 +490,7 @@ When |es| calculates the short-range part and ``r_cut`` is not provided,
 the real-space cutoff is balanced after the initial tuning: |es| times
 force calculations, and the library adjusts the cutoff such that the
 time of the force calculation without the library matches the time of the
-library's k-space calculation. The measured time contains all short-range
-interactions, as in the production run.
+library run. The library time includes all communication of the library.
+The short-range time contains all short-range interactions, as in the
+production run.
 Pressure calculations are not supported.
