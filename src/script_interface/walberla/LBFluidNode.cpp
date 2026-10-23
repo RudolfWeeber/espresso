@@ -23,6 +23,7 @@
 
 #include "LBFluidNode.hpp"
 
+#include <walberla_bridge/lattice_boltzmann/LBWalberlaColorGradientBase.hpp>
 #include <walberla_bridge/utils/ResourceManager.hpp>
 
 #include <utils/Vector.hpp>
@@ -108,11 +109,15 @@ Variant LBFluidNode::do_call_method(std::string const &name,
   }
   if (name == "set_population") {
     auto const pop = get_value<std::vector<double>>(params, "value");
+    // color-gradient fluids store one population per component
+    auto const *color_gradient =
+        dynamic_cast<LBWalberlaColorGradientBase *>(m_lb_fluid.get());
+    auto const pop_size =
+        (color_gradient ? 2u : 1u) * m_lb_fluid->stencil_size();
     context()->parallel_try_catch([&]() {
-      if (pop.size() != m_lb_fluid->stencil_size()) {
+      if (pop.size() != pop_size) {
         throw std::runtime_error("Population must have exactly " +
-                                 std::to_string(m_lb_fluid->stencil_size()) +
-                                 " elements");
+                                 std::to_string(pop_size) + " elements");
       }
     });
     m_lb_fluid->set_node_population(m_index, pop);
