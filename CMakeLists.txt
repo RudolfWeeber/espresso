@@ -855,7 +855,7 @@ if(ESPRESSO_BUILD_WITH_EXSCALICOS)
     FetchContent_Declare(
       exscalicos
       GIT_REPOSITORY https://gitlab.jsc.fz-juelich.de/SLMS/kokkos/exscalicos.git
-      GIT_TAG        288599bc6663a7e13a4ddc9416f91ce2c2b4dd9f # p3m branch
+      GIT_TAG        9b2c9c982928b73c91d1663d893fa61bd96fe6be # main branch
       PATCH_COMMAND  patch -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/exscalicos.patch
       SYSTEM
     )
