@@ -251,6 +251,25 @@ class VoxelMaskTest(ut.TestCase):
             espressomd.shapes.VoxelMask(
                 file=str(path), dataset="mask", voxel_size=0.)
 
+    def test_union_raises(self):
+        path = self.write_mask(np.ones((16, 16, 16)))
+        shape = espressomd.shapes.VoxelMask(
+            file=str(path), dataset="mask", voxel_size=1.)
+        wall = espressomd.shapes.Wall(normal=[1., 0., 0.], dist=1.)
+        union = espressomd.shapes.Union()
+        union.add(wall)
+        message = "A VoxelMask cannot be part of a Union"
+        with self.assertRaisesRegex(ValueError, message):
+            union.add(shape)
+        with self.assertRaisesRegex(ValueError, message):
+            union.add([shape])
+        with self.assertRaisesRegex(ValueError, message):
+            espressomd.shapes.Union(_objects=[wall, shape])
+        # the union is still usable
+        self.assertEqual(union.size(), 1)
+        dist, _ = union.calc_distance(position=[3., 1., 1.])
+        self.assertAlmostEqual(dist, 2., delta=1e-12)
+
     def test_parameters(self):
         path = self.write_mask(np.ones((16, 15, 14)))
         shape = espressomd.shapes.VoxelMask(

@@ -221,7 +221,9 @@ class VoxelMask(Shape, ScriptInterfaceHelper):
         Position of the lower corner of the mask.
     halo : :obj:`int`, optional
         Number of voxels stored beyond the local box. Distances are
-        exact up to ``halo * voxel_size``.
+        exact up to ``halo * voxel_size``, which must be at least
+        ``max_cutoff + skin / 2``. This rule is not checked automatically.
+        A VoxelMask cannot be part of a :class:`Union`.
 
     Attributes
     ----------

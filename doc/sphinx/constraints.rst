@@ -252,8 +252,14 @@ Each MPI rank reads and stores only the voxels of its local box plus a
 halo of ``halo`` voxels in every direction, at one bit per voxel.
 The distance to the solid is exact up to ``halo * voxel_size``.
 Beyond that, the shape reports a distance of ``(halo + 1) * voxel_size``.
-Hence ``halo * voxel_size`` must be at least the largest interaction
-cutoff of the constraint type.
+A particle can move up to half the Verlet skin out of its local box
+before it is resorted. Hence the halo must satisfy
+``halo * voxel_size >= max_cutoff + skin / 2``, where ``max_cutoff`` is
+the largest interaction cutoff of the constraint type and ``skin`` is
+``system.cell_system.skin``.
+Otherwise, forces on particles near the rank boundaries are silently
+missing.
+This rule is not checked automatically.
 The halo must be at least one voxel.
 
 The distance is measured to the nearest solid voxel cube.
@@ -269,9 +275,8 @@ The methods ``calc_distance()`` and ``is_inside()`` accept any position
 in periodic directions, and positions inside the box in non-periodic
 directions.
 The shape cannot be rasterized globally.
-If the shape is part of a :ref:`Shape union`, the methods
-``calc_distance()`` and ``is_inside()`` of the union fail with more
-than one MPI rank.
+Adding the shape to a :ref:`Shape union` is not supported and raises
+an error.
 The methods ``get_local_voxel_counts()`` and ``get_local_memory_bytes()``
 return the number of stored voxels and their memory, per MPI rank.
 
