@@ -24,6 +24,8 @@
 #include "LBWalberlaNodeState.hpp"
 #include "WalberlaCheckpoint.hpp"
 
+#include "script_interface/shapes/Shape.hpp"
+
 #include "core/BoxGeometry.hpp"
 #include "core/lb/LBWalberla.hpp"
 #include "core/lees_edwards/lees_edwards.hpp"
@@ -132,6 +134,33 @@ Variant LBFluid::do_call_method(std::string const &name,
     m_instance->update_boundary_from_shape(
         get_value<std::vector<int>>(params, "raster"),
         get_value<std::vector<double>>(params, "values"));
+    return {};
+  }
+  if (name == "add_boundary_from_shape_local") {
+    auto const so_shape =
+        get_value<std::shared_ptr<ScriptInterface::Shapes::Shape>>(params,
+                                                                   "shape");
+    auto const velocity = get_value<Utils::Vector3d>(params, "velocity");
+    auto const shape = so_shape->shape();
+    // collective: shapes with rank-local data reload it if it is stale
+    shape->on_local_geometry_change();
+    auto const agrid = m_lb_params->get_agrid();
+    auto const grid_size = m_instance->get_lattice().get_grid_dimensions();
+    auto const system = m_system.lock();
+    auto const is_boundary = [&](Utils::Vector3i const &node) {
+      auto const half = Utils::Vector3d::broadcast(0.5);
+      if (system) {
+        auto const pos = (node + half) * agrid;
+        return shape->is_inside(system->box_geo->folded_position(pos));
+      }
+      // without a system, fold on the lattice, which is always periodic
+      auto const folded_node = (node + grid_size) % grid_size;
+      return shape->is_inside((folded_node + half) * agrid);
+    };
+    m_instance->update_boundary_from_predicate(is_boundary, velocity);
+    if (system) {
+      system->on_lb_boundary_conditions_change();
+    }
     return {};
   }
   if (name == "get_lattice_speed") {

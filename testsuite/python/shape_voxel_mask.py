@@ -30,6 +30,7 @@ import unittest_decorators as utx
 import numpy as np
 
 import espressomd
+import espressomd.lb
 import espressomd.shapes
 
 with contextlib.suppress(ImportError):
@@ -416,6 +417,103 @@ class VoxelMaskConstraint(ut.TestCase):
         part = self.system.part.add(pos=[2.5, 2.5, 2.5], type=0)
         self.system.integrator.run(0, recalc_forces=True)
         np.testing.assert_array_equal(np.copy(part.f), [0., 0., 0.])
+
+
+@utx.skipIfMissingFeatures(["H5MD", "WALBERLA"])
+@utx.skipIfMissingModules("h5py")
+class VoxelMaskLB(ut.TestCase):
+    system = VoxelMaskTest.system
+    n_nodes = VoxelMaskTest.n_nodes
+
+    def setUp(self):
+        self.system.time_step = 0.01
+        self.system.cell_system.skin = 0.4
+        self.system.box_l = [16., 16., 16.]
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.node_grid = np.copy(self.system.cell_system.node_grid)
+
+    def tearDown(self):
+        self.system.lb = None
+        self.system.box_l = [16., 16., 16.]
+        self.system.cell_system.node_grid = self.node_grid
+        self.temp_dir.cleanup()
+
+    def write_mask(self, mask, name="mask.h5"):
+        path = pathlib.Path(self.temp_dir.name) / name
+        with h5py.File(path, "w") as h5:
+            h5.create_dataset("mask", data=np.asarray(mask, dtype=np.uint8))
+        return path
+
+    def make_shape(self, mask, origin=(0., 0., 0.)):
+        path = self.write_mask(mask)
+        return espressomd.shapes.VoxelMask(
+            file=str(path), dataset="mask", voxel_size=1., origin=origin,
+            halo=3)
+
+    def make_lb(self):
+        lbf = espressomd.lb.LBFluid(
+            kinematic_viscosity=1., density=1., agrid=1., tau=0.01)
+        self.system.lb = lbf
+        return lbf
+
+    def porous_mask(self, n_voxels):
+        rng = np.random.default_rng(seed=17)
+        return rng.random(3 * (n_voxels,)) < 0.3
+
+    def compatible_node_grids(self, n_cells):
+        """Node grids that split the LB lattice evenly."""
+        return [grid for grid in node_grids(self.n_nodes)
+                if all(n_cells % n == 0 for n in grid)]
+
+    def check_boundary_flags(self, mask):
+        shape = self.make_shape(mask)
+        lbf = self.make_lb()
+        lbf.add_boundary_from_shape(shape)
+        np.testing.assert_array_equal(
+            np.copy(lbf[:, :, :].is_boundary), mask.astype(bool))
+        self.assertGreater(np.count_nonzero(mask), 0)
+
+    def test_boundary_flags_match_mask(self):
+        grids = self.compatible_node_grids(16)
+        if not grids:
+            self.skipTest("no node grid splits a 16^3 lattice evenly")
+        self.system.cell_system.node_grid = grids[0]
+        self.check_boundary_flags(self.porous_mask(16))
+
+    def test_boundary_flags_all_node_grids(self):
+        # 24 cells can be split evenly by every node grid of up to 4 ranks
+        self.system.box_l = [24., 24., 24.]
+        mask = self.porous_mask(24)
+        grids = self.compatible_node_grids(24)
+        self.assertGreater(len(grids), 0)
+        for grid in grids:
+            with self.subTest(node_grid=grid):
+                self.system.cell_system.node_grid = grid
+                try:
+                    self.check_boundary_flags(mask)
+                finally:
+                    self.system.lb = None
+
+    def test_alignment_warning(self):
+        self.system.box_l = [24., 24., 24.]
+        self.system.cell_system.node_grid = self.compatible_node_grids(24)[0]
+        mask = np.zeros((24, 24, 24), dtype=bool)
+        mask[4:8, 4:8, 4:8] = True
+        shape = self.make_shape(mask, origin=(0.5, 0., 0.))
+        lbf = self.make_lb()
+        with self.assertWarns(UserWarning):
+            lbf.add_boundary_from_shape(shape)
+
+    def test_array_velocity_raises(self):
+        self.system.box_l = [24., 24., 24.]
+        self.system.cell_system.node_grid = self.compatible_node_grids(24)[0]
+        mask = np.zeros((24, 24, 24), dtype=bool)
+        mask[4:8, 4:8, 4:8] = True
+        shape = self.make_shape(mask)
+        lbf = self.make_lb()
+        velocity = np.zeros(tuple(lbf.shape) + (3,))
+        with self.assertRaisesRegex(ValueError, "VoxelMask"):
+            lbf.add_boundary_from_shape(shape, velocity)
 
 
 if __name__ == "__main__":
