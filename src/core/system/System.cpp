@@ -243,6 +243,7 @@ void System::veto_boxl_change(bool skip_particle_checks) const {
 
 void System::on_node_grid_change() {
   update_local_geo();
+  constraints->on_node_grid_change();
   lb.on_node_grid_change();
   ek.on_node_grid_change();
 #ifdef ESPRESSO_ELECTROSTATICS
@@ -255,6 +256,7 @@ void System::on_node_grid_change() {
 }
 
 void System::on_periodicity_change() {
+  constraints->on_periodicity_change();
 #ifdef ESPRESSO_ELECTROSTATICS
   coulomb.on_periodicity_change();
 #endif

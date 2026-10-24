@@ -76,6 +76,10 @@ public:
     m_outer_normal_force = 0.0;
   }
 
+  void on_local_geometry_change() override {
+    m_shape->on_local_geometry_change();
+  }
+
   bool &only_positive() { return m_only_positive; }
   bool &penetrable() { return m_penetrable; }
   int &type() { return part_rep.type(); }
