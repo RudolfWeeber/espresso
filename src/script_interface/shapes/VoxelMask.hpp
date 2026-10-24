@@ -228,13 +228,8 @@ public:
           result[4] = m_shape->is_inside(pos) ? 1. : 0.;
         }
       });
-      if (owner != 0) {
-        if (comm.rank() == owner) {
-          comm.send(0, 42, result.data(), static_cast<int>(result.size()));
-        } else if (comm.rank() == 0) {
-          comm.recv(owner, 42, result.data(), static_cast<int>(result.size()));
-        }
-      }
+      boost::mpi::broadcast(comm, result.data(),
+                            static_cast<int>(result.size()), owner);
       if (comm.rank() != 0) {
         return {};
       }

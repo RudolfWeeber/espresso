@@ -229,7 +229,8 @@ class VoxelMaskTest(ut.TestCase):
         try:
             with open(stderr_path, "w") as stderr_file:
                 os.dup2(stderr_file.fileno(), 2)
-                with self.assertRaisesRegex(RuntimeError, re.escape(str(path))):
+                message = re.escape(f"Cannot open HDF5 file '{path}': ")
+                with self.assertRaisesRegex(RuntimeError, message + ".+"):
                     espressomd.shapes.VoxelMask(
                         file=str(path), dataset="mask", voxel_size=1.)
         finally:
@@ -310,6 +311,14 @@ def wca_force(dist, sigma=1., epsilon=1.):
     return 24. * epsilon * (2. * sr6**2 - sr6) / dist
 
 
+def wca_energy(dist, sigma=1., epsilon=1.):
+    """Repulsive WCA energy at distance ``dist``."""
+    if dist >= 2.**(1. / 6.) * sigma:
+        return 0.
+    sr6 = (sigma / dist)**6
+    return 4. * epsilon * (sr6**2 - sr6) + epsilon
+
+
 def reference_force(pos, cubes, voxel_size):
     """WCA force of the solid cubes on a particle at ``pos``."""
     closest = np.clip(pos, cubes, cubes + voxel_size)
@@ -360,6 +369,7 @@ class VoxelMaskConstraint(ut.TestCase):
     def setup_porous(self):
         rng = np.random.default_rng(seed=17)
         mask = rng.random((16, 16, 16)) < 0.3
+        self.mask = mask
         self.add_constraint(mask)
         cubes = solid_cubes(mask, 1., (0., 0., 0.), [16., 16., 16.])
         positions = []
@@ -385,6 +395,17 @@ class VoxelMaskConstraint(ut.TestCase):
     def test_forces_match_reference(self):
         _, forces = self.setup_porous()
         self.check_forces(forces)
+
+    def test_energy_matches_reference(self):
+        positions, _ = self.setup_porous()
+        cubes = solid_cubes(self.mask, 1., (0., 0., 0.), [16.] * 3)
+        energy = sum(wca_energy(reference_distance(pos, cubes, 1.))
+                     for pos in positions)
+        self.assertGreater(energy, 0.)
+        energies = self.system.analysis.energy()
+        self.assertAlmostEqual(energies["non_bonded", 0, 1], energy,
+                               delta=1e-10)
+        self.assertAlmostEqual(energies["total"], energy, delta=1e-10)
 
     def test_forces_after_node_grid_change(self):
         # No shape method may be called after a node grid change: it would
@@ -645,6 +666,9 @@ class VoxelMaskLB(ut.TestCase):
         velocity = np.zeros(tuple(lbf.shape) + (3,))
         with self.assertRaisesRegex(ValueError, "VoxelMask"):
             lbf.add_boundary_from_shape(shape, velocity)
+        # the boundary force needs a global grid of the shape
+        with self.assertRaisesRegex(RuntimeError, "cannot be rasterized"):
+            lbf.get_boundary_force_from_shape(shape)
 
 
 if __name__ == "__main__":

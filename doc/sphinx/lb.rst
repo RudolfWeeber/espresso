@@ -534,6 +534,10 @@ otherwise a :exc:`ValueError` is raised::
                                        voxel_size=lbf.agrid)
     lbf.add_boundary_from_shape(shape=mask)
 
+:meth:`~espressomd.lb.LBFluid.get_boundary_force_from_shape` and the
+EK boundary methods still rasterize the shape on a global grid,
+so they raise an error for a :class:`~espressomd.shapes.VoxelMask`.
+
 .. _Prototyping new LB methods:
 
 Prototyping new LB methods
