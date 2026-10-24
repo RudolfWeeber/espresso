@@ -444,15 +444,17 @@ class VoxelMaskLB(ut.TestCase):
             h5.create_dataset("mask", data=np.asarray(mask, dtype=np.uint8))
         return path
 
-    def make_shape(self, mask, origin=(0., 0., 0.)):
+    def make_shape(self, mask, origin=(0., 0., 0.), halo=3):
         path = self.write_mask(mask)
         return espressomd.shapes.VoxelMask(
             file=str(path), dataset="mask", voxel_size=1., origin=origin,
-            halo=3)
+            halo=halo)
 
-    def make_lb(self):
+    def make_lb(self, n_ghost_layers=1):
+        lattice = espressomd.lb.Lattice(
+            agrid=1., n_ghost_layers=n_ghost_layers)
         lbf = espressomd.lb.LBFluid(
-            kinematic_viscosity=1., density=1., agrid=1., tau=0.01)
+            lattice=lattice, kinematic_viscosity=1., density=1., tau=0.01)
         self.system.lb = lbf
         return lbf
 
@@ -503,6 +505,24 @@ class VoxelMaskLB(ut.TestCase):
         lbf = self.make_lb()
         with self.assertWarns(UserWarning):
             lbf.add_boundary_from_shape(shape)
+
+    def test_halo_smaller_than_ghost_layers_raises(self):
+        self.system.box_l = [24., 24., 24.]
+        self.system.cell_system.node_grid = self.compatible_node_grids(24)[0]
+        mask = self.porous_mask(24)
+        lbf = self.make_lb(n_ghost_layers=3)
+        # the ghost-layer node centers reach 2.5 voxels beyond the local box
+        shape = self.make_shape(mask, halo=2)
+        message = (r"VoxelMask halo is too small for the LB ghost layers.*"
+                   r"halo=2, voxel_size=1, agrid=1, n_ghost_layers=3")
+        with self.assertRaisesRegex(ValueError, message):
+            lbf.add_boundary_from_shape(shape)
+        np.testing.assert_array_equal(np.copy(lbf[:, :, :].is_boundary), False)
+        # a halo that covers the ghost layers works
+        shape = self.make_shape(mask, halo=3)
+        lbf.add_boundary_from_shape(shape)
+        np.testing.assert_array_equal(
+            np.copy(lbf[:, :, :].is_boundary), mask.astype(bool))
 
     def test_array_velocity_raises(self):
         self.system.box_l = [24., 24., 24.]

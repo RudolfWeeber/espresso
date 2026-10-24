@@ -524,7 +524,10 @@ A :class:`~espressomd.shapes.VoxelMask` shape only supports a uniform slip
 velocity. A node is a boundary node if the voxel that contains the node
 center is solid. Choose ``voxel_size`` equal to ``agrid`` and an ``origin``
 that is a multiple of ``agrid``; otherwise a warning is emitted, because
-the mask is then sampled rather than mapped one voxel per node::
+the mask is then sampled rather than mapped one voxel per node.
+Each rank also evaluates the shape on its LB ghost layers, so the shape
+``halo`` must satisfy ``halo * voxel_size > (n_ghost_layers - 0.5) * agrid``;
+otherwise a :exc:`ValueError` is raised::
 
     import espressomd.shapes
     mask = espressomd.shapes.VoxelMask(file="mask.h5", dataset="mask",

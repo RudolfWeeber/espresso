@@ -223,6 +223,9 @@ class VoxelMask(Shape, ScriptInterfaceHelper):
         Number of voxels stored beyond the local box. Distances are
         exact up to ``halo * voxel_size``, which must be at least
         ``max_cutoff + skin / 2``. This rule is not checked automatically.
+        As an LB boundary, ``halo * voxel_size`` must also exceed
+        ``(n_ghost_layers - 0.5) * agrid`` of the LB lattice; this rule
+        is checked by :meth:`espressomd.lb.LBFluid.add_boundary_from_shape`.
         A VoxelMask cannot be part of a :class:`Union`.
 
     Attributes
