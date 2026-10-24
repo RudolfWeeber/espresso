@@ -92,15 +92,27 @@ public:
   void on_local_geometry_change() override;
 
   /**
+   * @brief Distance reported if no interface is within the halo.
+   * It lies beyond any interaction cutoff, and its square is finite.
+   */
+  static constexpr double far_distance = 1e100;
+
+  /**
    * @brief Signed distance to the nearest interface within the halo.
    * Positive in pore, negative in solid. @c vec is the position minus the
-   * closest point on the interface. If no interface is within the halo,
-   * the magnitude is <tt>(halo + 1) * voxel_size</tt> along the x axis.
+   * closest point on the interface. Distances are exact up to
+   * <tt>halo * voxel_size</tt> only. If no interface is within the halo,
+   * the result is only a "far" flag: the magnitude is @ref far_distance
+   * along the x axis.
    * @throw std::runtime_error if @p pos is outside the local region.
    */
   void calculate_dist(Utils::Vector3d const &pos, double &dist,
                       Utils::Vector3d &vec) const override;
   bool is_inside(Utils::Vector3d const &pos) const override;
+  /** @brief <tt>halo * voxel_size</tt>. */
+  double local_distance_reach() const override {
+    return m_geometry.halo * m_geometry.voxel_size;
+  }
 
   std::size_t local_voxel_count() const;
   std::size_t local_memory_bytes() const;

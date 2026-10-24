@@ -23,6 +23,7 @@
 
 #include <utils/Vector.hpp>
 
+#include <limits>
 #include <vector>
 
 namespace Shapes {
@@ -67,6 +68,15 @@ public:
    * Shapes that store rank-local data can reload it here.
    */
   virtual void on_local_geometry_change() {}
+  /**
+   * @brief Reach of the exact distance beyond the local box.
+   * Shapes that store rank-local data compute exact distances only for
+   * interfaces up to this distance beyond the local box of this rank.
+   * Shapes with global data return infinity.
+   */
+  virtual double local_distance_reach() const {
+    return std::numeric_limits<double>::infinity();
+  }
   virtual ~Shape() = default;
 };
 

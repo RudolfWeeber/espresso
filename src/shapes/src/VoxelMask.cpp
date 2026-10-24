@@ -193,7 +193,7 @@ void VoxelMask::calculate_dist(Utils::Vector3d const &pos, double &dist,
   }
 
   if (best == std::numeric_limits<double>::max()) {
-    dist = (g.halo + 1) * h;
+    dist = far_distance;
     if (query_solid) {
       dist = -dist;
     }

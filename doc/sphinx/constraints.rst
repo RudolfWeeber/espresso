@@ -251,15 +251,18 @@ The voxel with index ``(i, j, k)`` is the cube with lower corner
 Each MPI rank reads and stores only the voxels of its local box plus a
 halo of ``halo`` voxels in every direction, at one bit per voxel.
 The distance to the solid is exact up to ``halo * voxel_size``.
-Beyond that, the shape reports a distance of ``(halo + 1) * voxel_size``.
+If no interface is within that distance, the shape reports a distance
+of ``1e100`` (``-1e100`` inside the solid), which lies beyond any
+interaction cutoff, so the constraint exerts no force on the particle.
 A particle can move up to half the Verlet skin out of its local box
 before it is resorted. Hence the halo must satisfy
 ``halo * voxel_size >= max_cutoff + skin / 2``, where ``max_cutoff`` is
 the largest interaction cutoff of the constraint type and ``skin`` is
 ``system.cell_system.skin``.
-Otherwise, forces on particles near the rank boundaries are silently
-missing.
-This rule is not checked automatically.
+Otherwise, interactions with a longer range would be cut off, and the
+interaction of a particle near a rank boundary would depend on the
+node grid.
+The integrator checks this rule and raises an error if it is violated.
 The halo must be at least one voxel.
 
 The distance is measured to the nearest solid voxel cube.

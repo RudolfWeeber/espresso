@@ -442,6 +442,33 @@ class VoxelMaskConstraint(ut.TestCase):
         np.testing.assert_allclose(np.copy(p1.f), [f_ref, 0., 0.], atol=1e-10)
         np.testing.assert_allclose(np.copy(p2.f), [-f_ref, 0., 0.], atol=1e-10)
 
+    def test_far_from_interface(self):
+        # the LJ cutoff reaches beyond the halo
+        self.system.non_bonded_inter[0, 1].lennard_jones.set_params(
+            epsilon=1., sigma=1., cutoff=2.5, shift=0.)
+        mask = np.zeros((16, 16, 16), dtype=bool)
+        mask[0, :, :] = True
+        shape = self.make_shape(mask, halo=1)
+        constraint = self.system.constraints.add(shape=shape, particle_type=1)
+        part = self.system.part.add(pos=[8., 8., 8.], type=0)
+        # no interface within the halo: no phantom interaction
+        self.assertEqual(self.system.analysis.energy()["non_bonded", 0, 1], 0.)
+        # the integrator rejects a halo smaller than max_cutoff + skin / 2
+        message = (r"halo is too small .* particle type 1: .* got "
+                   r"halo \* voxel_size = 1, max_cutoff \+ skin / 2 = 2\.7")
+        with self.assertRaisesRegex(Exception, message):
+            self.system.integrator.run(0, recalc_forces=True)
+        # a sufficient halo works
+        self.system.constraints.remove(constraint)
+        shape = self.make_shape(mask, halo=3)
+        self.system.constraints.add(shape=shape, particle_type=1)
+        self.system.integrator.run(0, recalc_forces=True)
+        np.testing.assert_array_equal(np.copy(part.f), 0.)
+        self.assertEqual(self.system.analysis.energy()["non_bonded", 0, 1], 0.)
+        part.pos = [2.5, 8., 8.]
+        self.system.integrator.run(0, recalc_forces=True)
+        self.assertLess(part.f[0], 0.)
+
     def test_force_zero_far_from_wall(self):
         mask = np.zeros((16, 16, 16), dtype=bool)
         mask[7:9, 7:9, 7:9] = True

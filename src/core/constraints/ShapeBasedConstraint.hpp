@@ -105,6 +105,12 @@ private:
   std::weak_ptr<System::System const> m_system;
 
   IA_parameters const &get_ia_param(int type) const;
+  /**
+   * @brief Check that the shape provides exact distances for all
+   * interactions of the constraint type.
+   * @throw std::runtime_error if the shape reach is too short.
+   */
+  void check_distance_reach() const;
 };
 
 } // namespace Constraints

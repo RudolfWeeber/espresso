@@ -143,8 +143,17 @@ BOOST_AUTO_TEST_CASE(far_from_solid) {
   double dist;
   Utils::Vector3d vec;
   mask.calculate_dist({2.5, 2.5, 2.5}, dist, vec);
-  BOOST_CHECK_CLOSE(dist, 3.0, 1e-9);
-  check_close(vec, {3., 0., 0.});
+  // beyond any interaction cutoff, with a finite square
+  BOOST_CHECK_GE(dist, 1e100);
+  BOOST_CHECK(std::isfinite(dist * dist));
+  check_close(vec / dist, {1., 0., 0.});
+  BOOST_CHECK_EQUAL(mask.local_distance_reach(), 2.);
+
+  load(mask, [](auto const &) { return true; });
+  mask.calculate_dist({2.5, 2.5, 2.5}, dist, vec);
+  BOOST_CHECK_LE(dist, -1e100);
+  BOOST_CHECK(std::isfinite(dist * dist));
+  check_close(vec / dist, {1., 0., 0.});
 }
 
 BOOST_AUTO_TEST_CASE(image_position_across_periodic_face) {
