@@ -82,6 +82,139 @@ enum class PoQ : int { P, Q };
 /** ELC charge sum/assign protocol: real charges, image charges, or both. */
 enum class ChargeProtocol : int { REAL, IMAGE, BOTH };
 
+namespace {
+
+enum class FreqKind : int { P, Q, PQ };
+
+/** @brief One term of the far-field sum. */
+struct FrequencyEntry {
+  FreqKind kind;
+  std::size_t p; ///< x frequency index (>= 1 for P and PQ)
+  std::size_t q; ///< y frequency index (>= 1 for Q and PQ)
+  double omega;
+  double pref;    ///< scales the real and layer-image block
+  double pref_di; ///< scales the image-sum block (dielectric contrast only)
+  double fac_delta_mid_bot;
+  double fac_delta_mid_top;
+  double fac_delta;
+  std::size_t k;            ///< 4 for P and Q, 8 for PQ
+  std::size_t sums_offset;  ///< into the pass-1 buffer (k or 2k slots)
+  std::size_t coeff_offset; ///< into the coefficient buffer (k slots)
+};
+
+struct FarFieldTable {
+  std::vector<FrequencyEntry> entries;
+  std::size_t n_sums = 0;   ///< total pass-1 slots
+  std::size_t n_coeffs = 0; ///< total coefficient slots
+};
+
+std::pair<std::size_t, std::size_t> n_frequencies(BoxGeometry const &box_geo,
+                                                  double far_cut) {
+  assert(far_cut >= 0.);
+  auto const n_freq_x =
+      static_cast<std::size_t>(std::ceil(far_cut * box_geo.length()[0]) + 1.);
+  auto const n_freq_y =
+      static_cast<std::size_t>(std::ceil(far_cut * box_geo.length()[1]) + 1.);
+  return {n_freq_x, n_freq_y};
+}
+
+FrequencyEntry make_entry(elc_data const &elc, double prefactor,
+                          BoxGeometry const &box_geo, FreqKind kind,
+                          std::size_t p, std::size_t q, double omega) {
+  auto const xy_area_inv = box_geo.length_inv()[0] * box_geo.length_inv()[1];
+  auto const k = (kind == FreqKind::PQ) ? std::size_t{8u} : std::size_t{4u};
+  auto const pref_di = prefactor * ((kind == FreqKind::PQ) ? 8. : 4.) *
+                       std::numbers::pi * xy_area_inv;
+  auto const pref = -pref_di / expm1(omega * box_geo.length()[2]);
+  FrequencyEntry entry{kind, p, q, omega, pref, pref_di, 1., 1., 1., k, 0, 0};
+  if (elc.dielectric_contrast_on) {
+    auto const delta = elc.delta_mid_top * elc.delta_mid_bot;
+    auto const fac_elc = 1. / (1. - delta * exp(-omega * 2. * elc.box_h));
+    entry.fac_delta_mid_bot = elc.delta_mid_bot * fac_elc;
+    entry.fac_delta_mid_top = elc.delta_mid_top * fac_elc;
+    entry.fac_delta = entry.fac_delta_mid_bot * elc.delta_mid_top;
+  }
+  return entry;
+}
+
+/** @brief List the far-field terms in the order of the original loops. */
+FarFieldTable make_frequency_table(elc_data const &elc, double prefactor,
+                                   BoxGeometry const &box_geo) {
+  auto constexpr c_2pi = 2. * std::numbers::pi;
+  auto const [n_freq_x, n_freq_y] = n_frequencies(box_geo, elc.far_cut);
+  auto const ux = box_geo.length_inv()[0];
+  auto const uy = box_geo.length_inv()[1];
+  FarFieldTable table;
+  /* the second condition is just for the case of numerical accident */
+  for (std::size_t p = 1;
+       ux * static_cast<double>(p - 1) < elc.far_cut && p <= n_freq_x; p++) {
+    auto const omega = c_2pi * ux * static_cast<double>(p);
+    table.entries.push_back(
+        make_entry(elc, prefactor, box_geo, FreqKind::P, p, 0, omega));
+  }
+  for (std::size_t q = 1;
+       uy * static_cast<double>(q - 1) < elc.far_cut && q <= n_freq_y; q++) {
+    auto const omega = c_2pi * uy * static_cast<double>(q);
+    table.entries.push_back(
+        make_entry(elc, prefactor, box_geo, FreqKind::Q, 0, q, omega));
+  }
+  for (std::size_t p = 1;
+       ux * static_cast<double>(p - 1) < elc.far_cut && p <= n_freq_x; p++) {
+    for (std::size_t q = 1;
+         Utils::sqr(ux * static_cast<double>(p - 1)) +
+                 Utils::sqr(uy * static_cast<double>(q - 1)) <
+             elc.far_cut2 &&
+         q <= n_freq_y;
+         q++) {
+      auto const omega = c_2pi * sqrt(Utils::sqr(ux * static_cast<double>(p)) +
+                                      Utils::sqr(uy * static_cast<double>(q)));
+      table.entries.push_back(
+          make_entry(elc, prefactor, box_geo, FreqKind::PQ, p, q, omega));
+    }
+  }
+  auto const blocks = elc.dielectric_contrast_on ? 2u : 1u;
+  for (auto &entry : table.entries) {
+    entry.sums_offset = table.n_sums;
+    entry.coeff_offset = table.n_coeffs;
+    table.n_sums += blocks * entry.k;
+    table.n_coeffs += entry.k;
+  }
+  return table;
+}
+
+using HostMatrix =
+    Kokkos::View<double **, Kokkos::LayoutRight, Kokkos::HostSpace>;
+
+/** @brief Sin/cos of @f$ 2\pi f u x_{dir} @f$, one row per particle. */
+struct SinCosCache {
+  HostMatrix sin;
+  HostMatrix cos;
+};
+
+SinCosCache make_sc_cache(auto const &aosoa, std::size_t n_part,
+                          std::size_t dir, std::size_t n_freq, double u) {
+  using execution_space = Kokkos::DefaultHostExecutionSpace;
+  auto constexpr c_2pi = 2. * std::numbers::pi;
+  SinCosCache cache{
+      HostMatrix(Kokkos::view_alloc("ELC::sin", Kokkos::WithoutInitializing),
+                 n_part, n_freq),
+      HostMatrix(Kokkos::view_alloc("ELC::cos", Kokkos::WithoutInitializing),
+                 n_part, n_freq)};
+  kokkos_parallel_range_for<execution_space>(
+      "ELC::sc_cache", std::size_t{0u}, n_part,
+      [&cache, &aosoa, dir, n_freq, u](std::size_t i) {
+        auto const x = aosoa.position(i, dir);
+        for (std::size_t freq = 1; freq <= n_freq; freq++) {
+          auto const arg = c_2pi * u * static_cast<double>(freq) * x;
+          cache.sin(i, freq - 1) = sin(arg);
+          cache.cos(i, freq - 1) = cos(arg);
+        }
+      });
+  return cache;
+}
+
+} // namespace
+
 /** temporary buffers for product decomposition */
 static std::vector<double> partblk;
 /** collected data from the other cells */
@@ -131,11 +264,7 @@ static std::vector<SCCache> calc_sc_cache(ParticleRange const &particles,
 static std::pair<std::size_t, std::size_t>
 prepare_sc_cache(ParticleRange const &particles, BoxGeometry const &box_geo,
                  double far_cut) {
-  assert(far_cut >= 0.);
-  auto const n_freq_x =
-      static_cast<std::size_t>(std::ceil(far_cut * box_geo.length()[0]) + 1.);
-  auto const n_freq_y =
-      static_cast<std::size_t>(std::ceil(far_cut * box_geo.length()[1]) + 1.);
+  auto const [n_freq_x, n_freq_y] = n_frequencies(box_geo, far_cut);
   auto const u_x = box_geo.length_inv()[0];
   auto const u_y = box_geo.length_inv()[1];
   scxcache = calc_sc_cache<0>(particles, n_freq_x, u_x);
@@ -874,113 +1003,71 @@ static double PQ_energy(double omega, std::size_t n_part) {
 /**@}*/
 
 void ElectrostaticLayerCorrection::add_force() const {
-  auto constexpr c_2pi = 2. * std::numbers::pi;
   auto const &system = get_system();
   auto const &box_geo = *system.box_geo;
   auto const particles = system.cell_structure->local_particles();
-  auto const n_freqs = prepare_sc_cache(particles, box_geo, elc.far_cut);
-  auto const n_scxcache = std::get<0>(n_freqs);
-  auto const n_scycache = std::get<1>(n_freqs);
+  prepare_sc_cache(particles, box_geo, elc.far_cut);
   partblk.resize(particles.size() * 8);
 
   add_dipole_force();
   add_z_force();
 
-  /* the second condition is just for the case of numerical accident */
-  for (std::size_t p = 1;
-       box_geo.length_inv()[0] * static_cast<double>(p - 1) < elc.far_cut &&
-       p <= n_scxcache;
-       p++) {
-    auto const omega = c_2pi * box_geo.length_inv()[0] * static_cast<double>(p);
-    setup_PoQ<PoQ::P>(elc, prefactor, p, omega, particles, box_geo);
-    distribute(4);
-    add_PoQ_force<PoQ::P>(particles);
-  }
-
-  for (std::size_t q = 1;
-       box_geo.length_inv()[1] * static_cast<double>(q - 1) < elc.far_cut &&
-       q <= n_scycache;
-       q++) {
-    auto const omega = c_2pi * box_geo.length_inv()[1] * static_cast<double>(q);
-    setup_PoQ<PoQ::Q>(elc, prefactor, q, omega, particles, box_geo);
-    distribute(4);
-    add_PoQ_force<PoQ::Q>(particles);
-  }
-
-  for (std::size_t p = 1;
-       box_geo.length_inv()[0] * static_cast<double>(p - 1) < elc.far_cut &&
-       p <= n_scxcache;
-       p++) {
-    for (std::size_t q = 1;
-         Utils::sqr(box_geo.length_inv()[0] * static_cast<double>(p - 1)) +
-                 Utils::sqr(box_geo.length_inv()[1] *
-                            static_cast<double>(q - 1)) <
-             elc.far_cut2 &&
-         q <= n_scycache;
-         q++) {
-      auto const omega =
-          c_2pi *
-          sqrt(Utils::sqr(box_geo.length_inv()[0] * static_cast<double>(p)) +
-               Utils::sqr(box_geo.length_inv()[1] * static_cast<double>(q)));
-      setup_PQ(elc, prefactor, p, q, omega, particles, box_geo);
+  auto const table = make_frequency_table(elc, prefactor, box_geo);
+  for (auto const &entry : table.entries) {
+    switch (entry.kind) {
+    case FreqKind::P:
+      setup_PoQ<PoQ::P>(elc, prefactor, entry.p, entry.omega, particles,
+                        box_geo);
+      distribute(4);
+      add_PoQ_force<PoQ::P>(particles);
+      break;
+    case FreqKind::Q:
+      setup_PoQ<PoQ::Q>(elc, prefactor, entry.q, entry.omega, particles,
+                        box_geo);
+      distribute(4);
+      add_PoQ_force<PoQ::Q>(particles);
+      break;
+    case FreqKind::PQ:
+      setup_PQ(elc, prefactor, entry.p, entry.q, entry.omega, particles,
+               box_geo);
       distribute(8);
-      add_PQ_force(p, q, omega, particles, box_geo);
+      add_PQ_force(entry.p, entry.q, entry.omega, particles, box_geo);
+      break;
     }
   }
 }
 
 double ElectrostaticLayerCorrection::calc_energy() const {
-  auto constexpr c_2pi = 2. * std::numbers::pi;
   auto const &system = get_system();
   auto const &box_geo = *system.box_geo;
   auto const particles = system.cell_structure->local_particles();
   auto energy = dipole_energy() + z_energy();
-  auto const n_freqs = prepare_sc_cache(particles, box_geo, elc.far_cut);
-  auto const n_scxcache = std::get<0>(n_freqs);
-  auto const n_scycache = std::get<1>(n_freqs);
+  prepare_sc_cache(particles, box_geo, elc.far_cut);
 
   auto const n_localpart = particles.size();
   partblk.resize(n_localpart * 8);
 
-  /* the second condition is just for the case of numerical accident */
-  for (std::size_t p = 1;
-       box_geo.length_inv()[0] * static_cast<double>(p - 1) < elc.far_cut &&
-       p <= n_scxcache;
-       p++) {
-    auto const omega = c_2pi * box_geo.length_inv()[0] * static_cast<double>(p);
-    setup_PoQ<PoQ::P>(elc, prefactor, p, omega, particles, box_geo);
-    distribute(4);
-    energy += PoQ_energy(omega, n_localpart);
-  }
-
-  for (std::size_t q = 1;
-       box_geo.length_inv()[1] * static_cast<double>(q - 1) < elc.far_cut &&
-       q <= n_scycache;
-       q++) {
-    auto const omega = c_2pi * box_geo.length_inv()[1] * static_cast<double>(q);
-    setup_PoQ<PoQ::Q>(elc, prefactor, q, omega, particles, box_geo);
-    distribute(4);
-    energy += PoQ_energy(omega, n_localpart);
-  }
-
-  for (std::size_t p = 1;
-       box_geo.length_inv()[0] * static_cast<double>(p - 1) < elc.far_cut &&
-       p <= n_scxcache;
-       p++) {
-    for (std::size_t q = 1;
-         Utils::sqr(box_geo.length_inv()[0] * static_cast<double>(p - 1)) +
-                 Utils::sqr(box_geo.length_inv()[1] *
-                            static_cast<double>(q - 1)) <
-             elc.far_cut2 &&
-         q <= n_scycache;
-         q++) {
-      auto const omega =
-          c_2pi *
-          sqrt(Utils::sqr(box_geo.length_inv()[0] * static_cast<double>(p)) +
-               Utils::sqr(box_geo.length_inv()[1] * static_cast<double>(q)));
-      setup_PQ(elc, prefactor, p, q, omega, particles, box_geo);
+  auto const table = make_frequency_table(elc, prefactor, box_geo);
+  for (auto const &entry : table.entries) {
+    switch (entry.kind) {
+    case FreqKind::P:
+      setup_PoQ<PoQ::P>(elc, prefactor, entry.p, entry.omega, particles,
+                        box_geo);
+      distribute(4);
+      energy += PoQ_energy(entry.omega, n_localpart);
+      break;
+    case FreqKind::Q:
+      setup_PoQ<PoQ::Q>(elc, prefactor, entry.q, entry.omega, particles,
+                        box_geo);
+      distribute(4);
+      energy += PoQ_energy(entry.omega, n_localpart);
+      break;
+    case FreqKind::PQ:
+      setup_PQ(elc, prefactor, entry.p, entry.q, entry.omega, particles,
+               box_geo);
       distribute(8);
-      energy += PQ_energy(omega, n_localpart);
+      energy += PQ_energy(entry.omega, n_localpart);
+      break;
     }
   }
   /* we count both i<->j and j<->i, so return just half of it */
