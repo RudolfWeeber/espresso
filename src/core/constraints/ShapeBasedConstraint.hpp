@@ -80,6 +80,8 @@ public:
     m_shape->on_local_geometry_change();
   }
 
+  void on_integration_start() override;
+
   bool &only_positive() { return m_only_positive; }
   bool &penetrable() { return m_penetrable; }
   int &type() { return part_rep.type(); }

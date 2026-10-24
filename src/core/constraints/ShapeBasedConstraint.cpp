@@ -56,6 +56,11 @@ IA_parameters const &ShapeBasedConstraint::get_ia_param(int type) const {
   return m_system.lock()->nonbonded_ias->get_ia_param(type, part_rep.type());
 }
 
+void ShapeBasedConstraint::on_integration_start() {
+  // shapes with rank-local data reload it if it is stale
+  m_shape->on_local_geometry_change();
+}
+
 Utils::Vector3d ShapeBasedConstraint::total_force() const {
   return all_reduce(comm_cart, m_local_force, std::plus<>());
 }

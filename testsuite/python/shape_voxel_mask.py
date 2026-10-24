@@ -410,6 +410,38 @@ class VoxelMaskConstraint(ut.TestCase):
         self.system.integrator.run(0, recalc_forces=True)
         np.testing.assert_allclose(np.copy(part.f), f_periodic, atol=1e-10)
 
+    def make_shape(self, mask, halo=3):
+        path = self.write_mask(mask)
+        return espressomd.shapes.VoxelMask(
+            file=str(path), dataset="mask", voxel_size=1.,
+            origin=(0., 0., 0.), halo=halo)
+
+    def test_add_after_periodicity_change(self):
+        # the shape is not part of a constraint when the periodicity changes
+        mask = np.zeros((16, 16, 16), dtype=bool)
+        mask[15, :, :] = True
+        shape = self.make_shape(mask)
+        self.system.periodicity = [False, True, True]
+        self.system.constraints.add(shape=shape, particle_type=1)
+        part = self.system.part.add(pos=[0.5, 8., 8.], type=0)
+        self.system.integrator.run(0, recalc_forces=True)
+        np.testing.assert_array_equal(np.copy(part.f), 0.)
+
+    def test_add_after_box_change(self):
+        # the shape is not part of a constraint when the box changes,
+        # e.g. a shape created before the system is set up
+        mask = np.zeros((8, 8, 8), dtype=bool)
+        mask[:2, :, :] = True
+        shape = self.make_shape(mask)
+        self.system.box_l = [8., 8., 8.]
+        self.system.constraints.add(shape=shape, particle_type=1)
+        p1 = self.system.part.add(pos=[3., 4., 4.], type=0)
+        p2 = self.system.part.add(pos=[7., 4., 4.], type=0)
+        self.system.integrator.run(0, recalc_forces=True)
+        f_ref = wca_force(1.)
+        np.testing.assert_allclose(np.copy(p1.f), [f_ref, 0., 0.], atol=1e-10)
+        np.testing.assert_allclose(np.copy(p2.f), [-f_ref, 0., 0.], atol=1e-10)
+
     def test_force_zero_far_from_wall(self):
         mask = np.zeros((16, 16, 16), dtype=bool)
         mask[7:9, 7:9, 7:9] = True

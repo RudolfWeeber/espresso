@@ -81,6 +81,13 @@ public:
     }
   }
 
+  /** @brief Collective; throws on all ranks if a constraint is unusable. */
+  void on_integration_start() const {
+    for (auto const &constraint : *this) {
+      constraint->on_integration_start();
+    }
+  }
+
   void on_periodicity_change() const {
     for (auto const &constraint : *this) {
       constraint->on_local_geometry_change();

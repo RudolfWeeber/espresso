@@ -57,6 +57,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <stdexcept>
@@ -496,6 +497,12 @@ void System::on_integration_start() {
   long_range_interactions_sanity_checks();
   lb.sanity_checks();
   ek.sanity_checks();
+  try {
+    // collective: every rank throws, or none does
+    constraints->on_integration_start();
+  } catch (std::exception const &err) {
+    runtimeErrorMsg() << err.what();
+  }
 
 #ifdef ESPRESSO_NPT
   if (propagation->integ_switch == INTEG_METHOD_NPT_ISO_AND ||

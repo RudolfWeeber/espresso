@@ -66,6 +66,13 @@ public:
    */
   virtual void on_local_geometry_change() {}
 
+  /**
+   * @brief Prepare for a force calculation at integration start.
+   * Called on all ranks and may be collective.
+   * @throw std::runtime_error on all ranks if the constraint is unusable.
+   */
+  virtual void on_integration_start() {}
+
   virtual ~Constraint() = default;
 };
 } // namespace Constraints
