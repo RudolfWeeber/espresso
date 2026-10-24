@@ -109,23 +109,6 @@ public:
   }
 
   /**
-   * @brief Push back weights for one point.
-   *
-   * @tparam cao Interpolation order has to match the order
-   *         set at last call to @ref p3m_interpolation_cache::reset.
-   * @param weights Interpolation weights to store.
-   */
-  template <int cao> void store(InterpolationWeights<cao> const &weights) {
-    assert(cao == m_cao);
-
-    ca_fmp_spillover.emplace_back(weights.ind);
-    auto it = std::back_inserter(ca_frac_spillover);
-    std::ranges::copy(weights.w_x, it);
-    std::ranges::copy(weights.w_y, it);
-    std::ranges::copy(weights.w_z, it);
-  }
-
-  /**
    * @brief Insert weights for one point.
    *
    * @tparam cao Interpolation order has to match the order

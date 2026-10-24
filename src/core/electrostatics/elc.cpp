@@ -951,40 +951,14 @@ ElectrostaticLayerCorrection::ElectrostaticLayerCorrection(
 }
 
 template <ChargeProtocol protocol>
-void charge_assign(elc_data const &elc, CoulombP3M &solver, auto const &cs) {
-
-  solver.prepare_fft_mesh(protocol == ChargeProtocol::BOTH or
-                          protocol == ChargeProtocol::IMAGE);
-
-  // multi-threading -> cache sizes must be equal to the number of particles
-  auto constexpr include_neutral_particles = true;
-  auto const &aosoa = cs.get_aosoa();
-  auto const n_part = cs.count_local_particles();
-
-  for (std::size_t p_index = 0; p_index < n_part; ++p_index) {
-    auto const p_q = aosoa.charge(p_index);
-    auto const p_pos = aosoa.get_span_at(aosoa.position, p_index);
-    if (include_neutral_particles or p_q != 0.) {
-      // assign real charges
-      if (protocol == ChargeProtocol::BOTH or
-          protocol == ChargeProtocol::REAL) {
-        solver.assign_charge(p_q, {p_pos[0], p_pos[1], p_pos[2]}, false);
-      }
-      // assign image charges
-      if (protocol == ChargeProtocol::BOTH or
-          protocol == ChargeProtocol::IMAGE) {
-        if (p_pos[2] < elc.space_layer) {
-          auto const q_eff = elc.delta_mid_bot * p_q;
-          solver.assign_charge(q_eff, {p_pos[0], p_pos[1], -p_pos[2]}, true);
-        }
-        if (p_pos[2] > (elc.box_h - elc.space_layer)) {
-          auto const q_eff = elc.delta_mid_top * p_q;
-          solver.assign_charge(
-              q_eff, {p_pos[0], p_pos[1], 2. * elc.box_h - p_pos[2]}, true);
-        }
-      }
-    }
-  }
+void charge_assign(elc_data const &elc, CoulombP3M &solver) {
+  auto constexpr assign_real =
+      protocol == ChargeProtocol::BOTH or protocol == ChargeProtocol::REAL;
+  auto constexpr assign_images =
+      protocol == ChargeProtocol::BOTH or protocol == ChargeProtocol::IMAGE;
+  solver.charge_assign_elc(
+      {elc.space_layer, elc.box_h, elc.delta_mid_bot, elc.delta_mid_top},
+      assign_real, assign_images);
 }
 
 template <ChargeProtocol protocol>
@@ -1052,12 +1026,12 @@ double ElectrostaticLayerCorrection::long_range_energy() const {
         energy += 0.5 * elc.dielectric_layers_self_energy(solver, box_geo, cs);
 
         // assign both original and image charges
-        charge_assign<ChargeProtocol::BOTH>(elc, solver, cs);
+        charge_assign<ChargeProtocol::BOTH>(elc, solver);
         modify_p3m_sums<ChargeProtocol::BOTH>(elc, solver, cs);
         energy += 0.5 * solver.long_range_energy();
 
         // assign only the image charges now
-        charge_assign<ChargeProtocol::IMAGE>(elc, solver, cs);
+        charge_assign<ChargeProtocol::IMAGE>(elc, solver);
         modify_p3m_sums<ChargeProtocol::IMAGE>(elc, solver, cs);
         energy -= 0.5 * solver.long_range_energy();
 
@@ -1079,7 +1053,7 @@ void ElectrostaticLayerCorrection::add_long_range_forces() const {
         if (elc.dielectric_contrast_on) {
           auto const &box_geo = *system.box_geo;
           modify_p3m_sums<ChargeProtocol::BOTH>(elc, solver, cs);
-          charge_assign<ChargeProtocol::BOTH>(elc, solver, cs);
+          charge_assign<ChargeProtocol::BOTH>(elc, solver);
           elc.dielectric_layers_self_forces(solver, box_geo, cs);
         } else {
           solver.charge_assign();
