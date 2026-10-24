@@ -469,9 +469,8 @@ void CoulombP3MImpl<FloatType, Architecture, FFTConfig>::charge_assign() {
 template <typename FloatType, Arch Architecture, class FFTConfig>
 void CoulombP3MImpl<FloatType, Architecture, FFTConfig>::charge_assign_elc(
     ElcImageLayers const &layers, bool assign_real, bool assign_images) {
-  // reset the weight cache whenever the old serial code did (protocols BOTH
-  // and IMAGE); image charges are never cached
-  prepare_fft_mesh(assign_real or assign_images);
+  // always start from a fresh mesh and weight cache
+  prepare_fft_mesh(true);
   Utils::integral_parameter<int, AssignChargeElc, p3m_min_cao, p3m_max_cao>(
       p3m.params.cao, p3m, *get_system().cell_structure, layers, assign_real,
       assign_images);

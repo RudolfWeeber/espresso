@@ -40,7 +40,6 @@
 #include "electrostatics/p3m.hpp"
 
 #include "BoxGeometry.hpp"
-#include "Particle.hpp"
 #include "aosoa_pack.hpp"
 #include "kokkos_helpers.hpp"
 

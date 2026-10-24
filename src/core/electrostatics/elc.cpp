@@ -30,7 +30,6 @@
 #include "electrostatics/p3m.hpp"
 
 #include "BoxGeometry.hpp"
-#include "Particle.hpp"
 #include "aosoa_pack.hpp"
 #include "cell_system/CellStructure.hpp"
 #include "communication.hpp"
@@ -182,12 +181,13 @@ SinCosCache make_sc_cache(auto const &aosoa, std::size_t n_part,
                  n_part, n_freq)};
   kokkos_parallel_range_for<execution_space>(
       "ELC::sc_cache", std::size_t{0u}, n_part,
-      [&cache, &aosoa, dir, n_freq, u](std::size_t i) {
+      [sin_view = cache.sin, cos_view = cache.cos, &aosoa, dir, n_freq,
+       u](std::size_t i) {
         auto const x = aosoa.position(i, dir);
         for (std::size_t freq = 1; freq <= n_freq; freq++) {
           auto const arg = c_2pi * u * static_cast<double>(freq) * x;
-          cache.sin(i, freq - 1) = sin(arg);
-          cache.cos(i, freq - 1) = cos(arg);
+          sin_view(i, freq - 1) = sin(arg);
+          cos_view(i, freq - 1) = cos(arg);
         }
       });
   return cache;
@@ -793,6 +793,7 @@ double ElectrostaticLayerCorrection::calc_energy() const {
   /* we count both i<->j and j<->i, so return just half of it */
   return 0.5 * energy;
 }
+
 double ElectrostaticLayerCorrection::tune_far_cut() const {
   // Largest reasonable cutoff for far formula
   auto constexpr maximal_far_cut = 50.;
