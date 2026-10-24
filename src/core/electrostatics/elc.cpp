@@ -1186,34 +1186,38 @@ void modify_p3m_sums(elc_data const &elc, CoulombP3M &solver, auto const &cs) {
   auto const &aosoa = cs.get_aosoa();
   auto const n_part = cs.count_local_particles();
   // [0] number of charges, [1] sum q^2, [2] sum q
-  auto const local = ELC::parallel_array_sum<3>(
-      "ELC::modify_p3m_sums", n_part,
-      [&elc, &aosoa](std::size_t i, std::array<double, 3> &acc) {
-        auto const p_q = aosoa.charge(i);
-        if (p_q == 0.) {
-          return;
-        }
-        auto const p_z = aosoa.position(i, 2);
-        if (protocol == ChargeProtocol::BOTH or
-            protocol == ChargeProtocol::REAL) {
-          acc[0] += 1.;
-          acc[1] += Utils::sqr(p_q);
-          acc[2] += p_q;
-        }
-        if (protocol == ChargeProtocol::BOTH or
-            protocol == ChargeProtocol::IMAGE) {
-          if (p_z < elc.space_layer) {
-            acc[0] += 1.;
-            acc[1] += Utils::sqr(elc.delta_mid_bot * p_q);
-            acc[2] += elc.delta_mid_bot * p_q;
-          }
-          if (p_z > (elc.box_h - elc.space_layer)) {
-            acc[0] += 1.;
-            acc[1] += Utils::sqr(elc.delta_mid_top * p_q);
-            acc[2] += elc.delta_mid_top * p_q;
-          }
-        }
-      });
+  auto const accumulate = [&elc, &aosoa](std::size_t i,
+                                         std::array<double, 3> &acc) {
+    auto const p_q = aosoa.charge(i);
+    if (p_q == 0.) {
+      return;
+    }
+    auto const p_z = aosoa.position(i, 2);
+    if (protocol == ChargeProtocol::BOTH or protocol == ChargeProtocol::REAL) {
+      acc[0] += 1.;
+      acc[1] += Utils::sqr(p_q);
+      acc[2] += p_q;
+    }
+    if (protocol == ChargeProtocol::BOTH or protocol == ChargeProtocol::IMAGE) {
+      if (p_z < elc.space_layer) {
+        acc[0] += 1.;
+        acc[1] += Utils::sqr(elc.delta_mid_bot * p_q);
+        acc[2] += elc.delta_mid_bot * p_q;
+      }
+      if (p_z > (elc.box_h - elc.space_layer)) {
+        acc[0] += 1.;
+        acc[1] += Utils::sqr(elc.delta_mid_top * p_q);
+        acc[2] += elc.delta_mid_top * p_q;
+      }
+    }
+  };
+  // These sums feed P3M energies whose BOTH-minus-IMAGE difference cancels
+  // strongly, so thread-order rounding would be amplified. The loop is O(N)
+  // and cheap, therefore it stays serial.
+  std::array<double, 3> local{};
+  for (std::size_t i = 0; i < n_part; ++i) {
+    accumulate(i, local);
+  }
   std::array<double, 3> global{};
   boost::mpi::all_reduce(comm_cart, local.data(), 3, global.data(),
                          std::plus<>());

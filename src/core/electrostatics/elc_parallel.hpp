@@ -26,6 +26,7 @@
 #include <Kokkos_Core.hpp>
 
 #include <array>
+#include <cassert>
 #include <cstddef>
 #include <type_traits>
 #include <vector>
@@ -88,7 +89,10 @@ public:
                    Kokkos::DefaultHostExecutionSpace().concurrency()),
                m_stride} {}
 
-  double *row(int tid) { return &m_rows(static_cast<std::size_t>(tid), 0); }
+  double *row(int tid) {
+    assert(static_cast<std::size_t>(tid) < m_rows.extent(0));
+    return &m_rows(static_cast<std::size_t>(tid), 0);
+  }
 
   std::vector<double> fold() const {
     std::vector<double> result(m_n_cols, 0.);
