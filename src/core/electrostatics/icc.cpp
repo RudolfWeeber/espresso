@@ -122,6 +122,8 @@ void ICCStar::iteration() {
   auto scatter_force = system.cell_structure->get_scatter_force();
 
   auto global_max_rel_diff = 0.;
+  auto const n_local = cell_structure.count_local_particles();
+  std::vector<double> running_density_max;
 
   for (int j = 0; j < icc_cfg.max_iterations; j++) {
     auto charge_density_max = 0.;
@@ -148,8 +150,7 @@ void ICCStar::iteration() {
     // maximum of the old charge densities in particle order, so that maximum
     // is computed serially from per-particle values before the parallel
     // update; this reproduces the serial loop exactly.
-    auto const n_local = cell_structure.count_local_particles();
-    std::vector<double> running_density_max(n_local, 0.);
+    running_density_max.assign(n_local, 0.);
     kokkos_parallel_range_for<execution_space>(
         "icc_density_old", std::size_t{0}, n_local, [&](std::size_t const i) {
           auto const &p = *unique_particles.at(i);
@@ -160,6 +161,7 @@ void ICCStar::iteration() {
                 std::abs(p.q() / icc_cfg.areas[pid - icc_cfg.first_id]);
           }
         });
+    Kokkos::fence();
     for (std::size_t i = 0; i < n_local; ++i) {
       charge_density_max = std::max(charge_density_max, running_density_max[i]);
       running_density_max[i] = charge_density_max;
@@ -226,6 +228,8 @@ void ICCStar::iteration() {
         Kokkos::Sum<int>(n_zero_field),
         Kokkos::Min<std::size_t>(first_too_large));
     Kokkos::fence();
+    // Kokkos::Max starts from its identity; keep the serial starting value 0
+    max_rel_diff = std::max(max_rel_diff, 0.);
 
     if (n_zero_charge != 0) {
       runtimeErrorMsg() << "ICC found zero electric charge on a particle. This "
