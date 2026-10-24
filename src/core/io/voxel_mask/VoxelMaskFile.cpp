@@ -80,6 +80,8 @@ private:
     HighFive::FileAccessProps fapl;
     fapl.add(HighFive::MPIOFileAccess(MPI_Comm(comm), MPI_INFO_NULL));
     try {
+      // failures are reported via exceptions, not on the HDF5 error stack
+      HighFive::SilenceHDF5 const silence{};
       return HighFive::File(path, HighFive::File::ReadOnly, fapl);
     } catch (HighFive::Exception const &) {
       throw std::runtime_error("Cannot open HDF5 file '" + path + "'");
@@ -89,6 +91,7 @@ private:
   HighFive::DataSet open_dataset(std::string const &path,
                                  std::string const &name) {
     try {
+      HighFive::SilenceHDF5 const silence{};
       return file.getDataSet(name);
     } catch (HighFive::Exception const &) {
       throw std::runtime_error("Cannot find dataset '" + name + "' in file '" +
