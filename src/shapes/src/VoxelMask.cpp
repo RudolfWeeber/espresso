@@ -122,6 +122,9 @@ static Utils::Vector3i voxel_of(VoxelMask::Geometry const &g,
 }
 
 Utils::Vector3d VoxelMask::image_in_region(Utils::Vector3d const &pos) const {
+  if (m_bits.empty()) {
+    throw std::runtime_error("VoxelMask: no data loaded on this rank");
+  }
   auto const &g = m_geometry;
   Utils::Vector3d image = pos;
   for (int a = 0; a < 3; ++a) {

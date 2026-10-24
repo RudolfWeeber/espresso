@@ -172,7 +172,7 @@ Variant LBFluid::do_call_method(std::string const &name,
       }
     });
     // collective: shapes with rank-local data reload it if it is stale
-    shape->on_local_geometry_change();
+    context()->parallel_try_catch([&]() { shape->on_local_geometry_change(); });
     auto const system = m_system.lock();
     // A throwing predicate must not leave the other ranks waiting in the
     // collective ghost communication: record the error and continue.

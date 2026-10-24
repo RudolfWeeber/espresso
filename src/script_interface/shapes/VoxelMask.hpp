@@ -35,6 +35,7 @@
 #include <utils/Vector.hpp>
 
 #include <boost/mpi/collectives/all_reduce.hpp>
+#include <boost/mpi/collectives/broadcast.hpp>
 #include <boost/mpi/collectives/gather.hpp>
 #include <boost/mpi/communicator.hpp>
 #include <boost/mpi/operations.hpp>
@@ -44,6 +45,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -88,6 +90,22 @@ inline auto voxel_mask_segments(::Shapes::VoxelMask::Geometry const &g,
   return segments;
 }
 
+/**
+ * @brief Throw on all ranks if any rank has an error.
+ * All ranks throw the message of the lowest failing rank.
+ */
+inline void throw_on_any_rank(boost::mpi::communicator const &comm,
+                              std::optional<std::string> const &error) {
+  auto const failing = boost::mpi::all_reduce(
+      comm, error ? comm.rank() : comm.size(), boost::mpi::minimum<int>());
+  if (failing == comm.size()) {
+    return;
+  }
+  auto message = error.value_or(std::string{});
+  boost::mpi::broadcast(comm, message, failing);
+  throw std::runtime_error(message);
+}
+
 /** Local geometry of the last load. */
 struct VoxelMaskLoadState {
   Utils::Vector3d my_left;
@@ -96,6 +114,54 @@ struct VoxelMaskLoadState {
   std::array<bool, 3> periodic;
   bool operator==(VoxelMaskLoadState const &) const = default;
 };
+
+/** @brief Read the stored region of this rank. Collective. */
+inline void load_voxel_mask(::Shapes::VoxelMask &mask, std::string const &path,
+                            std::string const &dataset,
+                            boost::mpi::communicator const &comm,
+                            VoxelMaskLoadState const &state) {
+  auto const &g = mask.geometry();
+  IO::VoxelMaskFile const file(path, dataset, comm);
+  if (file.shape() != g.mask_shape) {
+    throw std::runtime_error("The shape of dataset '" + dataset +
+                             "' in file '" + path + "' has changed");
+  }
+  auto const region =
+      ::Shapes::VoxelMask::stored_region(g, state.my_left, state.my_right);
+  std::array<std::vector<VoxelMaskSegment>, 3> const segments{
+      {voxel_mask_segments(g, region, 0), voxel_mask_segments(g, region, 1),
+       voxel_mask_segments(g, region, 2)}};
+  auto const &extent = region.extent;
+  std::vector<std::uint8_t> voxels(static_cast<std::size_t>(extent[0]) *
+                                       static_cast<std::size_t>(extent[1]) *
+                                       static_cast<std::size_t>(extent[2]),
+                                   std::uint8_t{0});
+  for (auto const &sx : segments[0]) {
+    for (auto const &sy : segments[1]) {
+      for (auto const &sz : segments[2]) {
+        auto const block =
+            file.read({sx.mask_start, sy.mask_start, sz.mask_start},
+                      {sx.length, sy.length, sz.length});
+        std::size_t n = 0;
+        for (int i = 0; i < sx.length; ++i) {
+          for (int j = 0; j < sy.length; ++j) {
+            auto const offset =
+                (static_cast<std::size_t>(sx.region_start + i) *
+                     static_cast<std::size_t>(extent[1]) +
+                 static_cast<std::size_t>(sy.region_start + j)) *
+                    static_cast<std::size_t>(extent[2]) +
+                static_cast<std::size_t>(sz.region_start);
+            std::copy_n(block.begin() + static_cast<std::ptrdiff_t>(n),
+                        sz.length,
+                        voxels.begin() + static_cast<std::ptrdiff_t>(offset));
+            n += static_cast<std::size_t>(sz.length);
+          }
+        }
+      }
+    }
+  }
+  mask.set_local_data(region, voxels);
+}
 
 /**
  * @brief Make a loader that reads the stored region of this rank.
@@ -122,49 +188,20 @@ inline auto make_voxel_mask_loader(std::string path, std::string dataset,
     auto g = mask.geometry();
     g.box_l = state.box_l;
     g.periodic = state.periodic;
+    // discard the stale data; after a failure, the next call retries
     mask.set_geometry(g);
     last->reset();
-
-    IO::VoxelMaskFile const file(path, dataset, comm);
-    if (file.shape() != g.mask_shape) {
-      throw std::runtime_error("The shape of dataset '" + dataset +
-                               "' in file '" + path + "' has changed");
+    std::optional<std::string> error;
+    try {
+      load_voxel_mask(mask, path, dataset, comm, state);
+    } catch (std::exception const &err) {
+      error = err.what();
     }
-    auto const region =
-        ::Shapes::VoxelMask::stored_region(g, state.my_left, state.my_right);
-    std::array<std::vector<VoxelMaskSegment>, 3> const segments{
-        {voxel_mask_segments(g, region, 0), voxel_mask_segments(g, region, 1),
-         voxel_mask_segments(g, region, 2)}};
-    auto const &extent = region.extent;
-    std::vector<std::uint8_t> voxels(static_cast<std::size_t>(extent[0]) *
-                                         static_cast<std::size_t>(extent[1]) *
-                                         static_cast<std::size_t>(extent[2]),
-                                     std::uint8_t{0});
-    for (auto const &sx : segments[0]) {
-      for (auto const &sy : segments[1]) {
-        for (auto const &sz : segments[2]) {
-          auto const block =
-              file.read({sx.mask_start, sy.mask_start, sz.mask_start},
-                        {sx.length, sy.length, sz.length});
-          std::size_t n = 0;
-          for (int i = 0; i < sx.length; ++i) {
-            for (int j = 0; j < sy.length; ++j) {
-              auto const offset =
-                  (static_cast<std::size_t>(sx.region_start + i) *
-                       static_cast<std::size_t>(extent[1]) +
-                   static_cast<std::size_t>(sy.region_start + j)) *
-                      static_cast<std::size_t>(extent[2]) +
-                  static_cast<std::size_t>(sz.region_start);
-              std::copy_n(block.begin() + static_cast<std::ptrdiff_t>(n),
-                          sz.length,
-                          voxels.begin() + static_cast<std::ptrdiff_t>(offset));
-              n += static_cast<std::size_t>(sz.length);
-            }
-          }
-        }
-      }
+    if (error) {
+      mask.set_geometry(g);
     }
-    mask.set_local_data(region, voxels);
+    // all ranks agree on the outcome
+    throw_on_any_rank(comm, error);
     *last = state;
   };
 }

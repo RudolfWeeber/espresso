@@ -394,6 +394,38 @@ class VoxelMaskConstraint(ut.TestCase):
             self.system.cell_system.node_grid = grid
             self.check_forces(forces)
 
+    def test_reload_error(self):
+        mask = np.zeros((16, 16, 16), dtype=bool)
+        mask[15, :, :] = True
+        shape = self.add_constraint(mask)
+        part = self.system.part.add(pos=[0.5, 8., 8.], type=0)
+        path = pathlib.Path(shape.file)
+        moved = path.with_name("moved.h5")
+        message = re.escape(f"Cannot open HDF5 file '{path}'")
+        path.rename(moved)
+        # every rank fails to reload, and all ranks raise the error
+        with self.assertRaisesRegex(RuntimeError, message):
+            self.system.periodicity = [False, True, True]
+        # the data is discarded, every use retries the reload
+        with self.assertRaisesRegex(Exception, message):
+            self.system.integrator.run(0, recalc_forces=True)
+        with self.assertRaisesRegex(RuntimeError, message):
+            shape.calc_distance(position=[0.5, 8., 8.])
+        if self.n_nodes > 1:
+            old_grid = np.copy(self.system.cell_system.node_grid)
+            grid = [g for g in node_grids(self.n_nodes)
+                    if not np.array_equal(g, old_grid)][0]
+            with self.assertRaisesRegex(RuntimeError, message):
+                self.system.cell_system.node_grid = grid
+            np.testing.assert_array_equal(
+                np.copy(self.system.cell_system.node_grid), old_grid)
+        moved.rename(path)
+        self.system.integrator.run(0, recalc_forces=True)
+        np.testing.assert_array_equal(np.copy(part.f), 0.)
+        self.system.periodicity = [True, True, True]
+        self.system.integrator.run(0, recalc_forces=True)
+        self.assertGreater(part.f[0], 1.)
+
     def test_periodicity_change(self):
         mask = np.zeros((16, 16, 16), dtype=bool)
         mask[15, :, :] = True
@@ -579,6 +611,26 @@ class VoxelMaskLB(ut.TestCase):
         np.testing.assert_array_equal(np.copy(lbf[:, :, :].is_boundary), False)
         # a halo that covers the ghost layers works
         shape = self.make_shape(mask, halo=3)
+        lbf.add_boundary_from_shape(shape)
+        np.testing.assert_array_equal(
+            np.copy(lbf[:, :, :].is_boundary), mask.astype(bool))
+
+    def test_reload_error(self):
+        mask = np.zeros((24, 24, 24), dtype=bool)
+        mask[4:8, 4:8, 4:8] = True
+        shape = self.make_shape(mask)
+        path = pathlib.Path(shape.file)
+        moved = path.with_name("moved.h5")
+        path.rename(moved)
+        # the box change makes the shape data stale
+        self.system.box_l = [24., 24., 24.]
+        self.system.cell_system.node_grid = self.compatible_node_grids(24)[0]
+        lbf = self.make_lb()
+        message = re.escape(f"Cannot open HDF5 file '{path}'")
+        with self.assertRaisesRegex(RuntimeError, message):
+            lbf.add_boundary_from_shape(shape)
+        np.testing.assert_array_equal(np.copy(lbf[:, :, :].is_boundary), False)
+        moved.rename(path)
         lbf.add_boundary_from_shape(shape)
         np.testing.assert_array_equal(
             np.copy(lbf[:, :, :].is_boundary), mask.astype(bool))
