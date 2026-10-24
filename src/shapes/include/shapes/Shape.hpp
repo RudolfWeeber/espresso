@@ -62,6 +62,11 @@ public:
    */
   std::vector<int> rasterize(Utils::Vector3i const &grid_size,
                              double grid_spacing, double grid_offset) const;
+  /**
+   * @brief Hook called when the local domain of this rank has changed.
+   * Shapes that store rank-local data can reload it here.
+   */
+  virtual void on_local_geometry_change() {}
   virtual ~Shape() = default;
 };
 
