@@ -18,4 +18,5 @@
 
 if(ESPRESSO_BUILD_WITH_HDF5)
   target_sources(espresso_hdf5 PRIVATE VoxelMaskFile.cpp)
+  target_link_libraries(espresso_hdf5 PRIVATE espresso::shapes)
 endif()

@@ -75,18 +75,49 @@ static std::size_t voxel_count(VoxelMask::Region const &region) {
 
 void VoxelMask::set_local_data(Region const &region,
                                std::vector<std::uint8_t> const &voxels) {
-  auto const count = voxel_count(region);
-  if (voxels.size() != count) {
+  if (voxels.size() != voxel_count(region)) {
     throw std::runtime_error("VoxelMask: data size does not match the region");
   }
+  allocate_local_data(region);
+  set_local_block({0, 0, 0}, region.extent, voxels);
+}
+
+void VoxelMask::allocate_local_data(Region const &region) {
   m_region = region;
-  m_bits.assign((count + 63) / 64, std::uint64_t{0});
-  for (std::size_t i = 0; i < count; ++i) {
-    if (voxels[i]) {
-      m_bits[i / 64] |= std::uint64_t{1} << (i % 64);
+  m_bits.assign((voxel_count(region) + 63) / 64, std::uint64_t{0});
+  m_bits.shrink_to_fit();
+}
+
+void VoxelMask::set_local_block(Utils::Vector3i const &lower,
+                                Utils::Vector3i const &extent,
+                                std::vector<std::uint8_t> const &voxels) {
+  auto const &e = m_region.extent;
+  for (int a = 0; a < 3; ++a) {
+    if (lower[a] < 0 or extent[a] < 0 or lower[a] + extent[a] > e[a]) {
+      throw std::runtime_error("VoxelMask: block lies outside of the region");
     }
   }
-  m_bits.shrink_to_fit();
+  if (voxels.size() != voxel_count({lower, extent})) {
+    throw std::runtime_error("VoxelMask: data size does not match the block");
+  }
+  std::size_t n = 0;
+  for (int i = 0; i < extent[0]; ++i) {
+    for (int j = 0; j < extent[1]; ++j) {
+      auto bit = (static_cast<std::size_t>(lower[0] + i) *
+                      static_cast<std::size_t>(e[1]) +
+                  static_cast<std::size_t>(lower[1] + j)) *
+                     static_cast<std::size_t>(e[2]) +
+                 static_cast<std::size_t>(lower[2]);
+      for (int k = 0; k < extent[2]; ++k, ++n, ++bit) {
+        auto const mask = std::uint64_t{1} << (bit % 64);
+        if (voxels[n]) {
+          m_bits[bit / 64] |= mask;
+        } else {
+          m_bits[bit / 64] &= ~mask;
+        }
+      }
+    }
+  }
 }
 
 void VoxelMask::on_local_geometry_change() {

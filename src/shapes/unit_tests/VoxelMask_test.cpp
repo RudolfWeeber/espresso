@@ -202,3 +202,56 @@ BOOST_AUTO_TEST_CASE(loader_called_on_geometry_change) {
   mask.on_local_geometry_change();
   BOOST_CHECK_EQUAL(calls, 2);
 }
+
+BOOST_AUTO_TEST_CASE(block_wise_fill_matches_whole_region) {
+  auto const g = default_geometry();
+  auto const region = VoxelMask::stored_region(g, local_lower, local_upper);
+  auto const solid = [](int i, int j, int k) { return (i + 2 * j + k) % 3; };
+  auto const &e = region.extent;
+  std::vector<std::uint8_t> all;
+  for (int i = 0; i < e[0]; ++i)
+    for (int j = 0; j < e[1]; ++j)
+      for (int k = 0; k < e[2]; ++k)
+        all.push_back(solid(i, j, k) == 0 ? 1 : 0);
+  VoxelMask whole;
+  whole.set_geometry(g);
+  whole.set_local_data(region, all);
+
+  // fill by x slabs of two planes, the last slab split into rows
+  VoxelMask blocks;
+  blocks.set_geometry(g);
+  blocks.allocate_local_data(region);
+  BOOST_CHECK_EQUAL(blocks.local_voxel_count(), whole.local_voxel_count());
+  auto const fill = [&](Utils::Vector3i const &lower,
+                        Utils::Vector3i const &extent) {
+    std::vector<std::uint8_t> voxels;
+    for (int i = 0; i < extent[0]; ++i)
+      for (int j = 0; j < extent[1]; ++j)
+        for (int k = 0; k < extent[2]; ++k)
+          voxels.push_back(
+              solid(lower[0] + i, lower[1] + j, lower[2] + k) == 0 ? 1 : 0);
+    blocks.set_local_block(lower, extent, voxels);
+  };
+  int x = 0;
+  for (; x + 2 <= e[0]; x += 2) {
+    fill({x, 0, 0}, {2, e[1], e[2]});
+  }
+  for (int y = 0; y < e[1]; ++y) {
+    fill({x, y, 0}, {e[0] - x, 1, e[2]});
+  }
+  for (int i = 0; i < e[0]; ++i)
+    for (int j = 0; j < e[1]; ++j)
+      for (int k = 0; k < e[2]; ++k) {
+        Utils::Vector3d const pos{i - 1.5, j - 1.5, k - 1.5};
+        BOOST_REQUIRE_EQUAL(blocks.is_inside(pos), whole.is_inside(pos));
+      }
+
+  std::vector<std::uint8_t> const too_small(3);
+  BOOST_CHECK_THROW(blocks.set_local_block({0, 0, 0}, {1, 1, 4}, too_small),
+                    std::runtime_error);
+  std::vector<std::uint8_t> const one(1);
+  BOOST_CHECK_THROW(blocks.set_local_block({e[0], 0, 0}, {1, 1, 1}, one),
+                    std::runtime_error);
+  BOOST_CHECK_THROW(blocks.set_local_block({-1, 0, 0}, {1, 1, 1}, one),
+                    std::runtime_error);
+}

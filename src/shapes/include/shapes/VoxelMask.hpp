@@ -84,6 +84,19 @@ public:
   void set_local_data(Region const &region,
                       std::vector<std::uint8_t> const &voxels);
 
+  /** @brief Set the region, with all voxels pore. */
+  void allocate_local_data(Region const &region);
+
+  /**
+   * @brief Set the voxels of a box inside the region.
+   * @param lower  First voxel of the box, relative to the region.
+   * @param extent Extent of the box.
+   * @param voxels Row-major over @p extent, x slowest; nonzero is solid.
+   */
+  void set_local_block(Utils::Vector3i const &lower,
+                       Utils::Vector3i const &extent,
+                       std::vector<std::uint8_t> const &voxels);
+
   /** @brief Set the callback that (re)loads the local data. */
   void set_loader(std::function<void(VoxelMask &)> loader) {
     m_loader = std::move(loader);

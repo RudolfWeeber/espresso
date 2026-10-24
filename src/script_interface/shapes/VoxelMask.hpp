@@ -59,37 +59,6 @@ namespace Shapes {
 
 namespace detail {
 
-/** Contiguous run of voxels along one axis, mapped to the mask. */
-struct VoxelMaskSegment {
-  int region_start;
-  int mask_start;
-  int length;
-};
-
-/** Split the stored region along @p axis into runs of mask indices. */
-inline auto voxel_mask_segments(::Shapes::VoxelMask::Geometry const &g,
-                                ::Shapes::VoxelMask::Region const &region,
-                                int axis) {
-  std::vector<VoxelMaskSegment> segments;
-  for (int i = 0; i < region.extent[axis]; ++i) {
-    auto const m =
-        ::Shapes::VoxelMask::mask_index(g, axis, region.lower[axis] + i);
-    if (m < 0) {
-      continue;
-    }
-    if (not segments.empty()) {
-      auto &last = segments.back();
-      if (last.region_start + last.length == i and
-          last.mask_start + last.length == m) {
-        ++last.length;
-        continue;
-      }
-    }
-    segments.push_back({i, m, 1});
-  }
-  return segments;
-}
-
 /**
  * @brief Throw on all ranks if any rank has an error.
  * All ranks throw the message of the lowest failing rank.
@@ -115,52 +84,26 @@ struct VoxelMaskLoadState {
   bool operator==(VoxelMaskLoadState const &) const = default;
 };
 
-/** @brief Read the stored region of this rank. Collective. */
+/**
+ * @brief Read the stored region of this rank. Collective.
+ * Sets the dataset shape on the first load, and checks it afterwards.
+ */
 inline void load_voxel_mask(::Shapes::VoxelMask &mask, std::string const &path,
                             std::string const &dataset,
                             boost::mpi::communicator const &comm,
                             VoxelMaskLoadState const &state) {
-  auto const &g = mask.geometry();
   IO::VoxelMaskFile const file(path, dataset, comm);
-  if (file.shape() != g.mask_shape) {
+  auto g = mask.geometry();
+  if (g.mask_shape == Utils::Vector3i{}) {
+    g.mask_shape = file.shape();
+    mask.set_geometry(g);
+  } else if (file.shape() != g.mask_shape) {
     throw std::runtime_error("The shape of dataset '" + dataset +
                              "' in file '" + path + "' has changed");
   }
   auto const region =
       ::Shapes::VoxelMask::stored_region(g, state.my_left, state.my_right);
-  std::array<std::vector<VoxelMaskSegment>, 3> const segments{
-      {voxel_mask_segments(g, region, 0), voxel_mask_segments(g, region, 1),
-       voxel_mask_segments(g, region, 2)}};
-  auto const &extent = region.extent;
-  std::vector<std::uint8_t> voxels(static_cast<std::size_t>(extent[0]) *
-                                       static_cast<std::size_t>(extent[1]) *
-                                       static_cast<std::size_t>(extent[2]),
-                                   std::uint8_t{0});
-  for (auto const &sx : segments[0]) {
-    for (auto const &sy : segments[1]) {
-      for (auto const &sz : segments[2]) {
-        auto const block =
-            file.read({sx.mask_start, sy.mask_start, sz.mask_start},
-                      {sx.length, sy.length, sz.length});
-        std::size_t n = 0;
-        for (int i = 0; i < sx.length; ++i) {
-          for (int j = 0; j < sy.length; ++j) {
-            auto const offset =
-                (static_cast<std::size_t>(sx.region_start + i) *
-                     static_cast<std::size_t>(extent[1]) +
-                 static_cast<std::size_t>(sy.region_start + j)) *
-                    static_cast<std::size_t>(extent[2]) +
-                static_cast<std::size_t>(sz.region_start);
-            std::copy_n(block.begin() + static_cast<std::ptrdiff_t>(n),
-                        sz.length,
-                        voxels.begin() + static_cast<std::ptrdiff_t>(offset));
-            n += static_cast<std::size_t>(sz.length);
-          }
-        }
-      }
-    }
-  }
-  mask.set_local_data(region, voxels);
+  IO::read_voxel_mask(file, mask, region, comm);
 }
 
 /**
@@ -241,7 +184,7 @@ public:
         throw std::domain_error("Parameter 'halo' must be >= 1");
       }
       auto const &comm = context()->get_comm();
-      g.mask_shape = IO::VoxelMaskFile(m_file, m_dataset, comm).shape();
+      // the loader opens the file and sets the dataset shape
       auto const &box_geo = *::System::get_system().box_geo;
       g.box_l = box_geo.length();
       for (unsigned int a = 0u; a < 3u; ++a) {

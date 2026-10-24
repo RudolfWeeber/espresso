@@ -196,6 +196,7 @@ set_property(
 )
 
 if(ESPRESSO_BUILD_WITH_HDF5)
-  espresso_unit_test(SRC VoxelMaskFile_test.cpp DEPENDS espresso::core HighFive
-                     hdf5::hdf5 Boost::mpi MPI::MPI_CXX NUM_PROC 2)
+  espresso_unit_test(
+    SRC VoxelMaskFile_test.cpp DEPENDS espresso::core espresso::shapes HighFive
+    hdf5::hdf5 Boost::mpi MPI::MPI_CXX NUM_PROC 2)
 endif()
