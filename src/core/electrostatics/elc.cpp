@@ -54,6 +54,7 @@
 #include <functional>
 #include <numbers>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -82,10 +83,32 @@ struct FrequencyEntry {
 };
 
 struct FarFieldTable {
-  std::vector<FrequencyEntry> entries;
-  std::size_t n_sums = 0;   ///< total pass-1 slots
-  std::size_t n_coeffs = 0; ///< total coefficient slots
+  std::vector<FrequencyEntry> entries; ///< all P, then all Q, then all PQ
+  std::array<std::size_t, 3> n_kind{}; ///< number of P, Q and PQ entries
+  std::size_t n_sums = 0;              ///< total pass-1 slots
+  std::size_t n_coeffs = 0;            ///< total coefficient slots
 };
+
+template <FreqKind kind>
+using FreqKindTag = std::integral_constant<FreqKind, kind>;
+
+/**
+ * @brief Call @p kernel on every entry in table order, with the frequency
+ * kind as a compile-time tag, so that the kernel body has fixed sizes.
+ */
+template <class Kernel>
+inline void for_each_entry(FarFieldTable const &table, Kernel &&kernel) {
+  auto const *entry = table.entries.data();
+  for (std::size_t n = 0; n < table.n_kind[0]; ++n) {
+    kernel(*entry++, FreqKindTag<FreqKind::P>{});
+  }
+  for (std::size_t n = 0; n < table.n_kind[1]; ++n) {
+    kernel(*entry++, FreqKindTag<FreqKind::Q>{});
+  }
+  for (std::size_t n = 0; n < table.n_kind[2]; ++n) {
+    kernel(*entry++, FreqKindTag<FreqKind::PQ>{});
+  }
+}
 
 std::pair<std::size_t, std::size_t> n_frequencies(BoxGeometry const &box_geo,
                                                   double far_cut) {
@@ -153,6 +176,7 @@ FarFieldTable make_frequency_table(elc_data const &elc, double prefactor,
   }
   auto const blocks = elc.dielectric_contrast_on ? 2u : 1u;
   for (auto &entry : table.entries) {
+    ++table.n_kind[static_cast<std::size_t>(entry.kind)];
     entry.sums_offset = table.n_sums;
     entry.coeff_offset = table.n_coeffs;
     table.n_sums += blocks * entry.k;
@@ -193,44 +217,48 @@ SinCosCache make_sc_cache(auto const &aosoa, std::size_t n_part,
   return cache;
 }
 
-/** @brief Trigonometric products of one particle for one frequency. */
-struct ParticleTerms {
-  std::array<double, 4> trig; ///< s, c (P, Q) or ss, sc, cs, cc (PQ)
-  std::size_t n_trig;         ///< 2 or 4
-};
+/** @brief Number of trigonometric products per particle and frequency. */
+template <FreqKind kind>
+inline constexpr std::size_t n_trig = (kind == FreqKind::PQ) ? 4u : 2u;
 
-inline ParticleTerms particle_terms(FrequencyEntry const &entry,
-                                    SinCosCache const &scx,
-                                    SinCosCache const &scy, std::size_t i) {
-  switch (entry.kind) {
-  case FreqKind::P:
-    return {{scx.sin(i, entry.p - 1), scx.cos(i, entry.p - 1), 0., 0.}, 2};
-  case FreqKind::Q:
-    return {{scy.sin(i, entry.q - 1), scy.cos(i, entry.q - 1), 0., 0.}, 2};
-  case FreqKind::PQ: {
+template <FreqKind kind> using TrigTerms = std::array<double, n_trig<kind>>;
+template <FreqKind kind>
+using RealBlock = std::array<double, 2u * n_trig<kind>>;
+
+/** @brief s, c (P, Q) or ss, sc, cs, cc (PQ) of one particle. */
+template <FreqKind kind>
+inline TrigTerms<kind> particle_terms(FrequencyEntry const &entry,
+                                      SinCosCache const &scx,
+                                      SinCosCache const &scy, std::size_t i) {
+  if constexpr (kind == FreqKind::P) {
+    return {scx.sin(i, entry.p - 1), scx.cos(i, entry.p - 1)};
+  } else if constexpr (kind == FreqKind::Q) {
+    return {scy.sin(i, entry.q - 1), scy.cos(i, entry.q - 1)};
+  } else {
     auto const sx = scx.sin(i, entry.p - 1);
     auto const cx = scx.cos(i, entry.p - 1);
     auto const sy = scy.sin(i, entry.q - 1);
     auto const cy = scy.cos(i, entry.q - 1);
-    return {{sx * sy, sx * cy, cx * sy, cx * cy}, 4};
+    return {sx * sy, sx * cy, cx * sy, cx * cy};
   }
-  }
-  return {{0., 0., 0., 0.}, 0};
 }
 
 /** @brief Real-charge block of one particle (P half, then M half). */
-inline void real_block(FrequencyEntry const &entry, ParticleTerms const &t,
-                       double q, double e, double *out) {
-  auto const h = t.n_trig;
+template <FreqKind kind>
+inline RealBlock<kind> real_block(TrigTerms<kind> const &t, double q,
+                                  double e) {
+  auto constexpr h = n_trig<kind>;
+  RealBlock<kind> out;
   for (std::size_t m = 0; m < h; ++m) {
-    if (entry.kind == FreqKind::PQ) {
-      out[m] = t.trig[m] * q * e;
-      out[h + m] = t.trig[m] * q / e;
+    if constexpr (kind == FreqKind::PQ) {
+      out[m] = t[m] * q * e;
+      out[h + m] = t[m] * q / e;
     } else {
-      out[m] = q * t.trig[m] * e;
-      out[h + m] = q * t.trig[m] / e;
+      out[m] = q * t[m] * e;
+      out[h + m] = q * t[m] / e;
     }
   }
+  return out;
 }
 
 /**
@@ -251,28 +279,28 @@ far_field_coefficients(elc_data const &elc, FarFieldTable const &table,
         auto *row = rows.row(omp_get_thread_num());
         auto const z = aosoa.position(i, 2);
         auto const q = aosoa.charge(i);
-        for (auto const &entry : table.entries) {
+        for_each_entry(table, [&](FrequencyEntry const &entry, auto tag) {
+          auto constexpr kind = decltype(tag)::value;
+          auto constexpr half = n_trig<kind>;
           auto const omega = entry.omega;
-          auto const t = particle_terms(entry, scx, scy, i);
-          auto const half = t.n_trig;
+          auto const t = particle_terms<kind>(entry, scx, scy, i);
           auto *real = row + entry.sums_offset;
-          double blk[8];
-          real_block(entry, t, q, exp(omega * z), blk);
-          for (std::size_t m = 0; m < entry.k; ++m) {
+          auto const blk = real_block<kind>(t, q, exp(omega * z));
+          for (std::size_t m = 0; m < 2u * half; ++m) {
             real[m] += blk[m];
           }
           if (not contrast) {
-            continue;
+            return;
           }
-          auto *image = real + entry.k;
+          auto *image = real + 2u * half;
           double e_p, e_m;
           if (z < elc.space_layer) { // handle the lower case first
             // negative sign is okay here as the image is located at -z
             auto const e = exp(-omega * z);
             auto const scale = q * elc.delta_mid_bot;
             for (std::size_t m = 0; m < half; ++m) {
-              real[m] += scale * (t.trig[m] * e);
-              real[half + m] += scale * (t.trig[m] / e);
+              real[m] += scale * (t[m] * e);
+              real[half + m] += scale * (t[m] / e);
             }
             e_p = (exp(omega * (-z - 2. * h)) * elc.delta_mid_bot +
                    exp(omega * (+z - 2. * h))) *
@@ -286,8 +314,8 @@ far_field_coefficients(elc_data const &elc, FarFieldTable const &table,
             auto const e = exp(omega * (2. * h - z));
             auto const scale = q * elc.delta_mid_top;
             for (std::size_t m = 0; m < half; ++m) {
-              real[m] += scale * (t.trig[m] * e);
-              real[half + m] += scale * (t.trig[m] / e);
+              real[m] += scale * (t[m] * e);
+              real[half + m] += scale * (t[m] / e);
             }
             e_m = (exp(omega * (+z - 4. * h)) * elc.delta_mid_top +
                    exp(omega * (-z - 2. * h))) *
@@ -298,15 +326,15 @@ far_field_coefficients(elc_data const &elc, FarFieldTable const &table,
                   entry.fac_delta_mid_top;
           }
           for (std::size_t m = 0; m < half; ++m) {
-            if (entry.kind == FreqKind::PQ) {
-              image[m] += t.trig[m] * (e_p * q);
-              image[half + m] += t.trig[m] * (e_m * q);
+            if constexpr (kind == FreqKind::PQ) {
+              image[m] += t[m] * (e_p * q);
+              image[half + m] += t[m] * (e_m * q);
             } else {
-              image[m] += q * t.trig[m] * e_p;
-              image[half + m] += q * t.trig[m] * e_m;
+              image[m] += q * t[m] * e_p;
+              image[half + m] += q * t[m] * e_m;
             }
           }
-        }
+        });
       });
   Kokkos::fence();
 
@@ -720,12 +748,12 @@ void ElectrostaticLayerCorrection::add_force() const {
         auto const z = aosoa.position(i, 2);
         auto const q = aosoa.charge(i);
         Utils::Vector3d force{};
-        for (auto const &entry : table.entries) {
-          auto const t = particle_terms(entry, scx, scy, i);
-          double b[8];
-          real_block(entry, t, q, exp(entry.omega * z), b);
+        for_each_entry(table, [&](FrequencyEntry const &entry, auto tag) {
+          auto constexpr kind = decltype(tag)::value;
+          auto const t = particle_terms<kind>(entry, scx, scy, i);
+          auto const b = real_block<kind>(t, q, exp(entry.omega * z));
           auto const *g = coeffs.data() + entry.coeff_offset;
-          if (entry.kind == FreqKind::PQ) {
+          if constexpr (kind == FreqKind::PQ) {
             // slots: 0 SSP, 1 SCP, 2 CSP, 3 CCP, 4 SSM, 5 SCM, 6 CSM, 7 CCM
             auto const pref_x =
                 c_2pi * ux * static_cast<double>(entry.p) / entry.omega;
@@ -741,12 +769,12 @@ void ElectrostaticLayerCorrection::add_force() const {
                          b[3] * g[7] - b[2] * g[6] - b[1] * g[5] - b[0] * g[4]);
           } else {
             // slots: 0 SP, 1 CP, 2 SM, 3 CM
-            auto const axis = (entry.kind == FreqKind::P) ? 0 : 1;
+            auto constexpr axis = (kind == FreqKind::P) ? 0 : 1;
             force[axis] +=
                 b[2] * g[1] - b[3] * g[0] + b[0] * g[3] - b[1] * g[2];
             force[2] += b[3] * g[1] + b[2] * g[0] - b[1] * g[3] - b[0] * g[2];
           }
-        }
+        });
         auto access = scatter_force.access();
         access(i, 0) += force[0];
         access(i, 1) += force[1];
@@ -776,19 +804,19 @@ double ElectrostaticLayerCorrection::calc_energy() const {
       [&](std::size_t i, std::array<double, 1> &acc) {
         auto const z = aosoa.position(i, 2);
         auto const q = aosoa.charge(i);
-        for (auto const &entry : table.entries) {
-          auto const t = particle_terms(entry, scx, scy, i);
-          double b[8];
-          real_block(entry, t, q, exp(entry.omega * z), b);
+        for_each_entry(table, [&](FrequencyEntry const &entry, auto tag) {
+          auto constexpr kind = decltype(tag)::value;
+          auto constexpr half = n_trig<kind>;
+          auto const t = particle_terms<kind>(entry, scx, scy, i);
+          auto const b = real_block<kind>(t, q, exp(entry.omega * z));
           auto const *g = coeffs.data() + entry.coeff_offset;
-          auto const half = entry.k / 2;
           // pair every P slot with its M slot and vice versa
           auto sum = 0.;
           for (std::size_t m = 0; m < half; ++m) {
             sum += b[half + m] * g[m] + b[m] * g[half + m];
           }
           acc[0] += sum / entry.omega;
-        }
+        });
       })[0];
   /* we count both i<->j and j<->i, so return just half of it */
   return 0.5 * energy;
