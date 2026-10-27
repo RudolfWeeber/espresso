@@ -235,10 +235,10 @@ BOOST_DATA_TEST_CASE(update_boundary_from_shape, bdata::make(all_lbs()),
 BOOST_DATA_TEST_CASE(update_boundary_from_predicate, bdata::make(all_lbs()),
                      lb_generator) {
   auto lb = lb_generator(params);
-  auto const &grid_size = params.grid_dimensions;
+  auto const grid_size = params.grid_dimensions;
   auto const vel = Vector3d{{0.2, 3.8, 4.2}};
   // the plane x = 0 and its periodic images
-  auto const is_boundary = [&grid_size](Vector3i const &node) {
+  auto const is_boundary = [grid_size](Vector3i const &node) {
     return (node[0] + grid_size[0]) % grid_size[0] == 0;
   };
 
