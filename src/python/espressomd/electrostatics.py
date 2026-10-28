@@ -186,6 +186,14 @@ class P3M(ElectrostaticInteraction):
         and Verlet list updates, which makes them closer to the cost of
         the production run. The particles move during tuning, which
         changes the trajectory. Defaults to ``False``.
+    tune_skin : :obj:`bool`, optional
+        If ``True``, tune the Verlet skin for the three fastest parameter
+        sets found by the tuning algorithm, time them again with their tuned
+        skin and keep the fastest combination. The Verlet skin of the cell
+        system is set to the tuned value. Every timing in this phase
+        integrates ten times ``timings`` steps, because the cost of the
+        Verlet list updates only shows in long samples. Requires
+        ``tune_with_integration=True``. Defaults to ``False``.
     verbose : :obj:`bool`, optional
         If ``False``, disable log output during tuning.
     check_neutrality : :obj:`bool`, optional
@@ -217,6 +225,7 @@ class P3M(ElectrostaticInteraction):
                 "tune": True,
                 "timings": 10,
                 "tune_with_integration": False,
+                "tune_skin": False,
                 "verbose": True}
 
     def validate_params(self, params):
@@ -230,6 +239,11 @@ class P3M(ElectrostaticInteraction):
         if not utils.is_valid_type(params["tune_with_integration"], bool):
             raise TypeError(
                 "Parameter 'tune_with_integration' has to be a boolean")
+        if not utils.is_valid_type(params["tune_skin"], bool):
+            raise TypeError("Parameter 'tune_skin' has to be a boolean")
+        if params["tune_skin"] and not params["tune_with_integration"]:
+            raise ValueError(
+                "Parameter 'tune_skin' requires 'tune_with_integration'")
         if (params["mesh"][0] % 2 != 0 and params["mesh"][0] != -1) or \
            (params["mesh"][1] % 2 != 0 and params["mesh"][1] != -1) or \
            (params["mesh"][2] % 2 != 0 and params["mesh"][2] != -1):

@@ -1128,7 +1128,7 @@ public:
   DipolarTuningAlgorithm(System::System &system, decltype(dp3m) &input_dp3m,
                          double prefactor, TuningParameters const &tuning)
       : TuningAlgorithm(system, prefactor, tuning.timings,
-                        tuning.with_integration),
+                        tuning.with_integration, tuning.tune_skin),
         dp3m{input_dp3m}, m_tune_limits{tuning.limits} {}
 
   P3MParameters &get_params() override { return dp3m.params; }

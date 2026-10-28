@@ -130,6 +130,14 @@ class DipolarP3M(MagnetostaticInteraction):
         and Verlet list updates, which makes them closer to the cost of
         the production run. The particles move during tuning, which
         changes the trajectory. Defaults to ``False``.
+    tune_skin : :obj:`bool`, optional
+        If ``True``, tune the Verlet skin for the three fastest parameter
+        sets found by the tuning algorithm, time them again with their tuned
+        skin and keep the fastest combination. The Verlet skin of the cell
+        system is set to the tuned value. Every timing in this phase
+        integrates ten times ``timings`` steps, because the cost of the
+        Verlet list updates only shows in long samples. Requires
+        ``tune_with_integration=True``. Defaults to ``False``.
     single_precision : :obj:`bool`
         Use single-precision floating-point arithmetic.
 
@@ -168,6 +176,11 @@ class DipolarP3M(MagnetostaticInteraction):
         if not utils.is_valid_type(params["tune_with_integration"], bool):
             raise TypeError(
                 "Parameter 'tune_with_integration' has to be a boolean")
+        if not utils.is_valid_type(params["tune_skin"], bool):
+            raise TypeError("Parameter 'tune_skin' has to be a boolean")
+        if params["tune_skin"] and not params["tune_with_integration"]:
+            raise ValueError(
+                "Parameter 'tune_skin' requires 'tune_with_integration'")
 
     def required_keys(self):
         return {"prefactor", "accuracy"}
@@ -185,6 +198,7 @@ class DipolarP3M(MagnetostaticInteraction):
                 "tune": True,
                 "timings": 10,
                 "tune_with_integration": False,
+                "tune_skin": False,
                 "verbose": True}
 
 

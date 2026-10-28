@@ -38,6 +38,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <limits>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -202,7 +203,58 @@ double TuningAlgorithm::get_mc_time(Utils::Vector3i const &mesh, int cao,
   m_logger->log_success(int_time, mesh[0], cao, r_cut_iL, tuned_alpha_L,
                         tuned_accuracy, rs_err, ks_err);
   increment_n_trials();
+  auto candidate = Parameters{};
+  candidate.mesh = mesh;
+  candidate.cao = cao;
+  candidate.alpha_L = tuned_alpha_L;
+  candidate.r_cut_iL = r_cut_iL;
+  candidate.accuracy = tuned_accuracy;
+  candidate.time = int_time;
+  record_candidate(candidate);
   return int_time;
+}
+
+TuningAlgorithm::Parameters
+TuningAlgorithm::tune_skin_for_fastest_candidates() {
+  auto &cell_structure = *m_system.cell_structure;
+  auto candidates = m_candidates;
+  std::ranges::sort(candidates, {}, &Parameters::time);
+  candidates.resize(std::min(candidates.size(), n_skin_tuning_candidates));
+
+  auto best = Parameters{};
+  auto best_skin = cell_structure.get_verlet_skin();
+  auto const n_steps = skin_tuning_steps_factor * m_timings;
+  m_logger->log_skin_tuning_start();
+  for (auto const &candidate : candidates) {
+    commit(candidate.mesh, candidate.cao, candidate.r_cut_iL,
+           candidate.alpha_L);
+    on_solver_change();
+    auto const max_cut = m_system.maximal_cutoff();
+    // bisection tolerance proportional to the interaction range
+    auto const tol = skin_tuning_relative_tolerance * max_cut;
+    // The skin is never larger than the interaction cutoff, and the
+    // interaction range must stay below the limit of the cell system
+    // (strictly below for directions shared by several MPI ranks).
+    auto const permissible_skin =
+        std::ranges::min(cell_structure.max_cutoff()) - max_cut;
+    auto const max_skin =
+        std::min(max_cut, skin_tuning_safety_factor * permissible_skin);
+    if (max_skin > tol) {
+      m_system.tune_verlet_skin(0., max_skin, tol, n_steps, true);
+    }
+    auto const skin = cell_structure.get_verlet_skin();
+    auto const time = benchmark_integration_step(m_system, n_steps, true);
+    m_logger->log_skin_tuning(time, candidate.mesh[0], candidate.cao,
+                              candidate.r_cut_iL, skin);
+    if (time < best.time) {
+      best = candidate;
+      best.time = time;
+      best_skin = skin;
+    }
+  }
+  cell_structure.set_verlet_skin(best_skin);
+  m_logger->log_tuned_skin(best_skin);
+  return best;
 }
 
 /**

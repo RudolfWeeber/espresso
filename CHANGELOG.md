@@ -18,7 +18,9 @@ or [Savannah](https://savannah.nongnu.org/projects/espressomd) until release 3.3
 * P3M and DP3M tuning accept a new parameter `tune_with_integration`: when set,
   the tuning timings are obtained from full integration steps with moving
   particles instead of force calculations on fixed positions, so they include
-  particle propagation, the thermostat and Verlet list updates.
+  particle propagation, the thermostat and Verlet list updates. The additional
+  parameter `tune_skin` tunes the Verlet skin for the fastest parameter sets
+  and sets the skin of the cell system to the best value found.
 
 ### Changed requirements
 

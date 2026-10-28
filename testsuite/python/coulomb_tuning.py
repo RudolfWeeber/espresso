@@ -82,6 +82,28 @@ class CoulombCloudWallTune(ut.TestCase):
         np.testing.assert_allclose(
             np.copy(self.system.part.all().f), self.ref_forces, atol=2e-3)
 
+    def test_p3m_cpu_tune_skin(self):
+        # opt-in: the skin is tuned for the fastest parameter sets
+        pos_before = np.copy(self.system.part.all().pos)
+        skin_before = self.system.cell_system.skin
+        actor = espressomd.electrostatics.P3M(
+            prefactor=1., accuracy=5e-4, tune=True, timings=2,
+            tune_with_integration=True, tune_skin=True)
+        self.assertTrue(actor.tune_skin)
+        self.system.electrostatics.solver = actor
+        self.assertTrue(actor.is_tuned)
+        skin = self.system.cell_system.skin
+        self.assertNotAlmostEqual(skin, skin_before)
+        self.assertGreater(skin, 0.)
+        # the tuned skin must fit in the cell system together with r_cut
+        self.assertLess(actor.r_cut + skin, self.system.box_l[0] / 2.)
+        # the tuned parameters still reach the requested accuracy
+        self.system.part.all().pos = pos_before
+        self.system.integrator.run(0)
+        np.testing.assert_allclose(
+            np.copy(self.system.part.all().f), self.ref_forces, atol=2e-3)
+        self.system.cell_system.skin = skin_before
+
     @utx.skipIfMissingGPU()
     def test_p3m_gpu(self):
         actor = espressomd.electrostatics.P3M(

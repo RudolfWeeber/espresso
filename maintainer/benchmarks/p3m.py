@@ -66,6 +66,11 @@ parser.add_argument("--tune_with_integration", action="store_true",
                     help="Time full integration steps with moving particles "
                     "during P3M tuning instead of force calculations on fixed "
                     "positions")
+parser.add_argument("--tune_skin", action="store_true",
+                    help="Let the P3M tuning algorithm tune the Verlet skin "
+                    "for its fastest parameter sets (implies "
+                    "--tune_with_integration); skips the final skin tuning "
+                    "of this script")
 mesh_group = parser.add_mutually_exclusive_group()
 mesh_group.add_argument("--mesh", metavar="M", action="store", type=int,
                         default=None, required=False,
@@ -114,7 +119,8 @@ def configure_lj(system):
 def p3m_tune_kwargs(args, mesh_min):
     kwargs = {"prefactor": args.prefactor, "accuracy": ACCURACY,
               "timings": 15, "gpu": args.gpu,
-              "tune_with_integration": args.tune_with_integration}
+              "tune_with_integration": args.tune_with_integration or args.tune_skin,
+              "tune_skin": args.tune_skin}
     if args.mesh is not None:
         kwargs["mesh"] = args.mesh
     else:
@@ -201,9 +207,13 @@ def build_and_tune(system, args):
     print("Re-tune p3m")
     p3m = make_p3m(args, mesh_min)
     system.electrostatics.solver = p3m
-    print("Tune skin: {:.3f}".format(benchmarks.tune_skin_unless_fixed(
-        system, args, min_skin, max_skin, tol=0.05, int_steps=100,
-        adjust_max_skin=True)))
+    if args.tune_skin and p3m_params is None:
+        print("Tune skin: {:.3f} (tuned by P3M)".format(
+            system.cell_system.skin))
+    else:
+        print("Tune skin: {:.3f}".format(benchmarks.tune_skin_unless_fixed(
+            system, args, min_skin, max_skin, tol=0.05, int_steps=100,
+            adjust_max_skin=True)))
 
     return {"n_part": n_part, "measurement_steps": steps, "p3m": p3m}
 

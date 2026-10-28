@@ -797,7 +797,7 @@ public:
   CoulombTuningAlgorithm(System::System &system, auto &input_p3m,
                          double prefactor, TuningParameters const &tuning)
       : TuningAlgorithm(system, prefactor, tuning.timings,
-                        tuning.with_integration),
+                        tuning.with_integration, tuning.tune_skin),
         p3m{input_p3m}, m_tune_limits{tuning.limits} {}
 
   void on_solver_change() const override { m_system.on_coulomb_change(); }

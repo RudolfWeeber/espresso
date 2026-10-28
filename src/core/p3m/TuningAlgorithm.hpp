@@ -36,6 +36,7 @@
 #include <optional>
 #include <string>
 #include <tuple>
+#include <vector>
 
 namespace System {
 class System;
@@ -68,6 +69,7 @@ protected:
 private:
   int m_timings;
   bool m_with_integration;
+  bool m_tune_skin;
   std::size_t m_n_trials;
 
 protected:
@@ -91,12 +93,38 @@ protected:
   /** @brief Value for invalid time measurements. */
   static auto constexpr time_sentinel = std::numeric_limits<double>::max();
 
+  /**
+   * @brief Number of fastest parameter sets that get a Verlet skin tuning
+   * when skin tuning is enabled.
+   */
+  static auto constexpr n_skin_tuning_candidates = 3ul;
+
+  /**
+   * @brief Resolution of the Verlet skin bisection, relative to the
+   * maximal interaction range.
+   */
+  static auto constexpr skin_tuning_relative_tolerance = 0.025;
+
+  /**
+   * @brief Safety margin applied to the largest Verlet skin the cell system
+   * supports, so that the skin bisection never probes the exact limit.
+   */
+  static auto constexpr skin_tuning_safety_factor = 0.9;
+
+  /**
+   * @brief Number of integration steps per timing in the skin tuning,
+   * as a multiple of the number of timings. The skin tuning needs long
+   * samples: with a large skin, the Verlet list is rebuilt only every
+   * few dozen steps, and short samples under-estimate the rebuild cost.
+   */
+  static auto constexpr skin_tuning_steps_factor = 10;
+
 public:
   TuningAlgorithm(System::System &system, double prefactor, int timings,
-                  bool with_integration)
+                  bool with_integration, bool tune_skin)
       : m_system{system}, m_timings{timings},
-        m_with_integration{with_integration}, m_n_trials{0ul},
-        m_prefactor{prefactor} {}
+        m_with_integration{with_integration}, m_tune_skin{tune_skin},
+        m_n_trials{0ul}, m_prefactor{prefactor} {}
 
   virtual ~TuningAlgorithm() = default;
 
@@ -164,7 +192,11 @@ public:
     // activate tuning mode
     get_params().tuning = true;
 
-    auto const tuned_params = get_time();
+    auto tuned_params = get_time();
+
+    if (m_tune_skin and tuned_params.time != time_sentinel) {
+      tuned_params = tune_skin_for_fastest_candidates();
+    }
 
     // deactivate tuning mode
     get_params().tuning = false;
@@ -187,6 +219,26 @@ protected:
   auto get_n_trials() { return m_n_trials; }
   void increment_n_trials() { ++m_n_trials; }
   void reset_n_trials() { m_n_trials = 0ul; }
+  /** @brief Record a parameter set that reached the requested accuracy. */
+  void record_candidate(Parameters const &candidate) {
+    m_candidates.push_back(candidate);
+  }
+  /**
+   * @brief Tune the Verlet skin for the fastest recorded parameter sets.
+   *
+   * For each of the @ref n_skin_tuning_candidates fastest parameter sets,
+   * the Verlet skin is tuned by bisection and the parameter set is timed
+   * again with the tuned skin. The fastest combination wins, and the Verlet
+   * skin of the cell structure is set to its skin.
+   *
+   * @return The fastest parameter set, with its time at the tuned skin.
+   */
+  Parameters tune_skin_for_fastest_candidates();
+
+private:
+  std::vector<Parameters> m_candidates;
+
+protected:
   double get_m_time(Utils::Vector3i const &mesh, int &tuned_cao,
                     double &tuned_r_cut_iL, double &tuned_alpha_L,
                     double &tuned_accuracy);
