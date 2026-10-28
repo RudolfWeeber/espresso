@@ -275,6 +275,14 @@ class LBFluid(ScriptInterfaceHelper, espressomd.detail.walberla.LatticeModel):
         utils.check_required_keys(self.required_keys(), params.keys())
         utils.check_valid_keys(self.valid_keys(), params.keys())
 
+        if params.get("single_precision") and len(
+                params["kinematic_viscosity"]) == 2:
+            _warnings.warn(
+                "the two-component LB in single precision does not conserve "
+                "the component masses exactly; they can drift by a relative "
+                "1e-5 within 10^4 time steps, and the drift grows with time",
+                RuntimeWarning, stacklevel=3)
+
     def default_params(self):
         return {"lattice": None, "seed": 0, "kT": 0., "sigma": 0.,
                 "beta": 0.7, "gpu": False,

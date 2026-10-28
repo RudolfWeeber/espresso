@@ -47,9 +47,10 @@ Tests:
     accessors
   - Two-layer Couette flow between a resting and a moving wall matches the
     analytical profile
-  - On the GPU, the two-component model runs in double precision
+  - On the GPU, the two-component model runs in double precision by default
+  - Single precision gives a warning about mass drift
 
-The tests run on the CPU and on the GPU, in double precision.
+The tests run on the CPU and on the GPU, in double and single precision.
 """
 
 import contextlib
@@ -140,6 +141,10 @@ class ColorGradientLBTest:
 
     lb_params = {}
 
+    def tol(self, double, single):
+        """Tolerance for the precision of the fluid under test."""
+        return single if self.lb_params["single_precision"] else double
+
     def tearDown(self):
         self.system.lb = None
 
@@ -164,8 +169,8 @@ class ColorGradientLBTest:
         lbf = self._create_lbf()
         visc = lbf.kinematic_viscosity
         self.assertEqual(len(visc), 2)
-        self.assertAlmostEqual(visc[0], VISCOSITY, places=10)
-        self.assertAlmostEqual(visc[1], VISCOSITY, places=10)
+        self.assertAlmostEqual(visc[0], VISCOSITY, places=self.tol(10, 7))
+        self.assertAlmostEqual(visc[1], VISCOSITY, places=self.tol(10, 7))
 
     def test_node_density_two_component(self):
         """Getting density on a node should return two values in CG mode."""
@@ -178,8 +183,8 @@ class ColorGradientLBTest:
         lbf = self._create_lbf()
         lbf[0, 0, 0].density = [0.7, 0.3]
         dens = lbf[0, 0, 0].density
-        self.assertAlmostEqual(dens[0], 0.7, places=10)
-        self.assertAlmostEqual(dens[1], 0.3, places=10)
+        self.assertAlmostEqual(dens[0], 0.7, places=self.tol(10, 7))
+        self.assertAlmostEqual(dens[1], 0.3, places=self.tol(10, 7))
 
     def test_slice_density_set_get(self):
         """Bulk slice density set/get should round-trip for two components."""
@@ -194,16 +199,20 @@ class ColorGradientLBTest:
         # Read back via bulk slice
         densities = np.copy(lbf[:, :, :].density)
         self.assertEqual(densities.shape, (N, N, N, 2))
-        np.testing.assert_allclose(densities[:, :, :, 0], rho_a, rtol=1e-10)
-        np.testing.assert_allclose(densities[:, :, :, 1], rho_b, rtol=1e-10)
+        np.testing.assert_allclose(densities[:, :, :, 0], rho_a,
+                                   rtol=self.tol(1e-10, 1e-6))
+        np.testing.assert_allclose(densities[:, :, :, 1], rho_b,
+                                   rtol=self.tol(1e-10, 1e-6))
 
         # Verify consistency with per-node access
         for x in range(0, N, N // 3):
             for y in range(0, N, N // 3):
                 for z in range(0, N, N // 3):
                     d = lbf[x, y, z].density
-                    self.assertAlmostEqual(d[0], rho_a[x, y, z], places=10)
-                    self.assertAlmostEqual(d[1], rho_b[x, y, z], places=10)
+                    self.assertAlmostEqual(d[0], rho_a[x, y, z],
+                                           places=self.tol(10, 6))
+                    self.assertAlmostEqual(d[1], rho_b[x, y, z],
+                                           places=self.tol(10, 6))
 
     def test_node_population_set_get(self):
         """Node population get/set should round-trip for two components."""
@@ -219,7 +228,8 @@ class ColorGradientLBTest:
         pop_modified = pop * 0.99
         lbf[3, 3, 3]._population = pop_modified
         pop_read = np.copy(lbf[3, 3, 3]._population)
-        np.testing.assert_allclose(pop_read, pop_modified, rtol=1e-10)
+        np.testing.assert_allclose(pop_read, pop_modified,
+                                   rtol=self.tol(1e-10, 1e-6))
 
     def test_slice_population_set_get(self):
         """Slice population get/set should round-trip for two components."""
@@ -275,22 +285,24 @@ class ColorGradientLBTest:
                     self.assertEqual(P.shape, (3, 3))
                     expected_diag = rho_total[x, y, z] * c_s_sq
                     np.testing.assert_allclose(
-                        np.diag(P), expected_diag, rtol=1e-9)
+                        np.diag(P), expected_diag, rtol=self.tol(1e-9, 1e-6))
                     off_diag = P - np.diag(np.diag(P))
-                    np.testing.assert_allclose(off_diag, 0.0, atol=1e-9)
+                    np.testing.assert_allclose(
+                        off_diag, 0.0, atol=self.tol(1e-9, 1e-7))
 
         # Slice-level: shape, symmetry, and consistency with node access.
         P_slice = np.copy(lbf[:, :, :].pressure_tensor)
         self.assertEqual(P_slice.shape, (N, N, N, 3, 3))
         np.testing.assert_allclose(
-            P_slice, np.swapaxes(P_slice, -1, -2), atol=1e-10)
+            P_slice, np.swapaxes(P_slice, -1, -2), atol=self.tol(1e-10, 1e-7))
         np.testing.assert_allclose(
             P_slice[3, 3, 3], np.copy(lbf[3, 3, 3].pressure_tensor),
-            atol=1e-10)
+            atol=self.tol(1e-10, 1e-7))
         expected_diag_slice = rho_total * c_s_sq
         for i in range(3):
             np.testing.assert_allclose(
-                P_slice[..., i, i], expected_diag_slice, rtol=1e-9)
+                P_slice[..., i, i], expected_diag_slice,
+                rtol=self.tol(1e-9, 1e-6))
 
     def test_velocity_getter(self):
         """Velocity getter should return finite values after integration."""
@@ -334,8 +346,10 @@ class ColorGradientLBTest:
         lbf.kinematic_viscosity = new_visc
         visc = lbf.kinematic_viscosity
         self.assertEqual(len(visc), 2)
-        self.assertAlmostEqual(visc[0], new_visc[0], places=10)
-        self.assertAlmostEqual(visc[1], new_visc[1], places=10)
+        self.assertAlmostEqual(visc[0], new_visc[0],
+                               places=self.tol(10, 7))
+        self.assertAlmostEqual(visc[1], new_visc[1],
+                               places=self.tol(10, 7))
 
     def test_bulk_slice_init_matches_node_init(self):
         """Bulk slice density init should match per-node init."""
@@ -438,7 +452,7 @@ class ColorGradientLBTest:
         laf = np.copy(lbf[x, y, z].last_applied_force)
         self.assertEqual(laf.shape, (2, 3))
         np.testing.assert_allclose(
-            laf[0] + laf[1], ext_force_density, atol=1e-9)
+            laf[0] + laf[1], ext_force_density, atol=self.tol(1e-9, 1e-8))
         self.assertAlmostEqual(
             laf[0][1] / (laf[0][1] + laf[1][1]), frac_a[x, y, z], places=4)
 
@@ -455,7 +469,8 @@ class ColorGradientLBTest:
         mom_2 = total_momentum()
         expected_delta = ext_force_density * self.system.volume()
         np.testing.assert_allclose(
-            mom_2 - mom_1, expected_delta, rtol=1e-6, atol=1e-9)
+            mom_2 - mom_1, expected_delta, rtol=self.tol(1e-6, 1e-5),
+            atol=self.tol(1e-9, 1e-5))
 
     def test_sigma_unit_conversion(self):
         """
@@ -530,9 +545,11 @@ class ColorGradientLBTest:
         rho_a_final = np.sum(densities[:, :, :, 0])
         rho_b_final = np.sum(densities[:, :, :, 1])
 
-        self.assertAlmostEqual(rho_a_init, rho_a_final, places=8,
+        self.assertAlmostEqual(rho_a_init, rho_a_final,
+                               places=self.tol(8, 3),
                                msg="rho_a not conserved")
-        self.assertAlmostEqual(rho_b_init, rho_b_final, places=8,
+        self.assertAlmostEqual(rho_b_init, rho_b_final,
+                               places=self.tol(8, 3),
                                msg="rho_b not conserved")
 
     def _init_negative_density_node(self, lbf, node):
@@ -629,11 +646,14 @@ class ColorGradientLBTest:
         self.system.integrator.run(5)
         pop = np.copy(lbf[:, :, :]._population)
         self.assertTrue(np.all(np.isfinite(pop)))
-        np.testing.assert_allclose(pop, pop_init, rtol=0., atol=1e-14)
+        np.testing.assert_allclose(pop, pop_init, rtol=0.,
+                                   atol=self.tol(1e-14, 1e-7))
         np.testing.assert_allclose(np.copy(lbf[:, :, :].velocity), 0.,
-                                   rtol=0., atol=1e-14)
+                                   rtol=0.,
+                                   atol=self.tol(1e-14, 1e-7))
         np.testing.assert_allclose(np.copy(lbf[:, :, :].phasefield),
-                                   phasefield_init, rtol=0., atol=1e-14)
+                                   phasefield_init, rtol=0.,
+                                   atol=self.tol(1e-14, 1e-7))
 
     @utx.skipIfMissingModules("espressomd.io.vtk")
     def test_vtk_scalar_fields(self):
@@ -712,7 +732,7 @@ class ColorGradientLBTest:
 
         velocity = np.copy(lbf[:, 1:15, :].velocity)
         np.testing.assert_allclose(velocity[..., 1:], 0., rtol=0.,
-                                   atol=1e-10)
+                                   atol=self.tol(1e-10, 1e-6))
         profile = np.mean(velocity[..., 0], axis=(0, 2))
         x = y[1:15] - 1.
         expected = couette_profile(x, wall_velocity, RHO_0 * viscosities[0],
@@ -733,10 +753,9 @@ class ColorGradientLBTestGPU(ColorGradientLBTest, ut.TestCase):
 
     def test_double_precision_by_default(self):
         """
-        Single precision does not conserve mass and momentum well enough for
-        the color-gradient model, so it runs in double precision on the GPU
-        unless asked otherwise. The single-component model keeps single
-        precision as its GPU default.
+        The color-gradient model runs in double precision on the GPU unless
+        asked otherwise. The single-component model keeps single precision
+        as its GPU default.
         """
         lbf = espressomd.lb.LBFluid(
             agrid=AGRID, density=RHO_0, tau=TAU,
@@ -748,17 +767,32 @@ class ColorGradientLBTestGPU(ColorGradientLBTest, ut.TestCase):
             kinematic_viscosity=VISCOSITY, gpu=True)
         self.assertTrue(lbf.gpu)
         self.assertTrue(lbf.single_precision)
-
-    def test_single_precision_rejected(self):
-        """Single precision is not available for the color-gradient model
-        on the GPU."""
-        with self.assertRaisesRegex(
-                ValueError, "single precision is not supported for the "
-                "two-component LB on the GPU"):
-            espressomd.lb.LBFluid(
+        with self.assertWarnsRegex(RuntimeWarning, "single precision"):
+            lbf = espressomd.lb.LBFluid(
                 agrid=AGRID, density=RHO_0, tau=TAU,
                 kinematic_viscosity=[VISCOSITY, VISCOSITY], gpu=True,
                 single_precision=True)
+        self.assertTrue(lbf.gpu)
+        self.assertTrue(lbf.single_precision)
+
+
+@utx.skipIfMissingFeatures(["WALBERLA"])
+class ColorGradientLBTestSinglePrecisionCPU(ColorGradientLBTest, ut.TestCase):
+    lb_params = {"single_precision": True, "gpu": False}
+
+    def test_single_precision_warning(self):
+        """Single precision warns that the component masses drift."""
+        with self.assertWarnsRegex(RuntimeWarning, "mass"):
+            espressomd.lb.LBFluid(
+                agrid=AGRID, density=RHO_0, tau=TAU,
+                kinematic_viscosity=[VISCOSITY, VISCOSITY],
+                single_precision=True)
+
+
+@utx.skipIfMissingGPU()
+@utx.skipIfMissingFeatures(["WALBERLA", "CUDA"])
+class ColorGradientLBTestSinglePrecisionGPU(ColorGradientLBTest, ut.TestCase):
+    lb_params = {"single_precision": True, "gpu": True}
 
 
 if __name__ == "__main__":

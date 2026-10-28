@@ -89,6 +89,10 @@ class ColorGradientParticleCouplingTest:
 
     lb_params = {}
 
+    def tol(self, double, single):
+        """Tolerance for the precision of the fluid under test."""
+        return single if self.lb_params["single_precision"] else double
+
     def tearDown(self):
         self.system.lb = None
         self.system.thermostat.turn_off()
@@ -175,9 +179,11 @@ class ColorGradientParticleCouplingTest:
         mass_a_final = np.sum(densities[:, :, :, 0])
         mass_b_final = np.sum(densities[:, :, :, 1])
 
-        self.assertAlmostEqual(mass_a_init, mass_a_final, places=8,
+        self.assertAlmostEqual(mass_a_init, mass_a_final,
+                               places=self.tol(8, 3),
                                msg="rho_a not conserved with particle coupling")
-        self.assertAlmostEqual(mass_b_init, mass_b_final, places=8,
+        self.assertAlmostEqual(mass_b_init, mass_b_final,
+                               places=self.tol(8, 3),
                                msg="rho_b not conserved with particle coupling")
 
     def test_solvation_force_at_center(self):
@@ -196,7 +202,7 @@ class ColorGradientParticleCouplingTest:
 
         # No drag (v=0), no solvation force (grad_phi=0 at center)
         np.testing.assert_allclose(
-            np.copy(p.f), [0, 0, 0], atol=1e-10,
+            np.copy(p.f), [0, 0, 0], atol=self.tol(1e-10, 1e-7),
             err_msg="Force should be zero at droplet center")
 
     def test_solvation_force_at_interface(self):
@@ -264,7 +270,7 @@ class ColorGradientParticleCouplingTest:
 
         # Forces should be opposite
         np.testing.assert_allclose(
-            force_pos, -force_neg, atol=1e-10,
+            force_pos, -force_neg, atol=self.tol(1e-10, 1e-7),
             err_msg="Flipping delta_mu should flip the solvation force")
 
     def test_solvation_force_zero_delta_mu(self):
@@ -283,7 +289,7 @@ class ColorGradientParticleCouplingTest:
         self.system.integrator.run(1)
 
         np.testing.assert_allclose(
-            np.copy(p.f), [0, 0, 0], atol=1e-10,
+            np.copy(p.f), [0, 0, 0], atol=self.tol(1e-10, 1e-7),
             err_msg="Force should be zero when delta_mu=0")
 
     def test_solvation_momentum_conservation(self):
@@ -317,7 +323,8 @@ class ColorGradientParticleCouplingTest:
 
             if i > 0:
                 np.testing.assert_allclose(
-                    total_momentum[-1], total_momentum[0], atol=1e-10,
+                    total_momentum[-1], total_momentum[0],
+                    atol=self.tol(1e-10, 1e-4),
                     err_msg="Momentum not conserved with solvation force coupling")
                 
 
@@ -355,6 +362,19 @@ class ColorGradientParticleCouplingTestCPU(ColorGradientParticleCouplingTest,
 class ColorGradientParticleCouplingTestGPU(ColorGradientParticleCouplingTest,
                                            ut.TestCase):
     lb_params = {"single_precision": False, "gpu": True}
+
+
+@utx.skipIfMissingFeatures(["WALBERLA"])
+class ColorGradientParticleCouplingTestSinglePrecisionCPU(
+        ColorGradientParticleCouplingTest, ut.TestCase):
+    lb_params = {"single_precision": True, "gpu": False}
+
+
+@utx.skipIfMissingGPU()
+@utx.skipIfMissingFeatures(["WALBERLA", "CUDA"])
+class ColorGradientParticleCouplingTestSinglePrecisionGPU(
+        ColorGradientParticleCouplingTest, ut.TestCase):
+    lb_params = {"single_precision": True, "gpu": True}
 
 
 if __name__ == "__main__":

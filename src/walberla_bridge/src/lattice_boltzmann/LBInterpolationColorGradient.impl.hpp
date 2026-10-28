@@ -102,7 +102,7 @@ void LBWalberlaImplColorGradient<FloatType, Architecture>::add_forces_at_pos(
     auto const densities = lbm::color_gradient::interpolate_densities(
         block.template getData<ScalarField>(m_rho_field_id[0]),
         block.template getData<ScalarField>(m_rho_field_id[1]), local, gl);
-    std::vector<double> positions, forces_a, forces_b;
+    std::vector<FloatType> positions, forces_a, forces_b;
     for (std::size_t i = 0ul; i < pos.size(); ++i) {
       auto const rho_a = densities[2u * i + 0u];
       auto const rho_b = densities[2u * i + 1u];
@@ -158,7 +158,7 @@ void LBWalberlaImplColorGradient<FloatType, Architecture>::
     auto const values = lbm::color_gradient::interpolate_densities_and_gradients(
         block.template getData<ScalarField>(m_rho_field_id[0]),
         block.template getData<ScalarField>(m_rho_field_id[1]), local, gl);
-    std::vector<double> positions, forces_a, forces_b;
+    std::vector<FloatType> positions, forces_a, forces_b;
     for (std::size_t i = 0ul; i < pos.size(); ++i) {
       auto const *const v = values.data() + 8u * i;
       auto const rho_a = v[0];

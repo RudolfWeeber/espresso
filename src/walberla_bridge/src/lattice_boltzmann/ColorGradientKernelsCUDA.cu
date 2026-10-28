@@ -90,10 +90,11 @@ __global__ void kernel_add_density_weighted_force(
  * @c bspline_3d_gradient (grid spacing 1, offset 0.5), and the same summation
  * order. Stencil nodes outside the field and its ghost layers are skipped, as
  * on the CPU; this check is needed because the field accessors have none.
+ * The interpolation is computed in double precision for both field types.
  */
-template <int order, bool with_gradient>
+template <int order, bool with_gradient, typename FloatType>
 __global__ void kernel_interpolate_densities(
-    gpu::FieldAccessor<double> rho_a, gpu::FieldAccessor<double> rho_b,
+    gpu::FieldAccessor<FloatType> rho_a, gpu::FieldAccessor<FloatType> rho_b,
     double const *__restrict__ pos, double *__restrict__ out, uint n_pos,
     int size_x, int size_y, int size_z, int gl) {
   constexpr uint n_values = with_gradient ? 8u : 2u;
@@ -149,8 +150,10 @@ __global__ void kernel_interpolate_densities(
         if (not in_field(2, z)) {
           continue;
         }
-        auto const value_a = rho_a.getNeighbor(x + gl, y + gl, z + gl);
-        auto const value_b = rho_b.getNeighbor(x + gl, y + gl, z + gl);
+        auto const value_a =
+            static_cast<double>(rho_a.getNeighbor(x + gl, y + gl, z + gl));
+        auto const value_b =
+            static_cast<double>(rho_b.getNeighbor(x + gl, y + gl, z + gl));
         auto const w = weight_xy * weight[2][k];
         density_a += value_a * w;
         density_b += value_b * w;
@@ -180,9 +183,9 @@ __global__ void kernel_interpolate_densities(
   }
 }
 
-template <int order, bool with_gradient>
-std::vector<double> interpolate(gpu::GPUField<double> const *rho_a,
-                                gpu::GPUField<double> const *rho_b,
+template <int order, bool with_gradient, typename FloatType>
+std::vector<double> interpolate(gpu::GPUField<FloatType> const *rho_a,
+                                gpu::GPUField<FloatType> const *rho_b,
                                 std::vector<double> const &pos,
                                 uint_t n_ghost_layers) {
   constexpr std::size_t n_values = with_gradient ? 8u : 2u;
@@ -194,8 +197,8 @@ std::vector<double> interpolate(gpu::GPUField<double> const *rho_a,
   thrust::device_vector<double> dev_out(n_values * n_pos, 0.);
   auto const threads_per_block = 64u;
   auto const n_blocks = (n_pos + threads_per_block - 1u) / threads_per_block;
-  using Indexing = gpu::FieldIndexing<double>;
-  kernel_interpolate_densities<order, with_gradient>
+  using Indexing = gpu::FieldIndexing<FloatType>;
+  kernel_interpolate_densities<order, with_gradient, FloatType>
       <<<n_blocks, threads_per_block, 0u, nullptr>>>(
           Indexing::withGhostLayerXYZ(*rho_a, n_ghost_layers).gpuAccess(),
           Indexing::withGhostLayerXYZ(*rho_b, n_ghost_layers).gpuAccess(),
@@ -210,40 +213,45 @@ std::vector<double> interpolate(gpu::GPUField<double> const *rho_a,
 // LCOV_EXCL_STOP
 } // namespace
 
-std::vector<double> interpolate_densities(gpu::GPUField<double> const *rho_a,
-                                          gpu::GPUField<double> const *rho_b,
+template <typename FloatType>
+std::vector<double> interpolate_densities(gpu::GPUField<FloatType> const *rho_a,
+                                          gpu::GPUField<FloatType> const *rho_b,
                                           std::vector<double> const &pos,
                                           uint_t n_ghost_layers) {
   return interpolate<2, false>(rho_a, rho_b, pos, n_ghost_layers);
 }
 
+template <typename FloatType>
 std::vector<double>
-interpolate_densities_and_gradients(gpu::GPUField<double> const *rho_a,
-                                    gpu::GPUField<double> const *rho_b,
+interpolate_densities_and_gradients(gpu::GPUField<FloatType> const *rho_a,
+                                    gpu::GPUField<FloatType> const *rho_b,
                                     std::vector<double> const &pos,
                                     uint_t n_ghost_layers) {
   return interpolate<3, true>(rho_a, rho_b, pos, n_ghost_layers);
 }
 
-uint_t count_negative_densities(gpu::GPUField<double> const *rho_a,
-                                gpu::GPUField<double> const *rho_b) {
+template <typename FloatType>
+uint_t count_negative_densities(gpu::GPUField<FloatType> const *rho_a,
+                                gpu::GPUField<FloatType> const *rho_b) {
   thrust::device_vector<unsigned int> count(1u, 0u);
-  auto kernel = gpu::make_kernel(kernel_count_negative_densities<double>);
-  kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::xyz(*rho_a));
-  kernel.addFieldIndexingParam(gpu::FieldIndexing<double>::xyz(*rho_b));
+  auto kernel = gpu::make_kernel(kernel_count_negative_densities<FloatType>);
+  kernel.addFieldIndexingParam(gpu::FieldIndexing<FloatType>::xyz(*rho_a));
+  kernel.addFieldIndexingParam(gpu::FieldIndexing<FloatType>::xyz(*rho_b));
   kernel.addParam(thrust::raw_pointer_cast(count.data()));
   kernel();
   return static_cast<uint_t>(count[0]);
 }
 
-void add_density_weighted_force(gpu::GPUField<double> *force_a,
-                                gpu::GPUField<double> *force_b,
-                                gpu::GPUField<double> const *rho_a,
-                                gpu::GPUField<double> const *rho_b,
-                                Vector3<double> const &force,
+template <typename FloatType>
+void add_density_weighted_force(gpu::GPUField<FloatType> *force_a,
+                                gpu::GPUField<FloatType> *force_b,
+                                gpu::GPUField<FloatType> const *rho_a,
+                                gpu::GPUField<FloatType> const *rho_b,
+                                Vector3<FloatType> const &force,
                                 uint_t n_ghost_layers) {
-  using Indexing = gpu::FieldIndexing<double>;
-  auto kernel = gpu::make_kernel(kernel_add_density_weighted_force<double>);
+  using Indexing = gpu::FieldIndexing<FloatType>;
+  auto kernel =
+      gpu::make_kernel(kernel_add_density_weighted_force<FloatType>);
   kernel.addFieldIndexingParam(
       Indexing::withGhostLayerXYZ(*force_a, n_ghost_layers));
   kernel.addFieldIndexingParam(
@@ -257,6 +265,24 @@ void add_density_weighted_force(gpu::GPUField<double> *force_a,
   kernel.addParam(force[2]);
   kernel();
 }
+
+#define INSTANTIATE_COLOR_GRADIENT_KERNELS(FloatType)                          \
+  template std::vector<double> interpolate_densities(                          \
+      gpu::GPUField<FloatType> const *, gpu::GPUField<FloatType> const *,      \
+      std::vector<double> const &, uint_t);                                    \
+  template std::vector<double> interpolate_densities_and_gradients(            \
+      gpu::GPUField<FloatType> const *, gpu::GPUField<FloatType> const *,      \
+      std::vector<double> const &, uint_t);                                    \
+  template uint_t count_negative_densities(gpu::GPUField<FloatType> const *,   \
+                                           gpu::GPUField<FloatType> const *);  \
+  template void add_density_weighted_force(                                    \
+      gpu::GPUField<FloatType> *, gpu::GPUField<FloatType> *,                  \
+      gpu::GPUField<FloatType> const *, gpu::GPUField<FloatType> const *,      \
+      Vector3<FloatType> const &, uint_t);
+
+INSTANTIATE_COLOR_GRADIENT_KERNELS(float)
+INSTANTIATE_COLOR_GRADIENT_KERNELS(double)
+#undef INSTANTIATE_COLOR_GRADIENT_KERNELS
 
 } // namespace color_gradient
 } // namespace lbm

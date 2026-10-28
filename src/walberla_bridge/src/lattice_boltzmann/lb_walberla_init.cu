@@ -69,11 +69,10 @@ new_lb_walberla_gpu(std::shared_ptr<LatticeWalberla> const &lattice,
         walberla::LBWalberlaImplSingleComponent<double, lbmpy::Arch::GPU>>(
         lattice, viscosity, density, false);
   }
-  // single precision doesn't conserve mass and momentum of the two-component
-  // model well enough; the script interface rejects it before this point
   if (single_precision) {
-    throw std::runtime_error(
-        "The two-component LB only supports double precision on the GPU");
+    return std::make_shared<
+        walberla::LBWalberlaImplColorGradient<float, lbmpy::Arch::GPU>>(
+        lattice, viscosity, density, true);
   }
   return std::make_shared<
       walberla::LBWalberlaImplColorGradient<double, lbmpy::Arch::GPU>>(

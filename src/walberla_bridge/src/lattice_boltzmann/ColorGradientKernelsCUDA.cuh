@@ -22,8 +22,8 @@
 /**
  * @file
  * Hand-written CUDA kernels of the two-component color-gradient LB that the
- * lbmpy-generated kernels and field accessors don't provide. The GPU model
- * only runs in double precision.
+ * lbmpy-generated kernels and field accessors don't provide. They are
+ * instantiated for single and double precision fields.
  */
 
 #include <core/DataTypes.h>
@@ -40,8 +40,9 @@ namespace color_gradient {
  * @brief Count the interior cells where the density of at least one
  * component is negative.
  */
-uint_t count_negative_densities(gpu::GPUField<double> const *rho_a,
-                                gpu::GPUField<double> const *rho_b);
+template <typename FloatType>
+uint_t count_negative_densities(gpu::GPUField<FloatType> const *rho_a,
+                                gpu::GPUField<FloatType> const *rho_b);
 
 /**
  * @brief Split a force density between the components in proportion to
@@ -49,11 +50,12 @@ uint_t count_negative_densities(gpu::GPUField<double> const *rho_a,
  * to both force fields in every cell, including @p n_ghost_layers ghost
  * layers. Cells without fluid (@f$ \rho_a + \rho_b \le 0 @f$) get nothing.
  */
-void add_density_weighted_force(gpu::GPUField<double> *force_a,
-                                gpu::GPUField<double> *force_b,
-                                gpu::GPUField<double> const *rho_a,
-                                gpu::GPUField<double> const *rho_b,
-                                Vector3<double> const &force,
+template <typename FloatType>
+void add_density_weighted_force(gpu::GPUField<FloatType> *force_a,
+                                gpu::GPUField<FloatType> *force_b,
+                                gpu::GPUField<FloatType> const *rho_a,
+                                gpu::GPUField<FloatType> const *rho_b,
+                                Vector3<FloatType> const &force,
                                 uint_t n_ghost_layers);
 
 /**
@@ -64,8 +66,9 @@ void add_density_weighted_force(gpu::GPUField<double> *force_a,
  * @param n_ghost_layers number of ghost layers of the fields
  * @return @f$ (\rho_a, \rho_b) @f$ per position
  */
-std::vector<double> interpolate_densities(gpu::GPUField<double> const *rho_a,
-                                          gpu::GPUField<double> const *rho_b,
+template <typename FloatType>
+std::vector<double> interpolate_densities(gpu::GPUField<FloatType> const *rho_a,
+                                          gpu::GPUField<FloatType> const *rho_b,
                                           std::vector<double> const &pos,
                                           uint_t n_ghost_layers);
 
@@ -77,9 +80,10 @@ std::vector<double> interpolate_densities(gpu::GPUField<double> const *rho_a,
  * @return @f$ (\rho_a, \rho_b, \nabla\rho_a, \nabla\rho_b) @f$, 8 values
  * per position
  */
+template <typename FloatType>
 std::vector<double>
-interpolate_densities_and_gradients(gpu::GPUField<double> const *rho_a,
-                                    gpu::GPUField<double> const *rho_b,
+interpolate_densities_and_gradients(gpu::GPUField<FloatType> const *rho_a,
+                                    gpu::GPUField<FloatType> const *rho_b,
                                     std::vector<double> const &pos,
                                     uint_t n_ghost_layers);
 
