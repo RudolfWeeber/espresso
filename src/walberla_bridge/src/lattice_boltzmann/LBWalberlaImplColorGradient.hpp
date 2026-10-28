@@ -33,6 +33,7 @@
 #include <domain_decomposition/BlockDataID.h>
 #include <domain_decomposition/IBlock.h>
 #include <field/AddToStorage.h>
+#include <field/iterators/IteratorMacros.h>
 #include <field/vtk/FlagFieldCellFilter.h>
 #include <field/vtk/VTKWriter.h>
 #include <stencil/D3Q19.h>
@@ -493,18 +494,10 @@ private:
   void reset_force_and_apply_external_force_cpu(
       IBlock *block, std::array<VectorField *, 2> const &last_applied_force,
       std::array<VectorField *, 2> const &force_to_be_applied) {
-    auto const ci = force_to_be_applied[0]->xyzSizeWithGhostLayer();
     if (m_ext_force == Vector3<FloatType>{0}) {
-      for (auto x = ci.xMin(); x <= ci.xMax(); ++x) {
-        for (auto y = ci.yMin(); y <= ci.yMax(); ++y) {
-          for (auto z = ci.zMin(); z <= ci.zMax(); ++z) {
-            Cell const cell(x, y, z);
-            lbm::accessor::Vector::set(force_to_be_applied[0],
-                                       Vector3<FloatType>{0}, cell);
-            lbm::accessor::Vector::set(force_to_be_applied[1],
-                                       Vector3<FloatType>{0}, cell);
-          }
-        }
+      // OpenMP-parallel, memory-order fill
+      for (auto const field : force_to_be_applied) {
+        field->setWithGhostLayer(FloatType{0});
       }
       return;
     }
@@ -512,28 +505,23 @@ private:
         block->template getData<ScalarField>(m_rho_field_id[0]);
     auto const rho_b_field =
         block->template getData<ScalarField>(m_rho_field_id[1]);
-    for (auto x = ci.xMin(); x <= ci.xMax(); ++x) {
-      for (auto y = ci.yMin(); y <= ci.yMax(); ++y) {
-        for (auto z = ci.zMin(); z <= ci.zMax(); ++z) {
-          Cell const cell(x, y, z);
-          lbm::accessor::Vector::set(force_to_be_applied[0],
-                                     Vector3<FloatType>{0}, cell);
-          lbm::accessor::Vector::set(force_to_be_applied[1],
-                                     Vector3<FloatType>{0}, cell);
-          auto const rho_a = rho_a_field->get(cell);
-          auto const rho_b = rho_b_field->get(cell);
-          auto const total_rho = rho_a + rho_b;
-          if (total_rho <= FloatType{0}) {
-            continue;
-          }
-          auto const inv_rho = FloatType{1} / total_rho;
-          lbm::accessor::Vector::add(last_applied_force[0],
-                                     rho_a * inv_rho * m_ext_force, cell);
-          lbm::accessor::Vector::add(last_applied_force[1],
-                                     rho_b * inv_rho * m_ext_force, cell);
-        }
+    WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ(force_to_be_applied[0], {
+      Cell const cell(x, y, z);
+      lbm::accessor::Vector::set(force_to_be_applied[0], Vector3<FloatType>{0},
+                                 cell);
+      lbm::accessor::Vector::set(force_to_be_applied[1], Vector3<FloatType>{0},
+                                 cell);
+      auto const rho_a = rho_a_field->get(cell);
+      auto const rho_b = rho_b_field->get(cell);
+      auto const total_rho = rho_a + rho_b;
+      if (total_rho > FloatType{0}) {
+        auto const inv_rho = FloatType{1} / total_rho;
+        lbm::accessor::Vector::add(last_applied_force[0],
+                                   rho_a * inv_rho * m_ext_force, cell);
+        lbm::accessor::Vector::add(last_applied_force[1],
+                                   rho_b * inv_rho * m_ext_force, cell);
       }
-    }
+    }) // WALBERLA_FOR_ALL_CELLS_INCLUDING_GHOST_LAYER_XYZ
   }
 
   void integrate_boundaries(std::shared_ptr<BlockStorage> const &blocks) {
