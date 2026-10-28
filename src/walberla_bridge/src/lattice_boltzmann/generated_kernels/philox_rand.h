@@ -98,7 +98,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #elif defined(__OPENCL_VERSION__)
 #define QUALIFIERS static inline
 #else
-#define QUALIFIERS inline
+#define QUALIFIERS static inline __attribute__((always_inline))
 #include "myintrin.h"
 #endif
 
