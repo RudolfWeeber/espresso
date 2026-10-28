@@ -510,7 +510,11 @@ void System::on_integration_start() {
   }
 
   invalidate_fetch_cache();
-  cell_structure->clear_local_properties();
+  // The Cabana particle container and Verlet list are kept across calls to
+  // integrate(): they are invalidated by every particle resort, by skin
+  // changes, and by on_particle_change(). Discarding them here would force a
+  // full rebuild on every call, which penalizes short integrate() calls and
+  // the force-only calls used by the P3M tuning algorithm.
 
 #ifdef ESPRESSO_ADDITIONAL_CHECKS
   if (!Utils::Mpi::all_compare(::comm_cart, cell_structure->use_verlet_list)) {
