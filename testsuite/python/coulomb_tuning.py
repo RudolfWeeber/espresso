@@ -53,6 +53,35 @@ class CoulombCloudWallTune(ut.TestCase):
             prefactor=1., accuracy=5e-4, tune=True)
         self.compare(actor)
 
+    def test_p3m_cpu_tune_static(self):
+        # default: timings are force calculations on fixed positions
+        pos_before = np.copy(self.system.part.all().pos)
+        actor = espressomd.electrostatics.P3M(
+            prefactor=1., accuracy=5e-4, tune=True, timings=2)
+        self.assertFalse(actor.tune_with_integration)
+        self.compare(actor)
+        np.testing.assert_allclose(
+            np.copy(self.system.part.all().pos), pos_before, rtol=0., atol=0.)
+
+    def test_p3m_cpu_tune_with_integration(self):
+        # opt-in: timings are full integration steps, the particles move
+        pos_before = np.copy(self.system.part.all().pos)
+        actor = espressomd.electrostatics.P3M(
+            prefactor=1., accuracy=5e-4, tune=True, timings=2,
+            tune_with_integration=True)
+        self.assertTrue(actor.tune_with_integration)
+        self.system.electrostatics.solver = actor
+        self.assertTrue(actor.is_tuned)
+        displacement = np.linalg.norm(
+            np.copy(self.system.part.all().pos) - pos_before, axis=1)
+        self.assertGreater(np.max(displacement), 0.)
+        # the tuned parameters still reach the requested accuracy: restore
+        # the reference configuration and check the forces
+        self.system.part.all().pos = pos_before
+        self.system.integrator.run(0)
+        np.testing.assert_allclose(
+            np.copy(self.system.part.all().f), self.ref_forces, atol=2e-3)
+
     @utx.skipIfMissingGPU()
     def test_p3m_gpu(self):
         actor = espressomd.electrostatics.P3M(

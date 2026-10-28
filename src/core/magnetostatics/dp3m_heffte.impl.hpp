@@ -1126,10 +1126,10 @@ class DipolarTuningAlgorithm : public TuningAlgorithm {
 
 public:
   DipolarTuningAlgorithm(System::System &system, decltype(dp3m) &input_dp3m,
-                         double prefactor, int timings,
-                         decltype(m_tune_limits) tune_limits)
-      : TuningAlgorithm(system, prefactor, timings), dp3m{input_dp3m},
-        m_tune_limits{std::move(tune_limits)} {}
+                         double prefactor, TuningParameters const &tuning)
+      : TuningAlgorithm(system, prefactor, tuning.timings,
+                        tuning.with_integration),
+        dp3m{input_dp3m}, m_tune_limits{tuning.limits} {}
 
   P3MParameters &get_params() override { return dp3m.params; }
 
@@ -1259,7 +1259,7 @@ void DipolarP3MHeffte<FloatType, Architecture, FFTConfig>::tune() {
     }
     try {
       DipolarTuningAlgorithm<FloatType, Architecture, FFTConfig> parameters(
-          system, dp3m, prefactor, tuning.timings, tuning.limits);
+          system, dp3m, prefactor, tuning);
       parameters.setup_logger(tuning.verbose);
       // parameter ranges
       parameters.determine_mesh_limits();

@@ -62,6 +62,10 @@ parser.add_argument("--prefactor", metavar="PREFACTOR", action="store",
                     help="P3M prefactor (default: 1)")
 parser.add_argument("--gpu", action=argparse.BooleanOptionalAction,
                     default=False, required=False, help="Use GPU implementation")
+parser.add_argument("--tune_with_integration", action="store_true",
+                    help="Time full integration steps with moving particles "
+                    "during P3M tuning instead of force calculations on fixed "
+                    "positions")
 mesh_group = parser.add_mutually_exclusive_group()
 mesh_group.add_argument("--mesh", metavar="M", action="store", type=int,
                         default=None, required=False,
@@ -109,7 +113,8 @@ def configure_lj(system):
 
 def p3m_tune_kwargs(args, mesh_min):
     kwargs = {"prefactor": args.prefactor, "accuracy": ACCURACY,
-              "timings": 15, "gpu": args.gpu}
+              "timings": 15, "gpu": args.gpu,
+              "tune_with_integration": args.tune_with_integration}
     if args.mesh is not None:
         kwargs["mesh"] = args.mesh
     else:

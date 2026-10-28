@@ -67,6 +67,7 @@ protected:
 
 private:
   int m_timings;
+  bool m_with_integration;
   std::size_t m_n_trials;
 
 protected:
@@ -91,8 +92,10 @@ protected:
   static auto constexpr time_sentinel = std::numeric_limits<double>::max();
 
 public:
-  TuningAlgorithm(System::System &system, double prefactor, int timings)
-      : m_system{system}, m_timings{timings}, m_n_trials{0ul},
+  TuningAlgorithm(System::System &system, double prefactor, int timings,
+                  bool with_integration)
+      : m_system{system}, m_timings{timings},
+        m_with_integration{with_integration}, m_n_trials{0ul},
         m_prefactor{prefactor} {}
 
   virtual ~TuningAlgorithm() = default;

@@ -193,7 +193,8 @@ double TuningAlgorithm::get_mc_time(Utils::Vector3i const &mesh, int cao,
   if (report_veto(fft_decomposition_veto(mesh))) {
     return -P3M_TUNE_FFT_MESH_SIZE;
   }
-  auto const int_time = benchmark_integration_step(m_system, m_timings);
+  auto const int_time =
+      benchmark_integration_step(m_system, m_timings, m_with_integration);
 
   std::tie(tuned_accuracy, rs_err, ks_err, tuned_alpha_L) =
       calculate_accuracy(mesh, cao, r_cut_iL);

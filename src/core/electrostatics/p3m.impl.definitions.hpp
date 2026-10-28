@@ -795,10 +795,10 @@ protected:
 
 public:
   CoulombTuningAlgorithm(System::System &system, auto &input_p3m,
-                         double prefactor, int timings,
-                         decltype(m_tune_limits) tune_limits)
-      : TuningAlgorithm(system, prefactor, timings), p3m{input_p3m},
-        m_tune_limits{std::move(tune_limits)} {}
+                         double prefactor, TuningParameters const &tuning)
+      : TuningAlgorithm(system, prefactor, tuning.timings,
+                        tuning.with_integration),
+        p3m{input_p3m}, m_tune_limits{tuning.limits} {}
 
   void on_solver_change() const override { m_system.on_coulomb_change(); }
 
@@ -1024,7 +1024,7 @@ void CoulombP3MImpl<FloatType, Architecture, FFTConfig>::tune() {
     }
     try {
       CoulombTuningAlgorithm<FloatType, Architecture, FFTConfig> parameters(
-          system, p3m, prefactor, tuning.timings, tuning.limits);
+          system, p3m, prefactor, tuning);
       parameters.setup_logger(tuning.verbose);
       // parameter ranges
       parameters.determine_mesh_limits();

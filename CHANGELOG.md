@@ -15,6 +15,10 @@ or [Savannah](https://savannah.nongnu.org/projects/espressomd) until release 3.3
 ### Added functionality
 
 * The Lees-Edwards oscillatory shear protocol was extended to support exponential decay (#4966).
+* P3M and DP3M tuning accept a new parameter `tune_with_integration`: when set,
+  the tuning timings are obtained from full integration steps with moving
+  particles instead of force calculations on fixed positions, so they include
+  particle propagation, the thermostat and Verlet list updates.
 
 ### Changed requirements
 
@@ -25,6 +29,9 @@ or [Savannah](https://savannah.nongnu.org/projects/espressomd) until release 3.3
 ### Performance enhancements
 
 * The bond force calculation now leverages shared-memory parallelization (#5244).
+* The Verlet list is now kept across calls to `integrator.run()`. Previously,
+  every call triggered a full Verlet list rebuild, which penalized scripts
+  that integrate few steps per call and inflated the P3M tuning timings.
 
 ## [5.0.1] - 2026-05-29
 

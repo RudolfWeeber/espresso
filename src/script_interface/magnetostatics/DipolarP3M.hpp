@@ -87,6 +87,8 @@ public:
          [this]() { return m_tuning.verbose; }},
         {"timings", AutoParameter::read_only,
          [this]() { return m_tuning.timings; }},
+        {"tune_with_integration", AutoParameter::read_only,
+         [this]() { return m_tuning.with_integration; }},
         {"tune_limits", AutoParameter::read_only,
          [this]() {
 #if defined(__clang__) and defined(__cray__) or defined(__INTEL_LLVM_COMPILER)
@@ -109,6 +111,8 @@ public:
     m_tune = get_value<bool>(params, "tune");
     m_tuning.timings = get_value<int>(params, "timings");
     m_tuning.verbose = get_value<bool>(params, "verbose");
+    m_tuning.with_integration =
+        get_value_or<bool>(params, "tune_with_integration", false);
     m_tuning.limits = {std::nullopt, std::nullopt};
     if (params.contains("tune_limits")) {
       auto const &variant = params.at("tune_limits");
