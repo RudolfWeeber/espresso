@@ -56,6 +56,12 @@ public:
   /** @brief Perform a full ghost communication. */
   virtual void ghost_communication() = 0;
 
+  /**
+   * @brief Refresh the ghost layers that the particle coupling reads.
+   * Defaults to a full ghost communication.
+   */
+  virtual void ghost_communication_coupling() { ghost_communication(); }
+
   /** @brief Perform a ghost communication of the PDF field. */
   virtual void ghost_communication_pdf() = 0;
 

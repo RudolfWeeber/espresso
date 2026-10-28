@@ -659,6 +659,23 @@ public:
     ghost_communication_density();
   }
 
+  /**
+   * @brief Refresh all pending ghost layers except the last applied force.
+   * The coupling only reads velocity and densities, and the stream and
+   * collide kernels read the last applied force only in their own cell, so
+   * its halo stays pending until the next full ghost communication.
+   */
+  void ghost_communication_coupling() override {
+    if (!m_pending_ghost_comm.any())
+      return;
+    assert(m_mpi_cart_comm_observer.is_valid());
+    ghost_communication_boundary();
+    ghost_communication_pdf();
+    ghost_communication_phasefield();
+    ghost_communication_vel();
+    ghost_communication_density();
+  }
+
   void ghost_communication_pdf() override {
     if (m_pending_ghost_comm.test(GhostComm::PDF)) {
       assert(m_mpi_cart_comm_observer.is_valid());

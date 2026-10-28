@@ -84,6 +84,12 @@ void Solver::ghost_communication() {
   std::visit([](auto &ptr) { ptr->ghost_communication(); }, *impl->solver);
 }
 
+void Solver::ghost_communication_coupling() {
+  check_solver(impl);
+  std::visit([](auto &ptr) { ptr->ghost_communication_coupling(); },
+             *impl->solver);
+}
+
 void Solver::ghost_communication_pdf() {
   check_solver(impl);
   std::visit([](auto &ptr) { ptr->ghost_communication_pdf(); }, *impl->solver);

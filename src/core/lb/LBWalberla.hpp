@@ -90,6 +90,7 @@ struct LBWalberla : public System::Leaf<LBWalberla> {
   get_velocities_at_pos(std::vector<Utils::Vector3d> const &pos);
   void propagate();
   void ghost_communication();
+  void ghost_communication_coupling();
   void ghost_communication_pdf();
   void ghost_communication_vel();
   void veto_time_step(double time_step) const;

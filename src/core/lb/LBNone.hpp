@@ -36,6 +36,7 @@ namespace LB {
 struct LBNone : public System::Leaf<LBNone> {
   void propagate() { throw NoLBActive{}; }
   void ghost_communication() { throw NoLBActive{}; }
+  void ghost_communication_coupling() { throw NoLBActive{}; }
   void ghost_communication_pdf() { throw NoLBActive{}; }
   void ghost_communication_vel() { throw NoLBActive{}; }
   double get_agrid() const { throw NoLBActive{}; }

@@ -78,6 +78,11 @@ struct Solver : public System::Leaf<Solver> {
   void ghost_communication();
 
   /**
+   * @brief Refresh the ghost layers read by the particle coupling.
+   */
+  void ghost_communication_coupling();
+
+  /**
    * @brief Perform a ghost communication of the PDF field.
    */
   void ghost_communication_pdf();

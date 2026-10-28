@@ -109,6 +109,10 @@ void LBWalberla::report_negative_densities() {
 
 void LBWalberla::ghost_communication() { lb_fluid->ghost_communication(); }
 
+void LBWalberla::ghost_communication_coupling() {
+  lb_fluid->ghost_communication_coupling();
+}
+
 void LBWalberla::ghost_communication_pdf() {
   lb_fluid->ghost_communication_pdf();
 }
