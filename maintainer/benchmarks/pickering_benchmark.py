@@ -28,24 +28,22 @@ box only adds fluid.
 
 After 1000 warm-up steps without field, the field is switched on and 10 blocks of 100 steps
 are timed. The mean time per step with its 95% confidence interval and the LB throughput
-(MLUPS, million lattice node updates per second) are printed and appended to
-benchmarks.csv in the current directory (same columns as the ESPResSo benchmarks in
-maintainer/benchmarks; the label column says cpu or gpu).
+(MLUPS, million lattice node updates per second) are printed and appended to the CSV file
+given by --output (default: benchmarks.csv in the current directory; the label column says
+cpu or gpu).
 
 Requirements
 ------------
-ESPResSo built from the color gradient branch
-    https://github.com/RebeccaStephan/espresso  (branch color_gradient, tested at 82e6d3d92)
-with the features WALBERLA, DIPOLES, ROTATION, VIRTUAL_SITES_RELATIVE and WCA,
-plus CUDA for --gpu. Only numpy is needed besides ESPResSo.
+ESPResSo with the features WALBERLA, DIPOLES, ROTATION, VIRTUAL_SITES_RELATIVE and WCA,
+plus CUDA for --gpu. The script imports benchmarks.py from maintainer/benchmarks.
 
 How to run
 ----------
-LB on the CPU, with N MPI ranks (OpenMP fixed to one thread):
-    OMP_NUM_THREADS=1 mpiexec -n N /path/to/espresso/build/pypresso pickering_benchmark.py --box_l 50
+LB on the CPU, with N MPI ranks and T OpenMP threads per rank:
+    OMP_NUM_THREADS=T mpiexec -n N build/pypresso maintainer/benchmarks/pickering_benchmark.py
 
-LB on the GPU (needs a CUDA build; one rank is fastest, the particles stay on the CPU):
-    OMP_NUM_THREADS=1 /path/to/espresso/build_cuda/pypresso pickering_benchmark.py --box_l 50 --gpu
+LB on the GPU (one rank is fastest, the particles stay on the CPU):
+    OMP_NUM_THREADS=T build/pypresso maintainer/benchmarks/pickering_benchmark.py --gpu
 
 --box_l sets the edge length of the cubic box in lattice units (default 50, minimum 35.7).
 --single_precision runs the LB fluid in single precision.
@@ -54,11 +52,10 @@ other load on the machine, also for GPU runs.
 """
 
 import argparse
-import os
-import sys
 import time
 
 import numpy as np
+import benchmarks
 import espressomd
 import espressomd.constraints
 import espressomd.lb
@@ -73,6 +70,8 @@ parser.add_argument("--gpu", action="store_true",
                     help="run the LB fluid on the GPU (needs a CUDA build of ESPResSo)")
 parser.add_argument("--single_precision", action="store_true",
                     help="run the LB fluid in single precision")
+parser.add_argument("--output", metavar="FILEPATH", type=str, default="benchmarks.csv",
+                    help="output file (default: benchmarks.csv)")
 args = parser.parse_args()
 DEVICE = "gpu" if args.gpu else "cpu"
 espressomd.assert_features(["WALBERLA", "DIPOLES", "ROTATION", "VIRTUAL_SITES_RELATIVE", "WCA"]
@@ -279,16 +278,10 @@ for i in range(N_ITERATIONS):
     print(f"iteration {i}: {1000 * t:.2f} ms/step")
 timings = np.array(timings)
 
-avg = timings.mean()
-ci = 1.96 * timings.std() / np.sqrt(len(timings) - 1)
+avg, ci = benchmarks.get_average_time(timings)
 print(f"average: {1000 * avg:.2f} +/- {1000 * ci:.2f} ms/step (95% C.I.), "
       f"{n_lb_nodes / avg / 1e6:.2f} MLUPS")
 
-report = "benchmarks.csv"
-header = '"script","arguments","ranks","threads","mean","ci","nsteps","duration","label"\n'
-with open(report, "a") as f:
-    if f.tell() == 0:
-        f.write(header)
-    f.write(f'"{os.path.basename(__file__)}","{" ".join(sys.argv[1:])}",{n_ranks},{n_threads},'
-            f'{avg:.3e},{ci:.3e},{MEASUREMENT_STEPS},{timings.sum():.1f},"{DEVICE}"\n')
-print(f"Appended result to {os.path.abspath(report)}")
+benchmarks.write_report(args.output, n_ranks, timings, MEASUREMENT_STEPS,
+                        label=DEVICE, n_threads=n_threads)
+print(f"Appended result to {args.output}")

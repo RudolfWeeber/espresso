@@ -138,6 +138,11 @@ python_benchmark(FILE lb.py ARGUMENTS "--box_l=64;--particles_per_core=0")
 python_benchmark(FILE lb.py ARGUMENTS
                  "--box_l=128;--particles_per_core=0;--single_precision")
 python_benchmark(FILE lb.py ARGUMENTS "--box_l=128;--particles_per_core=0")
+# box_l=50 is not divisible by the 4x2x2 node grid of 16 ranks
+python_benchmark(FILE pickering_benchmark.py ARGUMENTS "--box_l=50"
+                 MAX_NUM_PROC 8)
+python_benchmark(FILE pickering_benchmark.py ARGUMENTS
+                 "--box_l=50;--single_precision" MAX_NUM_PROC 8)
 if(NOT ESPRESSO_BUILD_WITH_WALBERLA_USE_AVX)
   python_benchmark(FILE lb.py ARGUMENTS
                    "--box_l=196;--particles_per_core=0;--single_precision")
