@@ -1,0 +1,53 @@
+heFFTe executes FFTs on buffers inside its workspace, starting at
+comm_buffer_offset (the size of the reshape buffers) and
+executor_buffer_offset, both counted in complex elements. Odd offsets leave
+these buffers only 8-byte aligned for std::complex<float>, but the FFTW plans
+are created with null array pointers and FFTW_ESTIMATE, so FFTW assumes
+SIMD-aligned (16-byte) arrays at execution time and libfftw3f crashes with
+SIGSEGV, e.g. single-precision mesh 50 on 8 MPI ranks (2x2x2) or mesh
+50x22x40 on 4 MPI ranks (2x2x1). Round both offsets up to an even number
+of complex elements, so the buffers keep the alignment of the workspace
+allocation and FFTW keeps its aligned SIMD plans. Double precision was not
+affected (complex<double> offsets are multiples of 16 bytes), but is
+rounded the same way. To be proposed upstream (https://github.com/icl-utk-edu/heffte).
+
+--- include/heffte_fft3d.h
++++ include/heffte_fft3d.h
+@@ -623,13 +623,18 @@
+         }
+ 
+         size_t executor_workspace_size = get_max_work_size(executors);
++        // the FFT buffers inside the workspace start at an even offset (in complex units),
++        // so they keep the alignment of the workspace (FFTW plans assume SIMD-aligned arrays)
+         comm_buffer_offset = std::max(get_workspace_size(forward_shaper), get_workspace_size(backward_shaper));
++        comm_buffer_offset += comm_buffer_offset % 2;
+         // the last junk of (fft0->box_size() + 1) / 2 is used only when doing complex-to-real backward transform
+         // maybe update the API to call for different size buffers for different complex/real types
+         int last_chunk = (executors[0] == nullptr) ? 0 : (((backward_shaper[3]) ? (executors[0]->box_size() + 1) / 2 : 0));
+-        size_buffer_work =  comm_buffer_offset + executor_workspace_size
++        size_buffer_work =  comm_buffer_offset
+                           + get_max_box_size(executors)
+                           + last_chunk;
++        size_buffer_work += size_buffer_work % 2;
++        size_buffer_work += executor_workspace_size;
+         executor_buffer_offset = (executor_workspace_size == 0) ? 0 : size_buffer_work - executor_workspace_size;
+ 
+         if (not backend::uses_fft_types<backend_tag>::value){
+--- include/heffte_fft3d_r2c.h
++++ include/heffte_fft3d_r2c.h
+@@ -333,9 +333,13 @@
+         executors[2] = make_executor<backend_tag>(this->stream(), plan.out_shape[2][mpi::comm_rank(comm)], plan.fft_direction[2]);
+ 
+         size_t executor_workspace_size = get_max_work_size(executors);
++        // the FFT buffers inside the workspace start at an even offset (in complex units),
++        // so they keep the alignment of the workspace (FFTW plans assume SIMD-aligned arrays)
+         comm_buffer_offset = std::max(get_workspace_size(forward_shaper), get_workspace_size(backward_shaper));
+-        size_buffer_work = comm_buffer_offset
+-                        + get_max_box_size_r2c(executors) + executor_workspace_size;
++        comm_buffer_offset += comm_buffer_offset % 2;
++        size_buffer_work = comm_buffer_offset + get_max_box_size_r2c(executors);
++        size_buffer_work += size_buffer_work % 2;
++        size_buffer_work += executor_workspace_size;
+         executor_buffer_offset = (executor_workspace_size == 0) ? 0 : size_buffer_work - executor_workspace_size;
+     }
+     //! \brief Return references to the executors in forward order.

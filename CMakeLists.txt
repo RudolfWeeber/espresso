@@ -670,12 +670,17 @@ if(ESPRESSO_BUILD_WITH_FFTW)
     find_package(Heffte 2.4.1 QUIET)
   endif()
   if(NOT DEFINED Heffte_FOUND OR NOT ${Heffte_FOUND})
+    find_package(Git REQUIRED)
+    # the patch step re-runs whenever the patch command changes: start from
+    # pristine sources, so that already patched sources are not patched twice
     # cmake-format: off
     FetchContent_Declare(
       heffte
       GIT_REPOSITORY https://github.com/icl-utk-edu/heffte.git
       GIT_TAG        v2.4.1
-      PATCH_COMMAND  patch -p0 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/heffte.patch
+      PATCH_COMMAND  ${GIT_EXECUTABLE} checkout -- .
+      COMMAND        patch -p0 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/heffte.patch
+      COMMAND        patch -p0 < ${CMAKE_CURRENT_SOURCE_DIR}/cmake/heffte_workspace_alignment.patch
       OVERRIDE_FIND_PACKAGE
     )
     # cmake-format: on

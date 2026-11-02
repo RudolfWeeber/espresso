@@ -88,6 +88,11 @@ are required to be able to compile and use |es|:
         For some algorithms like |p3m|, |es| needs the FFTW library
         version 3 or later [5]_ for Fourier transforms, including header files.
         |es| leverages heFFTe :cite:`ayala20a` and kokkos-fft :cite:`asahi25a`.
+        heFFTe is downloaded and patched by CMake (see ``cmake/heffte*.patch``),
+        unless an installed heFFTe 2.4.1 is found. An installed heFFTe is used
+        without these patches; with an unpatched heFFTe, single-precision
+        FFTs (|p3m| with ``single_precision=True``) can crash in FFTW for
+        some mesh sizes and MPI decompositions.
 
     CUDA
         For some algorithms like |p3m| and lattice-Boltzmann,

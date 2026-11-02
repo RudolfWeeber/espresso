@@ -41,6 +41,17 @@ FFT_PLANS = {
         ([4, 2, 1], P3M_PARAMS[2])],
 }
 
+# Regression test for single-precision FFTs on misaligned heFFTe workspace
+# buffers (odd reshape buffer sizes in complex<float> units), which crashed
+# in FFTW without the heFFTe workspace alignment patch. Whether a layout
+# triggered the bug depends on heFFTe's reshape buffer sizes, i.e. on the
+# mesh, the node grid and the FFT box layout; these layouts crashed with
+# both the brick/slab and the pencil k-space output boxes.
+FFT_PLANS_UNALIGNED = {
+    4: [([2, 2, 1], [50, 22, 40])],
+    8: [([2, 2, 2], [50, 50, 50])],
+}
+
 
 @utx.skipIfMissingFeatures(["LENNARD_JONES", "P3M"])
 class FFT_test(ut.TestCase):
@@ -89,7 +100,8 @@ class FFT_test(ut.TestCase):
                              dip=dipoles, rotation=num_part * [3 * [True]])
         self.minimize()
 
-    @ut.skipIf(n_nodes not in FFT_PLANS, f"no FFT plan for {n_nodes} threads")
+    @ut.skipIf(n_nodes not in FFT_PLANS,
+               f"no FFT plan for {n_nodes} MPI ranks")
     def test_fft_plans(self):
         import espressomd.electrostatics
         self.system.time_step = 0.01
@@ -104,6 +116,31 @@ class FFT_test(ut.TestCase):
                 p3m_energy = self.system.analysis.energy()['coulomb']
                 self.system.electrostatics.clear()
                 np.testing.assert_allclose(p3m_energy, ref_energy, rtol=1e-3)
+
+    @ut.skipIf(n_nodes not in FFT_PLANS_UNALIGNED,
+               f"no FFT plan for {n_nodes} MPI ranks")
+    def test_fft_plans_single_precision(self):
+        import espressomd.electrostatics
+        self.system.time_step = 0.01
+        self.add_charged_particles()
+        p3m_params = {**P3M_PARAMS[1], "prefactor": 2, "accuracy": 1e-6,
+                      "tune": False}
+        for node_grid, mesh in FFT_PLANS_UNALIGNED[self.n_nodes]:
+            self.system.cell_system.node_grid = node_grid
+            energies = []
+            forces = []
+            for single_precision in (False, True):
+                self.system.electrostatics.solver = espressomd.electrostatics.P3M(
+                    **{**p3m_params, "mesh": mesh},
+                    single_precision=single_precision)
+                energies.append(self.system.analysis.energy()["coulomb"])
+                self.system.integrator.run(0, recalc_forces=True)
+                forces.append(np.copy(self.system.part.all().f))
+                self.system.electrostatics.clear()
+            np.testing.assert_allclose(energies[1], energies[0], rtol=1e-5)
+            f_rms = np.sqrt(np.mean(np.square(forces[0])))
+            np.testing.assert_allclose(forces[1], forces[0], rtol=0.,
+                                       atol=1e-5 * f_rms)
 
     @utx.skipIfMissingFeatures("DP3M")
     @ut.skipIf(n_nodes < 2 or n_nodes >= 8, "only runs for 2 <= n_nodes <= 7")
