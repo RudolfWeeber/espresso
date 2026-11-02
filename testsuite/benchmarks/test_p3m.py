@@ -25,7 +25,10 @@ import numpy as np
 np.random.seed(42)
 
 gpu = "gpu" in "@TEST_LABELS@".split(";")
+single_precision = "single_precision" in "@TEST_SUFFIX@"
 cmd_arguments = ["--particles_per_core", "400", "--gpu" if gpu else "--no-gpu"]
+if single_precision:
+    cmd_arguments.append("--single_precision")
 benchmark, skipIfMissingFeatures = importlib_wrapper.configure_and_import(
     "@BENCHMARKS_DIR@/p3m.py", gpu=gpu, measurement_steps=100, n_iterations=2,
     cmd_arguments=cmd_arguments, script_suffix="@TEST_SUFFIX@",
@@ -37,6 +40,10 @@ benchmark, skipIfMissingFeatures = importlib_wrapper.configure_and_import(
 @skipIfMissingFeatures
 class Sample(ut.TestCase):
     system = benchmark.system
+
+    def test_precision(self):
+        if single_precision:
+            self.assertTrue(self.system.electrostatics.solver.single_precision)
 
 
 if __name__ == "__main__":

@@ -124,6 +124,10 @@ python_benchmark(
   FILE p3m.py ARGUMENTS
   "--particles_per_core=10000;--volume_fraction=0.25;--prefactor=4")
 python_benchmark(
+  FILE p3m.py ARGUMENTS
+  "--particles_per_core=1000;--volume_fraction=0.25;--prefactor=4;--single_precision"
+)
+python_benchmark(
   FILE lb.py ARGUMENTS
   "--particles_per_core=125;--volume_fraction=0.03;--lb_sites_per_particle=28")
 python_benchmark(FILE ferrofluid.py ARGUMENTS "--particles_per_core=400")

@@ -62,6 +62,10 @@ parser.add_argument("--prefactor", metavar="PREFACTOR", action="store",
                     help="P3M prefactor (default: 1)")
 parser.add_argument("--gpu", action=argparse.BooleanOptionalAction,
                     default=False, required=False, help="Use GPU implementation")
+parser.add_argument("--single_precision", action="store_true",
+                    help="Use single-precision P3M (default: double precision "
+                    "on CPU); in 'run' mode, the parameters of the state file "
+                    "are used with the requested precision")
 mesh_group = parser.add_mutually_exclusive_group()
 mesh_group.add_argument("--mesh", metavar="M", action="store", type=int,
                         default=None, required=False,
@@ -107,9 +111,14 @@ def configure_lj(system):
                 epsilon=lj_eps, sigma=lj_sig, cutoff=lj_cut, shift="auto")
 
 
+def precision_kwargs(args):
+    # only override the P3M default (single precision on GPU) when requested
+    return {"single_precision": True} if args.single_precision else {}
+
+
 def p3m_tune_kwargs(args, mesh_min):
     kwargs = {"prefactor": args.prefactor, "accuracy": ACCURACY,
-              "timings": 15, "gpu": args.gpu}
+              "timings": 15, "gpu": args.gpu, **precision_kwargs(args)}
     if args.mesh is not None:
         kwargs["mesh"] = args.mesh
     else:
@@ -125,7 +134,8 @@ def make_p3m(args, mesh_min):
     (skipping tuning, e.g. in the benchmark smoke tests), otherwise tune.
     """
     if p3m_params is not None:
-        return espressomd.electrostatics.P3M(**p3m_params)
+        return espressomd.electrostatics.P3M(
+            **p3m_params, **precision_kwargs(args))
     return espressomd.electrostatics.P3M(**p3m_tune_kwargs(args, mesh_min))
 
 
@@ -221,6 +231,7 @@ def save_p3m_state(system, args, ctx):
         "alpha": float(tuned["alpha"]),
         "r_cut": float(tuned["r_cut"]),
         "gpu": bool(args.gpu),
+        "single_precision": bool(tuned["single_precision"]),
         "kT": KT, "gamma": GAMMA, "seed": SEED,
     }
     meta.update(benchmarks.topology_meta(system))
@@ -247,8 +258,16 @@ def run_from_state(system, args):
         prefactor=meta["prefactor"], accuracy=meta["accuracy"],
         mesh=[int(x) for x in meta["mesh"]], cao=int(meta["cao"]),
         alpha=float(meta["alpha"]), r_cut=float(meta["r_cut"]),
-        tune=False, gpu=bool(meta["gpu"]), timings=15)
+        tune=False, gpu=bool(meta["gpu"]), timings=15,
+        **precision_kwargs(args))
     system.electrostatics.solver = p3m
+    tuned_precision = meta.get("single_precision")
+    if tuned_precision is not None and \
+            bool(p3m.single_precision) != bool(tuned_precision):
+        print(f"Warning: the state file was tuned in "
+              f"{'single' if tuned_precision else 'double'} precision, "
+              f"running in {'single' if p3m.single_precision else 'double'} "
+              f"precision (use --single_precision consistently)")
     return meta["measurement_steps"], meta["n_iterations"]
 
 
