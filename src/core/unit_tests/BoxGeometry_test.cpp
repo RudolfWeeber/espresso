@@ -253,6 +253,45 @@ BOOST_AUTO_TEST_CASE(cuboid_minimum_image_batch_test) {
   }
 }
 
+BOOST_AUTO_TEST_CASE(cuboid_minimum_image_batch_dist2_test) {
+  auto const box_l = Utils::Vector3d{2.5, 4.0, 7.25};
+  auto const pairs = make_sweep_pairs(box_l);
+  std::vector<double> sx, sy, sz;
+  for (auto const &pair : pairs) {
+    sx.emplace_back(pair.a[0u]);
+    sy.emplace_back(pair.a[1u]);
+    sz.emplace_back(pair.a[2u]);
+  }
+  // reference points: generic, exactly half a box away from the origin
+  // (rounding ties), and far outside the box
+  auto const reference_points = std::vector<Utils::Vector3d>{
+      {0.13 * box_l[0u], -0.87 * box_l[1u], 1.9 * box_l[2u]},
+      {0.5 * box_l[0u], 0.5 * box_l[1u], 0.5 * box_l[2u]},
+      {-41.3 * box_l[0u], 17.6 * box_l[1u], 1e3 * box_l[2u]}};
+  for (unsigned mask = 0u; mask < 8u; ++mask) {
+    auto box = BoxGeometry{};
+    box.set_type(BoxType::CUBOID);
+    box.set_length(box_l);
+    box.set_periodic(0u, (mask & 1u) != 0u);
+    box.set_periodic(1u, (mask & 2u) != 0u);
+    box.set_periodic(2u, (mask & 4u) != 0u);
+    auto const fold = box.cuboid_minimum_image();
+    for (auto const &r : reference_points) {
+      std::vector<double> dsq(pairs.size());
+      fold.batch_dist2(r[0u], r[1u], r[2u], pairs.size(), sx.data(), sy.data(),
+                       sz.data(), dsq.data());
+      for (std::size_t t = 0u; t < pairs.size(); ++t) {
+        auto const b = Utils::Vector3d{sx[t], sy[t], sz[t]};
+        // bitwise equal to the scalar fold unless the compiler contracts
+        // multiply-adds differently in the two (-ffp-contract, FMA targets)
+        auto const reference = fold.dist2(r, b);
+        BOOST_CHECK_LE(std::abs(dsq[t] - reference),
+                       1e-14 * std::max(1., reference));
+      }
+    }
+  }
+}
+
 BOOST_AUTO_TEST_CASE(cuboid_minimum_image_non_periodic_axis_test) {
   auto const box_l = Utils::Vector3d{2.5, 4.0, 7.25};
 

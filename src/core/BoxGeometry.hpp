@@ -25,10 +25,13 @@
 #include <utils/Vector.hpp>
 #include <utils/attributes.hpp>
 
+#include <bit>
 #include <bitset>
 #include <cassert>
 #include <cmath>
 #include <concepts>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -158,6 +161,57 @@ public:
       dx0[t] = a0;
       dx1[t] = a1;
       dx2[t] = a2;
+      auto acc = 0.;
+      acc += a0 * a0;
+      acc += a1 * a1;
+      acc += a2 * a2;
+      dsq[t] = acc;
+    }
+  }
+
+  /**
+   * @brief Batched squared minimum-image distance: one point
+   * (@p xi, @p yi, @p zi) against @p m others held in the SoA arrays
+   * @p sx / @p sy / @p sz, written to @p dsq.
+   *
+   * Same per-axis folds and summation order as @ref dist2, but the
+   * round-to-nearest of the fold is not a <tt>std::rint</tt> call, which is
+   * a library call on baseline x86-64 (no SSE4.1 rounding instruction) and
+   * would prevent vectorization. Instead, 1.5 * 2^52 is added to the
+   * scaled separation: the sum is rounded to an integer by the addition
+   * itself (in the default rounding mode, the same as <tt>std::rint</tt>),
+   * and that integer is read from the low 32 bits of its significand.
+   * The integer is extracted from the bit pattern rather than by
+   * subtracting 1.5 * 2^52 again, because value-changing optimizations
+   * (<tt>-ffast-math</tt>, <tt>-fassociative-math</tt>) are allowed to
+   * fold <tt>(x + c) - c</tt> to <tt>x</tt>, but cannot see through the
+   * bit cast. The result is bitwise-identical to @ref dist2 for separations
+   * below 2^31 box lengths, unless the compiler contracts multiplications
+   * and additions into FMAs (e.g. <tt>-ffp-contract=fast</tt> with an FMA
+   * target), which can change the last bits of the distance and the image
+   * chosen at exact half-box ties in either function.
+   */
+  ESPRESSO_ATTR_ALWAYS_INLINE inline void
+  batch_dist2(double xi, double yi, double zi, std::size_t m, double const *sx,
+              double const *sy, double const *sz, double *dsq) const noexcept {
+    auto constexpr shifter = 0x1.8p52;
+    auto const fold = [](double a, double b, double l, double l_inv) {
+      auto const dx = a - b;
+      auto const bits = std::bit_cast<std::uint64_t>(dx * l_inv + shifter);
+      auto const n = static_cast<double>(
+          static_cast<std::int32_t>(static_cast<std::uint32_t>(bits)));
+      return dx - n * l;
+    };
+    auto const lx = m_length[0u];
+    auto const ly = m_length[1u];
+    auto const lz = m_length[2u];
+    auto const ix = m_length_inv_masked[0u];
+    auto const iy = m_length_inv_masked[1u];
+    auto const iz = m_length_inv_masked[2u];
+    for (std::size_t t = 0; t < m; ++t) {
+      auto const a0 = fold(xi, sx[t], lx, ix);
+      auto const a1 = fold(yi, sy[t], ly, iy);
+      auto const a2 = fold(zi, sz[t], lz, iz);
       auto acc = 0.;
       acc += a0 * a0;
       acc += a1 * a1;

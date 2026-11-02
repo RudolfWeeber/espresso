@@ -36,10 +36,14 @@
 #include "caliper_utils.hpp"
 #endif
 
+#include <algorithm>
+#include <cstddef>
 #include <functional>
 #include <iterator>
 #include <span>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 commit_particle(Particle const &p, auto const index,
@@ -83,6 +87,175 @@ commit_particle(Particle const &p, auto const index,
 #endif
 }
 
+/**
+ * @brief Link-cell pair search for cuboid boxes.
+ *
+ * Finds the same pairs, in the same order, as the scalar loops of
+ * @ref link_cell_kokkos, but splits the candidate test in two stages. Once
+ * per call, the positions of all particles in the local cells and their
+ * neighbor cells are copied into SoA arrays, cell by cell, together with
+ * the particle's local index (-1 for particles that are skipped). For each
+ * particle, the squared minimum-image distances to a block of candidates
+ * are then computed by a branch-free loop over these arrays that the
+ * compiler can vectorize. Only candidates within the global
+ * (cutoff + skin) bound of the criterion, a small fraction of the
+ * candidates in the 27-cell neighborhood, go on to the index filter and
+ * the full criterion, which reads the particle data.
+ */
+inline void link_cell_cuboid(
+    std::span<Cell *const> cells, CuboidMinimumImage const &minimum_image,
+    auto const &verlet_criterion,
+    Kokkos::View<int *, Kokkos::DefaultHostExecutionSpace> const &id_to_index,
+    int const max_id, auto const &intra_operator, auto const &inter_operator) {
+  using execution_space = Kokkos::DefaultHostExecutionSpace;
+
+  // slots: the local cells first (slot i = cells[i]), then the neighbor
+  // cells that are not local (ghost cells), in order of first appearance
+  std::vector<Cell const *> slot_cells(cells.begin(), cells.end());
+  std::unordered_map<Cell const *, std::size_t> slot_of;
+  slot_of.reserve(2u * cells.size());
+  for (std::size_t i = 0; i < cells.size(); ++i) {
+    slot_of.emplace(cells[i], i);
+  }
+  // red neighbor slots of each local cell
+  std::vector<std::size_t> neighbor_slots;
+  std::vector<std::size_t> neighbor_begin(cells.size() + 1u, 0u);
+  for (std::size_t i = 0; i < cells.size(); ++i) {
+    for (auto const *neighbor : cells[i]->neighbors().red()) {
+      auto const [it, inserted] =
+          slot_of.try_emplace(neighbor, slot_cells.size());
+      if (inserted) {
+        slot_cells.emplace_back(neighbor);
+      }
+      neighbor_slots.emplace_back(it->second);
+    }
+    neighbor_begin[i + 1u] = neighbor_slots.size();
+  }
+  // particle range [offset[k], offset[k + 1]) of slot k
+  auto const n_slots = slot_cells.size();
+  std::vector<std::size_t> offset(n_slots + 1u, 0u);
+  for (std::size_t k = 0; k < n_slots; ++k) {
+    offset[k + 1u] = offset[k] + slot_cells[k]->particles().size();
+  }
+  auto const n_candidates = offset[n_slots];
+  std::vector<double> pos_x(n_candidates);
+  std::vector<double> pos_y(n_candidates);
+  std::vector<double> pos_z(n_candidates);
+  std::vector<int> index(n_candidates);
+  std::vector<Particle const *> particle(n_candidates);
+  kokkos_parallel_range_for<execution_space>(
+      "verlet_pack", std::size_t{0}, n_slots, [&](std::size_t const k) {
+        auto j = offset[k];
+        for (auto const &p : slot_cells[k]->particles()) {
+          auto const &pos = p.pos();
+          pos_x[j] = pos[0];
+          pos_y[j] = pos[1];
+          pos_z[j] = pos[2];
+          index[j] = (p.id() <= max_id) ? id_to_index(p.id()) : -1;
+          particle[j] = &p;
+          ++j;
+        }
+      });
+  Kokkos::fence();
+
+  // test particle @p a against the candidates [begin, end)
+  auto const max_cut2 = verlet_criterion.eff_max_cut2();
+  auto const scan = [&, max_cut2](std::size_t const a, std::size_t const begin,
+                                  std::size_t const end, auto const &op) {
+    constexpr std::size_t block_size = 64u;
+    double dist2[block_size];
+    for (auto j0 = begin; j0 < end; j0 += block_size) {
+      auto const m = std::min(block_size, end - j0);
+      minimum_image.batch_dist2(pos_x[a], pos_y[a], pos_z[a], m,
+                                pos_x.data() + j0, pos_y.data() + j0,
+                                pos_z.data() + j0, dist2);
+      for (std::size_t t = 0; t < m; ++t) {
+        auto const j = j0 + t;
+        if (dist2[t] <= max_cut2 and index[j] >= 0 and
+            verlet_criterion(*particle[a], *particle[j], dist2[t])) {
+          op(index[a], index[j]);
+        }
+      }
+    }
+  };
+
+  auto intra_kernel = [&](const int i) {
+    auto const end = offset[i + 1];
+    for (auto a = offset[i]; a < end; ++a) {
+      if (index[a] >= 0) {
+        // pairs in this cell
+        scan(a, a + 1u, end, intra_operator);
+      }
+    }
+  };
+
+  auto inter_kernel = [&](const int i) {
+    for (auto a = offset[i]; a < offset[i + 1]; ++a) {
+      if (index[a] >= 0) {
+        // pairs with neighboring cells
+        for (auto n = neighbor_begin[i]; n < neighbor_begin[i + 1]; ++n) {
+          auto const k = neighbor_slots[n];
+          scan(a, offset[k], offset[k + 1u], inter_operator);
+        }
+      }
+    }
+  };
+
+  kokkos_parallel_range_for<execution_space>("intra", std::size_t{0},
+                                             cells.size(), intra_kernel);
+  Kokkos::fence();
+
+  kokkos_parallel_range_for<execution_space>("inter", std::size_t{0},
+                                             cells.size(), inter_kernel);
+  Kokkos::fence();
+}
+
+/**
+ * @brief Whether @ref link_cell_cuboid is expected to be faster than the
+ * scalar loops of @ref link_cell_kokkos.
+ *
+ * The prefilter has a serial setup cost per call that is proportional to
+ * the number of cells (slot map, neighbor slots and particle ranges),
+ * while its gain is proportional to the number of candidate pairs, which
+ * are processed in parallel. The candidate pairs of a cell scale with the
+ * square of its occupation, so the prefilter is used when the mean squared
+ * occupation of the local cells exceeds a threshold that grows linearly
+ * with the number of threads. The coefficients are the measured break-even
+ * points (cell-list force loop, Lennard-Jones and WCA liquids and gases)
+ * on AMD EPYC 9374F with 1, 4, 8 and 16 threads, rounded up: below them,
+ * in dilute systems, the setup dominates and the scalar loops are faster.
+ */
+inline bool link_cell_prefilter_pays_off(std::span<Cell *const> cells) {
+  if (cells.empty()) {
+    return false;
+  }
+  auto const n_threads = Kokkos::num_threads();
+  auto const threshold = 8. + 4.5 * static_cast<double>(n_threads);
+  auto const occupation2 = [cells](std::size_t const i) {
+    auto const n = cells[i]->particles().size();
+    return n * n;
+  };
+  std::size_t sum_n2 = 0u;
+  if (n_threads > 1) {
+    // one cache miss per cell: parallel, so the test stays negligible
+    // in dilute systems with many cells
+    Kokkos::parallel_reduce(
+        "verlet_prefilter_occupation",
+        Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(std::size_t{0},
+                                                               cells.size()),
+        [&occupation2](std::size_t const i, std::size_t &acc) {
+          acc += occupation2(i);
+        },
+        sum_n2);
+  } else {
+    for (std::size_t i = 0u; i < cells.size(); ++i) {
+      sum_n2 += occupation2(i);
+    }
+  }
+  return static_cast<double>(sum_n2) >=
+         threshold * static_cast<double>(cells.size());
+}
+
 ESPRESSO_ATTR_ALWAYS_INLINE inline void link_cell_kokkos(
     std::span<Cell *const> cells, BoxGeometry const &box_geo,
     auto const &verlet_criterion,
@@ -92,6 +265,13 @@ ESPRESSO_ATTR_ALWAYS_INLINE inline void link_cell_kokkos(
   // implementation detail: max_id refers to the max local particle id,
   // but ghost particles from other ranks may have larger particle ids;
   // -1 is used as a sentinel value for particle ids from other threads
+
+  if (box_geo.type() != BoxType::LEES_EDWARDS and
+      link_cell_prefilter_pays_off(cells)) {
+    link_cell_cuboid(cells, box_geo.cuboid_minimum_image(), verlet_criterion,
+                     id_to_index, max_id, intra_operator, inter_operator);
+    return;
+  }
 
   // Hoist the cuboid minimum-image parameters by value: the fold runs once
   // per candidate pair and must not chase the BoxGeometry reference for its
