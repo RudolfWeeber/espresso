@@ -393,14 +393,10 @@ ParticleHandle::ParticleHandle() {
       {"torque_lab",
        [this](Variant const &value) {
          set_particle_property([&value](Particle &p) {
-           auto const torque = get_value<Utils::Vector3d>(value);
-           p.torque() = convert_vector_space_to_body(p, torque);
+           p.torque() = get_value<Utils::Vector3d>(value);
          });
        },
-       [this]() {
-         auto &p = get_particle_data(m_pid);
-         return convert_vector_body_to_space(p, p.torque());
-       }},
+       [this]() { return get_particle_data(m_pid).torque(); }},
 #endif // ESPRESSO_ROTATION
 #ifdef ESPRESSO_ROTATIONAL_INERTIA
       {"rinertia",

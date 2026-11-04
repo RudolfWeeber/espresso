@@ -42,9 +42,9 @@ inline void brownian_dynamics_rotator(BrownianThermostat const &brownian,
                                       double kT) {
   if (!p.can_rotate())
     return;
-  convert_torque_to_body_frame_apply_fix(p);
-  p.quat() = bd_drag_rot(brownian.gamma_rotation, p, time_step);
-  p.omega() = bd_drag_vel_rot(brownian.gamma_rotation, p);
+  auto const torque_body = torque_in_body_frame(p);
+  p.quat() = bd_drag_rot(brownian.gamma_rotation, p, torque_body, time_step);
+  p.omega() = bd_drag_vel_rot(brownian.gamma_rotation, p, torque_body);
   p.quat() = bd_random_walk_rot(brownian, p, time_step, kT);
   p.omega() += bd_random_walk_vel_rot(brownian, p);
 }

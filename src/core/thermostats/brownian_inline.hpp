@@ -239,11 +239,12 @@ inline Utils::Vector3d bd_random_walk_vel(BrownianThermostat const &brownian,
  *  An analogy of eq. (14.39) in @cite schlick10a.
  *  @param[in]     brownian_gamma_rotation Brownian rotational gamma
  *  @param[in]     p              Particle
+ *  @param[in]     torque_body    Torque in the body-fixed frame
  *  @param[in]     dt             Time step
  */
 inline Utils::Quaternion<double>
-bd_drag_rot(Thermostat::GammaType const &brownian_gamma_rotation, Particle &p,
-            double dt) {
+bd_drag_rot(Thermostat::GammaType const &brownian_gamma_rotation,
+            Particle const &p, Utils::Vector3d const &torque_body, double dt) {
   Thermostat::GammaType gamma;
 
 #ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
@@ -260,9 +261,9 @@ bd_drag_rot(Thermostat::GammaType const &brownian_gamma_rotation, Particle &p,
     if (p.can_rotate_around(j)) {
       // only a conservative part of the torque is used here
 #ifndef ESPRESSO_PARTICLE_ANISOTROPY
-      dphi[j] = p.torque()[j] * dt / gamma;
+      dphi[j] = torque_body[j] * dt / gamma;
 #else
-      dphi[j] = p.torque()[j] * dt / gamma[j];
+      dphi[j] = torque_body[j] * dt / gamma[j];
 #endif // ESPRESSO_PARTICLE_ANISOTROPY
     }
   }
@@ -279,10 +280,11 @@ bd_drag_rot(Thermostat::GammaType const &brownian_gamma_rotation, Particle &p,
  *  An analogy of the 1st term of eq. (14.34) in @cite schlick10a.
  *  @param[in]     brownian_gamma_rotation Brownian rotational gamma
  *  @param[in]     p              Particle
+ *  @param[in]     torque_body    Torque in the body-fixed frame
  */
 inline Utils::Vector3d
 bd_drag_vel_rot(Thermostat::GammaType const &brownian_gamma_rotation,
-                Particle const &p) {
+                Particle const &p, Utils::Vector3d const &torque_body) {
   Thermostat::GammaType gamma;
 
 #ifdef ESPRESSO_THERMOSTAT_PER_PARTICLE
@@ -298,9 +300,9 @@ bd_drag_vel_rot(Thermostat::GammaType const &brownian_gamma_rotation,
   for (unsigned int j = 0; j < 3; j++) {
     if (p.can_rotate_around(j)) {
 #ifdef ESPRESSO_PARTICLE_ANISOTROPY
-      omega[j] = p.torque()[j] / gamma[j];
+      omega[j] = torque_body[j] / gamma[j];
 #else
-      omega[j] = p.torque()[j] / gamma;
+      omega[j] = torque_body[j] / gamma;
 #endif // ESPRESSO_PARTICLE_ANISOTROPY
     }
   }

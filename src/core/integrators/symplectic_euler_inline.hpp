@@ -55,8 +55,9 @@ inline void symplectic_euler_rotator_1(Particle &p, double time_step) {
   if (p.can_rotate()) {
     // For rotation, we also use symplectic Euler scheme
     // Update angular velocity first, then orientation
-    convert_torque_propagate_omega(p, time_step);
-    propagate_omega_quat_particle(p, time_step);
+    auto const torque_body = torque_in_body_frame(p);
+    propagate_omega(p, torque_body, time_step);
+    propagate_omega_quat_particle(p, torque_body, time_step);
   }
 }
 

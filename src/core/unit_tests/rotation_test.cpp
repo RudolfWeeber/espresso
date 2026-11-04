@@ -67,7 +67,7 @@ BOOST_AUTO_TEST_CASE(convert_vector_space_to_body_test) {
   }
 }
 
-BOOST_AUTO_TEST_CASE(convert_torque_to_body_frame_apply_fix_test) {
+BOOST_AUTO_TEST_CASE(torque_in_body_frame_test) {
   auto const t_in = Utils::Vector3d{{1., 2., 3.}};
   {
     // test particle torque conversion
@@ -77,8 +77,9 @@ BOOST_AUTO_TEST_CASE(convert_torque_to_body_frame_apply_fix_test) {
       Utils::Vector3d t_ref;
       std::tie(p.quat(), t_ref) = Testing::setup_trivial_quat(i, t_in);
       p.torque() = t_in;
-      convert_torque_to_body_frame_apply_fix(p);
-      auto const t_out = p.torque();
+      auto const t_out = torque_in_body_frame(p);
+      // the stored torque stays in the space-fixed frame
+      BOOST_TEST(p.torque() == t_in, boost::test_tools::per_element());
       for (unsigned int j : {0u, 1u, 2u}) {
         BOOST_CHECK_CLOSE(t_out[j], t_ref[j], tol);
       }
@@ -94,8 +95,8 @@ BOOST_AUTO_TEST_CASE(convert_torque_to_body_frame_apply_fix_test) {
       p.torque() = t_in;
       auto t_ref = t_in;
       t_ref[j] = 0.;
-      convert_torque_to_body_frame_apply_fix(p);
-      BOOST_TEST(p.torque() == t_ref, boost::test_tools::per_element());
+      auto const t_out = torque_in_body_frame(p);
+      BOOST_TEST(t_out == t_ref, boost::test_tools::per_element());
     }
   }
   {
@@ -104,9 +105,9 @@ BOOST_AUTO_TEST_CASE(convert_torque_to_body_frame_apply_fix_test) {
     p.set_cannot_rotate_all_axes();
     p.quat() = Utils::Quaternion<double>::identity();
     p.torque() = t_in;
-    convert_torque_to_body_frame_apply_fix(p);
+    auto const t_out = torque_in_body_frame(p);
     auto const t_ref = Utils::Vector3d{};
-    BOOST_TEST(p.torque() == t_ref, boost::test_tools::per_element());
+    BOOST_TEST(t_out == t_ref, boost::test_tools::per_element());
   }
 }
 
@@ -163,7 +164,7 @@ BOOST_AUTO_TEST_CASE(propagate_omega_quat_particle_test) {
     // test edge case: null quaternion and no rotation
     p.quat() = {0., 0., 0., 0.};
     p.omega() = {0., 0., 0.};
-    propagate_omega_quat_particle(p, 0.01);
+    propagate_omega_quat_particle(p, p.torque(), 0.01);
     auto const quat = p.quat();
     auto const quat_ref = Utils::Quaternion<double>::identity();
     for (unsigned int i : {0u, 1u, 2u, 3u}) {
@@ -178,7 +179,7 @@ BOOST_AUTO_TEST_CASE(propagate_omega_quat_particle_test) {
       p.quat() = Utils::Quaternion<double>::identity();
       p.omega() = {0., 0., 0.};
       p.omega()[j] = 2.;
-      propagate_omega_quat_particle(p, time_step);
+      propagate_omega_quat_particle(p, p.torque(), time_step);
       auto const quat = p.quat();
       auto quat_ref = Utils::Quaternion<double>::identity();
       quat_ref[1 + j] = time_step;

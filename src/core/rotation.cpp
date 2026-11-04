@@ -37,8 +37,6 @@
 
 #include "rotation.hpp"
 
-#include "ParticleRange.hpp"
-
 #include <utils/Vector.hpp>
 #include <utils/mask.hpp>
 
@@ -51,13 +49,15 @@
  *  notation for quaternions, while @cite sonnenschein85a uses scalar-last
  *  notation.
  *  @param[in]  p    Particle
+ *  @param[in]  torque_body  Torque in the body-fixed frame
  *  @param[out] Qd   First derivative of the particle quaternion
  *  @param[out] Qdd  Second derivative of the particle quaternion
  *  @param[out] S    Function of @p Qd and @p Qdd, used to evaluate the
  *                   Lagrange parameter lambda
  *  @param[out] Wd   Angular acceleration of the particle
  */
-static void define_Qdd(Particle const &p, Utils::Quaternion<double> &Qd,
+static void define_Qdd(Particle const &p, Utils::Vector3d const &torque_body,
+                       Utils::Quaternion<double> &Qd,
                        Utils::Quaternion<double> &Qdd, Utils::Vector3d &S,
                        Utils::Vector3d &Wd) {
   /* calculate the first derivative of the quaternion */
@@ -77,16 +77,16 @@ static void define_Qdd(Particle const &p, Utils::Quaternion<double> &Qd,
   /* Calculate the angular acceleration. */
   /* Eq. (5) @cite sonnenschein85a */
   if (p.can_rotate_around(0))
-    Wd[0] = (p.torque()[0] + p.omega()[1] * p.omega()[2] *
-                                 (p.rinertia()[1] - p.rinertia()[2])) /
+    Wd[0] = (torque_body[0] + p.omega()[1] * p.omega()[2] *
+                                  (p.rinertia()[1] - p.rinertia()[2])) /
             p.rinertia()[0];
   if (p.can_rotate_around(1))
-    Wd[1] = (p.torque()[1] + p.omega()[2] * p.omega()[0] *
-                                 (p.rinertia()[2] - p.rinertia()[0])) /
+    Wd[1] = (torque_body[1] + p.omega()[2] * p.omega()[0] *
+                                  (p.rinertia()[2] - p.rinertia()[0])) /
             p.rinertia()[1];
   if (p.can_rotate_around(2))
-    Wd[2] = (p.torque()[2] + p.omega()[0] * p.omega()[1] *
-                                 (p.rinertia()[0] - p.rinertia()[1])) /
+    Wd[2] = (torque_body[2] + p.omega()[0] * p.omega()[1] *
+                                  (p.rinertia()[0] - p.rinertia()[1])) /
             p.rinertia()[2];
 
   auto const S1 = Qd.norm2();
@@ -126,7 +126,9 @@ static void define_Qdd(Particle const &p, Utils::Quaternion<double> &Qd,
  *
  *  \todo implement for fixed_coord_flag
  */
-void propagate_omega_quat_particle(Particle &p, double time_step) {
+void propagate_omega_quat_particle(Particle &p,
+                                   Utils::Vector3d const &torque_body,
+                                   double time_step) {
   assert(p.can_rotate());
 
   Utils::Quaternion<double> Qd{}, Qdd{};
@@ -135,7 +137,7 @@ void propagate_omega_quat_particle(Particle &p, double time_step) {
   // Clear rotational velocity for blocked rotation axes.
   p.omega() = Utils::mask(p.rotation(), p.omega());
 
-  define_Qdd(p, Qd, Qdd, S, Wd);
+  define_Qdd(p, torque_body, Qd, Qdd, S, Wd);
 
   auto const time_step_squared = time_step * time_step;
   auto const time_step_half = 0.5 * time_step;
@@ -160,12 +162,12 @@ void propagate_omega_quat_particle(Particle &p, double time_step) {
   }
 }
 
-void convert_torque_propagate_omega(Particle &p, double time_step) {
+void propagate_omega(Particle &p, Utils::Vector3d const &torque_body,
+                     double time_step) {
   assert(p.can_rotate());
-  convert_torque_to_body_frame_apply_fix(p);
 
   // Propagation of angular velocities
-  p.omega() += hadamard_division(0.5 * time_step * p.torque(), p.rinertia());
+  p.omega() += hadamard_division(0.5 * time_step * torque_body, p.rinertia());
 
   // zeroth estimate of omega
   Utils::Vector3d omega_0 = p.omega();
@@ -186,14 +188,6 @@ void convert_torque_propagate_omega(Particle &p, double time_step) {
     Wd[2] = p.omega()[0] * p.omega()[1] * rinertia_diff_01 / p.rinertia()[2];
 
     p.omega() = omega_0 + (0.5 * time_step) * Wd;
-  }
-}
-
-void convert_initial_torques(const ParticleRange &particles) {
-  for (auto &p : particles) {
-    if (!p.can_rotate())
-      continue;
-    convert_torque_to_body_frame_apply_fix(p);
   }
 }
 

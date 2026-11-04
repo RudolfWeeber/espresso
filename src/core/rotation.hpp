@@ -30,7 +30,6 @@
 #ifdef ESPRESSO_ROTATION
 
 #include "Particle.hpp"
-#include "ParticleRange.hpp"
 
 #include <utils/Vector.hpp>
 #include <utils/mask.hpp>
@@ -45,13 +44,21 @@
 
 /** @brief Propagate angular velocities and update quaternions on a
  *  particle.
+ *  @param p            Particle
+ *  @param torque_body  Torque in the body-fixed frame
+ *  @param time_step    Time step
  */
-void propagate_omega_quat_particle(Particle &p, double time_step);
+void propagate_omega_quat_particle(Particle &p,
+                                   Utils::Vector3d const &torque_body,
+                                   double time_step);
 
-void convert_torque_propagate_omega(Particle &p, double time_step);
-
-/** Convert torques to the body-fixed frame before the integration loop. */
-void convert_initial_torques(const ParticleRange &particles);
+/** @brief Half-step update of the angular velocity of a particle.
+ *  @param p            Particle
+ *  @param torque_body  Torque in the body-fixed frame
+ *  @param time_step    Time step
+ */
+void propagate_omega(Particle &p, Utils::Vector3d const &torque_body,
+                     double time_step);
 
 // Frame conversion routines
 inline Utils::Vector3d
@@ -141,9 +148,12 @@ inline void local_rotate_particle(Particle &p,
   }
 }
 
-inline void convert_torque_to_body_frame_apply_fix(Particle &p) {
-  auto const torque = convert_vector_space_to_body(p, p.torque());
-  p.torque() = mask(p.rotation(), torque);
+/** @brief Torque of a particle in the body-fixed frame.
+ *  @ref ParticleForce::torque "p.torque()" is stored in the space-fixed
+ *  frame. Components along blocked rotation axes are set to zero.
+ */
+inline Utils::Vector3d torque_in_body_frame(Particle const &p) {
+  return mask(p.rotation(), convert_vector_space_to_body(p, p.torque()));
 }
 
 #endif // ESPRESSO_ROTATION

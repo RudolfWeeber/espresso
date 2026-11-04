@@ -357,7 +357,7 @@ struct ParticleForce {
   Utils::Vector3d f = {0., 0., 0.};
 
 #ifdef ESPRESSO_ROTATION
-  /** torque. */
+  /** torque in the space-fixed frame. */
   Utils::Vector3d torque = {0., 0., 0.};
 #endif
 

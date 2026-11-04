@@ -167,13 +167,9 @@ class ParticleHandle(ScriptInterfaceHelper):
         The particle torque in the lab frame.
 
         This property defines the torque of this particle
-        in the fixed frame (or laboratory frame).
-
-        .. note::
-           The orientation of the particle
-           (:attr:`~espressomd.particle_data.ParticleHandle.quat`) must be
-           set before setting this property, otherwise the conversion from
-           lab to body frame will not be handled properly.
+        in the fixed frame (or laboratory frame). It includes components
+        along rotation axes that are disabled via
+        :attr:`~espressomd.particle_data.ParticleHandle.rotation`.
 
     rinertia: (3,) array_like of :obj:`float`
         The particle rotational inertia.
@@ -299,9 +295,9 @@ class ParticleHandle(ScriptInterfaceHelper):
 
     rotation: (3,) array_like of :obj:`bool`
         Switches the particle's rotational degrees of freedom in the
-        Cartesian axes in the body-fixed frame. The content of the torque
-        and omega variables are meaningless for the co-ordinates for which
-        rotation is disabled.
+        Cartesian axes in the body-fixed frame. The content of the omega
+        variables is meaningless for the co-ordinates for which rotation
+        is disabled.
 
         The default is not to integrate any rotational degrees of freedom.
 

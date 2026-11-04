@@ -130,7 +130,8 @@ BOOST_AUTO_TEST_CASE(test_brownian_dynamics) {
     p.set_cannot_rotate_all_axes();
     p.set_can_rotate_around(0, true);
     auto const phi = time_step * dispersion_rotation[0];
-    auto const out = bd_drag_rot(brownian.gamma_rotation, p, time_step);
+    auto const out =
+        bd_drag_rot(brownian.gamma_rotation, p, p.torque(), time_step);
     BOOST_CHECK_CLOSE(out[0], std::cos(phi / 2), tol);
     BOOST_CHECK_CLOSE(out[1], std::sin(phi / 2), tol);
     BOOST_CHECK_CLOSE(out[2], 0.0, tol);
@@ -142,7 +143,7 @@ BOOST_AUTO_TEST_CASE(test_brownian_dynamics) {
     auto p = particle_factory();
     p.set_can_rotate_all_axes();
     auto const ref = dispersion_rotation;
-    auto const out = bd_drag_vel_rot(brownian.gamma_rotation, p);
+    auto const out = bd_drag_vel_rot(brownian.gamma_rotation, p, p.torque());
     BOOST_CHECK_CLOSE(out[0], ref[0], tol);
     BOOST_CHECK_CLOSE(out[1], ref[1], tol);
     BOOST_CHECK_CLOSE(out[2], ref[2], tol);

@@ -52,7 +52,6 @@
 #include "nonbonded_interactions/nonbonded_interaction_data.hpp"
 #include "npt.hpp"
 #include "rattle.hpp"
-#include "rotation.hpp"
 #include "signalhandling.hpp"
 #include "stokesian_dynamics/sd_interface.hpp"
 #include "system/System.hpp"
@@ -669,12 +668,6 @@ int System::System::integrate(int n_steps, int reuse_forces) {
     // the reduce immediately.
     if (cell_structure->has_pending_ghost_reduce()) {
       cell_structure->ghosts_reduce_forces_finish();
-    }
-
-    if (propagation.integ_switch != INTEG_METHOD_STEEPEST_DESCENT) {
-#ifdef ESPRESSO_ROTATION
-      convert_initial_torques(cell_structure->local_particles());
-#endif
     }
 
 #ifdef ESPRESSO_CALIPER
