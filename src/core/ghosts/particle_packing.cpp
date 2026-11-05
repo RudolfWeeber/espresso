@@ -27,7 +27,9 @@
 #include "BoxGeometry.hpp"
 #include "Particle.hpp"
 #include "ghosts.hpp"
+#include "ghosts/threaded_cell_loop.hpp"
 
+#include <utils/attributes.hpp>
 #include <utils/serialization/memcpy_archive.hpp>
 
 #include <boost/archive/binary_iarchive.hpp>
@@ -79,9 +81,12 @@ enum class SerializationDirection { SAVE, LOAD };
  * The reduction can take place during the save stage, e.g. to apply
  * a ghost shift to the particle position, or during the load stage,
  * e.g. to transfer momentum between particles in two local cells.
+ * Forced inline: it runs once per particle in every ghost update, and GCC
+ * otherwise keeps it as an out-of-line call once the threaded loops are
+ * added to the packing functions.
  */
 template <class Archive>
-static void
+ESPRESSO_ATTR_ALWAYS_INLINE static inline void
 serialize_and_reduce(Archive &ar, Particle &p, unsigned int data_parts,
                      ReductionPolicy policy, SerializationDirection direction,
                      BoxGeometry const &box_geo,
@@ -215,6 +220,19 @@ static void prepare_ghost_cell(ParticleList *cell, std::size_t size) {
   }
 }
 
+/**
+ * @brief Offsets of the cells in a buffer, in particles.
+ * Entry i is the number of particles in the cells before cell i, the last
+ * entry is the total number of particles.
+ */
+static auto cell_offsets(std::span<ParticleList *const> cells) {
+  std::vector<std::size_t> offsets(cells.size() + 1u, 0u);
+  for (std::size_t i = 0u; i < cells.size(); ++i) {
+    offsets[i + 1u] = offsets[i] + cells[i]->size();
+  }
+  return offsets;
+}
+
 std::size_t calc_transmit_size(BoxGeometry const &box_geo,
                                unsigned data_parts) {
   SerializationSizeCalculator sizeof_archive;
@@ -243,6 +261,27 @@ void pack_cells(CommBuf &buf, std::span<ParticleList *const> cells,
   /* reallocate send buffer */
   buf.resize(calc_transmit_size(cells, box_geo, data_parts));
   buf.bonds().clear();
+
+  if (not(data_parts & (GHOSTTRANS_PARTNUM | GHOSTTRANS_BONDS)) and
+      cells.size() > 1u and threads_available()) {
+    auto const offsets = cell_offsets(cells);
+    if (use_threaded_loop(offsets.back())) {
+      // every particle takes the same number of bytes, so each cell has a
+      // fixed slice of the buffer and the cells can be packed in parallel
+      auto const part_size = calc_transmit_size(box_geo, data_parts);
+      auto const buffer = buf.make_span();
+      threaded_loop("ghost_pack_cells", cells.size(), [&](std::size_t i) {
+        auto ar = Utils::MemcpyOArchive{buffer.subspan(
+            offsets[i] * part_size, cells[i]->size() * part_size)};
+        for (auto &p : *cells[i]) {
+          serialize_and_reduce(ar, p, data_parts, ReductionPolicy::MOVE,
+                               SerializationDirection::SAVE, box_geo, &shift);
+        }
+        assert(ar.bytes_written() == cells[i]->size() * part_size);
+      });
+      return;
+    }
+  }
 
   auto archiver = Utils::MemcpyOArchive{buf.make_span()};
 
@@ -284,10 +323,35 @@ void unpack_cells(CommBuf &buf, std::span<ParticleList *const> cells,
       prepare_ghost_cell(part_list, np);
     }
   } else {
-    for (auto part_list : cells) {
-      for (auto &p : *part_list) {
-        serialize_and_reduce(archiver, p, data_parts, ReductionPolicy::MOVE,
-                             SerializationDirection::LOAD, box_geo, nullptr);
+    auto unpacked = false;
+    if (not(data_parts & GHOSTTRANS_BONDS) and cells.size() > 1u and
+        threads_available()) {
+      auto const offsets = cell_offsets(cells);
+      if (use_threaded_loop(offsets.back())) {
+        // each ghost cell is filled by exactly one message, so the cells can
+        // be unpacked in parallel from their fixed slices of the buffer
+        auto const part_size = calc_transmit_size(box_geo, data_parts);
+        auto const buffer = buf.make_span();
+        threaded_loop("ghost_unpack_cells", cells.size(), [&](std::size_t i) {
+          auto ar = Utils::MemcpyIArchive{buffer.subspan(
+              offsets[i] * part_size, cells[i]->size() * part_size)};
+          for (auto &p : *cells[i]) {
+            serialize_and_reduce(ar, p, data_parts, ReductionPolicy::MOVE,
+                                 SerializationDirection::LOAD, box_geo,
+                                 nullptr);
+          }
+          assert(ar.bytes_read() == cells[i]->size() * part_size);
+        });
+        archiver.skip(offsets.back() * part_size);
+        unpacked = true;
+      }
+    }
+    if (not unpacked) {
+      for (auto part_list : cells) {
+        for (auto &p : *part_list) {
+          serialize_and_reduce(archiver, p, data_parts, ReductionPolicy::MOVE,
+                               SerializationDirection::LOAD, box_geo, nullptr);
+        }
       }
     }
     if (data_parts & GHOSTTRANS_BONDS) {
@@ -309,24 +373,62 @@ void unpack_cells(CommBuf &buf, std::span<ParticleList *const> cells,
   buf.bonds().clear();
 }
 
+template <class Archive>
+static void add_force_and_torque(Archive &ar, Particle &part,
+                                 unsigned data_parts) {
+  if (data_parts & GHOSTTRANS_FORCE) {
+    Utils::Vector3d force;
+    ar >> force;
+    part.force() += force;
+  }
+#ifdef ESPRESSO_ROTATION
+  if (data_parts & GHOSTTRANS_TORQUE) {
+    Utils::Vector3d torque;
+    ar >> torque;
+    part.torque() += torque;
+  }
+#endif
+}
+
 void add_forces(CommBuf &buf, std::span<ParticleList *const> cells,
                 unsigned data_parts) {
+  if (cells.size() > 1u and threads_available()) {
+    auto const offsets = cell_offsets(cells);
+    if (use_threaded_loop(offsets.back())) {
+      // a local cell can occur several times in one buffer (images in several
+      // directions): one thread adds all occurrences of a cell, in buffer
+      // order, which gives the same summation order as the serial loop
+      std::size_t part_size = 0u;
+      if (data_parts & GHOSTTRANS_FORCE) {
+        part_size += sizeof(Utils::Vector3d);
+      }
+#ifdef ESPRESSO_ROTATION
+      if (data_parts & GHOSTTRANS_TORQUE) {
+        part_size += sizeof(Utils::Vector3d);
+      }
+#endif
+      assert(part_size * offsets.back() == buf.size());
+      auto const buffer = buf.make_span();
+      auto const groups = group_by_target_cell(
+          cells.size(), [&cells](std::size_t i) { return cells[i]; });
+      threaded_loop("ghost_add_forces", groups.size(), [&](std::size_t g) {
+        for (auto k = groups.begin[g]; k < groups.begin[g + 1u]; ++k) {
+          auto const i = groups.order[k];
+          auto ar = Utils::MemcpyIArchive{buffer.subspan(
+              offsets[i] * part_size, cells[i]->size() * part_size)};
+          for (Particle &part : *cells[i]) {
+            add_force_and_torque(ar, part, data_parts);
+          }
+        }
+      });
+      return;
+    }
+  }
   /* put back data */
   auto archiver = Utils::MemcpyIArchive{buf.make_span()};
   for (auto &part_list : cells) {
     for (Particle &part : *part_list) {
-      if (data_parts & GHOSTTRANS_FORCE) {
-        Utils::Vector3d force;
-        archiver >> force;
-        part.force() += force;
-      }
-#ifdef ESPRESSO_ROTATION
-      if (data_parts & GHOSTTRANS_TORQUE) {
-        Utils::Vector3d torque;
-        archiver >> torque;
-        part.torque() += torque;
-      }
-#endif
+      add_force_and_torque(archiver, part, data_parts);
     }
   }
 }

@@ -35,6 +35,7 @@
 #include "communication.hpp"
 #include "ghosts.hpp"
 #include "ghosts/HaloExchange.hpp"
+#include "ghosts/threaded_cell_loop.hpp"
 #include "integrators/Propagation.hpp"
 #include "kokkos_helpers.hpp"
 #include "lees_edwards/lees_edwards.hpp"
@@ -64,6 +65,7 @@
 #include <iterator>
 #include <memory>
 #include <numbers>
+#include <numeric>
 #include <optional>
 #include <ranges>
 #include <set>
@@ -314,6 +316,33 @@ void CellStructure::update_bond_storage(int &pair_count, int &angle_count,
       }
     } catch (BondResolutionError const &) {
       bond_resolution_error(partner_ids);
+    }
+  }
+}
+
+void CellStructure::ghosts_reset_forces() {
+  auto const cells = decomposition().ghost_cells();
+  auto const reset_cell = [&cells](std::size_t const i) {
+    for (auto &p : cells[i]->particles()) {
+      p.force_and_torque() = {};
+    }
+  };
+  // threaded above a few hundred ghosts: the loop touches one cold cache
+  // line per ghost
+  auto const n_ghosts = [&cells]() {
+    return std::accumulate(cells.begin(), cells.end(), std::size_t{0},
+                           [](std::size_t sum, Cell const *cell) {
+                             return sum + cell->particles().size();
+                           });
+  };
+  if (GhostComm::threads_available() and
+      GhostComm::use_threaded_loop(n_ghosts())) {
+    kokkos_parallel_range_for("ghosts_reset_forces", std::size_t{0},
+                              cells.size(), reset_cell);
+    Kokkos::fence();
+  } else {
+    for (std::size_t i = 0u; i < cells.size(); ++i) {
+      reset_cell(i);
     }
   }
 }

@@ -33,6 +33,7 @@
 #include "ghosts/HaloPlan.hpp"
 #include "ghosts/HaloPlanValidator.hpp"
 #include "ghosts/particle_packing.hpp"
+#include "ghosts/threaded_cell_loop.hpp"
 
 #include <boost/mpi/collectives.hpp>
 #include <boost/mpi/nonblocking.hpp>
@@ -43,6 +44,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <numeric>
 #include <span>
 #include <vector>
 
@@ -410,11 +412,38 @@ GhostExchange halo_exchange_start(HaloPlan const &plan, BoxGeometry const &box,
   //           cell data.  In both cases the written and sent cell sets are
   //           disjoint.  Local copies complete before halo_exchange_finish
   //           unpacks any receive buffer.
-  for (auto const &lc : plan.local) {
+  auto const local_copy = [&](LocalComm const &lc) {
     if (push)
       local_cell_copy(*lc.src, *lc.dst, lc.shift, box, data_parts);
     else
       local_cell_copy(*lc.dst, *lc.src, Utils::Vector3d{}, box, data_parts);
+  };
+  auto const n_copied_particles = [&plan]() {
+    return std::accumulate(
+        plan.local.begin(), plan.local.end(), std::size_t{0},
+        [](std::size_t sum, auto const &lc) { return sum + lc.src->size(); });
+  };
+  if (plan.local.size() > 1u and
+      not(data_parts & (GHOSTTRANS_PARTNUM | GHOSTTRANS_BONDS)) and
+      threads_available() and use_threaded_loop(n_copied_particles())) {
+    // Threaded: the copies are grouped by the cell they write (push: the
+    // self-ghost, written once; reduce: the real cell, which accumulates
+    // the contributions of all its self-ghosts). One thread runs all copies
+    // of a group in plan order, so every cell sees the serial summation
+    // order.
+    auto const groups =
+        group_by_target_cell(plan.local.size(), [&](std::size_t i) {
+          return push ? plan.local[i].dst : plan.local[i].src;
+        });
+    threaded_loop("ghost_local_copies", groups.size(), [&](std::size_t g) {
+      for (auto k = groups.begin[g]; k < groups.begin[g + 1u]; ++k) {
+        local_copy(plan.local[groups.order[k]]);
+      }
+    });
+  } else {
+    for (auto const &lc : plan.local) {
+      local_copy(lc);
+    }
   }
 
   return st;
