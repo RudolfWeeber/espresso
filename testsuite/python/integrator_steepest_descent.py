@@ -122,6 +122,37 @@ class IntegratorSteepestDescent(ut.TestCase):
         np.testing.assert_allclose(np.copy(partcls.f), 0.)
         self.assertEqual(steps, 10)
 
+    @utx.skipIfMissingFeatures(["ROTATION", "EXTERNAL_FORCES"])
+    def test_rotation_blocked_axes(self):
+        """
+        Check that blocked rotation axes are not altered and that their
+        torque components do not count toward the convergence criterion.
+        """
+        gamma = 0.1
+        sd_params = {"f_max": 1e-6, "gamma": gamma, "max_displacement": 0.05}
+        self.system.integrator.set_steepest_descent(**sd_params)
+        # rotation around the only free axis by the torque component along it
+        p = self.system.part.add(pos=[1., 1., 1.], rotation=[True, False, False],
+                                 ext_torque=[0.2, 0.3, 0.])
+        steps = self.system.integrator.run(1)
+        self.assertEqual(steps, 1)
+        angle = gamma * 0.2
+        np.testing.assert_allclose(
+            np.copy(p.quat), [np.cos(angle / 2.), np.sin(angle / 2.), 0., 0.],
+            rtol=0., atol=1e-12)
+        # torque only along blocked axes: converged, orientation unchanged
+        p.ext_torque = [0., 0.3, 0.4]
+        quat = np.copy(p.quat)
+        steps = self.system.integrator.run(1)
+        self.assertEqual(steps, 0)
+        np.testing.assert_allclose(np.copy(p.quat), quat, rtol=0., atol=0.)
+        # particle that cannot rotate at all
+        p.rotation = [False, False, False]
+        p.ext_torque = [0.2, 0.3, 0.4]
+        steps = self.system.integrator.run(1)
+        self.assertEqual(steps, 0)
+        np.testing.assert_allclose(np.copy(p.quat), quat, rtol=0., atol=0.)
+
     def test_rescaling(self):
         self.system.part.add(pos=[5., 5., 4.9], type=0)
         self.system.part.add(pos=[5., 5., 5.1], type=0)

@@ -349,7 +349,8 @@ rotated around an axis parallel to the torque acting on the particle,
 with ``max_displacement`` interpreted as the maximal rotation angle in radians.
 Please be aware of the fact that this needs not to converge to a local
 minimum in periodic boundary conditions. Translational and rotational
-coordinates that are fixed using the ``fix`` and ``rotation`` attribute of particles are not altered.
+coordinates that are fixed using the ``fix`` and ``rotation`` attribute of particles are not altered,
+and their force and torque components do not count toward ``f_max``.
 
 .. _Using a custom convergence criterion:
 
@@ -379,7 +380,8 @@ that achieves this filtering could look like::
 
     particles = system.part.all()
     max_force = np.max(np.linalg.norm(particles.f * np.logical_not(particles.fix), axis=1))
-    max_torque = np.max(np.linalg.norm(particles.torque_lab * np.logical_not(particles.rotation), axis=1))
+    torque_body = np.array([p.convert_vector_space_to_body(p.torque_lab) for p in particles])
+    max_torque = np.max(np.linalg.norm(torque_body * particles.rotation, axis=1))
 
 Virtual sites can also be an issue since the force on the virtual site is
 transferred to the target particle at the beginning of the integration loop.
