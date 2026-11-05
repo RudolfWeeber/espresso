@@ -64,18 +64,17 @@ bool SteepestDescent::propagate(CellStructure &cell_structure) const {
     }
 #ifdef ESPRESSO_ROTATION
     {
-      // Rotational increment
-      auto const dq = gamma * p.torque(); // Vector parallel to torque
-      auto const t = p.torque().norm2();
+      // Torque in the body-fixed frame, zero along blocked rotation axes
+      auto const torque = torque_in_body_frame(p);
+      auto const t = torque.norm2();
 
-      // Normalize rotation axis and compute amount of rotation
+      // Rotational increment parallel to the torque, crop the angle to the
+      // maximum allowed by user
+      auto const dq = gamma * torque;
       auto const l = dq.norm();
       if (l > 0.0) {
-        auto const axis = dq / l;
-        auto const angle = std::clamp(l, -max_displacement, max_displacement);
-
-        // Rotate the particle around axis dq by amount l
-        local_rotate_particle(p, axis, angle);
+        auto const angle = std::min(l, max_displacement);
+        p.quat() = local_rotate_particle_body(p, dq / l, angle);
       }
 
       f_max_local = std::max(f_max_local, t);
