@@ -169,7 +169,6 @@ ESPRESSO_ATTR_ALWAYS_INLINE inline void link_cell_kokkos(
 // @p make_verlet_criterion is a nullary factory: constructing the criterion
 // fills an O(n_types^2) cutoff table, so it is only invoked when the Verlet
 // list is actually rebuilt, not on every force call.
-template <class execution_space = Kokkos::DefaultHostExecutionSpace>
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 update_cabana_state(CellStructure &cell_structure,
                     auto const &make_verlet_criterion, double const pair_cutoff,
@@ -179,7 +178,6 @@ update_cabana_state(CellStructure &cell_structure,
 #endif
   auto const rebuild = cell_structure.prepare_verlet_list_cabana(pair_cutoff);
   auto const &unique_particles = cell_structure.get_unique_particles();
-  auto const n_part = unique_particles.size();
   auto const max_id = cell_structure.get_cached_max_local_particle_id();
   auto &aosoa = cell_structure.get_aosoa();
 
@@ -200,8 +198,8 @@ update_cabana_state(CellStructure &cell_structure,
     // before the sweep repopulates it (read O(1) at the dispatch gate).
     aosoa.reset_any_exclusion();
 #endif
-    kokkos_parallel_range_for<execution_space>(
-        "AoSoA write", std::size_t{0}, n_part,
+    cell_structure.for_each_unique_particle_index(
+        "AoSoA write",
         [&unique_particles, &aosoa, &id_to_index, &cell_structure, &pair_count,
          &angle_count, &dihedral_count](int const index) {
           auto const &p = *unique_particles.at(index);
@@ -303,9 +301,8 @@ update_cabana_state(CellStructure &cell_structure,
     // before the sweep repopulates it (read O(1) at the dispatch gate).
     aosoa.reset_any_exclusion();
 #endif
-    kokkos_parallel_range_for<execution_space>(
-        "AoSoA write", std::size_t{0}, n_part,
-        [&unique_particles, &aosoa](int const index) {
+    cell_structure.for_each_unique_particle_index(
+        "AoSoA write", [&unique_particles, &aosoa](int const index) {
           auto const &p = *unique_particles.at(index);
           commit_particle(p, index, aosoa, false);
         });

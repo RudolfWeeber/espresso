@@ -354,6 +354,7 @@ void CellStructure::set_index_map() {
   auto &unique_particles = m_unique_particles;
   unique_particles.clear();
   unique_particles.resize(count_local_particles());
+  m_n_local_unique_particles = unique_particles.size();
   std::unordered_set<int> registered_index{};
   using execution_space = Kokkos::DefaultHostExecutionSpace;
   int n_threads = execution_space().concurrency();
