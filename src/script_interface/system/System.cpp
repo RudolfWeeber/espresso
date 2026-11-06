@@ -426,6 +426,8 @@ static void rotate_system(CellStructure &cell_structure, double phi,
   cell_structure.set_resort_particles(Cells::RESORT_GLOBAL);
   cell_structure.update_ghosts_and_resort_particle(Cells::DATA_PART_POSITION |
                                                    Cells::DATA_PART_PROPERTIES);
+  // particles may have moved to other ranks
+  clear_particle_node();
 }
 
 Variant System::do_call_method(std::string const &name,
