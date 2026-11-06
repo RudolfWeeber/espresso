@@ -120,23 +120,32 @@ convert_dip_to_quat(const Utils::Vector3d &dip) {
 
 #endif
 
-/** Rotate the particle p around the body-frame defined NORMALIZED axis
- *  @p aBodyFrame by amount @p phi.
+/** @brief Orientation of a particle rotated around a body-frame axis.
+ *  The rotation ignores the rotation flags of the particle. Integrators
+ *  mask the rotation vector with @c p.rotation() before calling this
+ *  function.
+ *  @param p                Particle
+ *  @param axis_body_frame  Rotation axis in the body-fixed frame; it is
+ *                          normalized internally and must be non-zero
+ *  @param phi              Rotation angle
+ *  @return Rotated quaternion
  */
 inline Utils::Quaternion<double>
 local_rotate_particle_body(Particle const &p,
                            const Utils::Vector3d &axis_body_frame,
                            const double phi) {
-  // Rotation turned off entirely?
-  if (!p.can_rotate())
-    return p.quat();
   if (std::abs(phi) > std::numeric_limits<double>::epsilon())
-    return p.quat() *
-           boost::qvm::rot_quat(mask(p.rotation(), axis_body_frame), phi);
+    return p.quat() * boost::qvm::rot_quat(axis_body_frame, phi);
   return p.quat();
 }
 
-/** Rotate the particle p around the NORMALIZED axis aSpaceFrame by amount phi
+/** @brief Rotate a particle around a space-frame axis.
+ *  The rotation ignores the rotation flags of the particle, so blocked
+ *  body-frame axes rotate with the particle.
+ *  @param p                 Particle
+ *  @param axis_space_frame  Rotation axis in the space-fixed frame; it is
+ *                           normalized internally and must be non-zero
+ *  @param phi               Rotation angle
  */
 inline void local_rotate_particle(Particle &p,
                                   const Utils::Vector3d &axis_space_frame,
