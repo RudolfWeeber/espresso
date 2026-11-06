@@ -124,6 +124,23 @@ class Rotation(ut.TestCase):
         np.testing.assert_allclose(
             p.convert_vector_space_to_body(v_r), v, atol=1E-10)
 
+    def test_explicit_rotation_ignores_flags(self):
+        """
+        Check that an explicit rotation turns the particle fully, including
+        particles with blocked or all rotation axes disabled.
+        """
+        system = self.system
+        for rotation in ([False, False, True], [False, False, False]):
+            p = system.part.add(pos=(0, 0, 0), rotation=rotation)
+            np.testing.assert_allclose(np.copy(p.director), [0., 0., 1.],
+                                       atol=1e-14)
+            p.rotate(axis=(2., 0., 0.), angle=np.pi / 2.)
+            np.testing.assert_allclose(np.copy(p.director), [0., -1., 0.],
+                                       atol=1e-14)
+            np.testing.assert_allclose(np.linalg.norm(p.quat), 1., rtol=1e-14)
+            np.testing.assert_array_equal(np.copy(p.rotation), rotation)
+            system.part.clear()
+
     def test_rotation_mpi_communication(self):
         system = self.system
         # place particle in cell with MPI rank 0

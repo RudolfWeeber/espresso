@@ -22,6 +22,7 @@ Testmodule for System.rotate_system()
 
 """
 import unittest as ut
+import unittest_decorators as utx
 import numpy as np
 import espressomd
 import espressomd.propagation
@@ -81,7 +82,22 @@ class RotateSystemTest(ut.TestCase):
             system.rotate_system(phi=pi / 2., theta=pi / 2., alpha=-pi / 2.)
             np.testing.assert_allclose(np.copy(p0.pos), [6, 4, 4])
             np.testing.assert_allclose(np.copy(p1.pos), [4, 6, 6])
-            np.testing.assert_allclose(np.copy(p2.pos), [4, 6, 6 + vs_dist])
+            # the virtual site follows the rotated orientation of p1
+            np.testing.assert_allclose(np.copy(p2.pos), [4 - vs_dist, 6, 6])
+
+    @utx.skipIfMissingFeatures("ROTATION")
+    def test_orientation(self):
+        system = self.system
+        partcls = system.part.add(pos=[[4, 4, 4], [6, 6, 6], [5, 5, 5]],
+                                  rotation=[[True, True, True],
+                                            [False, False, True],
+                                            [False, False, False]])
+        system.rotate_system(phi=0., theta=0., alpha=np.pi / 2.)
+        np.testing.assert_allclose(np.copy(partcls.director),
+                                   3 * [[0., 0., 1.]], atol=1e-14)
+        system.rotate_system(phi=0., theta=np.pi / 2., alpha=np.pi / 2.)
+        np.testing.assert_allclose(np.copy(partcls.director),
+                                   3 * [[0., -1., 0.]], atol=1e-14)
 
 
 if __name__ == "__main__":

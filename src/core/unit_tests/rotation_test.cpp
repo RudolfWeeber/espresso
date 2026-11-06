@@ -115,17 +115,21 @@ BOOST_AUTO_TEST_CASE(rotate_particle_body_test) {
   auto p = Particle();
   p.quat() = {1., 2., 3., 4.};
   {
-    // fixed particles are unaffected, quaternion is identical to original
-    p.set_cannot_rotate_all_axes();
+    // rotation flags are ignored
     auto const phi = 2.;
-    auto const quat = local_rotate_particle_body(p, {0., 0., 1.}, phi);
-    BOOST_TEST((quat == p.quat()));
+    auto const axis = Utils::Vector3d{{1., 2., 3.}};
+    p.set_can_rotate_all_axes();
+    auto const quat_ref = local_rotate_particle_body(p, axis, phi);
+    p.set_cannot_rotate_all_axes();
+    p.set_can_rotate_around(2, true);
+    auto const quat = local_rotate_particle_body(p, axis, phi);
+    BOOST_TEST((quat == quat_ref));
+    BOOST_TEST(not(quat == p.quat()));
   }
   {
-    // edge case: null rotation throws an exception
-    p.set_can_rotate_around(2, true);
+    // edge case: null axis throws an exception
     auto const phi = 2.;
-    BOOST_CHECK_THROW(local_rotate_particle_body(p, {1., 1., 0.}, phi),
+    BOOST_CHECK_THROW(local_rotate_particle_body(p, {0., 0., 0.}, phi),
                       std::exception);
   }
   {

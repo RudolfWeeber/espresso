@@ -147,6 +147,38 @@ class StokesianThermostat(ut.TestCase):
                 viscosity=2., radii={})
             self.system.integrator.run(0, recalc_forces=True)
 
+    @utx.skipIfMissingFeatures(["ROTATION", "EXTERNAL_FORCES"])
+    def test_rotation_blocked_axes(self):
+        """
+        Check that a torque-driven sphere rotates around the free body-frame
+        axes only, by the angular displacement along these axes.
+        """
+        system = self.system
+        system.time_step = 0.01
+        viscosity = 2.4
+        radius = 1.5
+        n_steps = 10
+        ext_torque = np.array([0.6, -0.3, 0.9])
+        system.thermostat.set_stokesian(kT=0., seed=42)
+        system.integrator.set_stokesian_dynamics(viscosity=viscosity,
+                                                 radii={0: radius})
+        omega = ext_torque / (8. * np.pi * viscosity * radius**3)
+
+        def quat_ref(axis, angle):
+            return np.array([np.cos(angle / 2.), *(np.sin(angle / 2.) * axis)])
+
+        for rotation in ([True, True, True], [False, False, True]):
+            with self.subTest(rotation=rotation):
+                system.part.clear()
+                p = system.part.add(pos=[0., 0., 0.], rotation=rotation,
+                                    ext_torque=ext_torque)
+                system.integrator.run(n_steps)
+                dphi = omega * system.time_step * np.array(rotation)
+                angle = np.linalg.norm(dphi)
+                # successive rotations around the same axis add up
+                ref = quat_ref(dphi / angle, n_steps * angle)
+                np.testing.assert_allclose(np.copy(p.quat), ref, atol=1e-12)
+
     @utx.skipIfMissingFeatures(["MASS",
                                 "ROTATIONAL_INERTIA",
                                 "EXTERNAL_FORCES"])
