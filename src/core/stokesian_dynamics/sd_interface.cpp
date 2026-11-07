@@ -29,10 +29,12 @@
 #include "Particle.hpp"
 #include "communication.hpp"
 #include "errorhandling.hpp"
+#include "rotation.hpp"
 #include "system/System.hpp"
 #include "thermostat.hpp"
 
 #include <utils/Vector.hpp>
+#include <utils/mask.hpp>
 #include <utils/mpi/gather_buffer.hpp>
 #include <utils/mpi/scatter_buffer.hpp>
 
@@ -88,9 +90,11 @@ static void sd_update_locally(ParticleIterable const &parts,
     p.v()[1] = v_sd[6 * i + 1];
     p.v()[2] = v_sd[6 * i + 2];
 
-    p.omega()[0] = v_sd[6 * i + 3];
-    p.omega()[1] = v_sd[6 * i + 4];
-    p.omega()[2] = v_sd[6 * i + 5];
+    // the solver returns the angular velocity in the space-fixed frame
+    auto const omega_lab =
+        Utils::Vector3d{v_sd[6 * i + 3], v_sd[6 * i + 4], v_sd[6 * i + 5]};
+    p.omega() =
+        Utils::mask(p.rotation(), convert_vector_space_to_body(p, omega_lab));
 
     ++i;
   }

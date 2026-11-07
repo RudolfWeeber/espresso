@@ -179,6 +179,35 @@ class StokesianThermostat(ut.TestCase):
                 ref = quat_ref(dphi / angle, n_steps * angle)
                 np.testing.assert_allclose(np.copy(p.quat), ref, atol=1e-12)
 
+    def test_angular_velocity_frame(self):
+        """
+        Check that the angular velocity of a torque-driven sphere is stored
+        in the body frame, for a particle with a tilted orientation.
+        """
+        system = self.system
+        viscosity = 2.4
+        radius = 1.5
+        ext_torque = np.array([0.6, -0.3, 0.9])
+        system.thermostat.set_stokesian(kT=0., seed=42)
+        system.integrator.set_stokesian_dynamics(viscosity=viscosity,
+                                                 radii={0: radius})
+        omega = ext_torque / (8. * np.pi * viscosity * radius**3)
+        # rotate the body frame by 90 degrees around the space-frame x-axis
+        quat = [np.cos(np.pi / 4.), np.sin(np.pi / 4.), 0., 0.]
+        p = system.part.add(pos=[0., 0., 0.], quat=quat,
+                            rotation=3 * [True], ext_torque=ext_torque)
+        system.integrator.run(1)
+        np.testing.assert_allclose(np.copy(p.omega_lab), omega, atol=1e-12)
+        np.testing.assert_allclose(
+            np.copy(p.omega_body), p.convert_vector_space_to_body(omega),
+            atol=1e-12)
+        # blocked body-frame axes do not rotate
+        p.rotation = [False, False, True]
+        system.integrator.run(1)
+        omega_body = p.convert_vector_space_to_body(omega) * [0., 0., 1.]
+        np.testing.assert_allclose(np.copy(p.omega_body), omega_body,
+                                   atol=1e-12)
+
     @utx.skipIfMissingFeatures(["MASS",
                                 "ROTATIONAL_INERTIA",
                                 "EXTERNAL_FORCES"])
