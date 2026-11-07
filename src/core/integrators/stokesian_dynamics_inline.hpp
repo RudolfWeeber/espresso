@@ -36,10 +36,8 @@ inline void stokesian_dynamics_step_1(ParticleRangeStokesian const &particles,
   for (auto &p : particles) {
     // translate
     p.pos() += p.v() * time_step;
-    // rotate around the space-frame angular velocity, without the
-    // components along blocked body-frame axes
-    auto const dphi = Utils::mask(
-        p.rotation(), convert_vector_space_to_body(p, time_step * p.omega()));
+    // rotate around the body-frame angular velocity
+    auto const dphi = time_step * p.omega();
     auto const angle = dphi.norm();
     if (angle != 0.) {
       p.quat() = local_rotate_particle_body(p, dphi / angle, angle);
