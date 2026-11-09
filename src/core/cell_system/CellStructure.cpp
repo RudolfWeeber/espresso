@@ -65,7 +65,6 @@
 #include <iterator>
 #include <memory>
 #include <numbers>
-#include <numeric>
 #include <optional>
 #include <ranges>
 #include <set>
@@ -327,23 +326,32 @@ void CellStructure::ghosts_reset_forces() {
       p.force_and_torque() = {};
     }
   };
-  // threaded above a few hundred ghosts: the loop touches one cold cache
-  // line per ghost
-  auto const n_ghosts = [&cells]() {
-    return std::accumulate(cells.begin(), cells.end(), std::size_t{0},
-                           [](std::size_t sum, Cell const *cell) {
-                             return sum + cell->particles().size();
-                           });
-  };
-  if (GhostComm::threads_available() and
-      GhostComm::use_threaded_loop(n_ghosts())) {
-    kokkos_parallel_range_for("ghosts_reset_forces", std::size_t{0},
-                              cells.size(), reset_cell);
-    Kokkos::fence();
-  } else {
+  auto const reset_serial = [&cells, &reset_cell]() {
     for (std::size_t i = 0u; i < cells.size(); ++i) {
       reset_cell(i);
     }
+  };
+  if (not GhostComm::threads_available()) {
+    reset_serial();
+    return;
+  }
+  // threaded above a few hundred ghosts: the loop touches one cold cache
+  // line per ghost. The ghosts are only counted up to that threshold, and
+  // without ghosts (one MPI rank) there is nothing to reset, so that the
+  // ghost cells are walked only once in these cases.
+  std::size_t n_ghosts = 0u;
+  for (auto const *cell : cells) {
+    n_ghosts += cell->particles().size();
+    if (n_ghosts >= GhostComm::threaded_loop_min_particles) {
+      break;
+    }
+  }
+  if (GhostComm::use_threaded_loop(n_ghosts)) {
+    kokkos_parallel_range_for("ghosts_reset_forces", std::size_t{0},
+                              cells.size(), reset_cell);
+    Kokkos::fence();
+  } else if (n_ghosts != 0u) {
+    reset_serial();
   }
 }
 
