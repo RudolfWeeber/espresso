@@ -222,6 +222,13 @@ public:
     if (reset_weights) {
       p3m.inter_weights.reset(p3m.params.cao);
     }
+    prepare_charge_density_replicas();
+    std::ranges::fill(p3m.rs_charge_density, FloatType{0});
+  }
+
+protected:
+  /** @brief Size the charge density and its zero-filled per-thread replicas. */
+  void prepare_charge_density_replicas() {
     p3m.rs_charge_density.resize(p3m.local_mesh.size);
     using execution_space = Kokkos::DefaultHostExecutionSpace;
     auto const num_threads = execution_space().concurrency();
@@ -235,10 +242,7 @@ public:
       kokkos_deep_copy(execution_space{}, p3m.rs_charge_density_kokkos,
                        FloatType{0});
     }
-    std::ranges::fill(p3m.rs_charge_density, FloatType{0});
   }
-
-protected:
   /** Compute the k-space part of forces and energies. */
   double long_range_kernel(bool force_flag, bool energy_flag);
   void calc_influence_function_force() override;
