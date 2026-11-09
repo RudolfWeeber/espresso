@@ -363,42 +363,39 @@ static void reduce_cabana_forces_and_torques(System::System const &system,
   }
 #endif
 
-  using execution_space = Kokkos::DefaultHostExecutionSpace;
-  Kokkos::RangePolicy<execution_space> policy(std::size_t{0},
-                                              unique_particles.size());
-  Kokkos::parallel_for("reduction", policy,
-                       [&local_force,
+  system.cell_structure->for_each_unique_particle_index(
+      "reduction", [&local_force,
 #ifdef ESPRESSO_ROTATION
-                        &local_torque, reduce_torque,
+                    &local_torque, reduce_torque,
 #endif
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
-                        &local_dip_fld, reduce_dip_fld,
+                    &local_dip_fld, reduce_dip_fld,
 #endif
-                        &unique_particles](std::size_t const i) {
-                         Utils::Vector3d force{};
-                         force[0] += local_force(i, 0);
-                         force[1] += local_force(i, 1);
-                         force[2] += local_force(i, 2);
-                         unique_particles.at(i)->force() += force;
+                    &unique_particles](std::size_t const i) {
+        Utils::Vector3d force{};
+        force[0] += local_force(i, 0);
+        force[1] += local_force(i, 1);
+        force[2] += local_force(i, 2);
+        unique_particles.at(i)->force() += force;
 #ifdef ESPRESSO_ROTATION
-                         if (reduce_torque) {
-                           Utils::Vector3d torque{};
-                           torque[0] += local_torque(i, 0);
-                           torque[1] += local_torque(i, 1);
-                           torque[2] += local_torque(i, 2);
-                           unique_particles.at(i)->torque() += torque;
-                         }
+        if (reduce_torque) {
+          Utils::Vector3d torque{};
+          torque[0] += local_torque(i, 0);
+          torque[1] += local_torque(i, 1);
+          torque[2] += local_torque(i, 2);
+          unique_particles.at(i)->torque() += torque;
+        }
 #endif // ESPRESSO_ROTATION
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
-                         if (reduce_dip_fld) {
-                           Utils::Vector3d dip_fld{};
-                           dip_fld[0] += local_dip_fld(i, 0);
-                           dip_fld[1] += local_dip_fld(i, 1);
-                           dip_fld[2] += local_dip_fld(i, 2);
-                           unique_particles.at(i)->dip_fld() += dip_fld;
-                         }
+        if (reduce_dip_fld) {
+          Utils::Vector3d dip_fld{};
+          dip_fld[0] += local_dip_fld(i, 0);
+          dip_fld[1] += local_dip_fld(i, 1);
+          dip_fld[2] += local_dip_fld(i, 2);
+          unique_particles.at(i)->dip_fld() += dip_fld;
+        }
 #endif // ESPRESSO_DIPOLE_FIELD_TRACKING
-                       });
+      });
   Kokkos::fence();
 
 #ifdef ESPRESSO_NPT

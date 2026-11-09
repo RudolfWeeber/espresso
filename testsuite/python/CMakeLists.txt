@@ -313,6 +313,11 @@ python_test(FILE regular_decomposition.py MAX_NUM_PROC 1 NUM_THREADS 2 SUFFIX
             1_mpi_ranks_2_omp_threads)
 python_test(FILE regular_decomposition.py MAX_NUM_PROC 2 NUM_THREADS 1 SUFFIX
             2_mpi_ranks_1_omp_threads)
+# serial ghost loops at 4 ranks; the threaded loops need at least 4 threads
+# per rank (GhostComm::threaded_loop_min_threads)
+python_test(FILE ghost_exchange_threads.py MAX_NUM_PROC 4)
+python_test(FILE ghost_exchange_threads.py MAX_NUM_PROC 2 NUM_THREADS 4 SUFFIX
+            2_mpi_ranks_4_omp_threads)
 python_test(FILE hybrid_decomposition.py MAX_NUM_PROC 4)
 python_test(FILE hybrid_decomposition.py MAX_NUM_PROC 1 NUM_THREADS 2 SUFFIX
             1_mpi_ranks_2_omp_threads)

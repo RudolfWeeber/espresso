@@ -36,6 +36,7 @@
 #include "custom_verlet_list.hpp"
 #include "ghosts.hpp"
 #include "ghosts/HaloExchange.hpp"
+#include "kokkos_helpers.hpp"
 #include "system/Leaf.hpp"
 
 #include <utils/Vector.hpp>
@@ -278,6 +279,8 @@ private:
   /** particle properties using individual Kokkos Views */
   std::unique_ptr<AoSoA_pack> m_aosoa;
   std::vector<Particle *> m_unique_particles;
+  /** number of local particles at the front of @ref m_unique_particles */
+  std::size_t m_n_local_unique_particles = 0u;
   std::shared_ptr<KokkosHandle> m_kokkos_handle;
 
 public:
@@ -712,9 +715,7 @@ public:
 #endif
 
   /** Set forces and torques on all ghosts to zero. */
-  void ghosts_reset_forces() {
-    for_each_ghost_particle([](Particle &p) { p.force_and_torque() = {}; });
-  }
+  void ghosts_reset_forces();
 
 #ifdef ESPRESSO_BOND_CONSTRAINT
   /**
@@ -940,6 +941,41 @@ public:
   auto &get_aosoa() { return *m_aosoa; }
   auto const &get_aosoa() const { return *m_aosoa; }
   auto const &get_unique_particles() const { return m_unique_particles; }
+  /**
+   * @brief Run a kernel on the indices of all unique particles.
+   * The unique particles are the local particles in cell order, followed by
+   * the ghosts that are not images of local particles. Each thread takes one
+   * contiguous chunk of the local particles and one of the ghosts, so that
+   * the partition of the local particles does not shift with the number of
+   * ghosts: with a uniform cell occupation, each thread then writes about
+   * the particles of the same cells as in the loops over the local cells.
+   */
+  void for_each_unique_particle_index(char const *name,
+                                      auto const &kernel) const {
+    auto const n_local = m_n_local_unique_particles;
+    auto const n_total = m_unique_particles.size();
+    auto const n_threads = static_cast<std::size_t>(Kokkos::num_threads());
+    assert(n_local <= n_total);
+    if (n_threads == 1u or n_local == n_total) {
+      kokkos_parallel_range_for(name, std::size_t{0}, n_total, kernel);
+      return;
+    }
+    auto const n_ghosts = n_total - n_local;
+    Kokkos::parallel_for(name,
+                         Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
+                             std::size_t{0}, n_threads),
+                         [&](std::size_t const t) {
+                           for (auto i = t * n_local / n_threads;
+                                i < (t + 1u) * n_local / n_threads; ++i) {
+                             kernel(i);
+                           }
+                           for (auto i = n_local + t * n_ghosts / n_threads;
+                                i < n_local + (t + 1u) * n_ghosts / n_threads;
+                                ++i) {
+                             kernel(i);
+                           }
+                         });
+  }
   auto const &get_verlet_list_cabana() const { return *m_verlet_list_cabana; }
   auto &bond_state() { return *m_bond_state; }
   auto const &bond_state() const { return *m_bond_state; }
