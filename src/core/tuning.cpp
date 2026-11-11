@@ -100,7 +100,7 @@ double benchmark_integration_step(System::System &system, int int_steps) {
  *
  * @param system The system to tune.
  * @param int_steps Number of steps to integrate.
- * @return Time per integration in ms.
+ * @return Time per integration in ms, as measured on the head node.
  */
 static double time_calc(System::System &system, int int_steps) {
   auto const error_code_init =
@@ -118,7 +118,12 @@ static double time_calc(System::System &system, int int_steps) {
   }
 
   /* MPI returns in seconds, returned value should be in ms. */
-  return 1000. * (tock - tick) / int_steps;
+  auto retval = 1000. * (tock - tick) / int_steps;
+  /* The timings of the individual ranks differ by measurement noise. All
+   * ranks must take the same branch in the skin bisection, otherwise their
+   * skins and cell grids differ. */
+  boost::mpi::broadcast(::comm_cart, retval, 0);
+  return retval;
 }
 
 namespace System {
