@@ -149,7 +149,7 @@ Apply the verdicts:
   and append "(severity adjusted in verification)" to its title.
 * `rejected`: drop.
 * `needs-human-check`: move to the reading guide's attention list,
-  prefixed "**Needs human check:**". These are not findings and do not affect the verdict.
+  prefixed "**Needs human check:**". These are not findings and do not affect the recommendation.
 
 Merge duplicates across reviewers: same location and same problem become one finding with the higher severity.
 Findings that overlap only partly stay separate.
@@ -163,6 +163,9 @@ Findings that overlap only partly stay separate.
   Keep only items where a human's judgement adds something the review could not settle;
   drop items that merely restate a change, a finding, or a file name.
   Aim for at most seven items, most important first.
+  Prefix an item with "**Policy decision:**" when it needs a maintainer decision that code review cannot settle:
+  a user-visible behavior or API change, a physics or numerical convention, a changed default,
+  a new dependency, or dropped support.
 * Write one sentence on what could break and who would notice.
 * Write the summary (what the PR does) from the context and the reading guide.
 * Merge the reviewers' `## Strengths` lists. Drop duplicates and generic praise.
@@ -180,13 +183,15 @@ Write it to `<repo>/.claude/reviews/<name>.md`, creating the folder if needed:
 
 An existing report with the same name is overwritten; the header records the reviewed SHA.
 
-**Verdict:**
+**AI review recommendation:**
 `Not ready` if any Critical finding;
 `Ready with fixes` if any Important finding;
 otherwise `Ready`.
+Append "— policy decision required" when the attention list has at least one "**Policy decision:**" item,
+and name the decisions in the recommendation's reasoning.
 
 Tell the user, in this order:
-the report path, the risk level, the number of findings per severity, and the verdict.
+the report path, the risk level, the number of findings per severity, and the AI review recommendation.
 
 ## Step 8: Post only on request
 
