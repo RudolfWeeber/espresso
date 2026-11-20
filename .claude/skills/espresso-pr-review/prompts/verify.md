@@ -27,9 +27,12 @@ For each finding:
 2. Read enough context to settle it: callers, callees, tests, the guideline it cites.
 3. Decide:
    * `confirmed`: the code has the problem as described, or a close variant of it.
-     Correct the severity if it is clearly wrong.
+     Correct the severity if it is clearly wrong. Use only Critical, Important or Minor.
+     If part of the finding's text is wrong (a claim, a line number), give the correction.
    * `rejected`: the code does not have the problem, the concern is handled elsewhere,
-     or the cited guideline does not apply.
+     the cited guideline does not apply,
+     or the problem exists only in code this PR does not introduce or change.
+   Judge the code as of the head commit; commits after the head are not evidence.
    * `needs-human-check`: only when reading cannot settle it,
      e.g. a possible race, numerical drift, or a performance effect.
      Do not use it to avoid a decision you could make by reading more code.
@@ -44,4 +47,5 @@ One line per finding, in input order:
 F<n>: confirmed | rejected | needs-human-check — <reason with path:line evidence>
 ```
 
-For a confirmed finding whose severity you correct, append `(severity: <new>)`.
+For a confirmed finding, append `(severity: <new>)` if you correct the severity
+and `(correction: <what to change in the text>)` if part of its text is wrong.

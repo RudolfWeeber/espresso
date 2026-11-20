@@ -71,7 +71,8 @@ or anything that silently changes results, parallel correctness, or performance.
 ## Raising the rating
 
 After verification, the coordinator raises the rating to High when a confirmed finding
-or a "needs human check" item shows one of these:
+or a "needs human check" item shows that the PR itself causes one of these
+(defects the PR leaves in place do not count):
 
 * results change silently, without an error or a documented change;
 * parallel correctness is affected (rank-dependent results, deadlocks, missing ghost updates);

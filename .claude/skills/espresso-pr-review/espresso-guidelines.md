@@ -86,6 +86,8 @@ New code builds on what ESPResSo already provides instead of reinventing it.
 ### Tests
 
 * New features and bug fixes come with tests that fail without the change.
+* New checks extend the existing test file for the feature instead of adding a new file,
+  unless the new file covers a clearly separate concern.
 * Tests check physical or numerical results against a reference, not only that code runs.
 * Parallel code is tested with more than one MPI rank (`MAX_NUM_PROC` in `python_test`).
 * Tests that need optional features use the `unittest_decorators` skip helpers.

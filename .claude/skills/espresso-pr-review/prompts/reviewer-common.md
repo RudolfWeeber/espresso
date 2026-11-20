@@ -28,11 +28,18 @@ Files in your scope:
 * Report only issues in your topics. Other topics have their own reviewers.
 * Skip anything `clang-format`, `autopep8`, `pylint` or `clang-tidy` would report.
 * Report only issues you can point to in the code. A finding needs a location and a concrete effect.
+* Judge the code as of the head commit. Do not use commits after the head as evidence.
+* A finding is about something this PR introduces or changes.
+  A defect in code the PR does not touch, or a gap the PR merely leaves in place,
+  goes under `## Hotspots`, not under findings.
+* A behavior change that the PR does not announce in its description is a defect, not a documentation issue.
+  This includes changed boundary conventions (inclusive vs. exclusive limits), defaults, units, and signs.
 * Grade severity by effect on users and maintainers:
   * Critical: wrong results, crashes, deadlocks, data loss, broken build.
-  * Important: a real defect in a less common path, a missing test for new behavior,
-    a clear violation of a goal in the guidelines.
+  * Important: a real defect in a less common path, a silent behavior change,
+    a missing test for new behavior, a clear violation of a goal in the guidelines.
   * Minor: small improvements to clarity or consistency.
+* Refer to other findings by title, not by number.
 
 ## Output format
 

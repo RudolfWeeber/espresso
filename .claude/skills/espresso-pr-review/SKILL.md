@@ -52,6 +52,7 @@ If there is none, use the URL `https://github.com/espressomd/espresso` in place 
   `BASE=$(git merge-base refs/review/python-base <branch>)`.
   Title and description come from the commit messages.
 * **Range `a..b`:** `BASE=a`, `HEAD_REF=b`, used as given.
+  For a branch or range, read issues that the commit messages reference ("Fixes #n") with `gh issue view`.
 
 Then collect:
 
@@ -130,7 +131,7 @@ For each reviewer output that contains findings, dispatch one verifier with `pro
 
 Apply the verdicts:
 
-* `confirmed`: keep the reviewer's wording.
+* `confirmed`: keep the reviewer's wording, with the verifier's corrections applied.
   If the verifier corrected the severity, file the finding under the new severity
   and append "(severity adjusted in verification)" to its title.
 * `rejected`: drop.
@@ -138,6 +139,7 @@ Apply the verdicts:
   prefixed "**Needs human check:**". These are not findings and do not affect the verdict.
 
 Merge duplicates across reviewers: same location and same problem become one finding with the higher severity.
+Findings that overlap only partly stay separate.
 
 ## Step 6: Finalize risk and reading guide
 
