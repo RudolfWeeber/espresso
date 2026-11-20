@@ -19,7 +19,7 @@ Files in your scope:
 
 ## How to work
 
-* Read `{{GUIDELINES_PATH}}` first. Cite its headings in the `rule:` field.
+* Read `{{GUIDELINES_PATH}}` first. In the `rule:` field, cite the heading and the bullet, e.g. `Python API: Default values do not change silently`.
   Use `defect` for bugs that no heading covers.
 * Read the surrounding code as needed: callers, callees, base classes, similar existing code.
   Read files at the head revision with `git show <head>:<path>`.
@@ -49,7 +49,7 @@ One block per finding, numbered from F1:
 ### F<n>: <short title>
 - severity: Critical | Important | Minor
 - location: <path>:<line>[-<line>][, <path>:<line>...]   (primary location first)
-- rule: <heading from the guidelines, or "defect">
+- rule: <heading: bullet from the guidelines, or "defect">
 - problem: <what is wrong>
 - impact: <why it matters>
 - fix: <suggestion, or "obvious">
