@@ -86,6 +86,27 @@ New code builds on what ESPResSo already provides instead of reinventing it.
 * New physics is tested against an independent reference: an analytical result, finite differences,
   or a literature value.
 
+### Performance and scalability
+
+These checks apply to code that runs every time step or scales with system size.
+
+* Hot loops (per-pair and per-particle kernels for forces, energies, pressure; integrator steps)
+  do no allocation, locking, logging, or exception handling per iteration,
+  and avoid virtual calls, `std::function` and map lookups per iteration.
+* Values that do not change within a loop are computed outside it.
+* Cost scales no worse than the existing method: no O(N²) pair loops where cell or Verlet lists exist,
+  no per-particle linear searches (use the particle index), no work proportional to the global
+  particle count on every rank.
+* Memory per rank scales with the local particle count and local domain, not with the global system:
+  no arrays for all particles on every rank, no gathering of all particle data to one rank in per-step code.
+* No new synchronization points in per-step code (collectives, barriers, host-device copies)
+  unless the algorithm needs them; work is not serialized through one rank.
+* Shared-memory parallel code (OpenMP, Kokkos) uses reductions or per-thread buffers instead of
+  atomics, critical sections or mutexes in kernels, and avoids false sharing.
+* Python code that runs every step or per particle uses batched or vectorized interfaces, not per-particle Python loops.
+* Changes made for performance, or changes to hot paths, come with benchmark evidence
+  (e.g. from `maintainer/benchmarks`).
+
 ### Script interface
 
 * New parameters are registered via `add_parameters()` with correct read-only flags.

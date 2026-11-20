@@ -117,25 +117,36 @@ From the diff stat, the commit list, and a skim of the diff, write:
 
 ## Step 4: Dispatch reviewers
 
-Size the review by changed lines and changed files. The first matching row wins:
+**Select the topics.** Each topic has a prompt in `prompts/`:
+
+| Topic | Prompt | Selected when |
+|---|---|---|
+| correctness | `correctness.md` | always |
+| ESPResSo goals | `espresso-goals.md` | always |
+| tests and docs | `tests-docs.md` | always |
+| physics | `physics.md` | the diff changes physics code: forces, energies, pressure, integrators, thermostats, observables, LB/EK, electrostatics/magnetostatics |
+| performance and scalability | `performance.md` | the diff changes code that runs every time step or scales with system size: anything in `src/core`, `src/walberla_bridge`, `src/utils`, per-step code in `src/script_interface` or `src/python`, or communication |
+
+Docs-, tests- and build-only diffs select only the three "always" topics.
+
+**Size the review** by changed lines and changed files. The first matching row wins:
 
 | Size | Reviewers |
 |---|---|
-| > 3000 lines or > 40 files | 4 reviewers per subsystem group |
-| risk floor is Low | 1 reviewer with all four topics |
-| > 400 lines | 4 reviewers, one per topic |
-| otherwise | 1 reviewer with all four topics |
+| > 3000 lines or > 40 files | one reviewer per selected topic, per subsystem group |
+| risk floor is Low | 1 reviewer with all selected topics |
+| > 400 lines | one reviewer per selected topic |
+| otherwise | 1 reviewer with all selected topics |
 
 When the split would need more than 16 reviewers, tell the user the count and ask before dispatching.
 
 **Subsystem groups** for the largest PRs: each `src/core/<dir>` (top-level files in `src/core` form one group),
 `src/script_interface`, `src/python`, `src/walberla_bridge`, `testsuite`, `doc`, and everything else.
 Merge groups with fewer than 100 changed lines into a neighbor so no reviewer gets a trivial share.
+Apply the topic selection per group.
 
 **Each reviewer prompt** is `prompts/reviewer-common.md` with its placeholders filled,
-followed by the topic prompt(s): `prompts/correctness.md`, `prompts/physics.md`,
-`prompts/espresso-goals.md`, `prompts/tests-docs.md`.
-A subsystem group without physics code (e.g. `doc`, build files) skips the physics reviewer.
+followed by the prompt(s) of its topic(s).
 `{{FILES}}` is the reviewer's file list (all changed files unless split).
 Send all reviewers in one message so they run in parallel, as `general-purpose` subagents.
 Never pass your own conversation history.
