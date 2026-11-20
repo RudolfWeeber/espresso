@@ -9,7 +9,10 @@ You coordinate a review of one ESPResSo pull request or branch.
 The result is a local report for the PR author and for human reviewers:
 a risk rating, a reading guide, and findings that were checked against the code.
 
-**Usage:** `/espresso-pr-review <PR number | branch | base..head>`
+**Usage:** `/espresso-pr-review <PR number | branch | base..head> [--output <path>]`
+
+`--output` writes the report to the given path instead of `.claude/reviews/`
+(used by `maintainer/ai_review.sh`).
 
 ## Ground rules
 
@@ -175,7 +178,8 @@ Findings that overlap only partly stay separate.
 ## Step 7: Write the report
 
 Fill `report-template.md`, follow its filling rules, and remove the rules comment.
-Write it to `<repo>/.claude/reviews/<name>.md`, creating the folder if needed:
+Write it to the `--output` path if one was given.
+Otherwise write it to `<repo>/.claude/reviews/<name>.md`, creating the folder if needed:
 
 * PR: `pr-<N>.md`
 * branch: the branch name with `/` replaced by `_`, plus `.md`
