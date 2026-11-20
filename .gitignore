@@ -13,3 +13,6 @@
 .ipynb_checkpoints
 
 /*build*/
+
+# local PR review reports
+.claude/reviews/
