@@ -22,7 +22,9 @@ Files in your scope:
 * Read `{{GUIDELINES_PATH}}` first. In the `rule:` field, cite the heading and the bullet, e.g. `Python API: Default values do not change silently`.
   Use `defect` for bugs that no heading covers.
 * Read the surrounding code as needed: callers, callees, base classes, similar existing code.
-  Read files at the head revision with `git show <head>:<path>`.
+  The working tree is not the reviewed code: it may be another branch or contain local edits.
+  Read files with `git show <head>:<path>` and search with `git grep -n <pattern> <head> -- <path>`.
+  Do not use file-reading or search tools on the working tree.
 * The review is read-only. Do not check out, stash, reset, commit or edit anything.
 * Do all the work yourself. Do not dispatch subagents.
 * Report only issues in your topics. Other topics have their own reviewers.
@@ -32,8 +34,6 @@ Files in your scope:
 * A finding is about something this PR introduces or changes.
   A defect in code the PR does not touch, or a gap the PR merely leaves in place,
   goes under `## Hotspots`, not under findings.
-* A behavior change that the PR does not announce in its description is a defect, not a documentation issue.
-  This includes changed boundary conventions (inclusive vs. exclusive limits), defaults, units, and signs.
 * Grade severity by effect on users and maintainers:
   * Critical: wrong results, crashes, deadlocks, data loss, broken build.
   * Important: a real defect in a less common path, a silent behavior change,

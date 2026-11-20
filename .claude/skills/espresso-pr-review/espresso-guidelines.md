@@ -33,7 +33,8 @@ The change is cheap to keep working while the rest of the code evolves.
   The core does not include script-interface or Python headers.
 * No new global state. New code receives existing globals by reference instead of reaching for them.
 * Each commit is self-contained, so it can be reverted or cherry-picked.
-* New code paths are covered by tests (the CI coverage target for the patch is 99 %).
+* New code paths are covered by tests
+  (the wiki "Code review" page sets a codecov patch target of 99 %).
 * Optional dependencies are guarded by the existing feature and CMake options, not by ad-hoc macros.
 
 ### Use of existing infrastructure
@@ -44,8 +45,9 @@ New code builds on what ESPResSo already provides instead of reinventing it.
 * Script-interface classes derive from `AutoParameters` and use the existing container types
   (`ObjectList`, `ObjectMap`, `ObjectContainer`) rather than hand-written parameter handling.
 * Vector math uses `Utils::Vector` and the helpers in `src/utils`.
-* Parallel communication uses `boost::mpi` collectives and the existing ghost and callback
-  mechanisms, not raw MPI calls.
+* Parallel communication uses `boost::mpi` collectives and the existing ghost and callback mechanisms
+  where boost::mpi or those mechanisms cover the operation.
+  Raw MPI calls exist on purpose in performance-critical code (FFT, MPI-IO, mesh communication).
 * Errors in the core use `runtimeErrorMsg()` or exceptions that the script interface propagates to Python.
 * Compile-time features use `src/config/features.def`; build options use `ESPRESSO_BUILD_WITH_*`.
 * Tests reuse the helpers in `testsuite/python` (e.g. `unittest_decorators`, `tests_common`)
@@ -78,10 +80,16 @@ New code builds on what ESPResSo already provides instead of reinventing it.
 
 ### Python API
 
-* No wildcard imports, no imports of names without their namespace, no `eval()`.
+* Modules are imported with their namespace (`import espressomd.lb`, not `from espressomd import lb`); no `eval()`.
 * User-visible API changes are consistent with existing naming in `espressomd`.
 * Breaking changes are intentional, documented, and listed in `CHANGELOG.md`.
 * Default values do not change silently.
+
+### Behavior changes
+
+* A behavior change that the PR does not announce in its description is a defect, not a documentation issue.
+* This includes boundary conventions (inclusive vs. exclusive limits), defaults, units, signs,
+  and which quantities an observable or analysis result includes.
 
 ### Tests
 
@@ -91,6 +99,7 @@ New code builds on what ESPResSo already provides instead of reinventing it.
 * Tests check physical or numerical results against a reference, not only that code runs.
 * Parallel code is tested with more than one MPI rank (`MAX_NUM_PROC` in `python_test`).
 * Tests that need optional features use the `unittest_decorators` skip helpers.
+* New test files are registered in the matching `CMakeLists.txt`.
 * C++ logic that can be tested in isolation has a unit test in `src/core/unit_tests` or the matching `tests` folder.
 
 ### Docs

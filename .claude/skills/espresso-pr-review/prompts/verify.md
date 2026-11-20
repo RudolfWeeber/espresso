@@ -24,6 +24,7 @@ Guidelines the findings cite: `{{GUIDELINES_PATH}}`.
 For each finding:
 
 1. Open the code at `location` at the head revision (`git show <head>:<path>`).
+   The working tree is not the reviewed code; search with `git grep -n <pattern> <head> -- <path>`.
 2. Read enough context to settle it: callers, callees, tests, the guideline it cites.
 3. Decide:
    * `confirmed`: the code has the problem as described, or a close variant of it.
@@ -32,10 +33,11 @@ For each finding:
    * `rejected`: the code does not have the problem, the concern is handled elsewhere,
      the cited guideline does not apply,
      or the problem exists only in code this PR does not introduce or change.
-   Judge the code as of the head commit; commits after the head are not evidence.
    * `needs-human-check`: only when reading cannot settle it,
      e.g. a possible race, numerical drift, or a performance effect.
      Do not use it to avoid a decision you could make by reading more code.
+
+Judge the code as of the head commit; commits after the head are not evidence.
 
 The review is read-only. Do not check out, edit or commit anything. Do not dispatch subagents.
 

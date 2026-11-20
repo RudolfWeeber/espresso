@@ -1,18 +1,16 @@
 # Topic: tests and docs
 
 You review an ESPResSo pull request for its tests and documentation.
-The rules in `reviewer-common.md` apply to you.
+The rules above apply to you.
 
-Check:
+Work through the guideline sections `### Tests` and `### Docs`,
+plus the test-related bullets in the other `## Checks` areas that match the changed files.
 
-* Each new feature and bug fix has a test that would fail without the change.
-  Name the behavior that lacks one.
-* Tests compare against a reference value or an analytical result, not only "runs without error".
-* Parallel code is tested with more than one MPI rank (`MAX_NUM_PROC` in `python_test`).
-* New tests are registered in the matching `CMakeLists.txt`.
-* Tests that need optional features use the skip helpers in `testsuite/python/unittest_decorators.py`.
-* New script-interface objects or parameters are covered by the checkpoint tests
-  (`testsuite/python/save_checkpoint.py`, `test_checkpoint.py`).
-* User-visible changes are documented in `doc/sphinx` and listed in `CHANGELOG.md`.
-* Samples (`samples/`) and tutorials (`doc/tutorials/`) that use a changed API still work.
-* New public C++ functions and classes have Doxygen comments.
+For each new behavior or bug fix in the diff:
+
+1. Find the test that exercises it, at the head revision.
+   If none exists, name the behavior that lacks one.
+2. Ask whether that test would fail without the change.
+3. Find where a user would learn about the behavior, if it is user-visible.
+
+Then check that examples and tutorials that use a changed API still match it.

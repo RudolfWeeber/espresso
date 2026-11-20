@@ -28,7 +28,11 @@ where `<repo>` is `git rev-parse --show-toplevel`.
 The commands below use shell variables (`BASE`, `HEAD`) for readability.
 If your environment refuses command substitution, run each command alone and use the printed values.
 Keep temporary files (filled prompts, context) in a folder unique to this run,
-e.g. `$TMPDIR/espresso-pr-review-<name>-<head7>/`.
+e.g. `${TMPDIR:-/tmp}/espresso-pr-review-<name>-<head7>/`.
+
+A branch or range review covers committed code only; uncommitted changes in the working tree are not reviewed.
+Fetched refs stay under `refs/review/`; remove them with
+`git for-each-ref refs/review --format='delete %(refname)' | git update-ref --stdin`.
 
 ## Step 1: Collect context
 
@@ -88,8 +92,8 @@ Diff stat:
 
 Apply the path table in `risk-levels.md` to every changed file
 (`git diff --name-only $BASE $HEAD`).
-`*` matches within one path component, `**` across components, first matching row wins
-(Python's `pathlib.PurePosixPath(path).full_match(pattern)` has these semantics).
+`*` matches any characters within one path component, `**` matches any number of whole components,
+and the first matching row wins.
 The floor is the highest level reached. Remember the files that reached it.
 
 ## Step 3: Draft the reading guide
@@ -106,13 +110,16 @@ From the diff stat, the commit list, and a skim of the diff, write:
 
 ## Step 4: Dispatch reviewers
 
-Size the review by changed lines and changed files:
+Size the review by changed lines and changed files. The first matching row wins:
 
 | Size | Reviewers |
 |---|---|
-| ≤ 400 lines | 1 reviewer with all three topics |
-| > 400 lines | 3 reviewers, one per topic |
 | > 3000 lines or > 40 files | 3 reviewers per subsystem group |
+| risk floor is Low | 1 reviewer with all three topics |
+| > 400 lines | 3 reviewers, one per topic |
+| otherwise | 1 reviewer with all three topics |
+
+When the split would need more than 12 reviewers, tell the user the count and ask before dispatching.
 
 **Subsystem groups** for the largest PRs: each `src/core/<dir>` (top-level files in `src/core` form one group),
 `src/script_interface`, `src/python`, `src/walberla_bridge`, `testsuite`, `doc`, and everything else.
@@ -143,11 +150,15 @@ Findings that overlap only partly stay separate.
 
 ## Step 6: Finalize risk and reading guide
 
-* Raise the risk per `risk-levels.md` ("Raising the rating") if a confirmed finding
-  or a needs-human-check item calls for it. Never lower the floor.
-  When the floor is already High, there is nothing to raise; name the item in the risk sentence instead.
+* Raise the risk per `risk-levels.md` ("Raising the rating") if a confirmed finding calls for it.
+  Never lower the floor.
+  When the floor is already High, there is nothing to raise; name the finding in the risk sentence instead.
 * Add the reviewers' hotspots to the attention list, including those outside the diff. Drop duplicates.
 * Write one sentence on what could break and who would notice.
+* Write the summary (what the PR does) from the context and the reading guide.
+* Merge the reviewers' `## Strengths` lists. Drop duplicates and generic praise.
+* Merge the reviewers' `## Set aside` lists. Keep only behaviors that were left unjudged;
+  drop entries that say something was checked and found fine.
 
 ## Step 7: Write the report
 
@@ -172,8 +183,9 @@ the report path, the risk level, the number of findings per severity, and the ve
 
 Only when the user asks for posting in words:
 
-1. Show the exact text that will be posted (the report, or the part the user named).
-2. Ask once for confirmation.
-3. Post: `gh pr comment <N> --repo espressomd/espresso --body-file <report path>`.
+1. Write the text to post (the whole report, or the part the user named)
+   to `post-body.md` in this run's temp folder.
+2. Show the user exactly that text and ask once for confirmation.
+3. Post that file: `gh pr comment <N> --repo espressomd/espresso --body-file <temp folder>/post-body.md`.
 
 For a branch or range review there is no PR to post to; say so.
