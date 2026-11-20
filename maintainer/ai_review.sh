@@ -91,12 +91,14 @@ if ! (cd "${repo_root}" && claude -p "/espresso-pr-review ${target} --output ${o
       "Bash(git switch:*)" "Bash(git reset:*)" "Bash(git stash:*)" \
       "Bash(git commit:*)" \
     >"${log}" 2>&1); then
-  echo "error: claude failed; log: ${log}" >&2
+  echo "error: claude failed; last lines of ${log}:" >&2
+  tail -n 5 "${log}" >&2
   exit 1
 fi
 
 if [ ! -s "${output}" ]; then
-  echo "error: no report was written; log: ${log}" >&2
+  echo "error: no report was written; last lines of ${log}:" >&2
+  tail -n 5 "${log}" >&2
   exit 1
 fi
 mkdir -p "$(dirname "${report}")"
