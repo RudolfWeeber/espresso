@@ -166,9 +166,16 @@ Findings that overlap only partly stay separate.
   Keep only items where a human's judgement adds something the review could not settle;
   drop items that merely restate a change, a finding, or a file name.
   Aim for at most seven items, most important first.
-  Prefix an item with "**Policy decision:**" when it needs a maintainer decision that code review cannot settle:
-  a user-visible behavior or API change, a physics or numerical convention, a changed default,
-  a new dependency, or dropped support.
+  Prefix an item with "**Policy decision:**" only when the PR makes a deliberate choice with real trade-offs
+  that the maintainers have not visibly agreed on (in the PR description or a linked issue), such as:
+  * a change that breaks existing user scripts or data without a migration path;
+  * a change of physics model or convention (e.g. how a potential, unit or sign is defined);
+  * a changed default that alters simulation results;
+  * a new required dependency, or dropped support for a feature, platform or toolchain.
+
+  Not policy decisions: bug fixes that restore documented or evidently intended behavior,
+  cosmetic changes to output or messages, internal refactoring, and test or doc changes.
+  These go in the findings or the attention list without the prefix.
 * Write one sentence on what could break and who would notice.
 * Write the summary (what the PR does) from the context and the reading guide.
 * Merge the reviewers' `## Strengths` lists. Drop duplicates and generic praise.
