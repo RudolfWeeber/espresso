@@ -1,8 +1,7 @@
 # Rules for every reviewer
 
-The coordinator sends this text together with one topic prompt
-(`correctness.md`, `espresso-goals.md` or `tests-docs.md`),
-or with all three for a small PR.
+You review one ESPResSo pull request.
+Your topic or topics follow after these rules.
 
 ## Context
 
@@ -26,7 +25,7 @@ Files in your scope:
   Read files at the head revision with `git show <head>:<path>`.
 * The review is read-only. Do not check out, stash, reset, commit or edit anything.
 * Do all the work yourself. Do not dispatch subagents.
-* Report only issues in your topic. Leave the others to their reviewers.
+* Report only issues in your topics. Other topics have their own reviewers.
 * Skip anything `clang-format`, `autopep8`, `pylint` or `clang-tidy` would report.
 * Report only issues you can point to in the code. A finding needs a location and a concrete effect.
 * Grade severity by effect on users and maintainers:
@@ -42,7 +41,7 @@ One block per finding, numbered from F1:
 ```
 ### F<n>: <short title>
 - severity: Critical | Important | Minor
-- location: <path>:<line>[-<line>]
+- location: <path>:<line>[-<line>][, <path>:<line>...]   (primary location first)
 - rule: <heading from the guidelines, or "defect">
 - problem: <what is wrong>
 - impact: <why it matters>
@@ -53,7 +52,7 @@ Then:
 
 ```
 ## Hotspots
-- <path>:<line> — <why a human should look here, even without a finding>
+- <path>[:<line>] — <why a human should look here, even without a finding>
 
 ## Strengths
 - <specific thing done well, with path>

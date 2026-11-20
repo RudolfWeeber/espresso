@@ -61,14 +61,15 @@ Filling rules (the coordinator removes this comment):
 RISK_LEVEL       Low | Medium | High
 RISK_REASON      one sentence: what could break and who would notice
 RISK_FILES       comma-separated paths that set the floor (max 5, then "and N more")
-RISK_RAISE       empty, or "Raised from <floor> because <item>."
+RISK_RAISE       empty, or "Raised from <floor> because <item>." (always empty for a High floor)
 SUMMARY          3-5 sentences
 READING_ORDER    numbered list; each item: `path` or commit SHA, then one line on what it does
-ATTENTION        bullets `path:line` — why; "needs human check" items start with
+ATTENTION        bullets `path[:line]` — why (paths outside the diff are fine);
+                 "needs human check" items start with
                  "**Needs human check:**"
 FINDINGS_*       one block per finding:
                    #### <title>
-                   - **Location:** `path:line`
+                   - **Location:** `path:line` (primary first; more comma-separated)
                    - **Rule:** <guideline heading or "defect">
                    - **Problem:** ...
                    - **Impact:** ...
