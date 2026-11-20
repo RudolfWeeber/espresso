@@ -100,13 +100,17 @@ The floor is the highest level reached. Remember the files that reached it.
 
 From the diff stat, the commit list, and a skim of the diff, write:
 
-* **Read in this order:** a numbered list of files or commits.
+* **Read in this order:** a numbered list of code locations, each with line numbers and/or the function or class:
+  `path:start-end` (`function_name()`). One line per item on what changed there and why it matters.
   Default order: new or changed interfaces (headers, base classes) → core logic →
   script interface → Python API → tests → docs.
-  When commits are self-contained steps, list commits instead of files.
-  One line per item on what it does.
-* **Pay attention to:** a first list of spots that deserve care,
-  e.g. changed MPI communication, changed defaults, deleted tests.
+  Group trivial or mechanical changes (renames, formatting, boilerplate) into one final item.
+  When commits are self-contained steps, order by commit and give locations within each.
+* **Pay attention to:** a first draft of the places where human judgement is most valuable.
+  This is not a list of changed files. Include only what is unclear, controversial, risky or brittle:
+  design decisions a maintainer should agree with, behavior changes, physics or numerics
+  that need an expert eye, assumptions that may break later, parallel or performance effects.
+  Phrase each item as the question or decision the human reviewer should settle, with its location.
 
 ## Step 4: Dispatch reviewers
 
@@ -114,19 +118,21 @@ Size the review by changed lines and changed files. The first matching row wins:
 
 | Size | Reviewers |
 |---|---|
-| > 3000 lines or > 40 files | 3 reviewers per subsystem group |
-| risk floor is Low | 1 reviewer with all three topics |
-| > 400 lines | 3 reviewers, one per topic |
-| otherwise | 1 reviewer with all three topics |
+| > 3000 lines or > 40 files | 4 reviewers per subsystem group |
+| risk floor is Low | 1 reviewer with all four topics |
+| > 400 lines | 4 reviewers, one per topic |
+| otherwise | 1 reviewer with all four topics |
 
-When the split would need more than 12 reviewers, tell the user the count and ask before dispatching.
+When the split would need more than 16 reviewers, tell the user the count and ask before dispatching.
 
 **Subsystem groups** for the largest PRs: each `src/core/<dir>` (top-level files in `src/core` form one group),
 `src/script_interface`, `src/python`, `src/walberla_bridge`, `testsuite`, `doc`, and everything else.
 Merge groups with fewer than 100 changed lines into a neighbor so no reviewer gets a trivial share.
 
 **Each reviewer prompt** is `prompts/reviewer-common.md` with its placeholders filled,
-followed by the topic prompt(s): `prompts/correctness.md`, `prompts/espresso-goals.md`, `prompts/tests-docs.md`.
+followed by the topic prompt(s): `prompts/correctness.md`, `prompts/physics.md`,
+`prompts/espresso-goals.md`, `prompts/tests-docs.md`.
+A subsystem group without physics code (e.g. `doc`, build files) skips the physics reviewer.
 `{{FILES}}` is the reviewer's file list (all changed files unless split).
 Send all reviewers in one message so they run in parallel, as `general-purpose` subagents.
 Never pass your own conversation history.
@@ -153,7 +159,10 @@ Findings that overlap only partly stay separate.
 * Raise the risk per `risk-levels.md` ("Raising the rating") if a confirmed finding calls for it.
   Never lower the floor.
   When the floor is already High, there is nothing to raise; name the finding in the risk sentence instead.
-* Add the reviewers' hotspots to the attention list, including those outside the diff. Drop duplicates.
+* Curate the attention list. Merge your draft with the reviewers' hotspots and the needs-human-check items.
+  Keep only items where a human's judgement adds something the review could not settle;
+  drop items that merely restate a change, a finding, or a file name.
+  Aim for at most seven items, most important first.
 * Write one sentence on what could break and who would notice.
 * Write the summary (what the PR does) from the context and the reading guide.
 * Merge the reviewers' `## Strengths` lists. Drop duplicates and generic praise.

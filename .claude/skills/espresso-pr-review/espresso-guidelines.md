@@ -68,7 +68,23 @@ New code builds on what ESPResSo already provides instead of reinventing it.
 * Rank-local data (local particles, local cells) is not treated as global, and vice versa.
 * Ghost particles are updated before they are read, and forces on ghosts are folded back.
 * Changes to the particle data, cell system or integrator keep results identical with 1 and several MPI ranks.
-* Units and conventions match the surrounding code (ESPResSo is unit-agnostic; no hard-coded physical constants).
+
+### Physics
+
+* Implemented equations match a cited reference (paper, docs, derivation in a comment);
+  signs, prefactors and powers agree term by term.
+* Forces are the negative gradient of the corresponding energy; pair forces obey Newton's third law
+  unless the method is explicitly non-conservative.
+* Pressure and stress contributions are consistent with the forces (virial), and include every new term.
+* Conserved quantities stay conserved where the method promises it: momentum, energy in NVE, mass and charge.
+* Results do not depend on the choice of origin, the periodic image, or particle ordering.
+* Thermostats satisfy the fluctuation-dissipation relation; random numbers are seeded and counter-based as elsewhere.
+* Singular and limiting configurations (zero distance, collinear or coplanar particles, cutoff)
+  are handled deliberately; potentials and forces are continuous at the cutoff where the method requires it.
+* Units and conventions follow ESPResSo's unit-agnostic style; no hard-coded physical constants.
+* Variants of the same physics (CPU/GPU, analytical/tabulated, bonded/non-bonded) agree.
+* New physics is tested against an independent reference: an analytical result, finite differences,
+  or a literature value.
 
 ### Script interface
 

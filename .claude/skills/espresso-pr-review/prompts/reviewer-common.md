@@ -59,7 +59,8 @@ Then:
 
 ```
 ## Hotspots
-- <path>[:<line>] — <why a human should look here, even without a finding>
+- <path>[:<line>] — <the question or decision a human should settle here: unclear intent,
+  a debatable design choice, a risky or brittle assumption, physics needing an expert eye>
 
 ## Strengths
 - <specific thing done well, with path>
