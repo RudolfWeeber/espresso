@@ -89,6 +89,7 @@
 #include <cstddef>
 #include <functional>
 #include <initializer_list>
+#include <limits>
 #include <numbers>
 #include <optional>
 #include <span>
@@ -391,6 +392,17 @@ template <int cao> struct AssignCharge {
     auto const &aosoa = cell_structure.get_aosoa();
     auto const n_part = cell_structure.count_local_particles();
     p3m.inter_weights.zfill(n_part); // allocate buffer for parallel write
+    auto const num_threads = execution_space().concurrency();
+    auto const dim = p3m.local_mesh.dim;
+    // Box of the stencil corners each thread assigned to, so that the
+    // reduction only visits the part of a replica its thread wrote to
+    // (one cache line per thread to avoid false sharing).
+    struct alignas(64) StencilBox {
+      Utils::Vector3i lo = Utils::Vector3i::broadcast(
+          std::numeric_limits<int>::max());
+      Utils::Vector3i hi = Utils::Vector3i::broadcast(-1);
+    };
+    std::vector<StencilBox> boxes(static_cast<std::size_t>(num_threads));
     kokkos_parallel_range_for<execution_space>(
         "InterpolateCharges", std::size_t{0u}, n_part, [&](auto p_index) {
           auto constexpr memory_order = Utils::MemoryOrder::ROW_MAJOR;
@@ -401,36 +413,69 @@ template <int cao> struct AssignCharge {
               p3m_calculate_interpolation_weights<cao, memory_order>(
                   pos, p3m.params.ai, p3m.local_mesh);
           p3m.inter_weights.store_at(p_index, weights);
+          auto &box = boxes[static_cast<std::size_t>(tid)];
+          auto const corner =
+              Utils::Vector3i{weights.ind / (dim[1] * dim[2]),
+                              (weights.ind / dim[2]) % dim[1],
+                              weights.ind % dim[2]};
+          auto const in_mesh = weights.ind >= 0 and corner[0] + cao <= dim[0] and
+                               corner[1] + cao <= dim[1] and
+                               corner[2] + cao <= dim[2];
+          assert(in_mesh);
+          if (not in_mesh) {
+            // the stencil wraps around: visit the whole replica, otherwise
+            // the charge would never be cleared from it
+            box.lo = Utils::Vector3i::broadcast(0);
+            box.hi = dim - Utils::Vector3i::broadcast(cao);
+          }
+          for (unsigned d = 0u; d < 3u; ++d) {
+            box.lo[d] = std::min(box.lo[d], corner[d]);
+            box.hi[d] = std::max(box.hi[d], corner[d]);
+          }
           p3m_interpolate(
               p3m.local_mesh, weights, [&, tid, q](int ind, double w) {
                 p3m.rs_charge_density_kokkos(tid, ind) += value_type(w * q);
               });
         });
     Kokkos::fence();
-    int num_threads = execution_space().concurrency();
-    // Sum the replicas block by block, one replica at a time, so that only
-    // two contiguous streams are accessed at a time (iterating over all
-    // replicas for every mesh point accesses num_threads streams which are
-    // a mesh size apart and can map to the same cache set); same summation
-    // order as a per-point loop over the replicas.
-    static constexpr std::size_t block = 256u;
-    auto const mesh_size = p3m.local_mesh.size;
-    auto const n_blocks = (mesh_size + block - 1u) / block;
+    // Sum the replicas row by row, one replica at a time, in chunks along
+    // the row, so that only two contiguous streams are accessed at a time
+    // (iterating over all replicas for every mesh point accesses num_threads
+    // streams which are a mesh size apart and can map to the same cache set).
+    // A replica is only visited inside the stencils of its box: all other
+    // entries are zero, so the summation order over the replicas is the same
+    // as in a per-point loop over all of them.
+    static constexpr int chunk = 256;
     kokkos_parallel_range_for<execution_space>(
-        "ReduceInterpolatedCharges", std::size_t{0}, n_blocks,
-        [&p3m, num_threads, mesh_size](std::size_t const b) {
-          auto const begin = b * block;
-          auto const n = std::min(block, mesh_size - begin);
-          std::array<value_type, block> acc{};
-          for (int tid = 0; tid < num_threads; ++tid) {
-            for (std::size_t i = 0u; i < n; ++i) {
-              acc[i] += p3m.rs_charge_density_kokkos(tid, begin + i);
-              // leave the replicas zeroed for the next charge assignment
-              p3m.rs_charge_density_kokkos(tid, begin + i) = value_type{0};
+        "ReduceInterpolatedCharges", std::size_t{0},
+        static_cast<std::size_t>(dim[0] * dim[1]),
+        [&p3m, &boxes, num_threads, dim](std::size_t const row) {
+          auto const x = static_cast<int>(row) / dim[1];
+          auto const y = static_cast<int>(row) % dim[1];
+          auto const row_begin = row * static_cast<std::size_t>(dim[2]);
+          for (int z_begin = 0; z_begin < dim[2]; z_begin += chunk) {
+            auto const z_end = std::min(z_begin + chunk, dim[2]);
+            std::array<value_type, chunk> acc;
+            std::fill_n(acc.begin(), z_end - z_begin, value_type{0});
+            for (int tid = 0; tid < num_threads; ++tid) {
+              auto const &box = boxes[static_cast<std::size_t>(tid)];
+              if (x < box.lo[0] or x >= box.hi[0] + cao or y < box.lo[1] or
+                  y >= box.hi[1] + cao) {
+                continue;
+              }
+              auto const lo = std::max(z_begin, box.lo[2]);
+              auto const hi = std::min(z_end, box.hi[2] + cao);
+              for (int z = lo; z < hi; ++z) {
+                auto const i = row_begin + static_cast<std::size_t>(z);
+                acc[z - z_begin] += p3m.rs_charge_density_kokkos(tid, i);
+                // leave the replicas zeroed for the next charge assignment
+                p3m.rs_charge_density_kokkos(tid, i) = value_type{0};
+              }
             }
-          }
-          for (std::size_t i = 0u; i < n; ++i) {
-            p3m.rs_charge_density[begin + i] += acc[i];
+            for (int z = z_begin; z < z_end; ++z) {
+              p3m.rs_charge_density[row_begin + static_cast<std::size_t>(z)] +=
+                  acc[z - z_begin];
+            }
           }
         });
     Kokkos::fence();
