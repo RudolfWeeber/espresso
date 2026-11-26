@@ -29,6 +29,7 @@
 
 #include "cell_system/CellStructure.hpp"
 #include "electrostatics/coulomb.hpp"
+#include "forces_init_inline.hpp"
 #include "integrators/Propagation.hpp"
 #include "magnetostatics/dipoles.hpp"
 #include "nonbonded_interactions/VerletCriterion.hpp"
@@ -36,9 +37,17 @@
 
 #include "short_range_cabana.hpp"
 
-void update_verlet_state(System::System const &system,
-                         double const collision_cut) {
+#include <optional>
+
+bool update_verlet_state(System::System const &system,
+                         double const collision_cut,
+                         bool const init_local_forces) {
   auto &cell_structure = *system.cell_structure;
+  std::optional<LocalForceInit> force_init;
+  if (init_local_forces) {
+    force_init.emplace(system);
+  }
+  auto const *const force_init_ptr = force_init ? &*force_init : nullptr;
   auto const skin = cell_structure.get_verlet_skin();
   auto const coulomb_cut = system.coulomb.cutoff();
   auto const dipolar_cut = system.dipoles.cutoff();
@@ -59,14 +68,14 @@ void update_verlet_state(System::System const &system,
       return VerletCriterion<GetNonbondedCutoff, true>{
           system, skin, pair_cutoff, coulomb_cut, dipolar_cut, collision_cut};
     };
-    update_cabana_state(cell_structure, make_criterion, pair_cutoff,
-                        integ_switch);
+    return update_cabana_state(cell_structure, make_criterion, pair_cutoff,
+                               integ_switch, force_init_ptr);
   } else {
     auto const make_criterion = [&] {
       return VerletCriterion<GetNonbondedCutoff, false>{
           system, skin, pair_cutoff, coulomb_cut, dipolar_cut, collision_cut};
     };
-    update_cabana_state(cell_structure, make_criterion, pair_cutoff,
-                        integ_switch);
+    return update_cabana_state(cell_structure, make_criterion, pair_cutoff,
+                               integ_switch, force_init_ptr);
   }
 }

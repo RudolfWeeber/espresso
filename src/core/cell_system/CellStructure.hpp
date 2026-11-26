@@ -201,6 +201,8 @@ private:
   double m_verlet_reuse = 0.;
   int m_cached_max_local_particle_id = 0;
   std::size_t m_num_local_particles_cached = 0;
+  /** Number of local particles at the front of @ref m_unique_particles. */
+  std::size_t m_num_unique_local_particles = 0;
   int m_max_id = 0;
   std::unique_ptr<Kokkos::View<int *, memory_space>> m_id_to_index;
   std::unique_ptr<ForceType> m_local_force;
@@ -559,6 +561,13 @@ public:
   }
   std::size_t get_num_local_particles_cached() const {
     return m_num_local_particles_cached;
+  }
+  /**
+   * @brief Number of local particles in @ref get_unique_particles. They come
+   * first, followed by the ghosts that have no local copy.
+   */
+  std::size_t get_num_unique_local_particles() const {
+    return m_num_unique_local_particles;
   }
   int get_local_pair_bond_numbers() const;
   int get_local_angle_bond_numbers() const;

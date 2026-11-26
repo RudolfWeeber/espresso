@@ -36,5 +36,13 @@ class System;
 // electrostatics/dipolar/collision cutoff is active, the pure-short-range
 // criterion variant is used, dropping those dead branches from the
 // per-candidate build loop.
-void update_verlet_state(System::System const &system,
-                         double collision_detection_cutoff);
+//
+// With @p init_local_forces, the AoSoA commit sweep also initializes the
+// forces and torques of the local particles (external forces, Langevin
+// friction and noise), i.e. it does the local part of
+// @ref init_forces_and_thermostat. Returns whether it did so; the caller then
+// only resets the ghost forces (@ref init_ghost_forces), otherwise it runs
+// @ref init_forces_and_thermostat.
+bool update_verlet_state(System::System const &system,
+                         double collision_detection_cutoff,
+                         bool init_local_forces = false);

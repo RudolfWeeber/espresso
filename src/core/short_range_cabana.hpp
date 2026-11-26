@@ -36,6 +36,8 @@
 #include "caliper_utils.hpp"
 #endif
 
+#include <cassert>
+#include <cstddef>
 #include <functional>
 #include <iterator>
 #include <span>
@@ -169,11 +171,15 @@ ESPRESSO_ATTR_ALWAYS_INLINE inline void link_cell_kokkos(
 // @p make_verlet_criterion is a nullary factory: constructing the criterion
 // fills an O(n_types^2) cutoff table, so it is only invoked when the Verlet
 // list is actually rebuilt, not on every force call.
+// @p local_force_init: if not null, a kernel that initializes the force of a
+// local particle (@ref LocalForceInit). It is applied to every local particle
+// in the commit sweep, which visits them anyway, instead of in a separate
+// pass. Returns whether it was applied (to all local particles).
 template <class execution_space = Kokkos::DefaultHostExecutionSpace>
-ESPRESSO_ATTR_ALWAYS_INLINE inline void
+ESPRESSO_ATTR_ALWAYS_INLINE inline bool
 update_cabana_state(CellStructure &cell_structure,
                     auto const &make_verlet_criterion, double const pair_cutoff,
-                    auto const integ_switch) {
+                    auto const integ_switch, auto const *local_force_init) {
 #ifdef ESPRESSO_CALIPER
   ESPRESSO_CALI_MARK_FUNCTION;
 #endif
@@ -182,6 +188,13 @@ update_cabana_state(CellStructure &cell_structure,
   auto const n_part = unique_particles.size();
   auto const max_id = cell_structure.get_cached_max_local_particle_id();
   auto &aosoa = cell_structure.get_aosoa();
+  // The local particles are the first n_local entries of unique_particles.
+  // The index map is refreshed whenever particles are added, removed or
+  // moved between cells (prepare_verlet_list_cabana above), so it covers
+  // every local particle exactly once.
+  auto const n_local = cell_structure.get_num_unique_local_particles();
+  assert(n_local == cell_structure.count_local_particles());
+  bool const init_forces = local_force_init != nullptr;
 
   if (rebuild) {
     auto &id_to_index = cell_structure.get_id_to_index();
@@ -203,9 +216,13 @@ update_cabana_state(CellStructure &cell_structure,
     kokkos_parallel_range_for<execution_space>(
         "AoSoA write", std::size_t{0}, n_part,
         [&unique_particles, &aosoa, &id_to_index, &cell_structure, &pair_count,
-         &angle_count, &dihedral_count](int const index) {
-          auto const &p = *unique_particles.at(index);
+         &angle_count, &dihedral_count, local_force_init, init_forces,
+         n_local](int const index) {
+          auto &p = *unique_particles.at(index);
           commit_particle(p, index, aosoa, true);
+          if (init_forces and static_cast<std::size_t>(index) < n_local) {
+            (*local_force_init)(p);
+          }
           id_to_index(p.id()) = index;
           if (not p.is_ghost()) {
             cell_structure.update_bond_storage(pair_count, angle_count,
@@ -305,15 +322,20 @@ update_cabana_state(CellStructure &cell_structure,
 #endif
     kokkos_parallel_range_for<execution_space>(
         "AoSoA write", std::size_t{0}, n_part,
-        [&unique_particles, &aosoa](int const index) {
-          auto const &p = *unique_particles.at(index);
+        [&unique_particles, &aosoa, local_force_init, init_forces,
+         n_local](int const index) {
+          auto &p = *unique_particles.at(index);
           commit_particle(p, index, aosoa, false);
+          if (init_forces and static_cast<std::size_t>(index) < n_local) {
+            (*local_force_init)(p);
+          }
         });
     Kokkos::fence();
 #ifdef ESPRESSO_CALIPER
     ESPRESSO_CALI_MARK_END("AoSoA commit partial");
 #endif
   }
+  return init_forces;
 }
 
 #ifdef ESPRESSO_ELECTROSTATICS

@@ -467,13 +467,27 @@ void System::System::calculate_forces() {
                              collision_detection_cutoff};
   };
 
-  update_verlet_state(*this, collision_detection_cutoff);
+  // The AoSoA commit sweep in update_verlet_state() also initializes the
+  // local forces (external forces, Langevin), saving a separate pass over the
+  // particles. Not with ICC: update_icc_particles() runs its own force
+  // calculations in between and leaves the forces in an undefined state.
 #ifdef ESPRESSO_ELECTROSTATICS
-  if (coulomb.impl->extension) {
+  bool const icc_active = coulomb.impl->extension.has_value();
+#else
+  bool const icc_active = false;
+#endif
+  auto const local_forces_initialized =
+      update_verlet_state(*this, collision_detection_cutoff, not icc_active);
+#ifdef ESPRESSO_ELECTROSTATICS
+  if (icc_active) {
     update_icc_particles();
   }
 #endif // ESPRESSO_ELECTROSTATICS
-  init_forces_and_thermostat(*this);
+  if (local_forces_initialized) {
+    init_ghost_forces(*this);
+  } else {
+    init_forces_and_thermostat(*this);
+  }
 #ifdef ESPRESSO_CALIPER
   ESPRESSO_CALI_MARK_BEGIN("calc_long_range_forces");
 #endif

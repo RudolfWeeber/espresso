@@ -28,4 +28,15 @@ namespace System {
 class System;
 }
 
+/**
+ * @brief Initialize the forces and torques of all local particles (external
+ * forces, Langevin friction and noise) and reset those of the ghosts.
+ */
 void init_forces_and_thermostat(System::System const &system);
+
+/**
+ * @brief Reset the forces and torques (and dipole fields, with dipole field
+ * tracking) of the ghosts only. Used when the local particles were already
+ * initialized by the AoSoA commit sweep (@ref update_verlet_state).
+ */
+void init_ghost_forces(System::System const &system);
