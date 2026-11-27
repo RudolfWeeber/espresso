@@ -36,10 +36,13 @@
 #include "caliper_utils.hpp"
 #endif
 
+#include <algorithm>
+#include <cstddef>
 #include <functional>
 #include <iterator>
 #include <span>
 #include <utility>
+#include <vector>
 
 ESPRESSO_ATTR_ALWAYS_INLINE inline void
 commit_particle(Particle const &p, auto const index,
@@ -81,6 +84,139 @@ commit_particle(Particle const &p, auto const index,
 #else
   aosoa.flags(index) = 0;
 #endif
+}
+
+/** @brief Per-thread buffers of @ref link_cell_inter_gathered. */
+struct GatheredCandidates {
+  std::vector<double> x, y, z, dist2;
+  std::vector<int> id, selected;
+  std::vector<Particle const *> particle;
+};
+
+/**
+ * @brief Inter-cell pairs of one cell from gathered candidates (cuboid boxes).
+ *
+ * Finds the same pairs, in the same order and with bitwise the same squared
+ * distances, as the inter-cell loop of @ref link_cell_kokkos, but:
+ * - The candidates (the particles of the red neighbor cells, in neighbor
+ *   order) are read once per cell instead of once per particle of the cell:
+ *   their positions, ids and addresses are copied into contiguous
+ *   per-thread arrays.
+ * - The squared distances from a particle to all candidates are computed in
+ *   one loop over these arrays. If the cell's particles and the candidates
+ *   span at most 0.45 box lengths in every periodic direction, which is the
+ *   case for most cells unless the box is small, the minimum-image fold is
+ *   the identity for every pair (@ref CuboidMinimumImage::fold_is_identity).
+ *   The loop then uses plain coordinate differences, which the compiler
+ *   vectorizes; otherwise it calls @ref CuboidMinimumImage::dist2.
+ * - The candidates within the global (cutoff + skin) bound whose id is in
+ *   range are selected without branches (about 1 in 7 in a dense liquid),
+ *   so the criterion and the unpredictable test are only applied to those.
+ */
+template <class Criterion>
+void link_cell_inter_gathered(
+    Cell &cell, CuboidMinimumImage const &minimum_image,
+    Criterion const &verlet_criterion,
+    Kokkos::View<int *, Kokkos::DefaultHostExecutionSpace> const &id_to_index,
+    int const max_id, auto const &inter_operator) {
+  auto const &local_particles = cell.particles();
+  if (local_particles.empty()) {
+    return;
+  }
+  std::size_t n = 0u;
+  for (auto const *neighbor : cell.neighbors().red()) {
+    n += neighbor->particles().size();
+  }
+  thread_local GatheredCandidates buffers;
+  auto &buf = buffers;
+  if (buf.x.size() < n) {
+    for (auto *v : {&buf.x, &buf.y, &buf.z, &buf.dist2}) {
+      v->resize(n);
+    }
+    for (auto *v : {&buf.id, &buf.selected}) {
+      v->resize(n);
+    }
+    buf.particle.resize(n);
+  }
+  // raw pointers: no access to the thread-local object in the loops
+  double *const x = buf.x.data();
+  double *const y = buf.y.data();
+  double *const z = buf.z.data();
+  double *const dist2 = buf.dist2.data();
+  int *const id = buf.id.data();
+  int *const selected = buf.selected.data();
+  Particle const **const particle = buf.particle.data();
+
+  // gather the candidates, and the extent of them and the cell's particles
+  auto lo = local_particles.begin()->pos();
+  auto hi = lo;
+  auto const extend = [&lo, &hi](Utils::Vector3d const &pos) {
+    for (auto c = 0u; c < 3u; ++c) {
+      lo[c] = std::min(lo[c], pos[c]);
+      hi[c] = std::max(hi[c], pos[c]);
+    }
+  };
+  for (auto const &p : local_particles) {
+    extend(p.pos());
+  }
+  std::size_t j = 0u;
+  for (auto const *neighbor : cell.neighbors().red()) {
+    for (auto const &p : neighbor->particles()) {
+      auto const &pos = p.pos();
+      extend(pos);
+      x[j] = pos[0];
+      y[j] = pos[1];
+      z[j] = pos[2];
+      id[j] = p.id();
+      particle[j] = &p;
+      ++j;
+    }
+  }
+  bool const no_fold = minimum_image.fold_is_identity(hi - lo);
+
+  auto const max_cut2 = verlet_criterion.eff_max_cut2();
+  for (auto const &p1 : local_particles) {
+    if (p1.id() > max_id) {
+      continue;
+    }
+    auto const ii = id_to_index(p1.id());
+    if (ii < 0) {
+      continue;
+    }
+    auto const &pos = p1.pos();
+    if (no_fold) {
+      // the operations of CuboidMinimumImage::dist2 with a zero fold
+      for (std::size_t t = 0u; t < n; ++t) {
+        auto const dx = pos[0] - x[t];
+        auto const dy = pos[1] - y[t];
+        auto const dz = pos[2] - z[t];
+        auto acc = 0.;
+        acc += dx * dx;
+        acc += dy * dy;
+        acc += dz * dz;
+        dist2[t] = acc;
+      }
+    } else {
+      for (std::size_t t = 0u; t < n; ++t) {
+        dist2[t] = minimum_image.dist2(pos, Utils::Vector3d{x[t], y[t], z[t]});
+      }
+    }
+    std::size_t n_selected = 0u;
+    for (std::size_t t = 0u; t < n; ++t) {
+      selected[n_selected] = static_cast<int>(t);
+      n_selected += static_cast<std::size_t>((dist2[t] <= max_cut2) &
+                                             (id[t] <= max_id));
+    }
+    for (std::size_t s = 0u; s < n_selected; ++s) {
+      auto const t = static_cast<std::size_t>(selected[s]);
+      if (verlet_criterion(p1, *particle[t], dist2[t])) {
+        auto const jj = id_to_index(id[t]);
+        if (jj >= 0) {
+          inter_operator(ii, jj);
+        }
+      }
+    }
+  }
 }
 
 ESPRESSO_ATTR_ALWAYS_INLINE inline void link_cell_kokkos(
@@ -161,8 +297,19 @@ ESPRESSO_ATTR_ALWAYS_INLINE inline void link_cell_kokkos(
       "intra", std::size_t{0}, cells.size(), intra_kernel);
   Kokkos::fence();
 
-  kokkos_parallel_range_for<Kokkos::DefaultHostExecutionSpace>(
-      "inter", std::size_t{0}, cells.size(), inter_kernel);
+  // cuboid boxes: gathered candidates, see link_cell_inter_gathered()
+  auto inter_kernel_gathered = [&](const int i) {
+    link_cell_inter_gathered(*cells[i], cuboid_minimum_image, verlet_criterion,
+                             id_to_index, max_id, inter_operator);
+  };
+
+  if (has_lees_edwards) {
+    kokkos_parallel_range_for<Kokkos::DefaultHostExecutionSpace>(
+        "inter", std::size_t{0}, cells.size(), inter_kernel);
+  } else {
+    kokkos_parallel_range_for<Kokkos::DefaultHostExecutionSpace>(
+        "inter", std::size_t{0}, cells.size(), inter_kernel_gathered);
+  }
   Kokkos::fence();
 }
 

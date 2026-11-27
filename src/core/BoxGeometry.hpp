@@ -116,6 +116,22 @@ public:
                      Utils::Vector3d const &length_inv_masked)
       : m_length(length), m_length_inv_masked(length_inv_masked) {}
 
+  /**
+   * @brief Whether the minimum-image fold leaves every coordinate difference
+   * unchanged for points that span at most @p extent per direction.
+   *
+   * The fold subtracts <tt>rint(dx / L) * L</tt> from a difference @c dx.
+   * For |dx| <= 0.45 L (or in a non-periodic direction) that term is zero,
+   * so the folded difference is bitwise the plain difference (up to the
+   * sign of a zero, which does not change its square). The margin to 0.5
+   * covers the rounding of @c dx and of the product.
+   */
+  bool fold_is_identity(Utils::Vector3d const &extent) const noexcept {
+    return extent[0u] * m_length_inv_masked[0u] <= 0.45 and
+           extent[1u] * m_length_inv_masked[1u] <= 0.45 and
+           extent[2u] * m_length_inv_masked[2u] <= 0.45;
+  }
+
   /** @brief Squared minimum-image distance between two coordinates. */
   ESPRESSO_ATTR_ALWAYS_INLINE inline double
   dist2(Utils::Vector3d const &a, Utils::Vector3d const &b) const noexcept {

@@ -104,6 +104,9 @@ public:
     }
   }
 
+  /** @brief Squared (cutoff + skin) bound: every pair beyond it is rejected. */
+  double eff_max_cut2() const { return m_eff_max_cut2; }
+
   bool operator()(const Particle &p1, const Particle &p2, double dist2) const {
     if (dist2 > m_eff_max_cut2)
       return false;
