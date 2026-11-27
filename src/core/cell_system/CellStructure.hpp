@@ -200,7 +200,9 @@ private:
   double m_verlet_skin = 0.;
   double m_verlet_reuse = 0.;
   int m_cached_max_local_particle_id = 0;
-  std::size_t m_num_local_particles_cached = 0;
+  std::size_t m_num_local_particles_cached = 0; ///< without ghosts
+  std::size_t m_verlet_max_counts_limit = 0;
+  std::size_t m_verlet_max_counts_hint = 0; ///< longest row of the last list
   int m_max_id = 0;
   std::unique_ptr<Kokkos::View<int *, memory_space>> m_id_to_index;
   std::unique_ptr<ForceType> m_local_force;
@@ -952,8 +954,21 @@ public:
   void rebuild_verlet_list_cabana(auto &&kernel, bool rebuild_verlet_list) {
     assert(is_verlet_list_cabana_rebuild_needed());
     if (rebuild_verlet_list) {
-      kernel(m_decomposition->local_cells(), m_decomposition->box(),
-             *m_verlet_list_cabana);
+      auto &list = *m_verlet_list_cabana;
+      auto const rows = list.counts.extent(0);
+      if (list.hasOverflow()) { // flag of an earlier list: fill at the limit
+        list.reallocData(rows, m_verlet_max_counts_limit);
+      }
+      kernel(m_decomposition->local_cells(), m_decomposition->box(), list);
+      // on overflow, fill again at the limit
+      if (list.hasOverflow() and
+          list.neighbors.extent(1) < m_verlet_max_counts_limit) {
+        list.reallocData(rows, m_verlet_max_counts_limit);
+        list.resetOverflow();
+        kernel(m_decomposition->local_cells(), m_decomposition->box(), list);
+      }
+      m_verlet_max_counts_hint =
+          static_cast<std::size_t>(std::max(0, list.get_max_counts()));
     }
     m_rebuild_verlet_list_cabana = false;
   }

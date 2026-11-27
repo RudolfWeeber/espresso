@@ -149,14 +149,23 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
   auto const num_part = get_unique_particles().size();
   auto const &system = get_system();
   auto const local_box_volume = system.local_geo->volume();
-  auto max_counts = estimate_max_counts(pair_cutoff, num_part, local_box_volume,
-                                        get_num_local_particles_cached());
+  // Limit: local and ghost particles over the local box volume, which
+  // overestimates the density of a homogeneous system (the ghosts are outside
+  // of the local box). Start from the local particles only, or from the
+  // longest row of the last list plus 1/8 (see rebuild_verlet_list_cabana()).
+  m_verlet_max_counts_limit =
+      estimate_max_counts(pair_cutoff, num_part, local_box_volume, num_part);
 #ifdef ESPRESSO_COLLISION_DETECTION
   if (system.has_collision_detection_enabled()) {
     // TODO: use other types of Verlet list data structures
-    max_counts = num_part * 2ul;
+    m_verlet_max_counts_limit = num_part * 2ul;
   }
 #endif
+  auto const max_counts = std::min(
+      std::max(estimate_max_counts(pair_cutoff, num_part, local_box_volume,
+                                   get_num_local_particles_cached()),
+               m_verlet_max_counts_hint + m_verlet_max_counts_hint / 8u),
+      m_verlet_max_counts_limit);
   if (m_local_force) { // local properties are reallocated
     if (get_local_force().extent(0) == num_part) {
       // Extents unchanged (always the case with a single MPI rank): zero the
@@ -372,6 +381,7 @@ void CellStructure::set_index_map() {
   }
   set_local_bond_numbers(pair_count, angle_count, dihedral_count);
   m_bond_state->allocate();
+  m_num_local_particles_cached = unique_particles.size();
   for (auto &p : ghost_particles()) {
     auto const *local_particle = get_local_particle(p.id());
     if (not local_particle or not local_particle->is_ghost()) {
@@ -386,7 +396,6 @@ void CellStructure::set_index_map() {
   }
   registered_index.clear();
   m_cached_max_local_particle_id = max_id;
-  m_num_local_particles_cached = unique_particles.size();
 }
 
 CellStructure::CellStructure(BoxGeometry const &box)

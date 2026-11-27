@@ -276,18 +276,18 @@ update_cabana_state(CellStructure &cell_structure,
                 // inter cell loop
                 verlet_list.addNeighbor(i, j);
               });
-
-          if (verlet_list.hasOverflow()) {
-            cell_structure.use_verlet_list = false;
-            runtimeWarningMsg()
-                << "Verlet list overflow detected: neighbor count exceeded "
-                   "max_counts. Falling back to the link cell algorithm. "
-                   "Configured max is "
-                << Cabana::NeighborList<CellStructure::ListType>::maxNeighbor(
-                       verlet_list);
-          }
         },
         rebuild_vl);
+    auto const &verlet_list = cell_structure.get_verlet_list_cabana();
+    if (rebuild_vl and verlet_list.hasOverflow()) {
+      cell_structure.use_verlet_list = false;
+      runtimeWarningMsg()
+          << "Verlet list overflow detected: neighbor count exceeded "
+             "max_counts. Falling back to the link cell algorithm. "
+             "Configured max is "
+          << Cabana::NeighborList<CellStructure::ListType>::maxNeighbor(
+                 verlet_list);
+    }
 #ifdef ESPRESSO_CALIPER
     ESPRESSO_CALI_MARK_END("Verlet list creation");
 #endif

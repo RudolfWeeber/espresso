@@ -166,6 +166,47 @@ class CellSystem(ut.TestCase):
         self.system.integrator.run(0)
         self.assertFalse(system.cell_system.use_verlet_lists)
 
+    @utx.skipIfMissingFeatures(["LENNARD_JONES"])
+    def test_verlet_list_capacity_inhomogeneous(self):
+        """
+        A liquid slab filling 30 % of the box: its particles have more
+        Verlet list partners than the average density of the local box
+        suggests. With several ranks the list must still fit (no fallback
+        to the link-cell loop) and give the link-cell forces.
+        """
+        system = self.system
+        node_grid = np.copy(system.cell_system.node_grid)
+        system.cell_system.node_grid = [self.n_nodes, 1, 1]
+        system.box_l = [20., 20., 20.]
+        system.cell_system.skin = 0.4
+        system.time_step = 0.01
+        lj = system.non_bonded_inter[0, 0].lennard_jones
+        lj.set_params(epsilon=1., sigma=1., cutoff=2.5, shift="auto")
+        spacing = 0.8**(-1. / 3.)
+        grid_xy = np.arange(spacing / 2., 20., spacing)
+        grid_z = np.arange(spacing / 2., 6., spacing)
+        pos = np.array(np.meshgrid(grid_xy, grid_xy, grid_z, indexing="ij"))
+        pos = pos.reshape((3, -1)).T
+        rng = np.random.default_rng(seed=1)
+        system.part.add(pos=pos + rng.uniform(-0.05, 0.05, pos.shape))
+        try:
+            system.cell_system.set_regular_decomposition(
+                use_verlet_lists=False)
+            system.integrator.run(0, recalc_forces=True)
+            f_link_cell = np.copy(system.part.all().f)
+            system.cell_system.set_regular_decomposition(
+                use_verlet_lists=True)
+            system.integrator.run(0, recalc_forces=True)
+            if self.n_nodes > 1:
+                self.assertTrue(system.cell_system.use_verlet_lists)
+            np.testing.assert_allclose(np.copy(system.part.all().f),
+                                       f_link_cell, rtol=0., atol=1e-8)
+        finally:
+            lj.deactivate()
+            system.cell_system.set_regular_decomposition(
+                use_verlet_lists=True)
+            system.cell_system.node_grid = node_grid
+
 
 if __name__ == "__main__":
     ut.main()

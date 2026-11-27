@@ -182,6 +182,7 @@ public:
   }
 
   KOKKOS_INLINE_FUNCTION bool hasOverflow() const { return overflow; }
+  void resetOverflow() { overflow = false; }
 
 private:
   KOKKOS_INLINE_FUNCTION void setOverflow() { overflow = true; }
