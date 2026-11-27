@@ -72,6 +72,16 @@ espresso_unit_test(SRC dipolar_direct_sum_kernels_test.cpp DEPENDS
                    espresso::core espresso::utils Kokkos::kokkos)
 espresso_unit_test(SRC periodic_fold_test.cpp)
 espresso_unit_test(SRC grid_test.cpp DEPENDS espresso::core Kokkos::kokkos)
+espresso_unit_test_executable(
+  SRC scatter_view_single_thread_test.cpp DEPENDS espresso::core
+  Kokkos::kokkos)
+foreach(TEST_NUM_THREADS 1 2)
+  if(${TEST_NUM_THREADS} LESS_EQUAL ${ESPRESSO_TEST_NT})
+    espresso_unit_test_register(
+      NAME scatter_view_single_thread_test_${TEST_NUM_THREADS}_omp_threads
+      TARGET scatter_view_single_thread_test NUM_THREADS ${TEST_NUM_THREADS})
+  endif()
+endforeach()
 espresso_unit_test(SRC lees_edwards_test.cpp DEPENDS espresso::core
                    Kokkos::kokkos)
 espresso_unit_test(SRC BoxGeometry_test.cpp DEPENDS espresso::core

@@ -27,6 +27,7 @@
 #include "magnetostatics/dipolar_direct_sum_kernels.hpp"
 
 #include "BoxGeometry.hpp"
+#include "cell_system/scatter_view_single_thread.hpp"
 #include "cells.hpp"
 #include "communication.hpp"
 #include "errorhandling.hpp"
@@ -187,8 +188,10 @@ void DipolarDirectSum::add_long_range_forces_cpu() const {
                                         memory_space>;
   ForceView local_force("dds_force", n_local);
   ForceView local_torque("dds_torque", n_local);
-  ScatterForce scatter_force(local_force);
-  ScatterForce scatter_torque(local_torque);
+  auto scatter_force =
+      ScatterViewSingleThread::make_scatter_view<ScatterForce>(local_force);
+  auto scatter_torque =
+      ScatterViewSingleThread::make_scatter_view<ScatterForce>(local_torque);
 
   /* Raw pointers so the Kokkos lambdas do not capture std::vector by value. */
   auto *local_particles_ptr = local_particles.data();

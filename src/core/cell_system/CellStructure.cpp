@@ -25,6 +25,7 @@
 #include "cell_system/HybridDecomposition.hpp"
 #include "cell_system/ParticleDecomposition.hpp"
 #include "cell_system/RegularDecomposition.hpp"
+#include "cell_system/scatter_view_single_thread.hpp"
 
 #include "BoxGeometry.hpp"
 #include "LocalBondState.hpp"
@@ -169,19 +170,22 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
       Kokkos::realloc(get_local_force(), num_part);
       // underlying View extent changed -> scratch buffers must be rebuilt
       m_scatter_force.emplace(
-          Kokkos::Experimental::create_scatter_view(get_local_force()));
+          ScatterViewSingleThread::make_scatter_view<ScatterForce>(
+              get_local_force()));
 #ifdef ESPRESSO_ROTATION
       Kokkos::realloc(get_local_torque(), num_part);
       // underlying View extent changed -> scratch buffers must be rebuilt
       m_scatter_torque.emplace(
-          Kokkos::Experimental::create_scatter_view(get_local_torque()));
+          ScatterViewSingleThread::make_scatter_view<ScatterForce>(
+              get_local_torque()));
       m_torque_replicas_dirty = false;
 #endif
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
       Kokkos::realloc(get_local_dip_fld(), num_part);
       // underlying View extent changed -> scratch buffers must be rebuilt
       m_scatter_dip_fld.emplace(
-          Kokkos::Experimental::create_scatter_view(get_local_dip_fld()));
+          ScatterViewSingleThread::make_scatter_view<ScatterForce>(
+              get_local_dip_fld()));
       m_dip_fld_replicas_dirty = false;
 #endif
     }
@@ -199,16 +203,19 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
   } else { // local properties are initialized
     m_local_force = std::make_unique<ForceType>("local_force", num_part);
     m_scatter_force.emplace(
-        Kokkos::Experimental::create_scatter_view(*m_local_force));
+        ScatterViewSingleThread::make_scatter_view<ScatterForce>(
+            *m_local_force));
 #ifdef ESPRESSO_ROTATION
     m_local_torque = std::make_unique<ForceType>("local_torque", num_part);
     m_scatter_torque.emplace(
-        Kokkos::Experimental::create_scatter_view(*m_local_torque));
+        ScatterViewSingleThread::make_scatter_view<ScatterForce>(
+            *m_local_torque));
 #endif
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
     m_local_dip_fld = std::make_unique<ForceType>("local_dip_fld", num_part);
     m_scatter_dip_fld.emplace(
-        Kokkos::Experimental::create_scatter_view(*m_local_dip_fld));
+        ScatterViewSingleThread::make_scatter_view<ScatterForce>(
+            *m_local_dip_fld));
 #endif
     m_id_to_index = std::make_unique<Kokkos::View<int *, memory_space>>(
         Kokkos::view_alloc(execution_space{}, Kokkos::WithoutInitializing,
@@ -227,7 +234,8 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
   if (not m_local_virial) {
     m_local_virial = std::make_unique<VirialType>("local_virial");
     m_scatter_virial.emplace(
-        Kokkos::Experimental::create_scatter_view(*m_local_virial));
+        ScatterViewSingleThread::make_scatter_view<ScatterVirial>(
+            *m_local_virial));
   } else {
     reset_virial_replicas_if_dirty();
   }
@@ -236,14 +244,14 @@ void CellStructure::rebuild_local_properties(double const pair_cutoff) {
 
 void CellStructure::reset_local_force_buffers() {
   kokkos_deep_copy(execution_space{}, get_local_force(), 0.);
-  m_scatter_force->reset();
+  m_scatter_force->reset_except(get_local_force());
 }
 
 void CellStructure::reset_torque_replicas_if_dirty() {
 #ifdef ESPRESSO_ROTATION
   if (m_torque_replicas_dirty) {
     kokkos_deep_copy(execution_space{}, get_local_torque(), 0.);
-    m_scatter_torque->reset();
+    m_scatter_torque->reset_except(get_local_torque());
     m_torque_replicas_dirty = false;
   }
 #endif
@@ -253,7 +261,7 @@ void CellStructure::reset_dip_fld_replicas_if_dirty() {
 #ifdef ESPRESSO_DIPOLE_FIELD_TRACKING
   if (m_dip_fld_replicas_dirty) {
     kokkos_deep_copy(execution_space{}, get_local_dip_fld(), 0.);
-    m_scatter_dip_fld->reset();
+    m_scatter_dip_fld->reset_except(get_local_dip_fld());
     m_dip_fld_replicas_dirty = false;
   }
 #endif
@@ -263,7 +271,7 @@ void CellStructure::reset_virial_replicas_if_dirty() {
 #ifdef ESPRESSO_NPT
   if (m_virial_replicas_dirty) {
     kokkos_deep_copy(execution_space{}, get_local_virial(), 0.);
-    m_scatter_virial->reset();
+    m_scatter_virial->reset_except(get_local_virial());
     m_virial_replicas_dirty = false;
   }
 #endif
