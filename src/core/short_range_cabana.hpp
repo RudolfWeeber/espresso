@@ -86,138 +86,132 @@ commit_particle(Particle const &p, auto const index,
 #endif
 }
 
-/** @brief Per-thread buffers of @ref link_cell_inter_gathered. */
-struct GatheredCandidates {
-  std::vector<double> x, y, z, dist2;
-  std::vector<int> id, selected;
-  std::vector<Particle const *> particle;
-};
-
 /**
- * @brief Inter-cell pairs of one cell from gathered candidates (cuboid boxes).
+ * @brief Pair partner candidates of the particles of one cell: the particles
+ * of its red neighbor cells, in neighbor order.
  *
- * Finds the same pairs, in the same order and with bitwise the same squared
- * distances, as the inter-cell loop of @ref link_cell_kokkos, but:
- * - The candidates (the particles of the red neighbor cells, in neighbor
- *   order) are read once per cell instead of once per particle of the cell:
- *   their positions, ids and addresses are copied into contiguous
- *   per-thread arrays.
- * - The squared distances from a particle to all candidates are computed in
- *   one loop over these arrays. If the cell's particles and the candidates
- *   span at most 0.45 box lengths in every periodic direction, which is the
- *   case for most cells unless the box is small, the minimum-image fold is
- *   the identity for every pair (@ref CuboidMinimumImage::fold_is_identity).
- *   The loop then uses plain coordinate differences, which the compiler
- *   vectorizes; otherwise it calls @ref CuboidMinimumImage::dist2.
- * - The candidates within the global (cutoff + skin) bound whose id is in
- *   range are selected without branches (about 1 in 7 in a dense liquid),
- *   so the criterion and the unpredictable test are only applied to those.
+ * The inter-cell loop of @ref link_cell_kokkos visits every candidate once
+ * per particle of the cell. The candidates are spread over several cells and
+ * a @ref Particle spans many cache lines, so the loop copies the data it
+ * needs into contiguous arrays once per cell and works on those.
+ *
+ * The arrays only grow; @ref size is the number of valid entries.
  */
-template <class Criterion>
-void link_cell_inter_gathered(
-    Cell &cell, CuboidMinimumImage const &minimum_image,
-    Criterion const &verlet_criterion,
-    Kokkos::View<int *, Kokkos::DefaultHostExecutionSpace> const &id_to_index,
-    int const max_id, auto const &inter_operator) {
-  auto const &local_particles = cell.particles();
-  if (local_particles.empty()) {
-    return;
-  }
-  std::size_t n = 0u;
-  for (auto const *neighbor : cell.neighbors().red()) {
-    n += neighbor->particles().size();
-  }
-  thread_local GatheredCandidates buffers;
-  auto &buf = buffers;
-  if (buf.x.size() < n) {
-    for (auto *v : {&buf.x, &buf.y, &buf.z, &buf.dist2}) {
-      v->resize(n);
-    }
-    for (auto *v : {&buf.id, &buf.selected}) {
-      v->resize(n);
-    }
-    buf.particle.resize(n);
-  }
-  // raw pointers: no access to the thread-local object in the loops
-  double *const x = buf.x.data();
-  double *const y = buf.y.data();
-  double *const z = buf.z.data();
-  double *const dist2 = buf.dist2.data();
-  int *const id = buf.id.data();
-  int *const selected = buf.selected.data();
-  Particle const **const particle = buf.particle.data();
+class NeighborCandidates {
+  std::size_t m_size = 0u;
+  /** Scratch space of @ref within. */
+  std::vector<unsigned> m_selected;
 
-  // gather the candidates, and the extent of them and the cell's particles
-  auto lo = local_particles.begin()->pos();
-  auto hi = lo;
-  auto const extend = [&lo, &hi](Utils::Vector3d const &pos) {
-    for (auto c = 0u; c < 3u; ++c) {
-      lo[c] = std::min(lo[c], pos[c]);
-      hi[c] = std::max(hi[c], pos[c]);
-    }
-  };
-  for (auto const &p : local_particles) {
-    extend(p.pos());
-  }
-  std::size_t j = 0u;
-  for (auto const *neighbor : cell.neighbors().red()) {
-    for (auto const &p : neighbor->particles()) {
-      auto const &pos = p.pos();
-      extend(pos);
-      x[j] = pos[0];
-      y[j] = pos[1];
-      z[j] = pos[2];
-      id[j] = p.id();
-      particle[j] = &p;
-      ++j;
+  void ensure_capacity(std::size_t const n) {
+    if (id.size() < n) {
+      for (auto *v : {&x, &y, &z, &dist2}) {
+        v->resize(n);
+      }
+      id.resize(n);
+      particle.resize(n);
+      m_selected.resize(n);
     }
   }
-  bool const no_fold = minimum_image.fold_is_identity(hi - lo);
 
-  auto const max_cut2 = verlet_criterion.eff_max_cut2();
-  for (auto const &p1 : local_particles) {
-    if (p1.id() > max_id) {
-      continue;
+public:
+  /** @name Per-candidate data */
+  /**@{*/
+  std::vector<double> x, y, z;
+  std::vector<int> id;
+  std::vector<Particle const *> particle;
+  /** Squared distance to the position last passed to @ref calc_dist2. */
+  std::vector<double> dist2;
+  /**@}*/
+
+  auto size() const { return m_size; }
+
+  /**
+   * @brief Collect the candidates of @p cell.
+   * Particles with an id above @p max_id are left out.
+   */
+  void gather(Cell &cell, int const max_id) {
+    std::size_t n_neighbor_particles = 0u;
+    for (auto const *neighbor : cell.neighbors().red()) {
+      n_neighbor_particles += neighbor->particles().size();
     }
-    auto const ii = id_to_index(p1.id());
-    if (ii < 0) {
-      continue;
-    }
-    auto const &pos = p1.pos();
-    if (no_fold) {
-      // the operations of CuboidMinimumImage::dist2 with a zero fold
-      for (std::size_t t = 0u; t < n; ++t) {
-        auto const dx = pos[0] - x[t];
-        auto const dy = pos[1] - y[t];
-        auto const dz = pos[2] - z[t];
-        auto acc = 0.;
-        acc += dx * dx;
-        acc += dy * dy;
-        acc += dz * dz;
-        dist2[t] = acc;
-      }
-    } else {
-      for (std::size_t t = 0u; t < n; ++t) {
-        dist2[t] = minimum_image.dist2(pos, Utils::Vector3d{x[t], y[t], z[t]});
-      }
-    }
-    std::size_t n_selected = 0u;
-    for (std::size_t t = 0u; t < n; ++t) {
-      selected[n_selected] = static_cast<int>(t);
-      n_selected += static_cast<std::size_t>((dist2[t] <= max_cut2) &
-                                             (id[t] <= max_id));
-    }
-    for (std::size_t s = 0u; s < n_selected; ++s) {
-      auto const t = static_cast<std::size_t>(selected[s]);
-      if (verlet_criterion(p1, *particle[t], dist2[t])) {
-        auto const jj = id_to_index(id[t]);
-        if (jj >= 0) {
-          inter_operator(ii, jj);
+    ensure_capacity(n_neighbor_particles);
+    m_size = 0u;
+    for (auto const *neighbor : cell.neighbors().red()) {
+      for (auto const &p : neighbor->particles()) {
+        if (p.id() > max_id) {
+          continue;
         }
+        x[m_size] = p.pos()[0];
+        y[m_size] = p.pos()[1];
+        z[m_size] = p.pos()[2];
+        id[m_size] = p.id();
+        particle[m_size] = &p;
+        ++m_size;
       }
     }
   }
-}
+
+  /**
+   * @brief Edge lengths of the bounding box of the candidates and of
+   * @p cell_particles, which must not be empty.
+   */
+  Utils::Vector3d extent_with(auto const &cell_particles) const {
+    auto lower = cell_particles.begin()->pos();
+    auto upper = lower;
+    auto const extend = [&lower, &upper](Utils::Vector3d const &pos) {
+      for (auto c = 0u; c < 3u; ++c) {
+        lower[c] = std::min(lower[c], pos[c]);
+        upper[c] = std::max(upper[c], pos[c]);
+      }
+    };
+    for (auto const &p : cell_particles) {
+      extend(p.pos());
+    }
+    for (std::size_t t = 0u; t < size(); ++t) {
+      extend({x[t], y[t], z[t]});
+    }
+    return upper - lower;
+  }
+
+  /**
+   * @brief Set @ref dist2 to the squared distances from @p pos, without
+   * minimum-image fold. The loop has no function call and vectorizes.
+   * @p pos is a copy, so that the writes to @ref dist2 cannot change it.
+   */
+  void calc_dist2(Utils::Vector3d const pos) {
+    for (std::size_t t = 0u; t < size(); ++t) {
+      dist2[t] = (pos - Utils::Vector3d{x[t], y[t], z[t]}).norm2();
+    }
+  }
+
+  /**
+   * @brief Set @ref dist2 to the squared distances from @p pos, calculated
+   * by @p dist2_of for each candidate.
+   */
+  void calc_dist2(Utils::Vector3d const &pos, auto const &dist2_of) {
+    for (std::size_t t = 0u; t < size(); ++t) {
+      dist2[t] = dist2_of(pos, Utils::Vector3d{x[t], y[t], z[t]});
+    }
+  }
+
+  /**
+   * @brief Candidates with a squared distance of at most @p max_dist2, in
+   * ascending order.
+   *
+   * Most candidates are out of range (about 6 in 7 in a dense liquid), and
+   * which ones is not predictable. The loop therefore has no branch: it
+   * writes every candidate to the output and only advances the output
+   * position past the ones in range.
+   */
+  std::span<unsigned const> within(double const max_dist2) {
+    std::size_t n_selected = 0u;
+    for (auto t = 0u; t < size(); ++t) {
+      m_selected[n_selected] = t;
+      n_selected += static_cast<std::size_t>(dist2[t] <= max_dist2);
+    }
+    return {m_selected.data(), n_selected};
+  }
+};
 
 ESPRESSO_ATTR_ALWAYS_INLINE inline void link_cell_kokkos(
     std::span<Cell *const> cells, BoxGeometry const &box_geo,
@@ -267,15 +261,16 @@ ESPRESSO_ATTR_ALWAYS_INLINE inline void link_cell_kokkos(
     }
   };
 
-  auto inter_kernel = [&cells, minimum_image_dist2, &verlet_criterion,
-                       &id_to_index, &inter_operator, max_id](const int i) {
-    auto &local_particles = cells[i]->particles();
-    for (auto const &p1 : local_particles) {
+  // Pairs of the particles of a cell with the particles of its red neighbor
+  // cells, one pair at a time.
+  auto const inter_direct = [minimum_image_dist2, &verlet_criterion,
+                             &id_to_index, &inter_operator,
+                             max_id](Cell &cell) {
+    for (auto const &p1 : cell.particles()) {
       if (p1.id() <= max_id) {
         auto const ii = id_to_index(p1.id());
         if (ii >= 0) {
-          // pairs with neighboring cells
-          for (auto &neighbor : cells[i]->neighbors().red()) {
+          for (auto &neighbor : cell.neighbors().red()) {
             for (auto const &p2 : neighbor->particles()) {
               if (p2.id() <= max_id) {
                 if (verlet_criterion(p1, p2,
@@ -293,23 +288,67 @@ ESPRESSO_ATTR_ALWAYS_INLINE inline void link_cell_kokkos(
     }
   };
 
+  // The same pairs in the same order with the same squared distances, from
+  // candidates gathered once per cell. For each particle of the cell, it
+  // calculates the distances to all candidates in one loop and applies the
+  // Verlet criterion to the candidates within the global (cutoff + skin)
+  // bound. The cell must not be empty.
+  auto const inter_gathered = [minimum_image_dist2, cuboid_minimum_image,
+                               has_lees_edwards, &verlet_criterion,
+                               &id_to_index, &inter_operator,
+                               max_id](Cell &cell) {
+    auto const &local_particles = cell.particles();
+    thread_local NeighborCandidates thread_candidates;
+    auto &candidates = thread_candidates; // one thread-local lookup per cell
+    candidates.gather(cell, max_id);
+    // The plain coordinate differences are the minimum-image ones if the
+    // particles of the cell and its candidates lie close together. This is
+    // not the case for cells with neighbors across a periodic boundary.
+    bool const needs_fold =
+        has_lees_edwards or not cuboid_minimum_image.fold_is_identity(
+                                candidates.extent_with(local_particles));
+    for (auto const &p1 : local_particles) {
+      if (p1.id() > max_id) {
+        continue;
+      }
+      auto const ii = id_to_index(p1.id());
+      if (ii < 0) {
+        continue;
+      }
+      if (needs_fold) {
+        candidates.calc_dist2(p1.pos(), minimum_image_dist2);
+      } else {
+        candidates.calc_dist2(p1.pos());
+      }
+      for (auto const t : candidates.within(verlet_criterion.eff_max_cut2())) {
+        if (verlet_criterion(p1, *candidates.particle[t],
+                             candidates.dist2[t])) {
+          auto const jj = id_to_index(candidates.id[t]);
+          if (jj >= 0) {
+            inter_operator(ii, jj);
+          }
+        }
+      }
+    }
+  };
+
+  auto inter_kernel = [&cells, &inter_direct, &inter_gathered](const int i) {
+    auto &cell = *cells[i];
+    // With a single particle in the cell, every candidate is visited once,
+    // so copying it first does not pay off.
+    if (cell.particles().size() < 2u) {
+      inter_direct(cell);
+    } else {
+      inter_gathered(cell);
+    }
+  };
+
   kokkos_parallel_range_for<Kokkos::DefaultHostExecutionSpace>(
       "intra", std::size_t{0}, cells.size(), intra_kernel);
   Kokkos::fence();
 
-  // cuboid boxes: gathered candidates, see link_cell_inter_gathered()
-  auto inter_kernel_gathered = [&](const int i) {
-    link_cell_inter_gathered(*cells[i], cuboid_minimum_image, verlet_criterion,
-                             id_to_index, max_id, inter_operator);
-  };
-
-  if (has_lees_edwards) {
-    kokkos_parallel_range_for<Kokkos::DefaultHostExecutionSpace>(
-        "inter", std::size_t{0}, cells.size(), inter_kernel);
-  } else {
-    kokkos_parallel_range_for<Kokkos::DefaultHostExecutionSpace>(
-        "inter", std::size_t{0}, cells.size(), inter_kernel_gathered);
-  }
+  kokkos_parallel_range_for<Kokkos::DefaultHostExecutionSpace>(
+      "inter", std::size_t{0}, cells.size(), inter_kernel);
   Kokkos::fence();
 }
 
