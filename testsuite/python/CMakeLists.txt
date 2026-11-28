@@ -142,6 +142,9 @@ function(python_test)
   list(APPEND TEST_ENV_VARIABLES "OMPI_MCA_hwloc_base_binding_policy=none")
   list(APPEND TEST_ENV_VARIABLES "PRTE_MCA_hwloc_default_binding_policy=none")
   list(APPEND TEST_ENV_VARIABLES "HYDRA_BINDING=none")
+  # yield the core while waiting in MPI calls: concurrent tests oversubscribe
+  # the cores, and busy-polling ranks then starve the ranks they wait for
+  list(APPEND TEST_ENV_VARIABLES "OMPI_MCA_mpi_yield_when_idle=1")
   list(APPEND TEST_ENV_VARIABLES "OMP_PROC_BIND=false")
   list(APPEND TEST_ENV_VARIABLES "OMP_NUM_THREADS=${TEST_NUM_THREADS}")
 
